@@ -1,0 +1,29 @@
+# Build outputs and dependency caches
+node_modules/
+dist/
+build/
+.next/
+.nuxt/
+coverage/
+.cache/
+__pycache__/
+*.pyc
+.venv/
+.uv/
+
+# Logs and local state
+*.log
+logs/
+*.sqlite
+*.db
+
+# Local env files (never commit secrets)
+.env
+.env.local
+.env.*.local
+
+# IDE and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

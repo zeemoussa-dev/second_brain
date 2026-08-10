@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "PowerShell(git status)",
+      "PowerShell(git diff*)",
+      "PowerShell(git log*)",
+      "PowerShell(git add*)",
+      "PowerShell(git commit*)",
+      "Bash(uvicorn*)",
+      "PowerShell(uvicorn*)",
+      "Bash(pytest*)",
+      "PowerShell(pytest*)",
+      "Bash(npm run dev*)",
+      "PowerShell(npm run dev*)",
+      "Bash(npx vitest*)",
+      "PowerShell(npx vitest*)"
+    ]
+  }
+}
