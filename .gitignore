@@ -1,0 +1,18 @@
+# Portable dev toolchains (machine-specific, not committed — see ADR-002)
+/tools/node/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Secrets (Compass API key, vault path) — see .env.example for required shape
+.env
+
+# Node / frontend
+node_modules/
+dist/
+
+# Editor/OS noise
+.DS_Store
+Thumbs.db
