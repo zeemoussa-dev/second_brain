@@ -1,3 +1,12 @@
+<!--
+  Screen: Prototype catalog (meta — not a REQ-SB screen itself)
+  Reused: .app-shell/.sidebar/.main shell, .card, collapsible sidebar.
+  Updated for REQ-SB-12/REQ-SB-13's first screens: Agents Map, My Day (+
+  its four drill-downs), Settings, and the agent detail panel embedded in
+  Agents Map. Replaces the earlier "no screens yet" placeholder.
+  Revision 2026-08-10 (round 2, still pre-approval): no markup change — the
+  light-theme/green-accent token swap in styles.css cascades here.
+-->
 <!doctype html>
 <html lang="en">
 <head>
@@ -7,26 +16,50 @@
 </head>
 <body>
   <div class="app-shell">
-    <nav class="sidebar">
-      <h2>Second Brain</h2>
-      <a class="nav-item active" href="index.html">Screens</a>
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <button class="burger-btn" id="sidebarToggle" aria-label="Toggle navigation" aria-expanded="true">&#9776;</button>
+        <h2>Second Brain</h2>
+      </div>
+      <a class="nav-item" href="agents-map.html"><span class="nav-icon">&#9678;</span><span class="nav-label">Agents Map</span></a>
+      <a class="nav-item" href="my-day.html"><span class="nav-icon">&#9728;</span><span class="nav-label">My Day</span></a>
+      <a class="nav-item" href="settings.html"><span class="nav-icon">&#9881;</span><span class="nav-label">Settings</span></a>
+      <a class="nav-item active" href="index.html"><span class="nav-icon">&#9638;</span><span class="nav-label">Screens (catalog)</span></a>
     </nav>
     <main class="main">
       <h1>Prototype screens</h1>
       <p class="text-muted">
-        No screens yet — run <span class="mono">/design</span> against a
-        requirement batch to add the first ones. See
-        <span class="mono">SCREEN_INSTRUCTIONS.md</span> for how a new screen
-        should be built.
+        This catalog lists every screen. The app itself opens on
+        <span class="mono">agents-map.html</span> (its default/home page per
+        REQ-SB-12) — this page is a reviewer aid, not part of the shipped
+        navigation.
       </p>
+
+      <div class="card" style="margin-bottom: var(--space-4);">
+        <strong>REQ-SB-12 — Primary Application UI Shell</strong>
+        <p class="text-muted">Burger-menu app shell; default home page is the Agents Map; My Day dashboard with four drill-down pages; Settings.</p>
+        <ul>
+          <li><a href="agents-map.html">agents-map.html</a> — default/home page: Knowledge Base + agents, color-coded by type</li>
+          <li><a href="my-day.html">my-day.html</a> — dashboard: four clickable sections</li>
+          <li><a href="my-day-emails.html">my-day-emails.html</a></li>
+          <li><a href="my-day-calendar.html">my-day-calendar.html</a></li>
+          <li><a href="my-day-todo.html">my-day-todo.html</a></li>
+          <li><a href="my-day-reads.html">my-day-reads.html</a></li>
+          <li><a href="settings.html">settings.html</a></li>
+        </ul>
+      </div>
+
       <div class="card">
-        <strong>Expected first screens</strong>
+        <strong>REQ-SB-13 — Embedded Agent Chat &amp; Communication History</strong>
         <p class="text-muted">
-          A vault-setup / first-run state, a notes browser, and a note detail
-          view are the likely MVP screens once REQ-SB requirements are specced.
+          Not a separate page — click any agent node on
+          <a href="agents-map.html">agents-map.html</a> to open its
+          right-side detail panel (settings, actions, embedded chat,
+          communication history).
         </p>
       </div>
     </main>
   </div>
+  <script src="app.js"></script>
 </body>
 </html>

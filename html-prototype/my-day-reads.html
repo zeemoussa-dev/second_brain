@@ -1,0 +1,77 @@
+<!--
+  Screen: My Day — Important Reads (REQ-SB-12)
+  Reused: .app-shell shell, collapsible sidebar, .card, .badge,
+    .state-switcher, .empty-state, .item-list/.item-row (from
+    my-day-emails.html).
+  States drawn: empty and populated. "Important Reads" has no defined
+    source/criteria in the PRD yet (open question for /spec time — see
+    REQ-SB-12's breadcrumb) — this draws only the generic flagged-note
+    shell, deliberately not asserting a specific backend concept (e.g. a
+    "flag" field) that /spec hasn't decided yet.
+  Revision 2026-08-10 (round 2, still pre-approval): no markup change — the
+    light-theme/green-accent token swap in styles.css cascades here.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>My Day — Important Reads — Second Brain</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <button class="burger-btn" id="sidebarToggle" aria-label="Toggle navigation" aria-expanded="true">&#9776;</button>
+        <h2>Second Brain</h2>
+      </div>
+      <a class="nav-item" href="agents-map.html"><span class="nav-icon">&#9678;</span><span class="nav-label">Agents Map</span></a>
+      <a class="nav-item active" href="my-day.html"><span class="nav-icon">&#9728;</span><span class="nav-label">My Day</span></a>
+      <a class="nav-item" href="settings.html"><span class="nav-icon">&#9881;</span><span class="nav-label">Settings</span></a>
+      <a class="nav-item" href="index.html"><span class="nav-icon">&#9638;</span><span class="nav-label">Screens (catalog)</span></a>
+    </nav>
+    <main class="main">
+      <p class="text-muted"><a href="my-day.html" class="text-muted">&larr; My Day</a></p>
+      <h1>Important Reads</h1>
+      <p class="text-muted">Notes worth a closer look this week.</p>
+
+      <div class="state-switcher" data-group="my-day-reads">
+        <button type="button" class="btn btn-primary" data-state-target="populated">Populated</button>
+        <button type="button" class="btn" data-state-target="empty">Empty</button>
+      </div>
+
+      <section data-state-panel data-group="my-day-reads" data-state="empty">
+        <div class="card">
+          <div class="empty-state">
+            <div class="empty-state-icon">&#128214;</div>
+            <p><strong>Nothing flagged yet.</strong></p>
+            <p class="text-muted">What makes a note an "Important Read" is still an open product question — this page will fill in once that's resolved at /spec time.</p>
+          </div>
+        </div>
+      </section>
+
+      <section data-state-panel data-group="my-day-reads" data-state="populated" class="active">
+        <div class="card">
+          <div class="item-list">
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">Acme Corp — signed order form attached</span>
+                <span class="item-row-meta">Email &middot; Acme Corp</span>
+              </div>
+              <span class="badge">Flagged</span>
+            </div>
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">Northwind — Azure MACC review thread</span>
+                <span class="item-row-meta">Email &middot; Northwind</span>
+              </div>
+              <span class="badge">Flagged</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,106 @@
+<!--
+  Screen: My Day dashboard (REQ-SB-12)
+  Reused: .app-shell/.sidebar/.main shell, .card, .badge, .state-switcher,
+    .empty-state, the collapsible burger sidebar from agents-map.html.
+  New: .day-section-grid / .day-section-card / .day-section-count (added to
+    styles.css) — four equally-weighted clickable cards, each a plain link
+    to its own dedicated page per REQ-SB-12's acceptance criteria.
+  States drawn: (1) first-run/empty — no capture pipelines have produced
+    anything yet (REQ-SB-07/08/09 haven't run); (2) populated — each
+    section shows a count sourced from its capture pipeline. Exact
+    drill-down content per section is an open question for /spec time (see
+    PRD REQ-SB-12 breadcrumb) — this dashboard only commits to the shape:
+    four clickable sections, each its own page.
+  Revision 2026-08-10 (round 2, still pre-approval): no markup change here —
+    the operator's light-theme/green-accent swap is entirely token-level
+    (styles.css :root), so it cascades to this screen automatically. Verified
+    the card grid, badges, and state-switcher still read correctly against
+    the new white/light-green surfaces.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>My Day — Second Brain</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <button class="burger-btn" id="sidebarToggle" aria-label="Toggle navigation" aria-expanded="true">&#9776;</button>
+        <h2>Second Brain</h2>
+      </div>
+      <a class="nav-item" href="agents-map.html"><span class="nav-icon">&#9678;</span><span class="nav-label">Agents Map</span></a>
+      <a class="nav-item active" href="my-day.html"><span class="nav-icon">&#9728;</span><span class="nav-label">My Day</span></a>
+      <a class="nav-item" href="settings.html"><span class="nav-icon">&#9881;</span><span class="nav-label">Settings</span></a>
+      <a class="nav-item" href="index.html"><span class="nav-icon">&#9638;</span><span class="nav-label">Screens (catalog)</span></a>
+    </nav>
+    <main class="main">
+      <h1>My Day</h1>
+      <p class="text-muted">The day's most important actions, surfaced from your background agents. Open a section for the full list.</p>
+
+      <div class="state-switcher" data-group="my-day">
+        <button type="button" class="btn btn-primary" data-state-target="populated">Populated</button>
+        <button type="button" class="btn" data-state-target="empty">First run (no captures yet)</button>
+      </div>
+
+      <section data-state-panel data-group="my-day" data-state="empty">
+        <div class="empty-state">
+          <div class="empty-state-icon">&#9728;</div>
+          <p><strong>Nothing captured yet.</strong></p>
+          <p class="text-muted">My Day fills in once the scheduled capture agents (email, meetings, to-dos) have run at least once. The four sections below are still reachable.</p>
+        </div>
+        <div class="day-section-grid">
+          <a class="card day-section-card" href="my-day-emails.html">
+            <h2>Emails</h2>
+            <div class="day-section-count">—</div>
+            <span class="text-muted">No captures yet</span>
+          </a>
+          <a class="card day-section-card" href="my-day-calendar.html">
+            <h2>Calendar</h2>
+            <div class="day-section-count">—</div>
+            <span class="text-muted">No captures yet</span>
+          </a>
+          <a class="card day-section-card" href="my-day-todo.html">
+            <h2>To-Do</h2>
+            <div class="day-section-count">—</div>
+            <span class="text-muted">No captures yet</span>
+          </a>
+          <a class="card day-section-card" href="my-day-reads.html">
+            <h2>Important Reads</h2>
+            <div class="day-section-count">—</div>
+            <span class="text-muted">No captures yet</span>
+          </a>
+        </div>
+      </section>
+
+      <section data-state-panel data-group="my-day" data-state="populated" class="active">
+        <div class="day-section-grid">
+          <a class="card day-section-card" href="my-day-emails.html">
+            <h2>Emails</h2>
+            <div class="day-section-count">3</div>
+            <span class="badge badge-success">Captured this hour</span>
+          </a>
+          <a class="card day-section-card" href="my-day-calendar.html">
+            <h2>Calendar</h2>
+            <div class="day-section-count">2</div>
+            <span class="text-muted">Meetings today</span>
+          </a>
+          <a class="card day-section-card" href="my-day-todo.html">
+            <h2>To-Do</h2>
+            <div class="day-section-count">5</div>
+            <span class="badge badge-warning">2 due today</span>
+          </a>
+          <a class="card day-section-card" href="my-day-reads.html">
+            <h2>Important Reads</h2>
+            <div class="day-section-count">4</div>
+            <span class="text-muted">Flagged this week</span>
+          </a>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

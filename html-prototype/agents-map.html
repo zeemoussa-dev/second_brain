@@ -1,0 +1,739 @@
+<!--
+  Screen: Agents Map (REQ-SB-12, REQ-SB-13) — default/home page.
+  Revision 2026-08-10 (round 3, still pre-approval): operator browser
+  review of round 2 found the wedge/hub structure wrong — round 2 read as
+  one Hub per section positioned near the KB, not a true polar grid. This
+  round replaces that with the corrected model (implemented close to the
+  operator's exact spec, not reinterpreted):
+    - ANGULAR axis = sections (domain groupings, same 3 as round 2:
+      Capture/Worker-domain, People, Q&A). Purely a virtual boundary — drawn
+      as a faint dashed .section-boundary guide line at each section's
+      angular edge. No filled wedge (round 2's .wedge-fill removed).
+    - RADIAL axis = 3 concentric .ring-circle rings, GLOBAL across every
+      section (not per-section): Worker = outermost (farthest from KB),
+      Expert = middle, Producer = innermost (closest to KB). An agent's
+      ring is its type; its angle is somewhere within its section's span.
+    - Each .hub-node sits on the inner band, close to the KB (round 3 placed
+      this at the wheel's outer rim instead — corrected in round 5 below).
+      Exactly one .spoke-line runs from each Hub inward to the KB — the
+      section's single KB-facing connector. Agents never spoke to the KB
+      individually; they connect to each other and to their Hub via
+      .cluster-line.
+    - A faint radar-style background grid (12 .radar-spoke lines + the ring/
+      boundary circles themselves) reads even in empty space; .ring-label
+      names the radial axis (Producer/Expert/Worker), .section-title names
+      the angular axis (Capture/People/Knowledge Q&A), positioned outside
+      the outer boundary at each section's angular midpoint.
+    - Knowledge Base rebuilt denser: 14 neurons (was 8), ~26 crossing
+      synapse lines (was a single ring+spokes), varied neuron size/opacity
+      for depth, two traveling pulse dots (SVG animateMotion) along synapse
+      paths, plus a static soft outer glow (CSS drop-shadow) layered under
+      the existing pulsing halo — reads as a brain, not a badge.
+    - General polish pass: bigger canvas with reserved margin for the
+      outside labels (.agents-map-stage), soft ambient shadow under the
+      wheel, per-node glow/shadow keyed to agent-type color, hover adds a
+      slight lift (not just scale), refined section-title typography
+      (larger, letter-spaced, uppercase, with a type-colored accent bar).
+    - Scale-to-~100-agents: documented below and in styles.css, not
+      instantiated (this demo still only renders the current handful of
+      real agents — see the styles.css comment above .agents-map-canvas for
+      the compact/overflow-marker primitives this would use).
+  Revision 2026-08-10 (round 4, still pre-approval): confirmed-by-
+  measurement (getBoundingClientRect, not eyeballing) container-sizing bug
+  fix — NOT a redesign, and the round 3 polar-grid math (ring-by-type radial
+  axis, virtual section boundaries, hub-at-rim trigonometry, the brain,
+  the radar background, section titles) is untouched and correct. The bug:
+  .agents-map-stage's old `padding: 130px 110px` (box-sizing:border-box) ate
+  a fixed 220px of horizontal width regardless of how much the container
+  actually had — on a realistic (non-ultrawide) window this collapsed
+  .agents-map-canvas's content-box width to double digits (a measured 274px
+  stage -> 54px canvas), which is what actually made hubs read as "next to
+  the KB": the whole wheel was rendering inside a ~54x54px circle, not a
+  positioning error. Fixed in styles.css by decoupling canvas size from
+  stage padding: the stage now reserves only a small fixed 24px margin, and
+  .agents-map-canvas caps its own width explicitly (`width: min(100%,
+  700px)`) instead of inheriting 100% of a padding-starved stage. The
+  outside labels don't need reserved padding to render — they already
+  position via percentages beyond 0-100% against .agents-map-canvas, which
+  already has overflow:visible — they just need nothing clipping them, which
+  a small margin provides. Sanity-checked by hand for stage widths ~500px/
+  ~700px/~1000px: content-box (after 48px total padding) comes out to
+  ~452px/~652px/~952px (capped at 700px by the canvas's own min()) — all
+  comfortably several-hundred-px, never collapsing.
+  Revision 2026-08-10 (round 5, still pre-approval): a genuine direction
+  change, not a repeat of the round-4 sizing bug — the round-4 canvas-sizing
+  fix was independently re-verified by the operator (measured 226px in a
+  narrow test viewport, up from the broken 54px) and is UNTOUCHED here. The
+  operator wants Hubs on the INNER ring, close to the KB, not at the outer
+  rim — round 3's rim placement (r=54) was the wrong direction. Moved each
+  .hub-node to r=19 (just outside the Producer ring, r=18, per the "leave a
+  bit of clearance from the KB" guidance — KB's own edge is ~r=11), computed
+  by the same angle x radius trigonometry round 3 used, not eyeballed:
+  Capture Hub at (angle=-30, its section's true midpoint — no collision,
+  its own Worker-ring agent at that angle is 23 units further out); Q&A Hub
+  at (angle=210, also its section's true midpoint — 11-unit clearance to
+  its own Expert-ring agent at r=30); People Hub deliberately offset to
+  angle=45 (not its section's midpoint, 90) because People Notes — a real
+  Producer-type agent — already sits at r=18/angle=90, the same ring the
+  Hub now occupies; keeping the Hub at the exact midpoint would overlap it,
+  so the Hub moved in angle instead (~4-unit clearance to the agent at the
+  chosen offset). All three re-checked for KB clearance (~2.5-3.5 units) and
+  hub-to-hub clearance (>20 units apart, no risk). Every .spoke-line
+  (Hub -> KB) is now short, matching the new near-center Hub positions;
+  every .cluster-line (Hub -> its section's agents) recomputed from the new
+  Hub coordinates — the Capture section's Hub->agent lines now reach
+  outward to the Worker ring (r=42) instead of the short outward reach
+  round 3 had. .section-boundary guide lines and .section-title labels are
+  untouched — they were never tied to Hub radius. Legend/intro copy updated
+  from "at the rim" to "on the inner ring, close to the KB."
+  The REQ-SB-13 agent detail panel (settings/actions/chat/history) and its
+  data-agent-id -> data-agent-detail wiring are UNCHANGED — only Hub
+  placement and its connecting lines were in scope for this pass.
+  Revision 2026-08-11 (round 6, still pre-approval): a scale/spacing
+  rebalance, not another direction change — round 5's inner-ring Hub
+  placement is preserved, it just now has real breathing room. Confirmed by
+  measurement (getBoundingClientRect): the KB itself was correctly centered
+  and exactly 22% wide as coded (no centering bug), but round 5's Hubs at
+  r=19 sat only ~2.5%-of-canvas-radius from the KB's edge (~5.6px measured
+  on a 226px-wide canvas) — three 11%-wide Hub nodes crowding a KB that was
+  also too small (22%) to read as dominant. Fixed as one coordinated
+  rebalance, not an isolated tweak: (1) grew the KB from 22% to 34% of
+  canvas width (edge radius ~11 -> ~17) and rebuilt the brain denser — 23
+  neurons (16 outer + 6 mid + 1 center), up from 14, with ~42 crossing
+  synapse lines (up from ~26), varied neuron size/opacity across 3 depth
+  layers, a stronger glow (drop-shadow blur 16px->26px, kbPulse's peak
+  spread 28px->42px); (2) recomputed the entire radial scale outward so
+  nothing collides now the KB is bigger, using the same angle x radius
+  trigonometry as every prior round (not eyeballed) — Hub band r=19->32
+  (edge-to-edge KB-Hub gap is now ~9.5 units, ~19% of the canvas radius: a
+  "comfortable double-digit percentage," the explicit target), Producer
+  ring r=18->30, Expert ring r=30->45, Worker ring r=42->50, boundary
+  r=54->58; every dependent coordinate — all 3 Hub positions, all 5 agent
+  positions, every .spoke-line, every .cluster-line, the ring/section-title
+  label positions — recomputed from these new radii, not left pointing at
+  stale round-5 coordinates. Re-verified by hand: KB-edge-to-Hub-edge ~9.5
+  units (19% of radius, comfortable double-digit); KB-edge-to-Producer-ring-
+  agent-edge ~8 units (16%); every same-angle Hub-vs-that-section's-own-
+  agent pair (Capture's Meeting Capture, Q&A's Vault Q&A, both sit at their
+  Hub's exact angle) re-checked with >10.5-unit combined-radii clearance —
+  Capture clears by 7.5 units, Q&A by 2.5. .section-boundary guide lines and
+  .section-title labels moved only incidentally (they're offset from the
+  boundary, which grew slightly) — never tied to Hub or KB radius directly.
+  The round-4 canvas-sizing fix (.agents-map-stage padding/.agents-map-canvas
+  min-width) is UNTOUCHED — independently re-verified working by the
+  operator (226px measured) before this round started, and none of this
+  round's changes touch that CSS.
+  The REQ-SB-13 agent detail panel (settings/actions/chat/history) and its
+  data-agent-id -> data-agent-detail wiring are UNCHANGED — only KB size,
+  the radial scale, and their dependent coordinates were in scope.
+  Reused: .app-shell/.sidebar/.main shell, .card, .badge, .btn, .input,
+    .state-switcher, .empty-state (all from round 1); the light/green theme
+    tokens (round 2, unchanged); the round-4 canvas-sizing fix (unchanged);
+    round 5's inner-ring Hub placement direction (preserved, rebalanced).
+  Sections drawn (grounded in the 5 agents already established — none
+    invented for this pass): "Capture" (Worker ring: Email/Meeting/To-Do
+    Capture — REQ-SB-07/08/09), "People" (Producer ring: People Notes —
+    REQ-SB-10), "Knowledge Q&A" (Expert ring: Vault Q&A — REQ-SB-03).
+  States drawn: (1) first-run — KB (brain) indexed, the radar/ring
+    background grid always renders (it's ambient chrome, not a configured
+    entity), but no sections/hubs/agents yet (Hermes not wired up); (2)
+    populated — full polar grid + KB + 3 sections, each with an inner-ring
+    Hub and its ring-placed agent(s), one detail panel per agent (unchanged
+    from round 1). Motion: KB brain pulse + staggered neuron pulse + two
+    traveling synapse pulses, staggered node fade-in, node hover-lift,
+    sidebar collapse transition, sliding side panel — all CSS/SVG-only
+    (incl. SVG SMIL animateMotion for the traveling pulses), no animation
+    framework.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Agents Map — Second Brain</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <button class="burger-btn" id="sidebarToggle" aria-label="Toggle navigation" aria-expanded="true">&#9776;</button>
+        <h2>Second Brain</h2>
+      </div>
+      <a class="nav-item active" href="agents-map.html"><span class="nav-icon">&#9678;</span><span class="nav-label">Agents Map</span></a>
+      <a class="nav-item" href="my-day.html"><span class="nav-icon">&#9728;</span><span class="nav-label">My Day</span></a>
+      <a class="nav-item" href="settings.html"><span class="nav-icon">&#9881;</span><span class="nav-label">Settings</span></a>
+      <a class="nav-item" href="index.html"><span class="nav-icon">&#9638;</span><span class="nav-label">Screens (catalog)</span></a>
+    </nav>
+    <main class="main">
+      <h1>Agents Map</h1>
+      <p class="text-muted">
+        A polar grid: angle is section (domain), radius is agent type —
+        Worker outermost, Expert middle, Producer innermost, Knowledge Base
+        at the center. Each section's Hub sits close to the Knowledge Base,
+        on the inner ring — the only thing that connects back to it. Click
+        any agent to see its settings, actions, chat with it directly, and
+        its communication history.
+      </p>
+
+      <div class="state-switcher" data-group="agents-map">
+        <button type="button" class="btn btn-primary" data-state-target="populated">Populated</button>
+        <button type="button" class="btn" data-state-target="first-run">First run (no agents yet)</button>
+      </div>
+
+      <!-- First-run state: vault indexed (brain active) and the ambient
+           radar/ring grid always renders, but no sections/hubs/agents are
+           configured yet. -->
+      <section data-state-panel data-group="agents-map" data-state="first-run">
+        <div class="agents-map-stage">
+          <div class="agents-map-canvas">
+            <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+              <line class="radar-spoke" x1="50" y1="50" x2="108" y2="50" />
+              <line class="radar-spoke" x1="50" y1="50" x2="100.23" y2="79" />
+              <line class="radar-spoke" x1="50" y1="50" x2="79" y2="100.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="50" y2="108" />
+              <line class="radar-spoke" x1="50" y1="50" x2="21" y2="100.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="-0.23" y2="79" />
+              <line class="radar-spoke" x1="50" y1="50" x2="-8" y2="50" />
+              <line class="radar-spoke" x1="50" y1="50" x2="-0.23" y2="21" />
+              <line class="radar-spoke" x1="50" y1="50" x2="21" y2="-0.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="50" y2="-8" />
+              <line class="radar-spoke" x1="50" y1="50" x2="79" y2="-0.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="100.23" y2="21" />
+              <circle class="ring-circle" cx="50" cy="50" r="30" />
+              <circle class="ring-circle" cx="50" cy="50" r="45" />
+              <circle class="ring-circle" cx="50" cy="50" r="50" />
+              <circle class="boundary-circle" cx="50" cy="50" r="58" />
+            </svg>
+            <div class="kb-node">
+              <svg class="kb-brain-svg" viewBox="0 0 100 100">
+                <line x1="50" y1="10" x2="65.3" y2="13" />
+                <line x1="65.3" y1="13" x2="78.3" y2="21.7" />
+                <line x1="78.3" y1="21.7" x2="87" y2="34.7" />
+                <line x1="87" y1="34.7" x2="90" y2="50" />
+                <line x1="90" y1="50" x2="87" y2="65.3" />
+                <line x1="87" y1="65.3" x2="78.3" y2="78.3" />
+                <line x1="78.3" y1="78.3" x2="65.3" y2="87" />
+                <line x1="65.3" y1="87" x2="50" y2="90" />
+                <line x1="50" y1="90" x2="34.7" y2="87" />
+                <line x1="34.7" y1="87" x2="21.7" y2="78.3" />
+                <line x1="21.7" y1="78.3" x2="13" y2="65.3" />
+                <line x1="13" y1="65.3" x2="10" y2="50" />
+                <line x1="10" y1="50" x2="13" y2="34.7" />
+                <line x1="13" y1="34.7" x2="21.7" y2="21.7" />
+                <line x1="21.7" y1="21.7" x2="34.7" y2="13" />
+                <line x1="34.7" y1="13" x2="50" y2="10" />
+                <line x1="61" y1="30.95" x2="72" y2="50" />
+                <line x1="72" y1="50" x2="61" y2="69.05" />
+                <line x1="61" y1="69.05" x2="39" y2="69.05" />
+                <line x1="39" y1="69.05" x2="28" y2="50" />
+                <line x1="28" y1="50" x2="39" y2="30.95" />
+                <line x1="39" y1="30.95" x2="61" y2="30.95" />
+                <line x1="61" y1="30.95" x2="50" y2="50" />
+                <line x1="72" y1="50" x2="50" y2="50" />
+                <line x1="61" y1="69.05" x2="50" y2="50" />
+                <line x1="39" y1="69.05" x2="50" y2="50" />
+                <line x1="28" y1="50" x2="50" y2="50" />
+                <line x1="39" y1="30.95" x2="50" y2="50" />
+                <line x1="61" y1="30.95" x2="65.3" y2="13" />
+                <line x1="61" y1="30.95" x2="78.3" y2="21.7" />
+                <line x1="72" y1="50" x2="87" y2="34.7" />
+                <line x1="72" y1="50" x2="87" y2="65.3" />
+                <line x1="61" y1="69.05" x2="78.3" y2="78.3" />
+                <line x1="61" y1="69.05" x2="65.3" y2="87" />
+                <line x1="39" y1="69.05" x2="34.7" y2="87" />
+                <line x1="39" y1="69.05" x2="21.7" y2="78.3" />
+                <line x1="28" y1="50" x2="13" y2="65.3" />
+                <line x1="28" y1="50" x2="13" y2="34.7" />
+                <line x1="39" y1="30.95" x2="21.7" y2="21.7" />
+                <line x1="39" y1="30.95" x2="34.7" y2="13" />
+                <line x1="65.3" y1="13" x2="34.7" y2="87" />
+                <line x1="87" y1="65.3" x2="13" y2="34.7" />
+                <circle class="kb-neuron" cx="50" cy="10" r="3.4" fill-opacity="0.9" style="animation-delay:0s;" />
+                <circle class="kb-neuron" cx="65.3" cy="13" r="2.8" fill-opacity="0.7" style="animation-delay:0.1s;" />
+                <circle class="kb-neuron" cx="78.3" cy="21.7" r="3.1" fill-opacity="0.85" style="animation-delay:0.2s;" />
+                <circle class="kb-neuron" cx="87" cy="34.7" r="2.6" fill-opacity="0.6" style="animation-delay:0.3s;" />
+                <circle class="kb-neuron" cx="90" cy="50" r="3.4" fill-opacity="0.9" style="animation-delay:0.4s;" />
+                <circle class="kb-neuron" cx="87" cy="65.3" r="2.8" fill-opacity="0.7" style="animation-delay:0.5s;" />
+                <circle class="kb-neuron" cx="78.3" cy="78.3" r="3.1" fill-opacity="0.85" style="animation-delay:0.6s;" />
+                <circle class="kb-neuron" cx="65.3" cy="87" r="2.6" fill-opacity="0.6" style="animation-delay:0.7s;" />
+                <circle class="kb-neuron" cx="50" cy="90" r="3.4" fill-opacity="0.9" style="animation-delay:0.8s;" />
+                <circle class="kb-neuron" cx="34.7" cy="87" r="2.8" fill-opacity="0.7" style="animation-delay:0.9s;" />
+                <circle class="kb-neuron" cx="21.7" cy="78.3" r="3.1" fill-opacity="0.85" style="animation-delay:1.0s;" />
+                <circle class="kb-neuron" cx="13" cy="65.3" r="2.6" fill-opacity="0.6" style="animation-delay:1.1s;" />
+                <circle class="kb-neuron" cx="10" cy="50" r="3.4" fill-opacity="0.9" style="animation-delay:1.2s;" />
+                <circle class="kb-neuron" cx="13" cy="34.7" r="2.8" fill-opacity="0.7" style="animation-delay:1.3s;" />
+                <circle class="kb-neuron" cx="21.7" cy="21.7" r="3.1" fill-opacity="0.85" style="animation-delay:1.4s;" />
+                <circle class="kb-neuron" cx="34.7" cy="13" r="2.6" fill-opacity="0.6" style="animation-delay:1.5s;" />
+                <circle class="kb-neuron" cx="61" cy="30.95" r="2.4" fill-opacity="0.65" style="animation-delay:1.6s;" />
+                <circle class="kb-neuron" cx="72" cy="50" r="2.2" fill-opacity="0.55" style="animation-delay:1.75s;" />
+                <circle class="kb-neuron" cx="61" cy="69.05" r="2.4" fill-opacity="0.65" style="animation-delay:1.9s;" />
+                <circle class="kb-neuron" cx="39" cy="69.05" r="2.2" fill-opacity="0.55" style="animation-delay:2.05s;" />
+                <circle class="kb-neuron" cx="28" cy="50" r="2.4" fill-opacity="0.65" style="animation-delay:2.2s;" />
+                <circle class="kb-neuron" cx="39" cy="30.95" r="2.2" fill-opacity="0.55" style="animation-delay:2.35s;" />
+                <circle class="kb-neuron" cx="50" cy="50" r="5" fill-opacity="1" style="animation-delay:0s;" />
+                <circle class="kb-pulse-dot" r="1.8">
+                  <animateMotion dur="2.4s" repeatCount="indefinite" path="M65.3,13 L34.7,87" />
+                </circle>
+                <circle class="kb-pulse-dot" r="1.8">
+                  <animateMotion dur="2.8s" begin="0.7s" repeatCount="indefinite" path="M87,65.3 L13,34.7" />
+                </circle>
+              </svg>
+              <span class="kb-node-label">Knowledge Base<span class="kb-node-sub">Vault indexed</span></span>
+            </div>
+          </div>
+        </div>
+        <div class="empty-state">
+          <div class="empty-state-icon">&#9678;</div>
+          <p><strong>No agents connected yet.</strong></p>
+          <p class="text-muted">Sections and Hubs appear here once Second Brain is wired to Hermes-connected background jobs (capture, enrichment, or Q&amp;A). Nothing to click on yet.</p>
+        </div>
+      </section>
+
+      <!-- Populated state: full polar grid — angle = section, radius =
+           agent type — KB (brain, now 34% of canvas width, up from 22%) at
+           center, 3 inner-ring Hubs (r=32, close to the KB), ring-placed
+           agents. Round 6 rebalanced every radius outward from round 5's
+           scale to preserve real clearance now that the KB is bigger — see
+           the top-of-file breadcrumb for the full arithmetic. -->
+      <section data-state-panel data-group="agents-map" data-state="populated" class="active">
+        <div class="agents-map-stage">
+          <div class="agents-map-canvas">
+            <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+              <!-- Radar background: 12 faint generic spokes every 30°, center to rim (r=58) -->
+              <line class="radar-spoke" x1="50" y1="50" x2="108" y2="50" />
+              <line class="radar-spoke" x1="50" y1="50" x2="100.23" y2="79" />
+              <line class="radar-spoke" x1="50" y1="50" x2="79" y2="100.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="50" y2="108" />
+              <line class="radar-spoke" x1="50" y1="50" x2="21" y2="100.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="-0.23" y2="79" />
+              <line class="radar-spoke" x1="50" y1="50" x2="-8" y2="50" />
+              <line class="radar-spoke" x1="50" y1="50" x2="-0.23" y2="21" />
+              <line class="radar-spoke" x1="50" y1="50" x2="21" y2="-0.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="50" y2="-8" />
+              <line class="radar-spoke" x1="50" y1="50" x2="79" y2="-0.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="100.23" y2="21" />
+
+              <!-- Radial axis: 3 concentric rings, one per agent type, global across all
+                   sections (round 6: Producer r=30, Expert r=45, Worker r=50 — up from
+                   18/30/42, to keep real clearance from the KB's new ~r=17 edge and
+                   from the Hub band at r=32) -->
+              <circle class="ring-circle" cx="50" cy="50" r="30" />
+              <circle class="ring-circle" cx="50" cy="50" r="45" />
+              <circle class="ring-circle" cx="50" cy="50" r="50" />
+              <circle class="boundary-circle" cx="50" cy="50" r="58" />
+
+              <!-- Angular axis: 3 section boundaries (virtual only — guide lines, no fill) -->
+              <line class="section-boundary" x1="50" y1="32" x2="50" y2="-8" />
+              <line class="section-boundary" x1="64.72" y1="58.5" x2="100.23" y2="79" />
+              <line class="section-boundary" x1="35.28" y1="58.5" x2="-0.23" y2="79" />
+
+              <!-- KB -> Hub spokes (the only KB-facing connection per section) — short,
+                   Hubs sit on the inner band (r=32), close to the KB (~r=17 edge) -->
+              <line class="spoke-line" x1="50" y1="50" x2="77.71" y2="34" stroke="var(--agent-color-worker)" />
+              <line class="spoke-line" x1="50" y1="50" x2="72.63" y2="72.63" stroke="var(--agent-color-producer)" />
+              <line class="spoke-line" x1="50" y1="50" x2="22.29" y2="34" stroke="var(--agent-color-expert)" />
+
+              <!-- Capture section: Hub (r=32, angle=-30, section midpoint) -> agents
+                   (Worker ring, r=50), agents <-> agents -->
+              <line class="cluster-line" x1="77.71" y1="34" x2="67.1" y2="3.01" stroke="var(--agent-color-worker)" />
+              <line class="cluster-line" x1="77.71" y1="34" x2="93.3" y2="25" stroke="var(--agent-color-worker)" />
+              <line class="cluster-line" x1="77.71" y1="34" x2="99.24" y2="58.68" stroke="var(--agent-color-worker)" />
+              <line class="cluster-line" x1="67.1" y1="3.01" x2="93.3" y2="25" stroke="var(--agent-color-worker)" />
+              <line class="cluster-line" x1="93.3" y1="25" x2="99.24" y2="58.68" stroke="var(--agent-color-worker)" />
+              <line class="cluster-line" x1="67.1" y1="3.01" x2="99.24" y2="58.68" stroke="var(--agent-color-worker)" />
+
+              <!-- People section: Hub (r=32, angle=45 — offset from the section's own
+                   midpoint angle 90 so it doesn't overlap People Notes, which already
+                   sits on this same Producer ring at that angle) -> its one agent -->
+              <line class="cluster-line" x1="72.63" y1="72.63" x2="50" y2="80" stroke="var(--agent-color-producer)" />
+
+              <!-- Q&A section: Hub (r=32, angle=210, section midpoint) -> its one
+                   agent (Expert ring, r=45) -->
+              <line class="cluster-line" x1="22.29" y1="34" x2="11.03" y2="27.5" stroke="var(--agent-color-expert)" />
+
+              <!-- Ring labels — name the radial axis -->
+              <text class="ring-label" x="80" y="51" font-size="2.6" letter-spacing="0.3">PRODUCER</text>
+              <text class="ring-label" x="27.5" y="89.97" font-size="2.6" letter-spacing="0.3">EXPERT</text>
+              <text class="ring-label" x="25" y="8.2" font-size="2.6" letter-spacing="0.3">WORKER</text>
+            </svg>
+
+            <div class="kb-node">
+              <svg class="kb-brain-svg" viewBox="0 0 100 100">
+                <line x1="50" y1="10" x2="65.3" y2="13" />
+                <line x1="65.3" y1="13" x2="78.3" y2="21.7" />
+                <line x1="78.3" y1="21.7" x2="87" y2="34.7" />
+                <line x1="87" y1="34.7" x2="90" y2="50" />
+                <line x1="90" y1="50" x2="87" y2="65.3" />
+                <line x1="87" y1="65.3" x2="78.3" y2="78.3" />
+                <line x1="78.3" y1="78.3" x2="65.3" y2="87" />
+                <line x1="65.3" y1="87" x2="50" y2="90" />
+                <line x1="50" y1="90" x2="34.7" y2="87" />
+                <line x1="34.7" y1="87" x2="21.7" y2="78.3" />
+                <line x1="21.7" y1="78.3" x2="13" y2="65.3" />
+                <line x1="13" y1="65.3" x2="10" y2="50" />
+                <line x1="10" y1="50" x2="13" y2="34.7" />
+                <line x1="13" y1="34.7" x2="21.7" y2="21.7" />
+                <line x1="21.7" y1="21.7" x2="34.7" y2="13" />
+                <line x1="34.7" y1="13" x2="50" y2="10" />
+                <line x1="61" y1="30.95" x2="72" y2="50" />
+                <line x1="72" y1="50" x2="61" y2="69.05" />
+                <line x1="61" y1="69.05" x2="39" y2="69.05" />
+                <line x1="39" y1="69.05" x2="28" y2="50" />
+                <line x1="28" y1="50" x2="39" y2="30.95" />
+                <line x1="39" y1="30.95" x2="61" y2="30.95" />
+                <line x1="61" y1="30.95" x2="50" y2="50" />
+                <line x1="72" y1="50" x2="50" y2="50" />
+                <line x1="61" y1="69.05" x2="50" y2="50" />
+                <line x1="39" y1="69.05" x2="50" y2="50" />
+                <line x1="28" y1="50" x2="50" y2="50" />
+                <line x1="39" y1="30.95" x2="50" y2="50" />
+                <line x1="61" y1="30.95" x2="65.3" y2="13" />
+                <line x1="61" y1="30.95" x2="78.3" y2="21.7" />
+                <line x1="72" y1="50" x2="87" y2="34.7" />
+                <line x1="72" y1="50" x2="87" y2="65.3" />
+                <line x1="61" y1="69.05" x2="78.3" y2="78.3" />
+                <line x1="61" y1="69.05" x2="65.3" y2="87" />
+                <line x1="39" y1="69.05" x2="34.7" y2="87" />
+                <line x1="39" y1="69.05" x2="21.7" y2="78.3" />
+                <line x1="28" y1="50" x2="13" y2="65.3" />
+                <line x1="28" y1="50" x2="13" y2="34.7" />
+                <line x1="39" y1="30.95" x2="21.7" y2="21.7" />
+                <line x1="39" y1="30.95" x2="34.7" y2="13" />
+                <line x1="65.3" y1="13" x2="34.7" y2="87" />
+                <line x1="87" y1="65.3" x2="13" y2="34.7" />
+                <circle class="kb-neuron" cx="50" cy="10" r="3.4" fill-opacity="0.9" style="animation-delay:0s;" />
+                <circle class="kb-neuron" cx="65.3" cy="13" r="2.8" fill-opacity="0.7" style="animation-delay:0.1s;" />
+                <circle class="kb-neuron" cx="78.3" cy="21.7" r="3.1" fill-opacity="0.85" style="animation-delay:0.2s;" />
+                <circle class="kb-neuron" cx="87" cy="34.7" r="2.6" fill-opacity="0.6" style="animation-delay:0.3s;" />
+                <circle class="kb-neuron" cx="90" cy="50" r="3.4" fill-opacity="0.9" style="animation-delay:0.4s;" />
+                <circle class="kb-neuron" cx="87" cy="65.3" r="2.8" fill-opacity="0.7" style="animation-delay:0.5s;" />
+                <circle class="kb-neuron" cx="78.3" cy="78.3" r="3.1" fill-opacity="0.85" style="animation-delay:0.6s;" />
+                <circle class="kb-neuron" cx="65.3" cy="87" r="2.6" fill-opacity="0.6" style="animation-delay:0.7s;" />
+                <circle class="kb-neuron" cx="50" cy="90" r="3.4" fill-opacity="0.9" style="animation-delay:0.8s;" />
+                <circle class="kb-neuron" cx="34.7" cy="87" r="2.8" fill-opacity="0.7" style="animation-delay:0.9s;" />
+                <circle class="kb-neuron" cx="21.7" cy="78.3" r="3.1" fill-opacity="0.85" style="animation-delay:1.0s;" />
+                <circle class="kb-neuron" cx="13" cy="65.3" r="2.6" fill-opacity="0.6" style="animation-delay:1.1s;" />
+                <circle class="kb-neuron" cx="10" cy="50" r="3.4" fill-opacity="0.9" style="animation-delay:1.2s;" />
+                <circle class="kb-neuron" cx="13" cy="34.7" r="2.8" fill-opacity="0.7" style="animation-delay:1.3s;" />
+                <circle class="kb-neuron" cx="21.7" cy="21.7" r="3.1" fill-opacity="0.85" style="animation-delay:1.4s;" />
+                <circle class="kb-neuron" cx="34.7" cy="13" r="2.6" fill-opacity="0.6" style="animation-delay:1.5s;" />
+                <circle class="kb-neuron" cx="61" cy="30.95" r="2.4" fill-opacity="0.65" style="animation-delay:1.6s;" />
+                <circle class="kb-neuron" cx="72" cy="50" r="2.2" fill-opacity="0.55" style="animation-delay:1.75s;" />
+                <circle class="kb-neuron" cx="61" cy="69.05" r="2.4" fill-opacity="0.65" style="animation-delay:1.9s;" />
+                <circle class="kb-neuron" cx="39" cy="69.05" r="2.2" fill-opacity="0.55" style="animation-delay:2.05s;" />
+                <circle class="kb-neuron" cx="28" cy="50" r="2.4" fill-opacity="0.65" style="animation-delay:2.2s;" />
+                <circle class="kb-neuron" cx="39" cy="30.95" r="2.2" fill-opacity="0.55" style="animation-delay:2.35s;" />
+                <circle class="kb-neuron" cx="50" cy="50" r="5" fill-opacity="1" style="animation-delay:0s;" />
+                <circle class="kb-pulse-dot" r="1.8">
+                  <animateMotion dur="2.4s" repeatCount="indefinite" path="M65.3,13 L34.7,87" />
+                </circle>
+                <circle class="kb-pulse-dot" r="1.8">
+                  <animateMotion dur="2.8s" begin="0.7s" repeatCount="indefinite" path="M87,65.3 L13,34.7" />
+                </circle>
+              </svg>
+              <span class="kb-node-label">Knowledge Base<span class="kb-node-sub">Vault indexed</span></span>
+            </div>
+
+            <!-- Section Hubs — on the inner band (r=32, close to the KB, just
+                 outside the Producer ring r=30), not clickable. Round 6 moved this
+                 out from r=19 (round 5) to keep real clearance now the KB grew to
+                 r~17 — edge-to-edge KB-to-Hub gap is now ~9.5 units, ~19% of the
+                 canvas radius. People's Hub is angle-offset from its section's
+                 midpoint (see cluster-line comment above) to clear the
+                 Producer-ring agent already at that angle. -->
+            <div class="hub-node hub-node--worker" style="top:34%; left:77.71%;">
+              Capture Hub
+              <span class="hub-node-type">Worker section</span>
+            </div>
+            <div class="hub-node hub-node--producer" style="top:72.63%; left:72.63%;">
+              People Hub
+              <span class="hub-node-type">Producer section</span>
+            </div>
+            <div class="hub-node hub-node--expert" style="top:34%; left:22.29%;">
+              Q&amp;A Hub
+              <span class="hub-node-type">Expert section</span>
+            </div>
+
+            <!-- Capture section agents — Worker ring (outermost, r=50) -->
+            <button type="button" class="agent-node agent-node--worker" style="top:3.01%; left:67.1%; animation-delay:0.1s;" data-agent-id="email-capture">
+              <span class="agent-node-label">Email Capture</span>
+              <span class="agent-node-type">Worker</span>
+            </button>
+            <button type="button" class="agent-node agent-node--worker" style="top:25%; left:93.3%; animation-delay:0.2s;" data-agent-id="meeting-capture">
+              <span class="agent-node-label">Meeting Capture</span>
+              <span class="agent-node-type">Worker</span>
+            </button>
+            <button type="button" class="agent-node agent-node--worker" style="top:58.68%; left:99.24%; animation-delay:0.3s;" data-agent-id="todo-capture">
+              <span class="agent-node-label">To-Do Capture</span>
+              <span class="agent-node-type">Worker</span>
+            </button>
+
+            <!-- People section agent — Producer ring (innermost, r=30) -->
+            <button type="button" class="agent-node agent-node--producer" style="top:80%; left:50%; animation-delay:0.4s;" data-agent-id="people-producer">
+              <span class="agent-node-label">People Notes</span>
+              <span class="agent-node-type">Producer</span>
+            </button>
+
+            <!-- Q&A section agent — Expert ring (middle, r=45) -->
+            <button type="button" class="agent-node agent-node--expert" style="top:27.5%; left:11.03%; animation-delay:0.5s;" data-agent-id="vault-qa">
+              <span class="agent-node-label">Vault Q&amp;A</span>
+              <span class="agent-node-type">Expert</span>
+            </button>
+
+            <!-- Section titles — outside the outer boundary (r=66), at each section's
+                 angular midpoint. Untouched by round 6's radial rebalance other than
+                 the outward nudge that comes from a slightly larger boundary. -->
+            <div class="section-title" style="top:17%; left:107.16%;">
+              Capture
+              <span class="section-title-accent" style="background: var(--agent-color-worker);"></span>
+            </div>
+            <div class="section-title" style="top:116%; left:50%;">
+              People
+              <span class="section-title-accent" style="background: var(--agent-color-producer);"></span>
+            </div>
+            <div class="section-title" style="top:17%; left:-7.16%;">
+              Knowledge Q&amp;A
+              <span class="section-title-accent" style="background: var(--agent-color-expert);"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="agent-type-legend">
+          <span><span class="legend-swatch" style="--legend-color: var(--agent-color-worker);"></span>Worker ring (outermost) — runs a recurring capture job</span>
+          <span><span class="legend-swatch" style="--legend-color: var(--agent-color-expert);"></span>Expert ring (middle) — answers questions over the vault</span>
+          <span><span class="legend-swatch" style="--legend-color: var(--agent-color-producer);"></span>Producer ring (innermost) — maintains a living document</span>
+          <span class="text-muted">Dashed inner-ring nodes are section Hubs — close to the Knowledge Base, the only connection back to it. Dashed radial lines are section boundaries — a virtual guide, never a filled wedge.</span>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Agent detail panel (REQ-SB-13) — opens as an overlay, not a page nav. -->
+  <div class="side-panel-overlay" id="agentPanelOverlay"></div>
+  <aside class="side-panel" id="agentPanel" aria-label="Agent details">
+    <div class="side-panel-header">
+      <div>
+        <span class="badge">Agent detail</span>
+      </div>
+      <button type="button" class="side-panel-close" id="agentPanelClose" aria-label="Close panel">&times;</button>
+    </div>
+    <div class="side-panel-body">
+
+      <!-- Email Capture (Worker) -->
+      <div class="side-panel-agent" data-agent-detail="email-capture">
+        <h2>Email Capture <span class="badge" style="background:color-mix(in srgb, var(--agent-color-worker) 20%, transparent); color:var(--agent-color-worker);">Worker</span></h2>
+        <p class="text-muted">Classifies and files incoming email as vault notes (REQ-SB-07).</p>
+
+        <div class="side-panel-section">
+          <h3>Settings</h3>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Schedule</span><span>Hourly + once on app start</span></div>
+            <div class="kv-row"><span class="kv-key">Vault target</span><span class="mono">Work/Emails/</span></div>
+            <div class="kv-row"><span class="kv-key">Classifier</span><span>Compass (GPT-5)</span></div>
+            <div class="kv-row"><span class="kv-key">Missed-run catch-up</span><span>Enabled</span></div>
+          </div>
+        </div>
+
+        <div class="side-panel-section">
+          <h3>Available actions</h3>
+          <div class="action-list">
+            <button type="button" class="btn">Run capture now</button>
+            <button type="button" class="btn">View last run</button>
+            <button type="button" class="btn">Pause schedule</button>
+          </div>
+        </div>
+
+        <div class="side-panel-section">
+          <h3>Chat</h3>
+          <div class="chat-thread" data-role="agent-chat-thread">
+            <div class="chat-message chat-message--agent">Hi — ask me about recent email captures, or tell me to re-run one.</div>
+          </div>
+          <form class="chat-input-row" data-role="agent-chat-form">
+            <input type="text" class="input" data-role="agent-chat-input" placeholder="Message Email Capture…" />
+            <button type="submit" class="btn btn-primary">Send</button>
+          </form>
+        </div>
+
+        <div class="side-panel-section">
+          <h3>Communication history</h3>
+          <div class="log-list">
+            <div class="log-item"><span>Capture run completed — 3 emails filed</span><span class="log-item-meta">Today 09:00</span></div>
+            <div class="log-item"><span>Capture run completed — 0 new emails</span><span class="log-item-meta">Today 08:00</span></div>
+            <div class="log-item"><span>Capture run completed on app start</span><span class="log-item-meta">Today 07:42</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Meeting Capture (Worker) -->
+      <div class="side-panel-agent" data-agent-detail="meeting-capture">
+        <h2>Meeting Capture <span class="badge" style="background:color-mix(in srgb, var(--agent-color-worker) 20%, transparent); color:var(--agent-color-worker);">Worker</span></h2>
+        <p class="text-muted">Syncs calendar meetings via the Hermes-wrapped Outlook skill and files them as Meeting-type notes (REQ-SB-08).</p>
+
+        <div class="side-panel-section">
+          <h3>Settings</h3>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Schedule</span><span>Hourly + once on app start</span></div>
+            <div class="kv-row"><span class="kv-key">Vault target</span><span class="mono">Work/Meetings/</span></div>
+            <div class="kv-row"><span class="kv-key">Classification</span><span>By customer (shared with Email Capture)</span></div>
+            <div class="kv-row"><span class="kv-key">Duplicate handling</span><span>Skipped on rerun</span></div>
+          </div>
+        </div>
+
+        <div class="side-panel-section">
+          <h3>Available actions</h3>
+          <div class="action-list">
+            <button type="button" class="btn">Run capture now</button>
+            <button type="button" class="btn">View last run</button>
+            <button type="button" class="btn">Pause schedule</button>
+          </div>
+        </div>
+
+        <div class="side-panel-section">
+          <h3>Chat</h3>
+          <div class="chat-thread" data-role="agent-chat-thread">
+            <div class="chat-message chat-message--agent">Hi — ask me about upcoming or captured meetings.</div>
+          </div>
+          <form class="chat-input-row" data-role="agent-chat-form">
+            <input type="text" class="input" data-role="agent-chat-input" placeholder="Message Meeting Capture…" />
+            <button type="submit" class="btn btn-primary">Send</button>
+          </form>
+        </div>
+
+        <div class="side-panel-section">
+          <h3>Communication history</h3>
+          <div class="empty-state">
+            <p class="text-muted">No runs recorded yet — Meeting Capture (REQ-SB-08) is not yet built.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- To-Do Capture (Worker) -->
+      <div class="side-panel-agent" data-agent-detail="todo-capture">
+        <h2>To-Do Capture <span class="badge" style="background:color-mix(in srgb, var(--agent-color-worker) 20%, transparent); color:var(--agent-color-worker);">Worker</span></h2>
+        <p class="text-muted">Captures tasks/to-dos as their own note type on the shared recurring schedule (REQ-SB-09).</p>
+
+        <div class="side-panel-section">
+          <h3>Settings</h3>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Schedule</span><span>Hourly + once on app start</span></div>
+            <div class="kv-row"><span class="kv-key">Vault target</span><span class="mono">Work/Tasks/</span></div>
+            <div class="kv-row"><span class="kv-key">Task source</span><span>Open question — resolved at /spec</span></div>
+          </div>
+        </div>
+
+        <div class="side-panel-section">
+          <h3>Available actions</h3>
+          <div class="action-list">
+            <button type="button" class="btn">Run capture now</button>
+            <button type="button" class="btn">View last run</button>
+            <button type="button" class="btn">Pause schedule</button>
+          </div>
+        </div>
+
+        <div class="side-panel-section">
+          <h3>Chat</h3>
+          <div class="chat-thread" data-role="agent-chat-thread">
+            <div class="chat-message chat-message--agent">Hi — ask me about captured to-dos.</div>
+          </div>
+          <form class="chat-input-row" data-role="agent-chat-form">
+            <input type="text" class="input" data-role="agent-chat-input" placeholder="Message To-Do Capture…" />
+            <button type="submit" class="btn btn-primary">Send</button>
+          </form>
+        </div>
+
+        <div class="side-panel-section">
+          <h3>Communication history</h3>
+          <div class="empty-state">
+            <p class="text-muted">No runs recorded yet — To-Do Capture (REQ-SB-09) is not yet built.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- People Notes (Producer) -->
+      <div class="side-panel-agent" data-agent-detail="people-producer">
+        <h2>People Notes <span class="badge" style="background:color-mix(in srgb, var(--agent-color-producer) 20%, transparent); color:var(--agent-color-producer);">Producer</span></h2>
+        <p class="text-muted">Creates and updates Person-type living documents as people are encountered, without overwriting manually-added content (REQ-SB-10).</p>
+
+        <div class="side-panel-section">
+          <h3>Settings</h3>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Triggers on</span><span>New sender / meeting attendee</span></div>
+            <div class="kv-row"><span class="kv-key">Vault target</span><span class="mono">Work/People/</span></div>
+            <div class="kv-row"><span class="kv-key">Manual-edit protection</span><span>Preserves user-added content</span></div>
+          </div>
+        </div>
+
+        <div class="side-panel-section">
+          <h3>Available actions</h3>
+          <div class="action-list">
+            <button type="button" class="btn">Rebuild a person note</button>
+            <button type="button" class="btn">View last run</button>
+          </div>
+        </div>
+
+        <div class="side-panel-section">
+          <h3>Chat</h3>
+          <div class="chat-thread" data-role="agent-chat-thread">
+            <div class="chat-message chat-message--agent">Hi — ask me about a person's note or how it was assembled.</div>
+          </div>
+          <form class="chat-input-row" data-role="agent-chat-form">
+            <input type="text" class="input" data-role="agent-chat-input" placeholder="Message People Notes…" />
+            <button type="submit" class="btn btn-primary">Send</button>
+          </form>
+        </div>
+
+        <div class="side-panel-section">
+          <h3>Communication history</h3>
+          <div class="empty-state">
+            <p class="text-muted">No runs recorded yet — People Notes (REQ-SB-10) is not yet built.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Vault Q&A (Expert) -->
+      <div class="side-panel-agent" data-agent-detail="vault-qa">
+        <h2>Vault Q&amp;A <span class="badge" style="background:color-mix(in srgb, var(--agent-color-expert) 20%, transparent); color:var(--agent-color-expert);">Expert</span></h2>
+        <p class="text-muted">Answers questions grounded in the indexed vault, from Hermes-connected channels or this in-app chat (REQ-SB-03, REQ-SB-13).</p>
+
+        <div class="side-panel-section">
+          <h3>Settings</h3>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Grounding</span><span>Indexed vault (REQ-SB-01/02)</span></div>
+            <div class="kv-row"><span class="kv-key">Reachable via</span><span>This panel + Hermes channels</span></div>
+            <div class="kv-row"><span class="kv-key">Write access</span><span>Read-only here (see REQ-SB-04 for write scope)</span></div>
+          </div>
+        </div>
+
+        <div class="side-panel-section">
+          <h3>Available actions</h3>
+          <div class="action-list">
+            <button type="button" class="btn">Ask a question</button>
+            <button type="button" class="btn">View channel status</button>
+          </div>
+        </div>
+
+        <div class="side-panel-section">
+          <h3>Chat</h3>
+          <div class="chat-thread" data-role="agent-chat-thread">
+            <div class="chat-message chat-message--agent">Hi — ask me anything about your vault.</div>
+          </div>
+          <form class="chat-input-row" data-role="agent-chat-form">
+            <input type="text" class="input" data-role="agent-chat-input" placeholder="Ask Vault Q&amp;A…" />
+            <button type="submit" class="btn btn-primary">Send</button>
+          </form>
+        </div>
+
+        <div class="side-panel-section">
+          <h3>Communication history</h3>
+          <div class="empty-state">
+            <p class="text-muted">No conversations yet — Vault Q&amp;A (REQ-SB-03) is not yet built.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </aside>
+
+  <script src="app.js"></script>
+</body>
+</html>

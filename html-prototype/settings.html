@@ -1,0 +1,86 @@
+<!--
+  Screen: Settings (REQ-SB-12 — "reachable from the same navigation")
+  Reused: .app-shell shell, collapsible sidebar, .card, .badge, .input,
+    .state-switcher, .kv-list (from agents-map.html's agent detail panel).
+  New: none — composed entirely from existing tokens/components.
+  Scope note: REQ-SB-12's acceptance only requires Settings be reachable
+    from the shell nav, not that this batch design its full content. Drawn
+    minimally and grounded only in what architecture.md already names as
+    real, not-yet-configurable settings: vault path (architecture.md's
+    Local Development section) and the Hermes connection (architecture.md's
+    External Services section, MEMORY.md's Hermes constraints). States:
+    vault connected/indexed, vault path invalid (the generic error-state
+    example SCREEN_INSTRUCTIONS.md calls out), and Hermes not yet
+    configured.
+  Revision 2026-08-10 (round 2, still pre-approval): no markup change here —
+    the operator's light-theme/green-accent swap is entirely token-level
+    (styles.css :root), so it cascades to this screen automatically. Verified
+    the vault-connected/vault-error state cards and the badges (success/
+    warning/danger) still read correctly against the new white/light-green
+    surfaces.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Settings — Second Brain</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <button class="burger-btn" id="sidebarToggle" aria-label="Toggle navigation" aria-expanded="true">&#9776;</button>
+        <h2>Second Brain</h2>
+      </div>
+      <a class="nav-item" href="agents-map.html"><span class="nav-icon">&#9678;</span><span class="nav-label">Agents Map</span></a>
+      <a class="nav-item" href="my-day.html"><span class="nav-icon">&#9728;</span><span class="nav-label">My Day</span></a>
+      <a class="nav-item active" href="settings.html"><span class="nav-icon">&#9881;</span><span class="nav-label">Settings</span></a>
+      <a class="nav-item" href="index.html"><span class="nav-icon">&#9638;</span><span class="nav-label">Screens (catalog)</span></a>
+    </nav>
+    <main class="main">
+      <h1>Settings</h1>
+      <p class="text-muted">Minimal placeholder — full settings content is out of this batch's scope (REQ-SB-12 only requires this page be reachable).</p>
+
+      <div class="state-switcher" data-group="settings">
+        <button type="button" class="btn btn-primary" data-state-target="ok">Vault connected</button>
+        <button type="button" class="btn" data-state-target="error">Vault path invalid</button>
+      </div>
+
+      <section data-state-panel data-group="settings" data-state="ok" class="active">
+        <div class="card" style="margin-bottom: var(--space-4);">
+          <h2>Vault</h2>
+          <div class="kv-list" style="margin-bottom: var(--space-3);">
+            <div class="kv-row"><span class="kv-key">Path</span><span class="mono">C:/Users/you/Obsidian/SecondBrain</span></div>
+            <div class="kv-row"><span class="kv-key">Status</span><span class="badge badge-success">Indexed</span></div>
+          </div>
+          <label class="text-muted" for="vaultPathOk" style="font-size: var(--font-size-sm);">Vault directory</label>
+          <input class="input" id="vaultPathOk" type="text" value="C:/Users/you/Obsidian/SecondBrain" />
+        </div>
+      </section>
+
+      <section data-state-panel data-group="settings" data-state="error">
+        <div class="card" style="margin-bottom: var(--space-4);">
+          <h2>Vault</h2>
+          <div class="kv-list" style="margin-bottom: var(--space-3);">
+            <div class="kv-row"><span class="kv-key">Path</span><span class="mono">C:/Users/you/Obsidian/Missing</span></div>
+            <div class="kv-row"><span class="kv-key">Status</span><span class="badge badge-danger">Path not found</span></div>
+          </div>
+          <label class="text-muted" for="vaultPathError" style="font-size: var(--font-size-sm);">Vault directory</label>
+          <input class="input" id="vaultPathError" type="text" value="C:/Users/you/Obsidian/Missing" />
+          <p class="text-muted" style="margin-top: var(--space-2); font-size: var(--font-size-sm);">Second Brain can't find a directory at this path — indexing is paused until it's corrected.</p>
+        </div>
+      </section>
+
+      <div class="card">
+        <h2>Connections</h2>
+        <div class="kv-list">
+          <div class="kv-row"><span class="kv-key">Hermes</span><span class="badge badge-warning">Not configured</span></div>
+        </div>
+        <p class="text-muted" style="margin-top: var(--space-3); font-size: var(--font-size-sm);">Hermes is an external MCP-based multi-channel communication tool this project integrates with, not something Second Brain builds (see MEMORY.md).</p>
+      </div>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,85 @@
+<!--
+  Screen: My Day — Emails (REQ-SB-12)
+  Reused: .app-shell shell, collapsible sidebar, .card, .badge,
+    .state-switcher, .empty-state, .item-list/.item-row (new pattern,
+    first used here — reused as-is by the other three My Day drill-downs).
+  New: .item-list/.item-row (added to styles.css).
+  States drawn: empty (no email captures yet — REQ-SB-07 hasn't run) and
+    populated (list sourced from Email Capture's note frontmatter: subject,
+    sender, received, customer — see architecture.md's Data Model). Exact
+    drill-down fields/actions are an open question for /spec time; this
+    draws the buildable shell/list, not a final field set.
+  Revision 2026-08-10 (round 2, still pre-approval): no markup change — the
+    light-theme/green-accent token swap in styles.css cascades here.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>My Day — Emails — Second Brain</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <button class="burger-btn" id="sidebarToggle" aria-label="Toggle navigation" aria-expanded="true">&#9776;</button>
+        <h2>Second Brain</h2>
+      </div>
+      <a class="nav-item" href="agents-map.html"><span class="nav-icon">&#9678;</span><span class="nav-label">Agents Map</span></a>
+      <a class="nav-item active" href="my-day.html"><span class="nav-icon">&#9728;</span><span class="nav-label">My Day</span></a>
+      <a class="nav-item" href="settings.html"><span class="nav-icon">&#9881;</span><span class="nav-label">Settings</span></a>
+      <a class="nav-item" href="index.html"><span class="nav-icon">&#9638;</span><span class="nav-label">Screens (catalog)</span></a>
+    </nav>
+    <main class="main">
+      <p class="text-muted"><a href="my-day.html" class="text-muted">&larr; My Day</a></p>
+      <h1>Emails</h1>
+      <p class="text-muted">Recently captured email, filed by Email Capture (REQ-SB-07).</p>
+
+      <div class="state-switcher" data-group="my-day-emails">
+        <button type="button" class="btn btn-primary" data-state-target="populated">Populated</button>
+        <button type="button" class="btn" data-state-target="empty">Empty</button>
+      </div>
+
+      <section data-state-panel data-group="my-day-emails" data-state="empty">
+        <div class="card">
+          <div class="empty-state">
+            <div class="empty-state-icon">&#9993;</div>
+            <p><strong>No emails captured yet.</strong></p>
+            <p class="text-muted">Email Capture runs hourly and once on app start — check back after the next run, or open the Agents Map to trigger one manually.</p>
+          </div>
+        </div>
+      </section>
+
+      <section data-state-panel data-group="my-day-emails" data-state="populated" class="active">
+        <div class="card">
+          <div class="item-list">
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">Q3 renewal terms — action needed</span>
+                <span class="item-row-meta">Acme Corp &middot; from A. Rivera</span>
+              </div>
+              <span class="badge badge-success">Filed 09:00</span>
+            </div>
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">Re: Azure MACC review</span>
+                <span class="item-row-meta">Northwind &middot; from procurement@northwind</span>
+              </div>
+              <span class="badge badge-success">Filed 09:00</span>
+            </div>
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">Signed order form attached</span>
+                <span class="item-row-meta">Unsorted &middot; low classification confidence</span>
+              </div>
+              <span class="badge badge-warning">Review customer</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

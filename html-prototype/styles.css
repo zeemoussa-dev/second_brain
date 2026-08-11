@@ -4,18 +4,23 @@
    and when introduced it lands here first so it stays reusable. */
 
 :root {
-  /* Color */
-  --color-bg: #0f1115;
-  --color-surface: #171a21;
-  --color-surface-raised: #1f2330;
-  --color-border: #2a2f3d;
-  --color-text: #e6e8ee;
-  --color-text-muted: #9aa1b2;
-  --color-accent: #7c9cff;
-  --color-accent-muted: #3d4a7a;
-  --color-success: #4ade80;
-  --color-warning: #fbbf24;
-  --color-danger: #f87171;
+  /* Color — light theme, green accent (revised 2026-08-10 per operator
+     browser review; was a dark theme with a blue accent). Every screen
+     composes from these tokens, so this swap is meant to cascade with no
+     per-screen edits — see the revision breadcrumbs on agents-map.html/
+     my-day.html/settings.html for what was checked after the swap. */
+  --color-bg: #ffffff;
+  --color-surface: #f6f8f6;
+  --color-surface-raised: #eaf0ea;
+  --color-border: #d7ded7;
+  --color-text: #14181a;
+  --color-text-muted: #5c6b62;
+  --color-accent: #15803d;
+  --color-accent-muted: #dcfce7;
+  --color-on-accent: #ffffff;
+  --color-success: #16a34a;
+  --color-warning: #b45309;
+  --color-danger: #b91c1c;
 
   /* Type */
   --font-sans: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -37,6 +42,16 @@
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 12px;
+
+  /* Agent-type colors (REQ-SB-12) — a new agent type is a new
+     --agent-color-<type> token here plus one .agent-node--<type> rule below
+     that sets --node-color from it; never a layout change. Deliberately
+     kept out of the green family so they read as distinct accents from
+     --color-accent, not a collapsed single hue (darkened from the original
+     dark-theme values for contrast on the new white background). */
+  --agent-color-worker: #2563eb;
+  --agent-color-producer: #7c3aed;
+  --agent-color-expert: #db2777;
 }
 
 * { box-sizing: border-box; }
@@ -77,10 +92,15 @@ body {
   font-size: var(--font-size-sm);
 }
 
-.nav-item.active,
 .nav-item:hover {
   background: var(--color-surface-raised);
   color: var(--color-text);
+}
+
+.nav-item.active {
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
+  font-weight: 600;
 }
 
 /* Shared components */
@@ -117,8 +137,13 @@ body {
 .btn-primary {
   background: var(--color-accent);
   border-color: var(--color-accent);
-  color: #0f1115;
+  color: var(--color-on-accent);
   font-weight: 600;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .input {
@@ -137,3 +162,648 @@ h2 { font-size: var(--font-size-lg); }
 
 .text-muted { color: var(--color-text-muted); }
 .mono { font-family: var(--font-mono); }
+
+/* ==========================================================================
+   Collapsible burger-menu sidebar (REQ-SB-12)
+   Shared by every screen's .sidebar. .app-shell transitions its column
+   width so collapse/expand is an animation, not a snap.
+   ========================================================================== */
+
+.app-shell {
+  transition: grid-template-columns 0.25s ease;
+}
+
+.app-shell.sidebar-collapsed {
+  grid-template-columns: 64px 1fr;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.burger-btn {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.burger-btn:hover { background: var(--color-surface-raised); }
+
+.nav-icon {
+  display: inline-block;
+  width: 18px;
+  text-align: center;
+  margin-right: var(--space-2);
+}
+
+.app-shell.sidebar-collapsed .sidebar h2,
+.app-shell.sidebar-collapsed .nav-label {
+  display: none;
+}
+
+.app-shell.sidebar-collapsed .nav-item {
+  text-align: center;
+}
+
+.app-shell.sidebar-collapsed .nav-item .nav-icon {
+  margin-right: 0;
+}
+
+/* ==========================================================================
+   Buildable-state switcher — small in-page control used across screens to
+   demo the empty / populated / error states a screen can be in, without
+   splitting near-identical states into separate files. Dev/reviewer aid,
+   not part of the shipped app.
+   ========================================================================== */
+
+.state-switcher {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-6);
+}
+
+.state-switcher .btn { font-size: var(--font-size-sm); padding: var(--space-1) var(--space-3); }
+
+[data-state-panel] { display: none; }
+[data-state-panel].active { display: block; animation: fadeIn 0.2s ease; }
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ==========================================================================
+   Empty state — reused wherever a list/dashboard has nothing to show yet.
+   ========================================================================== */
+
+.empty-state {
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
+  color: var(--color-text-muted);
+}
+
+.empty-state .empty-state-icon {
+  font-size: 2rem;
+  margin-bottom: var(--space-2);
+}
+
+/* ==========================================================================
+   Agents Map (REQ-SB-12) — revised 2026-08-10 (round 3) into a true polar/
+   radial grid, correcting round 2 (which read as one Hub per section near
+   the KB — backwards):
+     - ANGULAR axis = sections (domain groupings) — a virtual boundary
+       only: a faint dashed .section-boundary guide line at each section's
+       angular edge, never a filled wedge.
+     - RADIAL axis = 3 concentric .ring-circle rings, GLOBAL across every
+       section (not per-section): Worker = outermost, Expert = middle,
+       Producer = innermost (closest to the KB). An agent's ring is its
+       type; its angle is somewhere within its section's angular span.
+     - Each .hub-node sits on the inner band, close to the KB (round 5
+       moved this from round 3's original outer-rim placement — see the
+       round-5 comment below; the .hub-node rule itself is just a size/
+       shape/color primitive and needed no change, only the per-instance
+       inline top/left position + the connecting-line coordinates in the
+       HTML did) — the section's single KB-facing connector (.spoke-line,
+       KB -> Hub only). Agents connect to each other and to their Hub
+       (.cluster-line), never individually back to the KB.
+     - A faint radar-style background grid (.radar-spoke x12 plus the ring/
+       boundary circles) reads even in empty space; .ring-label names the
+       radial axis, .section-title (outside the boundary, HTML not SVG so
+       it can use the shared type scale/letter-spacing) names the angular
+       axis.
+   Adding a new agent type is a new --agent-color-<type> token (:root) plus
+   one new ring radius + .agent-node--<type>/.ring-label — never a layout
+   change. Adding a new section is a new angular span (.section-boundary +
+   .hub-node + .section-title at that span's edges/midpoint) — same ring
+   set, no new rings needed.
+
+   Scale-to-~100-agents pattern (documented — this demo only renders the
+   current handful of real agents, proving the pattern rather than
+   instantiating it at scale): within one ring/section arc segment, agents
+   distribute evenly by angle at the .agent-node size below; past a
+   per-segment density threshold a new agent uses .agent-node--compact (an
+   unlabeled dot — label/type revealed on hover/focus only, via the
+   visually-hidden-until-hover technique on .agent-node-label/
+   .agent-node-type); if a segment would still be illegibly dense at
+   compact size, its last slot renders a .map-overflow-marker ("+N") instead
+   of another dot. Both are defined below, ready to apply, unused in this
+   demo's actual markup.
+   ========================================================================== */
+
+/* Round 4 sizing-bug fix: the stage previously reserved outside-label room
+   via 130px/110px fixed padding on itself, which — combined with
+   box-sizing:border-box — ate a fixed 220px of horizontal width regardless
+   of how much the container actually had. On a realistic (non-ultrawide)
+   window this collapsed .agents-map-canvas's content-box width to double
+   digits (e.g. a measured 274px stage -> 54px canvas), which is what made
+   the wheel read as "hubs next to the KB" — not a trigonometry bug, a
+   container-sizing bug. Fixed by decoupling canvas size from stage padding
+   entirely: the stage now only reserves a small fixed margin, and the
+   canvas caps its own width explicitly (min(100%, 700px)) so the outside
+   labels (already positioned via percentages beyond 0-100%, already inside
+   an overflow:visible box) have room to spill into without needing the
+   stage to carve out three-figure-px padding to "contain" them. Untouched
+   and re-verified correct as of round 5 — do not re-touch. */
+.agents-map-stage {
+  margin: 0 auto;
+  padding: 24px;
+  box-sizing: border-box;
+  position: relative;
+}
+
+.agents-map-canvas {
+  position: relative;
+  width: min(100%, 700px);
+  margin: 0 auto;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  background: var(--color-surface);
+  box-shadow: 0 20px 60px color-mix(in srgb, var(--color-text) 8%, transparent);
+  overflow: visible;
+}
+
+.agents-map-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.agents-map-lines .radar-spoke     { stroke: var(--color-border); stroke-width: 0.25; opacity: 0.5; }
+.agents-map-lines .ring-circle     { fill: none; stroke: var(--color-border); stroke-width: 0.35; stroke-dasharray: 1.4 1.6; opacity: 0.6; }
+.agents-map-lines .boundary-circle { fill: none; stroke: var(--color-text-muted); stroke-width: 0.4; stroke-dasharray: 1.6 1.8; opacity: 0.55; }
+.agents-map-lines .section-boundary { stroke: var(--color-text-muted); stroke-width: 0.4; stroke-dasharray: 1.2 1.6; opacity: 0.5; }
+.agents-map-lines .spoke-line      { stroke-width: 0.6; opacity: 0.5; }
+.agents-map-lines .cluster-line    { stroke-width: 0.5; opacity: 0.4; }
+.agents-map-lines .ring-label      { font-family: var(--font-sans); text-anchor: middle; fill: var(--color-text-muted); }
+
+/* Knowledge Base — a dense neuron mesh (round 6: 23 neurons, up from 14;
+   ~42 crossing synapse lines, up from ~26), staggered pulse, two traveling
+   signal dots, soft outer bloom. Grown from 22% to 34% of canvas width
+   (round 6) so it reads as the composition's dominant anchor, not a node
+   among similarly-sized ones — see the round-6 breadcrumb for the
+   coordinated radial-scale rebalance (rings/hub/boundary) this required. */
+.kb-node {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 34%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface-raised);
+  border: 2px solid var(--color-accent);
+  filter: drop-shadow(0 0 26px color-mix(in srgb, var(--color-accent) 50%, transparent));
+  animation: kbPulse 3s ease-in-out infinite;
+  z-index: 3;
+}
+
+.kb-brain-svg { width: 82%; height: 82%; overflow: visible; }
+
+.kb-brain-svg line {
+  stroke: var(--color-accent);
+  stroke-width: 0.9;
+  opacity: 0.35;
+}
+
+.kb-neuron {
+  fill: var(--color-accent);
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: neuronPulse 2.4s ease-in-out infinite;
+}
+
+.kb-pulse-dot {
+  fill: var(--color-accent);
+  filter: drop-shadow(0 0 3px var(--color-accent));
+}
+
+@keyframes neuronPulse {
+  0%, 100% { opacity: 0.55; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+.kb-node-label {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translate(-50%, var(--space-2));
+  text-align: center;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+}
+
+.kb-node-label .kb-node-sub {
+  display: block;
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.kb-node.kb-node--not-indexed {
+  animation: none;
+  border-color: var(--color-border);
+  border-style: dashed;
+  filter: none;
+  opacity: 0.7;
+}
+
+.kb-node.kb-node--not-indexed .kb-neuron,
+.kb-node.kb-node--not-indexed .kb-pulse-dot { animation: none; opacity: 0.35; }
+
+@keyframes kbPulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 40%, transparent); }
+  50% { box-shadow: 0 0 42px 16px color-mix(in srgb, var(--color-accent) 26%, transparent); }
+}
+
+/* Section Hub — sits on the inner band, close to the KB, the section's one
+   KB-facing connector (round 5; see agents-map.html's round-6 breadcrumb
+   for the radius rebalance this rule's *position* — set inline per
+   instance, not here — went through when the KB grew). Dashed border,
+   non-clickable (plain div, not a button) —
+   REQ-SB-13's settings/actions/chat/history panel contract stays
+   agent-only. */
+.hub-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 11%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-1);
+  border: 2px dashed var(--hub-color, var(--color-accent));
+  background: color-mix(in srgb, var(--hub-color, var(--color-accent)) 12%, var(--color-surface));
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--hub-color, var(--color-accent)) 25%, transparent);
+  color: var(--color-text);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  animation: nodeFadeIn 0.4s ease backwards;
+  z-index: 2;
+}
+
+.hub-node .hub-node-type {
+  display: block;
+  font-weight: 400;
+  font-size: 0.625rem;
+  color: var(--hub-color);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-top: 2px;
+}
+
+.hub-node--worker   { --hub-color: var(--agent-color-worker); }
+.hub-node--producer { --hub-color: var(--agent-color-producer); }
+.hub-node--expert   { --hub-color: var(--agent-color-expert); }
+
+.agent-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 10%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-1);
+  cursor: pointer;
+  border: 2px solid var(--node-color, var(--color-accent));
+  background: color-mix(in srgb, var(--node-color, var(--color-accent)) 16%, var(--color-surface));
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--node-color, var(--color-accent)) 22%, transparent);
+  color: var(--color-text);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  animation: nodeFadeIn 0.4s ease backwards;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  z-index: 3;
+}
+
+.agent-node:hover,
+.agent-node:focus-visible {
+  transform: translate(-50%, calc(-50% - 3px)) scale(1.14);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--node-color, var(--color-accent)) 35%, transparent);
+}
+
+.agent-node .agent-node-type {
+  display: block;
+  font-weight: 400;
+  font-size: 0.5625rem;
+  color: var(--node-color, var(--color-accent));
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-top: 2px;
+}
+
+.agent-node--worker   { --node-color: var(--agent-color-worker); }
+.agent-node--producer { --node-color: var(--agent-color-producer); }
+.agent-node--expert   { --node-color: var(--agent-color-expert); }
+
+@keyframes nodeFadeIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* Scale-to-~100-agents primitives (see breadcrumb above) — defined and
+   ready to apply, not instantiated by this demo's ~5 agents. */
+.agent-node--compact .agent-node-label,
+.agent-node--compact .agent-node-type {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.agent-node--compact { width: 5%; }
+
+.agent-node--compact:hover .agent-node-label,
+.agent-node--compact:focus-visible .agent-node-label,
+.agent-node--compact:hover .agent-node-type,
+.agent-node--compact:focus-visible .agent-node-type {
+  position: absolute;
+  width: auto;
+  height: auto;
+  clip: auto;
+  overflow: visible;
+  white-space: nowrap;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 4px;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  font-size: var(--font-size-sm);
+  z-index: 5;
+}
+
+.map-overflow-marker {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 8%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface-raised);
+  border: 1px dashed var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 0.625rem;
+  font-weight: 600;
+}
+
+/* Section titles — outside the wheel's outer boundary, at each section's
+   angular midpoint. HTML (not SVG text) so they use the same font/spacing
+   scale as the rest of the design system. */
+.section-title {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  white-space: nowrap;
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text);
+}
+
+.section-title .section-title-accent {
+  display: block;
+  width: 28px;
+  height: 2px;
+  margin: var(--space-1) auto 0;
+  border-radius: 999px;
+}
+
+.agent-type-legend {
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-top: var(--space-4);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.agent-type-legend .legend-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: var(--space-1);
+  vertical-align: middle;
+  background: var(--legend-color);
+}
+
+/* ==========================================================================
+   Agent detail side panel (REQ-SB-13) — opens as an overlay panel, not a
+   page navigation, when an Agents Map node is clicked.
+   ========================================================================== */
+
+.side-panel-overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, black 55%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 40;
+}
+
+.side-panel-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.side-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100vh;
+  width: min(440px, 100vw);
+  background: var(--color-surface);
+  border-left: 1px solid var(--color-border);
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+}
+
+.side-panel.open { transform: translateX(0); }
+
+.side-panel-header {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.side-panel-close {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.side-panel-close:hover { color: var(--color-text); }
+
+.side-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+
+.side-panel-agent { display: none; }
+.side-panel-agent.active { display: block; animation: fadeIn 0.2s ease; }
+
+.side-panel-section { margin-bottom: var(--space-6); }
+.side-panel-section h3 { margin-bottom: var(--space-2); }
+
+.kv-list { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-size-sm); }
+.kv-list .kv-row { display: flex; justify-content: space-between; gap: var(--space-3); padding: var(--space-1) 0; border-bottom: 1px solid var(--color-border); }
+.kv-list .kv-row:last-child { border-bottom: none; }
+.kv-key { color: var(--color-text-muted); }
+
+.action-list { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+/* ==========================================================================
+   Embedded agent chat (REQ-SB-13)
+   ========================================================================== */
+
+.chat-thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 220px;
+  overflow-y: auto;
+  padding: var(--space-3);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.chat-message {
+  max-width: 85%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  animation: fadeIn 0.2s ease;
+}
+
+.chat-message--user {
+  align-self: flex-end;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.chat-message--agent {
+  align-self: flex-start;
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+.chat-input-row {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.chat-input-row .input { flex: 1; }
+
+/* ==========================================================================
+   Chronological log list — reused for agent communication history and
+   background-run activity.
+   ========================================================================== */
+
+.log-list { display: flex; flex-direction: column; }
+
+.log-item {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--font-size-sm);
+}
+
+.log-item:last-child { border-bottom: none; }
+.log-item-meta { color: var(--color-text-muted); white-space: nowrap; }
+
+/* ==========================================================================
+   My Day dashboard (REQ-SB-12)
+   ========================================================================== */
+
+.day-section-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+}
+
+.day-section-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.day-section-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-accent);
+}
+
+.day-section-count {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  margin: var(--space-2) 0;
+}
+
+/* ==========================================================================
+   Generic item list — reused across the four My Day drill-down pages.
+   ========================================================================== */
+
+.item-list { display: flex; flex-direction: column; gap: var(--space-2); }
+
+.item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-surface-raised);
+  border-radius: var(--radius-sm);
+}
+
+.item-row-main { display: flex; flex-direction: column; gap: 2px; }
+.item-row-title { font-weight: 600; }
+.item-row-meta { font-size: var(--font-size-sm); color: var(--color-text-muted); }
