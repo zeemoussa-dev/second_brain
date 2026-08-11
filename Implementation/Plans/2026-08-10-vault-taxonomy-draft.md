@@ -97,14 +97,60 @@ snapshot note is never edited. "Latest consumption for a customer" is a
 query (most recent `snapshot_date` among notes tagged `customer/<slug>` +
 `kind/consumption-snapshot`), not a special file.
 
+## People (resolved 2026-08-11)
+
+**Flat structure, Company as a tag — not nested under Company.** Same
+reasoning `ADR-004` already established for Customer: a person's employer
+is at least as multidimensional as a note's customer relevance (people
+change jobs; plenty of real contacts in the captured emails — e.g. Core42
+colleagues — work across multiple customer accounts at once), so nesting
+People under Company folders would hit the same problem ADR-004 fixed once
+already. **Company gets its own tag namespace, `company/<slug>`, separate
+from `customer/<slug>`** — a person's employer isn't always a customer
+account (many are internal Core42 colleagues or third parties like
+Microsoft/G42), so conflating the two namespaces would misuse "customer" to
+mean "employer."
+
+**Person** — atomic notes, one per person, `Work/People/<Person>.md`
+(`People` is just another kind folder):
+```yaml
+type: Person
+name: Mohamed Eltanany
+email: mohamed.eltanany@core42.ai
+phone: ""
+linkedin: ""
+tags: [company/core42, kind/person]
+```
+Body starts with an inline wikilink to the company's Customer hub note
+**when the company matches an existing customer** — `**Company:**
+[[ADNOC]]` — reusing REQ-SB-14's existing `ensure_hub_note_and_link`
+mechanism as-is, no new concept. When the company isn't a known customer
+(internal Core42, a third party like Microsoft/G42), there's no hub note to
+link to yet, so the `company/<slug>` tag stands alone until one exists —
+per MEMORY.md's standing "tags AND wikilinks, always, wherever a real link
+target exists" rule. Below the link: role/title, notes, personality
+observations — free-form, user-added, never overwritten by automation
+(REQ-SB-10's living-document rule, same as Customer hub notes).
+
+**Backfill:** extract from already-captured Email notes' `sender`/
+`sender_email` frontmatter, deduped by email address (names vary in
+formatting, addresses don't) — same retrofit-endpoint pattern `REQ-SB-14`
+already established for Customer hub notes. **Meeting-based extraction is
+real but blocked** — `REQ-SB-08` (Meetings capture) doesn't exist yet, so
+that half of "backfilled from Emails and Meetings" only activates once it
+does; email-based backfill can proceed independently now.
+
+**Manual add:** a `Person` template, same mechanism as `REQ-SB-15`'s four
+templates (Obsidian core Templates plugin, not a new one).
+
 ## Open questions (not yet answered)
 
 - **"So many entities" under a Customer:** the operator's original flag —
   Pipeline/Agreements/Consumption resolve three of them; more may still
   surface. Keep extending this same pattern (new `kind/` folder + tags) as
   they come up, rather than redesigning.
-- **Person / Meeting / Industry note shapes** — still genuinely no real
-  data to design against; unchanged from the original parking rationale.
+- **Meeting / Industry note shapes** — still genuinely no real data to
+  design against; unchanged from the original parking rationale.
 
 ## Non-goals right now
 
@@ -117,6 +163,8 @@ query (most recent `snapshot_date` among notes tagged `customer/<slug>` +
 
 ## Next step
 
-Person/Meeting/Industry shapes resume once real examples of those exist.
-Pipeline/Agreements/Consumption structure is resolved and ready for a PRD
-requirement whenever the operator wants to move to building capture for it.
+Meeting/Industry shapes resume once real examples of those exist.
+Pipeline/Agreements/Consumption/People structure is resolved and ready to
+build capture for whenever the operator wants to move on it (People capture
+would be `REQ-SB-10`'s implementation; Pipeline/Agreements/Consumption have
+no requirement ID of their own yet).

@@ -14,6 +14,15 @@ across sessions.
 
 ## Decisions
 
+- [2026-08-11] People (REQ-SB-10) are flat notes at `Work/People/<Person>.md`
+  with Company as a `company/<slug>` tag — never a folder, and a separate
+  namespace from `customer/<slug>` (a person's employer isn't always a
+  customer account; many real contacts are internal Core42 colleagues or
+  third parties). Same reasoning as ADR-004's customer-as-tag decision.
+  Backfilled from already-captured Email notes' sender fields (deduped by
+  email address); the Meeting-based half is real but blocked on REQ-SB-08
+  not existing yet. Full schema:
+  `Implementation/Plans/2026-08-10-vault-taxonomy-draft.md`.
 - [2026-08-10] Reversed the earlier "Drop" call on agentic-map's REQ-079/
   080/081 (pipeline_items/customer_entitlements tables + tools) – real
   captured email data confirmed Second Brain's actual customer domain is
@@ -136,3 +145,18 @@ across sessions.
   the dev server repeatedly while working in `src/backend` without
   expecting real side effects (Outlook COM calls, Compass API calls, and
   vault writes against the live `.env`-configured vault).
+- **Standing design rule (operator directive, 2026-08-11): every note-type
+  schema must define both tags AND wikilinks, always** — never ship a
+  schema with one but not the other. Tags alone (no links) leave Obsidian's
+  graph view showing disconnected dots, exactly the bug REQ-SB-14 fixed for
+  Customer-tagged content; links alone (no tags) lose tag-pane/search
+  discoverability independent of physical location. This is a mandatory
+  design-time checklist item for every future note type (People, Meetings,
+  Industry, and anything after), not a one-off fix — check both before
+  calling a schema resolved. Applied immediately to People (see the
+  Decisions entry above): Person notes wikilink to their Company's Customer
+  hub note when the company matches an existing customer (reusing
+  REQ-SB-14's existing hub-note mechanism, no new concept introduced); when
+  the company isn't a known customer, there is no hub note yet to link to,
+  so the tag alone stands honestly until one exists — that is a real
+  absence of a link target, not an overlooked link.
