@@ -74,3 +74,56 @@ def classify_email(
         }
     except (KeyError, IndexError, ValueError, json.JSONDecodeError) as exc:
         raise CompassError(f"couldn't parse Compass response: {exc}") from exc
+
+
+def classify_task(
+    subject: str,
+    body: str,
+    known_customers: list[str],
+) -> dict:
+    """Customer-only sibling to classify_email (ADR-027 point 4) -- a
+    Task has no sender and needs no `kind` axis (its folder placement
+    is fixed, Work/Tasks/, never Compass-classified), so reusing
+    classify_email as-is would force a discarded kind guess into every
+    call and misrepresent an absent sender inside a prompt worded
+    around "inbox item"/`From:` framing designed for email. Same
+    "Unsorted rather than guessing" fallback posture as classify_email."""
+    customer_list = ", ".join(known_customers) if known_customers else "(none yet)"
+    prompt = (
+        "Classify which customer/company this to-do task relates to. "
+        "Respond with a single JSON object: {\"customer\": <name>, "
+        "\"confidence\": <0-1 float>}.\n\n"
+        f"Already known customers: {customer_list}. Reuse an exact "
+        "existing name (same spelling/casing) when it clearly matches "
+        "one. If it clearly relates to a real customer/company not yet "
+        "in that list, propose a concise proper-noun name — new "
+        "customers are expected. If you can't confidently tell, use "
+        "\"Unsorted\" rather than guessing.\n\n"
+        f"Task subject: {subject}\n\n{body[:4000]}"
+    )
+    payload = {
+        "model": settings.compass_model,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    headers = {
+        "Authorization": f"Bearer {settings.compass_api_key}",
+        "Content-Type": "application/json",
+    }
+    try:
+        response = httpx.post(
+            settings.compass_base_url, headers=headers, json=payload, timeout=30.0
+        )
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise CompassError(f"Compass call failed: {exc}") from exc
+
+    data = response.json()
+    try:
+        content = data["choices"][0]["message"]["content"]
+        parsed = json.loads(content)
+        return {
+            "customer": parsed.get("customer") or "Unsorted",
+            "confidence": float(parsed.get("confidence", 0.0)),
+        }
+    except (KeyError, IndexError, ValueError, json.JSONDecodeError) as exc:
+        raise CompassError(f"couldn't parse Compass response: {exc}") from exc

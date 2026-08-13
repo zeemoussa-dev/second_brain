@@ -9,7 +9,11 @@ class Settings(BaseSettings):
     compass_base_url: str
     compass_api_key: str
     compass_model: str
+    anthropic_api_key: str
+    anthropic_model: str
     vault_path: Path
+    self_email: str
+    hermes_mcp_shared_secret: str
 
 
 settings = Settings()
