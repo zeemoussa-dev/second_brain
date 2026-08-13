@@ -1,0 +1,493 @@
+<!--
+  Screen: Agents Map layout exploration (BUG-002, exploratory — NOT a locked
+  story implementation, NOT the canonical agents-map.html reference).
+
+  Why this file exists: BUG-002 (confirmed live 2026-08-11 against the real
+  running app) found that layoutAgents.ts's SECTION_ARC_SPAN_DEG is a FIXED
+  80-degree arc every Section's agents fan across, regardless of how many
+  Sections exist (N Sections evenly spaced only get 360/N degrees each — 72
+  degrees at N=5, already less than 80 before any agent-count crowding) or
+  how many agents share one Section (all 5 real seeded agents currently sit
+  in "Technical", confirmed spilling into neighboring Sections' territory
+  with heavy label collision). The operator asked for open-ended exploration
+  of MULTIPLE distinct fixes to compare, not one answer picked for them —
+  this file is that comparison, not a design decision. Every option below is
+  ALWAYS flagged for human review (see REVIEW-QUEUE.md); nothing here is
+  approved, nothing here is a locked layout.
+
+  Four genuinely different layout approaches, compared side by side:
+    A. Dynamic angular budget — the direct root-cause fix: each Section's
+       fan span is computed from the REAL Section count (360/N), never a
+       fixed constant, so it can never exceed the Section's own true wedge
+       regardless of N; density beyond a threshold falls back to the
+       already-defined-but-never-instantiated .agent-node--compact primitive
+       (unlabeled dot, label revealed on hover/focus) instead of letting
+       in-node text collide.
+    B. Multi-ring wedge expansion — agents stay within a narrow, FIXED
+       angular sliver per Section (never widening with agent count); density
+       is absorbed by stacking same-Type agents at increasing RADIUS within
+       that Section's own wedge instead of spreading them angularly.
+       Guarantees zero angular spillover by construction — the cost is the
+       shared outer boundary growing to fit the single most-crowded Section.
+    C. Communication-affinity clustering — ties directly to REQ-SB-20 (Hub
+       keyword-based routing, story drafted, not yet built): agents within a
+       Section are ordered by real keyword overlap (already-authored
+       free-text Keywords data, this file's own dataset) so agents that
+       would route to each other sit angularly closer together; a new
+       cross-Section "affinity line" (Hub -> Hub routed, never a direct
+       line, per REQ-SB-20's own "always via both Hubs" rule) is drawn
+       between agents in DIFFERENT Sections that share a keyword, dim by
+       default and highlighted on hover/focus of either endpoint so a dense
+       map doesn't turn into permanent link-spaghetti.
+    D. Semantic zoom / drill-down (the operator's own suggested direction,
+       worked out concretely) — every agent renders as a small, unlabeled
+       .agent-node--compact dot at the overview level ALWAYS (not just past
+       a density threshold), so angular crowding is structurally impossible
+       to read as text collision; hovering/focusing a dot reveals its label
+       via the existing (unused-until-now) compact-hover CSS. Clicking a
+       Section's Hub triggers a CSS transform/opacity zoom-out transition on
+       the overview canvas, then swaps to a dedicated per-Section "Agents
+       Tree" view — that Section's own agents spread across the FULL 360
+       degrees (no longer sharing the canvas with any other Section), always
+       fully labeled, with direct (not Hub-routed) affinity lines between
+       agents sharing a keyword. A "Back to Agents Map" button reverses it.
+
+  Every option is demonstrated at two scales via a nested state-switcher:
+  "Today's scale" (5 agents / 5 Sections — IDENTICAL data to the
+  already-approved "5 sections (REQ-SB-18 N-section reference)" state in
+  agents-map.html) and "Stress test" (13 agents unevenly spread across 6
+  Sections — 5 real Section names plus one clearly-marked-illustrative 6th,
+  "Marketing", added only to test N beyond REQ-SB-18's current 5; several
+  agents in the stress dataset are similarly marked "(illustrative)" —
+  hypothetical fixtures invented only to stress-test scale, not a proposal
+  to build them). All geometry is computed client-side in
+  agents-map-exploration.js from these two datasets — not hand-placed
+  percentages — using the exact CENTER/RING_RADIUS/HUB_RADIUS/
+  BOUNDARY_RADIUS constants and polarToCartesian formula already established
+  in src/frontend/src/features/agents-map/polarLayout.ts, plus the same
+  section-divider-midpoint formula AgentsMapCanvas.tsx uses.
+
+  Text/label placement, addressed per option (not just node position):
+    - In this design, an agent's "label" is text INSIDE its own circular
+      node (see agents-map.html's existing .agent-node markup) — so
+      preventing node-circle overlap already prevents in-node label
+      collision; the exploration's job is to also handle the cases node
+      geometry alone doesn't cover:
+    - Compact/unlabeled nodes (A past its density threshold; D always) hide
+      their label until hover/focus, then it floats below the node
+      (existing CSS, ported verbatim, never previously instantiated).
+    - Section titles (external text, not inside a node) get closer together
+      as N grows — a fixed 66% boundary-relative radius was fine at N=3/5,
+      but N=6/7 halves the angular gap between adjacent titles again. Every
+      option here staggers title radius in a two-step zigzag (near/far,
+      alternating by Section index) as a cheap, universal fix applied
+      identically across all 4 options, verified by direct radial distance,
+      not eyeballing.
+    - Option C's cross-Section affinity lines are hover-gated specifically
+      because they are the one new element that scales with agent count
+      squared (every keyword-sharing PAIR draws a line) — the one label/line
+      -density risk unique to that option, called out in its own card below.
+
+  Reused: agents-map.html's own .hub-node/.agent-node[--type]/
+  .agent-node--compact (existing, previously unused)/.section-title/
+  .ring-circle/.radar-spoke/.kb-node/.boundary-circle/.spoke-line/
+  .cluster-line/.section-boundary primitives, the .state-switcher (nested,
+  same convention as agents-map.html's own meeting-capture-approval nested
+  switcher) and .app-shell/.card/.btn/.empty-state/.text-muted shell.
+  New (added to styles.css, in its own clearly-commented section):
+  .affinity-line/.affinity-line.active (Option C's Hub-routed relationship
+  line, and reused for Option D's direct same-Section lines) and
+  .explore-zoom-overview/.zooming-out/.explore-drilldown (Option D's
+  click-to-zoom transition). Both are scoped additive primitives, not a
+  change to any existing rule.
+
+  Deliberate exploration-only simplifications (see agents-map-exploration.js
+  header): the Knowledge Base renders as a plain accent circle, not the full
+  23-neuron brain mesh; PRODUCER/EXPERT/WORKER ring-label text is omitted.
+  Both are ambient decoration unrelated to the angular-collision comparison
+  and return at full fidelity once a direction is chosen and merged back
+  into the canonical agents-map.html.
+
+  This screen is intentionally NOT linked from the main sidebar nav (it is
+  not a real application screen) and NOT the design-of-record for BUG-002 —
+  see index.html's catalog for a clearly-marked pointer to it instead.
+
+  ---------------------------------------------------------------------------
+  Operator sign-off pass (2026-08-11): Option D above is now the ACCEPTED
+  direction (Options A/B/C are kept only as comparison history, not iterated
+  further). This screen was extended, not replaced, to refine Option D
+  toward final sign-off:
+    1. Hub-sizing rebalance in the drill-down "Agents Tree" view — the Hub
+       node was reading as an oversized centerpiece next to the agents it
+       groups; see styles.css's `.explore-drilldown .hub-node` rule.
+    2. A new, replayable overview entrance animation ("Refinement 2" card
+       inside Option D's own section below) — flat row of agents -> hold ->
+       transition into their real circular positions, with the Knowledge
+       Base growing/fading in at center. See agents-map-exploration.js's
+       `playIntro()` for the mechanics.
+  Both refinements are still pending final browser sign-off — see this
+  file's REVIEW-QUEUE.md entry (BUG-002 layout exploration).
+  ---------------------------------------------------------------------------
+  Revision 2026-08-12 (REQ-SB-31 design pass): added the new System Health
+  nav item to this file's own shared sidebar too, for consistency with every
+  other prototype page (see system-health.html's own breadcrumb for the full
+  nav-wiring list) — this file still isn't a real application screen and
+  isn't linked from index.html's catalog as a nav destination; only its
+  sidebar markup itself, which mirrors every other page's, was kept in sync.
+  No other change.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Agents Map — Layout Exploration (BUG-002) — Second Brain</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <button class="burger-btn" id="sidebarToggle" aria-label="Toggle navigation" aria-expanded="true">&#9776;</button>
+        <h2>Second Brain</h2>
+      </div>
+      <a class="nav-item" href="agents-map.html"><span class="nav-icon">&#9678;</span><span class="nav-label">Agents Map</span></a>
+      <a class="nav-item" href="my-day.html"><span class="nav-icon">&#9728;</span><span class="nav-label">My Day</span></a>
+      <a class="nav-item" href="settings.html"><span class="nav-icon">&#9881;</span><span class="nav-label">Settings</span></a>
+      <a class="nav-item" href="system-health.html"><span class="nav-icon">&#9877;</span><span class="nav-label">System Health</span></a>
+      <a class="nav-item" href="agent-activity.html"><span class="nav-icon">&#128203;</span><span class="nav-label">Agent Activity</span></a>
+      <a class="nav-item" href="vault-browser.html"><span class="nav-icon">&#128269;</span><span class="nav-label">Browse &amp; Search</span></a>
+      <a class="nav-item" href="index.html"><span class="nav-icon">&#9638;</span><span class="nav-label">Screens (catalog)</span></a>
+    </nav>
+    <main class="main">
+      <h1>Agents Map — layout exploration (BUG-002)</h1>
+      <p class="text-muted">
+        <strong>Option D (semantic zoom / drill-down) is the operator's
+        accepted direction (2026-08-11)</strong> — Options A/B/C below are
+        kept only as comparison history, not being iterated further. Two
+        concrete refinements against Option D are what's pending final
+        browser sign-off now: (1) rebalancing the drill-down Hub's size
+        against the agent nodes around it, and (2) a new overview entrance
+        animation. See Option D's own section below for both, and the
+        <span class="mono">REVIEW-QUEUE.md</span> entry for this pass for
+        the current status.
+      </p>
+
+      <div class="state-switcher" data-group="explore-option">
+        <button type="button" class="btn" data-state-target="option-a">A — Dynamic angular budget</button>
+        <button type="button" class="btn" data-state-target="option-b">B — Multi-ring wedge expansion</button>
+        <button type="button" class="btn" data-state-target="option-c">C — Communication-affinity clustering</button>
+        <button type="button" class="btn btn-primary" data-state-target="option-d">D — Semantic zoom / drill-down (accepted)</button>
+      </div>
+
+      <!-- ================================================================
+           OPTION A — Dynamic angular budget
+           ================================================================ -->
+      <section data-state-panel data-group="explore-option" data-state="option-a">
+        <div class="card" style="margin-bottom: var(--space-4);">
+          <h2>A — Dynamic angular budget</h2>
+          <p><strong>What it solves well:</strong> directly fixes BUG-002's
+            root cause — <span class="mono">SECTION_ARC_SPAN_DEG</span>
+            becomes <span class="mono">(360 / sectionCount) * 0.8</span>
+            instead of a fixed 80&deg;, so a Section's own agents can never
+            exceed its own true wedge regardless of how many Sections exist.
+            At today's real scale this renders with the same overall
+            structure as the already-approved reference — no visual
+            regression, just computed instead of capable of silently
+            overflowing. Smallest diff of the four options: one function,
+            one existing (unused) CSS primitive re-activated.</p>
+          <p><strong>What it costs:</strong> once a Section's agent count
+            exceeds the compact threshold (3, tunable), that Section's
+            agents lose their always-visible label — a real readability
+            trade a reviewer should weigh, not hidden in this write-up. A
+            single very crowded Section still visually reads as "busy" even
+            once contained (many small dots close together).</p>
+          <p><strong>Label/text handling:</strong> nodes stay full-size and
+            labeled up to 3 agents/Section; beyond that, the whole Section's
+            nodes switch to <span class="mono">.agent-node--compact</span>
+            (already defined in styles.css, never instantiated until now) —
+            unlabeled dots, label floats below on hover/focus. Section
+            titles zigzag near/far by index (see the top-of-file note) so
+            adjacent titles don't crowd as N grows.</p>
+          <p><strong>Degrades at high count:</strong> gracefully — angular
+            containment is guaranteed by construction for any N and any
+            per-Section count; the only degradation is the compact-mode
+            visual density itself (small dots close together read as "a
+            busy Section" rather than colliding text) and, at extreme counts
+            within one Section, dots eventually visually touch even at
+            compact size (not modeled at this dataset's max of 4/Section —
+            worth a documented density ceiling if a future Section ever
+            needs more than ~8-10 agents at this canvas size).</p>
+        </div>
+        <div class="state-switcher" data-group="option-a-scale">
+          <button type="button" class="btn btn-primary" data-state-target="today">Today's scale (5 agents / 5 Sections)</button>
+          <button type="button" class="btn" data-state-target="stress">Stress test (13 agents / 6 Sections)</button>
+        </div>
+        <div data-state-panel data-group="option-a-scale" data-state="today" class="active">
+          <div class="agents-map-stage"><div class="agents-map-canvas" data-explore-mount="a-today"></div></div>
+        </div>
+        <div data-state-panel data-group="option-a-scale" data-state="stress">
+          <div class="agents-map-stage"><div class="agents-map-canvas" data-explore-mount="a-stress"></div></div>
+          <p class="text-muted">Technical (4 agents) is the only Section over the compact threshold — its nodes render as unlabeled dots; hover/focus any of them to reveal its label. Every other Section (&le;3 agents) stays fully labeled, exactly as today.</p>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           OPTION B — Multi-ring wedge expansion
+           ================================================================ -->
+      <section data-state-panel data-group="explore-option" data-state="option-b">
+        <div class="card" style="margin-bottom: var(--space-4);">
+          <h2>B — Multi-ring wedge expansion</h2>
+          <p><strong>What it solves well:</strong> the strongest containment
+            guarantee of the four — every Section's agents stay within a
+            narrow, fixed angular sliver (capped well inside even a 7-way
+            split), so cross-Section spillover is structurally impossible
+            regardless of density; a crowded Section absorbs agents by
+            stacking same-Type nodes outward in RADIUS instead. This is the
+            closest match to the operator's literal "use the Rings, or even
+            expand outside, but never overlap another Section" framing.</p>
+          <p><strong>What it costs:</strong> the shared outer boundary must
+            grow to fit whatever Section is most crowded with same-Type
+            agents — and this isn't hypothetical: <em>today's real data</em>
+            already has 3 Worker-type agents in Productivity (Email/Meeting/
+            To-Do Capture), so even the "Today's scale" state below already
+            shows the boundary pulled outward, not only the stress case.
+            A single shared circular boundary also means every OTHER
+            Section's ring/boundary reads slightly smaller/more compressed
+            than it needs to be, just because one Section is crowded — a
+            true per-Section independent boundary (a non-circular, "spiky"
+            outline, each Section's own arc sized to its own max radius) was
+            considered and rejected here only for implementation cost in a
+            static prototype, not on the merits; worth a second pass if this
+            direction is chosen.</p>
+          <p><strong>Label/text handling:</strong> nodes always render
+            full-size and labeled (this option never needs the compact
+            fallback — radial stacking, not angular crowding, absorbs
+            density) — but stacked same-Type nodes sit directly along the
+            same ray at increasing radius, which visually reads as a short
+            radial "stack" rather than a spread; the stacking step (12
+            units) is sized to always exceed a node's own diameter so
+            labels never overlap vertically along that stack. Section titles
+            use the same near/far zigzag as every other option.</p>
+          <p><strong>Degrades at high count:</strong> the safest of the four
+            for pure containment — angular footprint per Section never
+            grows no matter how many agents pile in; the visible cost is
+            entirely in the shared boundary's radius, which grows roughly
+            linearly with the single most same-Type-crowded Section's own
+            count, not with total agent count across the whole map.</p>
+        </div>
+        <div class="state-switcher" data-group="option-b-scale">
+          <button type="button" class="btn btn-primary" data-state-target="today">Today's scale (5 agents / 5 Sections)</button>
+          <button type="button" class="btn" data-state-target="stress">Stress test (13 agents / 6 Sections)</button>
+        </div>
+        <div data-state-panel data-group="option-b-scale" data-state="today" class="active">
+          <div class="agents-map-stage"><div class="agents-map-canvas" data-explore-mount="b-today"></div></div>
+          <p class="text-muted">Even at today's real scale, Productivity's 3 same-Type (Worker) agents already stack radially and pull the shared boundary outward — see "What it costs" above.</p>
+        </div>
+        <div data-state-panel data-group="option-b-scale" data-state="stress">
+          <div class="agents-map-stage"><div class="agents-map-canvas" data-explore-mount="b-stress"></div></div>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           OPTION C — Communication-affinity clustering
+           ================================================================ -->
+      <section data-state-panel data-group="explore-option" data-state="option-c">
+        <div class="card" style="margin-bottom: var(--space-4);">
+          <h2>C — Communication-affinity clustering</h2>
+          <p><strong>What it solves well:</strong> directly answers the
+            operator's first ask — "cluster agents together who are
+            communicating with each other" — by grounding placement in
+            REQ-SB-20's own real data shape (per-agent free-text Keywords,
+            already authored in agents-map.html's side panel). Within a
+            Section, agents are ordered so higher keyword-overlap pairs sit
+            angularly closer together (reuses Option A's exact wedge-safe
+            containment math underneath, so it inherits the same
+            never-spills-out-of-wedge guarantee). A new dashed "affinity
+            line" connects agents in DIFFERENT Sections that share a
+            keyword, routed Hub -&gt; Hub (never a direct cross-Section
+            line, matching REQ-SB-20's own "always via both Hubs" rule) —
+            hover any agent to see who it would route to and through which
+            two Hubs. Try it: hover <span class="mono">Email Capture</span>
+            (Productivity) or <span class="mono">Renewal Tracker</span>
+            (Customers) in the stress state below.</p>
+          <p><strong>What it costs:</strong> REQ-SB-20 isn't built yet — the
+            "relevance" this option visualizes is a simple exact-keyword-
+            overlap count computed client-side in this prototype, a stand-in
+            for whatever real routing-relevance the eventual Hub
+            intelligence actually computes, not a preview of its real
+            output. The within-Section ordering is a greedy nearest-neighbor
+            chain, not a real force-directed layout (out of scope for a
+            static HTML/CSS/JS prototype) — it approximates "closer affinity
+            reads closer," it doesn't compute an optimal arrangement.</p>
+          <p><strong>Label/text handling:</strong> node labels behave
+            exactly as Option A (full label up to 3 agents/Section, compact
+            beyond). The genuinely new text-density risk this option adds is
+            the affinity lines themselves, since every keyword-sharing PAIR
+            draws one — at high agent counts this could become link-
+            spaghetti fast, so lines are dim (15% opacity) by default and
+            only bolded on hover/focus of an endpoint agent, keeping the
+            resting-state view exactly as clean as Option A's.</p>
+          <p><strong>Degrades at high count:</strong> the hover-gating is
+            the degradation strategy — the number of POSSIBLE affinity
+            lines grows roughly with the square of agent count, but only
+            ever a few are visible at once (whatever's connected to the
+            currently-hovered agent), so the resting view never gets
+            busier as agent count grows, only the hover interaction has
+            more to show.</p>
+        </div>
+        <div class="state-switcher" data-group="option-c-scale">
+          <button type="button" class="btn btn-primary" data-state-target="today">Today's scale (5 agents / 5 Sections)</button>
+          <button type="button" class="btn" data-state-target="stress">Stress test (13 agents / 6 Sections)</button>
+        </div>
+        <div data-state-panel data-group="option-c-scale" data-state="today" class="active">
+          <div class="agents-map-stage"><div class="agents-map-canvas" data-explore-mount="c-today"></div></div>
+          <p class="text-muted">No cross-Section keyword overlap exists in today's real 5-agent data — hover any agent to confirm no affinity line appears. The stress state below has two deliberate cross-Section pairs to demonstrate the mechanism.</p>
+        </div>
+        <div data-state-panel data-group="option-c-scale" data-state="stress">
+          <div class="agents-map-stage"><div class="agents-map-canvas" data-explore-mount="c-stress"></div></div>
+          <p class="text-muted">Two real cross-Section affinity pairs in this dataset: Email Capture (Productivity) &harr; Renewal Tracker (Customers), sharing the keyword "customer correspondence"; Deploy Watcher (Technical) &harr; Content Planner (Marketing), sharing "changelog." Hover either endpoint of a pair to reveal its Hub-routed line.</p>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           OPTION D — Semantic zoom / drill-down (operator's own idea)
+           ================================================================ -->
+      <section data-state-panel data-group="explore-option" data-state="option-d" class="active">
+        <div class="card" style="margin-bottom: var(--space-4); border-color: var(--color-accent);">
+          <p style="margin: 0; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; font-size: var(--font-size-sm); color: var(--color-accent);">Accepted direction (operator, 2026-08-11) — pending final browser sign-off</p>
+          <p class="text-muted" style="margin-bottom: 0;">Options A/B/C below stay as comparison history and are not being iterated further. Two refinements are pending sign-off against this option specifically — see the "Hub sizing" note inside the drill-down demo below, and the new "Entrance animation" card further down this section.</p>
+        </div>
+        <div class="card" style="margin-bottom: var(--space-4);">
+          <h2>D — Semantic zoom / drill-down</h2>
+          <p><strong>What it solves well:</strong> the operator's own
+            suggested direction, worked out concretely. At the overview
+            level every agent is ALWAYS a small, unlabeled compact dot —
+            not just past a density threshold like Option A — so crowding
+            is structurally impossible to read as text collision at ANY
+            agent count; this composes Option A's exact wedge-safe
+            containment math with "compact, always" rather than being a
+            fifth independent geometry. Hover/focus any dot to reveal its
+            label. Click a Section's Hub (try it below) and the overview
+            zooms out and swaps to that Section's own dedicated "Agents
+            Tree" view — its agents spread across the FULL 360&deg; instead
+            of a thin wedge, always fully labeled, with room to also show
+            real agent-to-agent relationship lines without competing with
+            any other Section for space. A "Back to Agents Map" button
+            returns to the overview.</p>
+          <p><strong>What it costs:</strong> two real interaction states to
+            build and maintain instead of one (an overview and a per-Section
+            detail view), and the overview alone never shows agent identity
+            without a hover/click — a reviewer who wants to scan "which
+            agents exist" at a glance has to either hover every dot or drill
+            in, unlike A/B/C where up to 3 agents/Section stay labeled by
+            default. The click-to-zoom transition here is a simplified
+            uniform center-zoom (CSS transform+opacity, ~350ms); a
+            production version would zoom from the specific Hub that was
+            clicked, not the canvas center — a small polish item, not a
+            structural gap.</p>
+          <p><strong>Label/text handling:</strong> overview labels are
+            NEVER visible by default (by design — this is the option's
+            whole point), only on hover/focus, reusing the identical
+            already-defined CSS the other options only use conditionally.
+            The drill-down view has room to show every agent's full label
+            plus its type, unconditionally, since it owns the whole canvas
+            — direct (not Hub-routed) affinity lines connect same-Section
+            agents sharing a keyword, always visible (far fewer candidate
+            pairs once scoped to one Section, so no hover-gating is needed
+            here the way Option C needs it for cross-Section pairs).</p>
+          <p><strong>Degrades at high count:</strong> the best of the four
+            at extreme overview density, since nothing is ever labeled by
+            default at that level regardless of N or per-Section count —
+            the real degradation risk moves entirely into the drill-down
+            view instead, once a single Section itself has a very large
+            agent count (not modeled at this dataset's max of 4/Section);
+            that view would eventually need its own density handling
+            (e.g. a secondary compact ring), not built here.</p>
+        </div>
+        <div class="state-switcher" data-group="option-d-scale">
+          <button type="button" class="btn btn-primary" data-state-target="today">Today's scale (5 agents / 5 Sections)</button>
+          <button type="button" class="btn" data-state-target="stress">Stress test (13 agents / 6 Sections)</button>
+        </div>
+        <div data-state-panel data-group="option-d-scale" data-state="today" class="active">
+          <div data-explore-stage-root>
+            <div data-explore-overview-stage>
+              <div class="agents-map-stage"><div class="agents-map-canvas" data-explore-mount="d-today"></div></div>
+              <p class="text-muted">Every dot is unlabeled by default — hover/focus one to reveal its label, or click any Hub to zoom into that Section's own Agents Tree. <strong>Refinement 1 (Hub sizing):</strong> click the Technical Hub (only 1 agent here) — the Hub node is now visibly smaller than the agent node it groups, not the oversized centerpiece it was before this pass.</p>
+            </div>
+            <div class="explore-drilldown" data-explore-drilldown>
+              <div data-explore-tree-mount></div>
+            </div>
+          </div>
+        </div>
+        <div data-state-panel data-group="option-d-scale" data-state="stress">
+          <div data-explore-stage-root>
+            <div data-explore-overview-stage>
+              <div class="agents-map-stage"><div class="agents-map-canvas" data-explore-mount="d-stress"></div></div>
+              <p class="text-muted">Technical (4 agents) is exactly as legible as Sales (1 agent) at the overview level here — both are anonymous dots until hovered or drilled into. Click the Technical Hub to see its 4 agents laid out with room to spare. <strong>Refinement 1 (Hub sizing):</strong> at this denser scale, the Hub still reads clearly as the connecting element (dashed accent border, center position, converging lines to all 4 agents) without visually outweighing them — confirmed at both scales, not just the sparse 1-agent case.</p>
+            </div>
+            <div class="explore-drilldown" data-explore-drilldown>
+              <div data-explore-tree-mount></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==============================================================
+             Refinement 2 — overview entrance animation (operator sign-off
+             pass, 2026-08-11). A dedicated, self-contained demo: the
+             ordinary click-to-zoom drill-down above already demonstrates
+             Option D's own core mechanic, so this one mount is scoped to
+             the entrance sequence only.
+             ============================================================== -->
+        <div class="card" style="margin-top: var(--space-6);">
+          <h3>Refinement 2 — overview entrance animation</h3>
+          <p>Operator's own framing: "They can be all next to each other
+            then a quick scroll then they turn around and became a Circle
+            with KB in the Center." On landing on the overview (and on
+            demand via "Replay intro" below), agents do NOT appear already
+            in their final circular positions:</p>
+          <ol>
+            <li><strong>Flat</strong> — every agent renders first as one
+              flat, evenly-spaced row (same unlabeled dot Option D always
+              uses at the overview level); the Knowledge Base, every Hub,
+              and the rings/spokes/boundary/Section titles all start
+              invisible.</li>
+            <li><strong>Hold</strong> — a short pause (~0.9s) with nothing
+              moving, so the flat row is clearly readable as "agents next to
+              each other" before anything happens.</li>
+            <li><strong>Transition</strong> — every agent glides (CSS
+              transition on its own position, ~0.9s) from its flat slot to
+              its real circular position, while the Knowledge Base grows and
+              fades in at the center it vacated, and the Hubs and
+              rings/spokes/boundary/Section titles fade in alongside it.</li>
+            <li><strong>Settled</strong> — an ordinary, fully interactive
+              Option-D overview (hover a dot for its label; this particular
+              demo doesn't also wire click-to-zoom — see the drill-down demo
+              above for that).</li>
+          </ol>
+          <p class="text-muted">Plain CSS transitions/keyframes only (no
+            animation library) — the Knowledge Base's grow-in
+            (<span class="mono">@keyframes kbGrowIn</span>) runs alongside
+            the existing looping <span class="mono">kbPulse</span> without
+            conflict since they animate different properties; the Hubs reuse
+            the existing <span class="mono">nodeFadeIn</span> keyframe
+            already on every node, just fired on a delay.</p>
+          <div class="state-switcher" data-group="option-d-intro-scale">
+            <button type="button" class="btn btn-primary" data-state-target="today">Today's scale (5 agents / 5 Sections)</button>
+            <button type="button" class="btn" data-state-target="stress">Stress test (13 agents / 6 Sections)</button>
+          </div>
+          <div data-state-panel data-group="option-d-intro-scale" data-state="today" class="active" data-explore-intro-panel>
+            <div class="agents-map-stage"><div class="agents-map-canvas" data-explore-intro-mount="today"></div></div>
+            <button type="button" class="btn" data-explore-intro-replay>&#8635; Replay intro</button>
+          </div>
+          <div data-state-panel data-group="option-d-intro-scale" data-state="stress" data-explore-intro-panel>
+            <div class="agents-map-stage"><div class="agents-map-canvas" data-explore-intro-mount="stress"></div></div>
+            <button type="button" class="btn" data-explore-intro-replay>&#8635; Replay intro</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+  <script src="agents-map-exploration.js"></script>
+</body>
+</html>

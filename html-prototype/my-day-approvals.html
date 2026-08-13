@@ -1,0 +1,101 @@
+<!--
+  Screen: My Day — Pending Approvals (REQ-SB-21)
+  Reused: .app-shell shell, collapsible sidebar, .card, .badge,
+    .state-switcher, .empty-state, .item-list/.item-row/.item-row-actions
+    (the exact drill-down pattern the other four My Day pages and
+    settings.html's Sections/Providers cards already established).
+  New: none — composed entirely from existing tokens/components.
+  Purpose: the real, dedicated surface REQ-SB-21 requires for a Supervised
+    agent's background/scheduled-pipeline proposal (Scenario 4) — the case
+    a chat window can't cover, since the pipeline trigger fires with no chat
+    open. Chat-triggered proposals (Scenario 3/3b) are shown in-place on
+    agents-map.html's own Chat block instead; this page is specifically the
+    background-pipeline half. Only Supervised-mode agents ever produce a row
+    here — Autonomous agents act without asking, Manual agents wait to be
+    asked, per REQ-SB-21's Scenario 2/5. This pass's two Supervised examples
+    (Meeting Capture, People Notes — set on agents-map.html's own Settings
+    kv-list) are used here so the list has more than one real row.
+  States drawn: populated (2 real pending proposals, one per Supervised
+    agent) and empty (no Supervised agent currently has anything pending —
+    a real, buildable state, not just the "no Supervised agents configured"
+    case, since a Supervised agent's queue can also simply be caught up).
+  Revision 2026-08-12 (REQ-SB-31 design pass): added the new System Health
+    nav item to the shared sidebar (see system-health.html's own breadcrumb
+    for the full nav-wiring list). No other change on this page.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>My Day — Pending Approvals — Second Brain</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <button class="burger-btn" id="sidebarToggle" aria-label="Toggle navigation" aria-expanded="true">&#9776;</button>
+        <h2>Second Brain</h2>
+      </div>
+      <a class="nav-item" href="agents-map.html"><span class="nav-icon">&#9678;</span><span class="nav-label">Agents Map</span></a>
+      <a class="nav-item active" href="my-day.html"><span class="nav-icon">&#9728;</span><span class="nav-label">My Day</span></a>
+      <a class="nav-item" href="settings.html"><span class="nav-icon">&#9881;</span><span class="nav-label">Settings</span></a>
+      <a class="nav-item" href="system-health.html"><span class="nav-icon">&#9877;</span><span class="nav-label">System Health</span></a>
+      <a class="nav-item" href="agent-activity.html"><span class="nav-icon">&#128203;</span><span class="nav-label">Agent Activity</span></a>
+      <a class="nav-item" href="vault-browser.html"><span class="nav-icon">&#128269;</span><span class="nav-label">Browse &amp; Search</span></a>
+      <a class="nav-item" href="index.html"><span class="nav-icon">&#9638;</span><span class="nav-label">Screens (catalog)</span></a>
+    </nav>
+    <main class="main">
+      <p class="text-muted"><a href="my-day.html" class="text-muted">&larr; My Day</a></p>
+      <h1>Pending Approvals</h1>
+      <p class="text-muted">Actions a Supervised agent (REQ-SB-21) has proposed on its own background/scheduled pipeline trigger and is waiting on your approval before taking. Chat-triggered proposals from an active conversation appear inline in that agent's own Chat panel on the Agents Map instead of here. Change an agent's working mode from its Agent Settings panel.</p>
+
+      <div class="state-switcher" data-group="my-day-approvals">
+        <button type="button" class="btn btn-primary" data-state-target="populated">Populated</button>
+        <button type="button" class="btn" data-state-target="empty">Empty (queue caught up)</button>
+      </div>
+
+      <section data-state-panel data-group="my-day-approvals" data-state="empty">
+        <div class="card">
+          <div class="empty-state">
+            <div class="empty-state-icon">&#10003;</div>
+            <p><strong>Nothing awaiting approval right now.</strong></p>
+            <p class="text-muted">Every Supervised agent's queue is caught up. Proposals from a background/scheduled pipeline trigger will appear here as soon as one is raised.</p>
+          </div>
+        </div>
+      </section>
+
+      <section data-state-panel data-group="my-day-approvals" data-state="populated" class="active">
+        <div class="card">
+          <div class="item-list">
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">Meeting Capture <span class="badge badge-warning">Awaiting approval</span></span>
+                <span class="item-row-meta">Background pipeline trigger (hourly schedule) — 1 new calendar event found since the last run</span>
+                <span class="item-row-meta">Proposes: re-run today's meeting capture and file any new Meeting notes</span>
+              </div>
+              <div class="item-row-actions">
+                <button type="button" class="btn btn-primary">Approve</button>
+                <button type="button" class="btn btn-danger">Decline</button>
+              </div>
+            </div>
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">People Notes <span class="badge badge-warning">Awaiting approval</span></span>
+                <span class="item-row-meta">Background pipeline trigger — new attendee encountered in today's meeting capture</span>
+                <span class="item-row-meta">Proposes: create a Person note for jane.doe@partner.example</span>
+              </div>
+              <div class="item-row-actions">
+                <button type="button" class="btn btn-primary">Approve</button>
+                <button type="button" class="btn btn-danger">Decline</button>
+              </div>
+            </div>
+          </div>
+          <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: var(--space-3);">Declining discards the proposed action — nothing is written to the vault. Approving takes the action exactly as described above.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

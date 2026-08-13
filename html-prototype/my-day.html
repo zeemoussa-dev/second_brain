@@ -11,11 +11,56 @@
     drill-down content per section is an open question for /spec time (see
     PRD REQ-SB-12 breadcrumb) — this dashboard only commits to the shape:
     four clickable sections, each its own page.
+  Revision 2026-08-12 (REQ-SB-31 design pass): added the new System Health
+    nav item to the shared sidebar (see system-health.html's own breadcrumb
+    for the full nav-wiring list). No other change on this page.
   Revision 2026-08-10 (round 2, still pre-approval): no markup change here —
     the operator's light-theme/green-accent swap is entirely token-level
     (styles.css :root), so it cascades to this screen automatically. Verified
     the card grid, badges, and state-switcher still read correctly against
     the new white/light-green surfaces.
+  Revision 2026-08-11 (REQ-SB-21/REQ-SB-23 design pass): two additions, both
+  new screen regions — no `html-prototype/` coverage existed for either
+  (confirmed by direct inspection per both stories' own Notes).
+    (1) "Quick Capture" card (REQ-SB-23, the My Day Intake Agent) — placed
+    at the TOP of the page, above the existing day-section-grid, so it is
+    directly visible and reachable with no navigation (Scenario 5), the
+    same "no navigating to the Agents Map or any other page first"
+    requirement the story's Affected Screens section names. Shape: a
+    free-text input + submit (reusing `.chat-input-row`/`.input`/
+    `.btn-primary` verbatim from the Agents Map's own chat form — no new
+    input-row component), plus an `.item-list`/`.item-row` history of past
+    submissions (reusing the exact list pattern the 4 My Day drill-downs
+    already established) showing each submission's filed destination —
+    this is how "confirmation of where it got filed" (the story's own
+    acceptance text) is made concrete. Populated state demonstrates all 4
+    locked scenarios at once, not just the happy path: a customer-classified
+    submission (Scenario 1 — customer/adnoc tag + Customer hub wikilink,
+    copy lifted directly from `MEMORY.md`'s standing tags-and-wikilinks
+    schema, not invented), an unclassified personal-reminder submission
+    (Scenario 2 — kind/note tag only, no customer tag/link), a second
+    distinct same-day submission proving no filename collision (Scenario 3
+    — implicit in the two distinct rows above already being separate), and
+    a classification-FAILED submission whose original text is visibly
+    preserved with a Retry affordance, never silently discarded (Scenario
+    4). First-run/empty state: input box only, plus an `.empty-state`
+    invite, no history yet. New: none — every element reuses an existing
+    component; only the copy is new.
+    (2) A 5th `day-section-grid` card, "Pending Approvals" (REQ-SB-21's "a
+    real, dedicated surface, built now" resolution), linking to a new
+    `my-day-approvals.html` drill-down — same shape as the existing four
+    (Emails/Calendar/To-Do/Important Reads): a count + badge on the card,
+    a full `.item-list` on its own page. Placement chosen deliberately: My
+    Day is this project's existing "things needing my attention today"
+    surface (its own intro copy), which is exactly what a Supervised
+    agent's awaiting-approval proposal is — not Settings (where the
+    working-mode picker that CAUSES a Supervised agent to have pending
+    proposals lives, on Agents Map, a configuration surface, not an
+    attention/action surface) and not a standalone nav item (no other
+    story asked for one, and My Day already owns this exact "surfaced from
+    background agents" framing per its own H1 copy). No CSS change needed —
+    `.day-section-grid`'s existing `grid-template-columns: repeat(auto-fit,
+    minmax(220px, 1fr))` already reflows to 5 cards with no edit.
 -->
 <!doctype html>
 <html lang="en">
@@ -34,11 +79,72 @@
       <a class="nav-item" href="agents-map.html"><span class="nav-icon">&#9678;</span><span class="nav-label">Agents Map</span></a>
       <a class="nav-item active" href="my-day.html"><span class="nav-icon">&#9728;</span><span class="nav-label">My Day</span></a>
       <a class="nav-item" href="settings.html"><span class="nav-icon">&#9881;</span><span class="nav-label">Settings</span></a>
+      <a class="nav-item" href="system-health.html"><span class="nav-icon">&#9877;</span><span class="nav-label">System Health</span></a>
+      <a class="nav-item" href="agent-activity.html"><span class="nav-icon">&#128203;</span><span class="nav-label">Agent Activity</span></a>
+      <a class="nav-item" href="vault-browser.html"><span class="nav-icon">&#128269;</span><span class="nav-label">Browse &amp; Search</span></a>
       <a class="nav-item" href="index.html"><span class="nav-icon">&#9638;</span><span class="nav-label">Screens (catalog)</span></a>
     </nav>
     <main class="main">
       <h1>My Day</h1>
       <p class="text-muted">The day's most important actions, surfaced from your background agents. Open a section for the full list.</p>
+
+      <!-- ==================================================================
+           Quick Capture (REQ-SB-23 — My Day Intake Agent). Reachable
+           directly from My Day with no navigation, per Scenario 5.
+           ================================================================== -->
+      <div class="card" style="margin-bottom: var(--space-6);">
+        <h2>Quick Capture — My Day Agent</h2>
+        <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: calc(-1 * var(--space-2));">Hand it a quick note, thought, or fact any time — it classifies and files it into the vault for you, the same way Email Capture classifies incoming email (REQ-SB-23).</p>
+
+        <div class="state-switcher" data-group="my-day-intake">
+          <button type="button" class="btn btn-primary" data-state-target="populated">Populated</button>
+          <button type="button" class="btn" data-state-target="empty">First run (nothing sent yet today)</button>
+        </div>
+
+        <div class="chat-input-row">
+          <input type="text" class="input" placeholder="e.g. Ping the ADNOC team about the renewal by Friday" />
+          <button type="button" class="btn btn-primary">Capture</button>
+        </div>
+
+        <section data-state-panel data-group="my-day-intake" data-state="empty">
+          <div class="empty-state">
+            <div class="empty-state-icon">&#9997;</div>
+            <p><strong>Nothing captured yet today.</strong></p>
+            <p class="text-muted">Type anything above and send it — no need to decide where it belongs first.</p>
+          </div>
+        </section>
+
+        <section data-state-panel data-group="my-day-intake" data-state="populated" class="active">
+          <div class="item-list" style="margin-top: var(--space-4);">
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">"Ping the ADNOC team about the renewal by Friday"</span>
+                <span class="item-row-meta">Filed under Work/Notes/ &middot; tags: customer/adnoc, kind/note</span>
+                <span class="item-row-meta">Body links to the ADNOC Customer hub note</span>
+              </div>
+              <span class="badge badge-success">Filed</span>
+            </div>
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">"Pick up dry cleaning after work"</span>
+                <span class="item-row-meta">Filed under Work/Notes/ &middot; tags: kind/note</span>
+                <span class="item-row-meta">No customer identified — no customer tag or link</span>
+              </div>
+              <span class="badge badge-success">Filed</span>
+            </div>
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">"Need the new NDA reference number for the Q3 review before..."</span>
+                <span class="item-row-meta" style="color: var(--color-danger);">Classification failed — your text was saved, nothing was lost</span>
+              </div>
+              <div class="item-row-actions">
+                <span class="badge badge-warning">Couldn't classify</span>
+                <button type="button" class="btn">Retry</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
 
       <div class="state-switcher" data-group="my-day">
         <button type="button" class="btn btn-primary" data-state-target="populated">Populated</button>
@@ -49,7 +155,7 @@
         <div class="empty-state">
           <div class="empty-state-icon">&#9728;</div>
           <p><strong>Nothing captured yet.</strong></p>
-          <p class="text-muted">My Day fills in once the scheduled capture agents (email, meetings, to-dos) have run at least once. The four sections below are still reachable.</p>
+          <p class="text-muted">My Day fills in once the scheduled capture agents (email, meetings, to-dos) have run at least once. The five sections below are still reachable.</p>
         </div>
         <div class="day-section-grid">
           <a class="card day-section-card" href="my-day-emails.html">
@@ -71,6 +177,11 @@
             <h2>Important Reads</h2>
             <div class="day-section-count">—</div>
             <span class="text-muted">No captures yet</span>
+          </a>
+          <a class="card day-section-card" href="my-day-approvals.html">
+            <h2>Pending Approvals</h2>
+            <div class="day-section-count">—</div>
+            <span class="text-muted">Nothing awaiting approval yet</span>
           </a>
         </div>
       </section>
@@ -96,6 +207,11 @@
             <h2>Important Reads</h2>
             <div class="day-section-count">4</div>
             <span class="text-muted">Flagged this week</span>
+          </a>
+          <a class="card day-section-card" href="my-day-approvals.html">
+            <h2>Pending Approvals</h2>
+            <div class="day-section-count">2</div>
+            <span class="badge badge-warning">Awaiting your approval</span>
           </a>
         </div>
       </section>

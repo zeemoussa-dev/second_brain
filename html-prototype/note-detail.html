@@ -1,0 +1,221 @@
+<!--
+  Screen: Note Detail — wikilink-graph navigation (REQ-SB-02-US-01,
+  Scenario 3). Companion to vault-browser.html — reached by clicking any
+  note row there. Not a full note viewer/editor (Obsidian remains the
+  authoring surface, per this story's own Non-Goals) — scoped to exactly
+  what Scenario 3 needs: a note's frontmatter/tags, plus its forward
+  (outgoing) wikilinks and backlinks (incoming wikilinks) as a real,
+  clickable LIST. Explicitly NOT a visual/interactive graph canvas
+  (force-directed layout, zoom/pan) — resolved out of scope this pass
+  (ESC-022, Resolved 2026-08-13; ADR-011's "proportionate first" precedent).
+
+  A small, closed, three-note demo graph (all customer/masdar-tagged, the
+  story's own example tag) so every forward-link/backlink row is a REAL,
+  working click in a browser, not a decorative mockup:
+    - Masdar — Q3 renewal terms (Email)  --Customer:--> Masdar (hub)
+    - Meeting: Masdar renewal planning sync (Meeting) --Customer:--> Masdar (hub)
+    - Masdar (Customer hub) <-- backlinked from both of the above
+  This also grounds two real, buildable "empty list" states for free,
+  without contriving a fourth example: the Email and Meeting notes each
+  have an honestly-empty Backlinks list (nothing links to an individual
+  Email/Meeting note in this project's own conventions — see
+  architecture.md's Customer Hub Notes & Graph Linking section), and the
+  Customer hub has an honestly-empty Forward Links list (a hub note is a
+  link TARGET, not a source, in the existing **Customer:** [[Hub]]
+  inline-body-wikilink convention) — REQ-SB-01-US-01 Scenario 6 already
+  establishes "empty links list, not an error" as a real index state.
+
+  Mechanics — zero new shared JS. All three note states live inside one
+  `.state-switcher[data-group="note-graph"]` wrapper (`display: contents`,
+  so it adds no layout of its own — only [data-state-panel]'s own existing
+  show/hide rule fires); every forward-link/backlink row is a
+  `button.item-row[data-state-target]` (see styles.css's new clickable-
+  item-row primitive), so clicking one re-uses app.js's already-existing
+  state-switcher click delegation to swap to that note's own real state —
+  genuine multi-hop graph traversal in a browser, not a static screenshot.
+  A small page-scoped inline script (bottom of body, NOT added to the
+  shared app.js) reads a `#hash` in the incoming URL (set by
+  vault-browser.html's own deep-links) and clicks the matching quick-view
+  chip once on load, so arriving from a specific note row opens on that
+  note's own state rather than always defaulting to the first one.
+
+  Reused: .app-shell/.sidebar/.nav-item (shared shell), .card, .kv-list/
+    .kv-row/.kv-key (frontmatter), .badge (tags, kind label), .item-list
+    plus the new `button.item-row` clickable variant (forward-link/backlink
+    rows), .empty-state (used narrowly here, inline paragraph style, for
+    the two honest empty-list cases above — not a full empty-state block,
+    since only ONE of the two lists is empty at a time, never the whole
+    page), .state-switcher/[data-state-panel] (this project's own
+    buildable-state convention, repurposed here for real graph navigation
+    rather than a reviewer-only state demo — the buttons ARE the product
+    interaction, not a design-time toggle), .btn/.btn-primary, .mono,
+    .text-muted.
+  New: none beyond what vault-browser.html already added to styles.css
+    (`button.item-row`, `.tag-chip`) — this page only consumes them.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Note Detail — Second Brain</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <button class="burger-btn" id="sidebarToggle" aria-label="Toggle navigation" aria-expanded="true">&#9776;</button>
+        <h2>Second Brain</h2>
+      </div>
+      <a class="nav-item" href="agents-map.html"><span class="nav-icon">&#9678;</span><span class="nav-label">Agents Map</span></a>
+      <a class="nav-item" href="my-day.html"><span class="nav-icon">&#9728;</span><span class="nav-label">My Day</span></a>
+      <a class="nav-item" href="settings.html"><span class="nav-icon">&#9881;</span><span class="nav-label">Settings</span></a>
+      <a class="nav-item" href="system-health.html"><span class="nav-icon">&#9877;</span><span class="nav-label">System Health</span></a>
+      <a class="nav-item" href="agent-activity.html"><span class="nav-icon">&#128203;</span><span class="nav-label">Agent Activity</span></a>
+      <a class="nav-item active" href="vault-browser.html"><span class="nav-icon">&#128269;</span><span class="nav-label">Browse &amp; Search</span></a>
+      <a class="nav-item" href="index.html"><span class="nav-icon">&#9638;</span><span class="nav-label">Screens (catalog)</span></a>
+    </nav>
+    <main class="main">
+      <p class="text-muted"><a href="vault-browser.html" class="text-muted">&larr; Browse &amp; Search</a></p>
+      <h1>Note detail</h1>
+      <p class="text-muted">
+        Forward links (notes this one links to) and backlinks (notes that
+        link to this one) as a real, clickable list — not a visual graph
+        canvas (deferred; see this file's own top-of-file breadcrumb).
+      </p>
+
+      <!-- Quick-view — jump directly to any of the 3 demo notes, same data-group/click delegation as the in-body link rows below. -->
+      <div class="state-switcher" data-group="note-graph" id="noteQuickView">
+        <button type="button" class="btn btn-primary" data-state-target="email-masdar">Masdar — Q3 renewal terms (Email)</button>
+        <button type="button" class="btn" data-state-target="hub-masdar">Masdar (Customer hub)</button>
+        <button type="button" class="btn" data-state-target="meeting-masdar">Meeting: Masdar renewal planning sync</button>
+      </div>
+
+      <div class="state-switcher" data-group="note-graph" style="display: contents;">
+
+        <!-- ============================= Email note ============================= -->
+        <section data-state-panel data-group="note-graph" data-state="email-masdar" class="active">
+          <div class="card" style="margin-bottom: var(--space-4);">
+            <span class="badge badge-success" style="margin-bottom: var(--space-2); display: inline-block;">Email</span>
+            <h2 style="margin-top: 0;">Masdar — Q3 renewal terms (action needed)</h2>
+            <div class="kv-list" style="margin-bottom: var(--space-3);">
+              <div class="kv-row"><span class="kv-key">From</span><span>N. Haddad</span></div>
+              <div class="kv-row"><span class="kv-key">Received</span><span class="mono">2026-08-10T09:00:00Z</span></div>
+              <div class="kv-row"><span class="kv-key">Customer</span><span>Masdar</span></div>
+              <div class="kv-row"><span class="kv-key">Classification confidence</span><span class="mono">0.94</span></div>
+            </div>
+            <div>
+              <span class="badge" style="margin-right: var(--space-1);">kind/email</span>
+              <span class="badge" style="background: var(--color-accent-muted); color: var(--color-accent);">customer/masdar</span>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom: var(--space-4);">
+            <h2>Forward links <span class="text-muted" style="font-weight: 400; font-size: var(--font-size-sm);">— notes this one links to</span></h2>
+            <div class="item-list">
+              <button type="button" class="item-row" data-state-target="hub-masdar">
+                <div class="item-row-main">
+                  <span class="item-row-title">&#8594; Masdar</span>
+                  <span class="item-row-meta">Customer hub &middot; from the note's own <span class="mono">**Customer:** [[Masdar]]</span> body line</span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Backlinks <span class="text-muted" style="font-weight: 400; font-size: var(--font-size-sm);">— notes that link to this one</span></h2>
+            <p class="text-muted" style="margin: 0;">No notes link to this email yet — an individual captured Email note is usually a link target's source, not itself a backlink target. Shown honestly as an empty list, not an error (REQ-SB-01-US-01 Scenario 6).</p>
+          </div>
+        </section>
+
+        <!-- ============================= Customer hub note ============================= -->
+        <section data-state-panel data-group="note-graph" data-state="hub-masdar">
+          <div class="card" style="margin-bottom: var(--space-4);">
+            <span class="badge" style="background: var(--color-accent-muted); color: var(--color-accent); margin-bottom: var(--space-2); display: inline-block;">Customer</span>
+            <h2 style="margin-top: 0;">Masdar</h2>
+            <div class="kv-list" style="margin-bottom: var(--space-3);">
+              <div class="kv-row"><span class="kv-key">Type</span><span>Customer</span></div>
+              <div class="kv-row"><span class="kv-key">Affiliate of</span><span class="text-muted">&mdash;</span></div>
+            </div>
+            <div>
+              <span class="badge" style="margin-right: var(--space-1);">kind/customer</span>
+              <span class="badge" style="background: var(--color-accent-muted); color: var(--color-accent);">customer/masdar</span>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom: var(--space-4);">
+            <h2>Forward links <span class="text-muted" style="font-weight: 400; font-size: var(--font-size-sm);">— notes this one links to</span></h2>
+            <p class="text-muted" style="margin: 0;">This hub note has no outgoing links yet — a Customer hub is usually a link target, not a source, under the existing <span class="mono">**Customer:** [[Hub]]</span> inline-body-wikilink convention. Shown honestly as an empty list, not an error.</p>
+          </div>
+
+          <div class="card">
+            <h2>Backlinks <span class="text-muted" style="font-weight: 400; font-size: var(--font-size-sm);">— notes that link to this one</span></h2>
+            <div class="item-list">
+              <button type="button" class="item-row" data-state-target="email-masdar">
+                <div class="item-row-main">
+                  <span class="item-row-title">&#8592; Masdar — Q3 renewal terms (action needed)</span>
+                  <span class="item-row-meta">Email &middot; <span class="mono">customer/masdar</span></span>
+                </div>
+              </button>
+              <button type="button" class="item-row" data-state-target="meeting-masdar">
+                <div class="item-row-main">
+                  <span class="item-row-title">&#8592; Meeting: Masdar renewal planning sync</span>
+                  <span class="item-row-meta">Meeting &middot; <span class="mono">customer/masdar</span></span>
+                </div>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================= Meeting note ============================= -->
+        <section data-state-panel data-group="note-graph" data-state="meeting-masdar">
+          <div class="card" style="margin-bottom: var(--space-4);">
+            <span class="badge badge-warning" style="margin-bottom: var(--space-2); display: inline-block;">Meeting</span>
+            <h2 style="margin-top: 0;">Meeting: Masdar renewal planning sync</h2>
+            <div class="kv-list" style="margin-bottom: var(--space-3);">
+              <div class="kv-row"><span class="kv-key">Date</span><span class="mono">2026-08-11T14:00:00Z</span></div>
+              <div class="kv-row"><span class="kv-key">Attendees</span><span>N. Haddad, you</span></div>
+              <div class="kv-row"><span class="kv-key">Customer</span><span>Masdar</span></div>
+            </div>
+            <div>
+              <span class="badge" style="margin-right: var(--space-1);">kind/meeting</span>
+              <span class="badge" style="background: var(--color-accent-muted); color: var(--color-accent);">customer/masdar</span>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom: var(--space-4);">
+            <h2>Forward links <span class="text-muted" style="font-weight: 400; font-size: var(--font-size-sm);">— notes this one links to</span></h2>
+            <div class="item-list">
+              <button type="button" class="item-row" data-state-target="hub-masdar">
+                <div class="item-row-main">
+                  <span class="item-row-title">&#8594; Masdar</span>
+                  <span class="item-row-meta">Customer hub &middot; from the note's own <span class="mono">**Customer:** [[Masdar]]</span> body line</span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Backlinks <span class="text-muted" style="font-weight: 400; font-size: var(--font-size-sm);">— notes that link to this one</span></h2>
+            <p class="text-muted" style="margin: 0;">No notes link to this meeting yet. Shown honestly as an empty list, not an error (REQ-SB-01-US-01 Scenario 6).</p>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+  <script src="app.js"></script>
+  <script>
+    // Page-scoped only (not added to the shared app.js): honor a #hash deep
+    // link from vault-browser.html's own note rows by clicking the matching
+    // quick-view chip once on load, reusing app.js's existing state-switcher
+    // delegation rather than duplicating its panel-toggle logic here.
+    document.addEventListener('DOMContentLoaded', () => {
+      const key = window.location.hash.replace('#', '');
+      if (!key) return;
+      const chip = document.querySelector(`#noteQuickView [data-state-target="${key}"]`);
+      if (chip) chip.click();
+    });
+  </script>
+</body>
+</html>

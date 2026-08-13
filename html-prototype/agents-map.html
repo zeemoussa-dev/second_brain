@@ -144,6 +144,367 @@
     sidebar collapse transition, sliding side panel — all CSS/SVG-only
     (incl. SVG SMIL animateMotion for the traveling pulses), no animation
     framework.
+  Revision 2026-08-11 (REQ-SB-18/REQ-SB-19 — run retroactively per both
+  stories' `/design`-requested flags, after `/spec` already locked their
+  Gherkin): two changes, both additive — the "Populated" and "First run"
+  states above, and every existing round-1..6 polar-grid mechanism (ring=
+  Type, angle=Section, Hub-on-inner-band, radar background, KB brain), are
+  UNTOUCHED.
+    (1) Every agent's Settings kv-list (REQ-SB-13's existing panel) gains
+    two new rows — Section and Provider — the panel's first genuinely
+    EDITABLE fields (every prior row was display-only text). Reused: same
+    .kv-row/.kv-key shell; new (added to styles.css): `.kv-select`, a
+    compact `<select class="input kv-select">` sized to sit inline in a
+    kv-row instead of taking the full row width. Section options are
+    REQ-SB-18's 5 starting names; Provider options are REQ-SB-19's 3 seed
+    Providers (Compass default, OpenAI GPT-4, Anthropic Claude). People
+    Notes is deliberately set to Anthropic Claude (not Compass) with an
+    inline `badge-warning` "Not yet available" + explanatory `<p>` —
+    directly demonstrating REQ-SB-19 Scenario 7 ("honestly reports it's not
+    available ... does not silently fall back to Compass") at the exact
+    surface where the user picks a Provider, not just as a CRUD-screen
+    abstraction. Section/Provider assignments here are kept consistent
+    with settings.html's new Sections/Providers cards (Productivity=3,
+    Customers=1, Technical=1 agents; Compass=4, Anthropic Claude=1 agents).
+    (2) A third state-switcher option, "5 sections (REQ-SB-18 N-section
+    reference)", addresses the real design gap the approved prototype left
+    open: the canvas's Hub layout hardcodes exactly 3 hubs at hand-picked
+    angles, but REQ-SB-18 makes Sections user-created and arbitrary-N. This
+    new panel proves the SAME polar-grid mechanism generalizes past 3 Hubs
+    without collision, using REQ-SB-18's real starting section names,
+    evenly spaced 72° apart (5 x 72 = 360) via the identical angle x radius
+    trigonometry every prior round used (x = 50 + r*cos(angle), y = 50 +
+    r*sin(angle), empirically re-derived from round 6's own committed Hub/
+    agent coordinates before reusing it here) — not eyeballed, not the
+    exact production formula either (that is explicitly left to
+    /plan-tasks's layoutAgents.ts/polarLayout.ts, per this batch's own
+    scope). Sales and Products render as genuine zero-agent Hubs (Scenario
+    7) — no cluster lines, nothing to click, proving an empty Section is a
+    real, buildable state, not just a populated one. Hub color is changed
+    from the old per-Type modifier classes (.hub-node--worker etc.) to the
+    neutral default (--color-accent, already .hub-node's own fallback) —
+    once a Section can hold agents of any Type (Scenario 6), tinting its
+    Hub by one Type would misrepresent it; ring/agent-node Type coloring
+    itself is UNCHANGED. The existing "Populated" state's 3 Type-colored
+    Hubs (Capture/People/Knowledge Q&A) are left exactly as approved — they
+    describe the pre-REQ-SB-18 1:1 section-equals-type model this story
+    supersedes conceptually, kept untouched per this pass's minimal-change
+    scope rather than rewritten in place; flagged for the human's attention
+    in this design pass's own report, not silently decided.
+  Revision 2026-08-11 (REQ-SB-20/REQ-SB-21 design pass, run per both
+  stories' already-locked Gherkin and operator-resolved Notes: keyword
+  matching, free-text per-agent keywords, cross-Section-only routing for
+  REQ-SB-20; default mode Autonomous, a real Pending Approvals surface built
+  now for REQ-SB-21). Two additive changes to the side panel (REQ-SB-13,
+  UNCHANGED); the polar-grid canvas itself is untouched, this pass is scoped
+  entirely to the agent detail panel:
+    (1) Every agent's Settings kv-list gains two more rows -- Keywords
+    (REQ-SB-20) and Working mode (REQ-SB-21) -- appended after the existing
+    Section/Provider rows (REQ-SB-18/19). Reused: the identical .kv-row/
+    .kv-key shell and .kv-select-sized inline control every prior row in
+    this panel already uses; the Keywords row deliberately reuses the
+    .kv-select sizing class on a free-text input type=text instead of a
+    select -- .kv-select's CSS only constrains width/padding/font-size
+    inline-in-a-kv-row, nothing tag-specific, so this is genuine reuse, not
+    a new component (documented so it doesn't read as an accidental
+    misnamed class). No new CSS for this row. Keywords are grounded in what
+    is already established about each agent (Email Capture: "email, inbox,
+    customer correspondence, message classification"; Meeting Capture:
+    "meetings, calendar, scheduling, attendees"; People Notes: "people,
+    contacts, person notes, attendee bios"; Vault Q&A: "vault search,
+    question answering, knowledge lookup") -- except To-Do Capture,
+    deliberately left with NO keywords assigned (empty input, explanatory
+    paragraph below), directly demonstrating REQ-SB-20 Scenario 4 ("an agent
+    with no keywords assigned is never selected as a routing target") as a
+    real buildable state, not just asserted in prose. Working mode defaults
+    to Autonomous everywhere except two deliberately-Supervised agents --
+    Meeting Capture and People Notes -- chosen so the new Pending Approvals
+    surface (my-day.html) has more than one real example to show; To-Do
+    Capture is set to Manual, the third mode, so all three values are
+    demonstrated across the 5 agents without adding a 6th fixture agent.
+    (2) Meeting Capture's Chat block (the only Supervised agent with a
+    demonstrated chat flow) gains a pending-approval proposal card, distinct
+    from a normal .chat-message, per REQ-SB-21 Scenario 3/3b -- new
+    .chat-proposal pattern (added to styles.css): a dashed-warning-bordered
+    card (pending) / solid-success-bordered (approved) / solid-danger-
+    bordered (declined) block, reusing the existing --color-warning/
+    --color-success/--color-danger tokens via the same color-mix(...)
+    technique .btn-danger/.badge-* already use -- no new hex. Approve/
+    Decline buttons reuse .btn/.btn-primary/.btn-danger as-is. The three
+    outcomes (pending / approved / declined) are demonstrated via a small
+    nested .state-switcher INSIDE the chat thread itself (own
+    data-group="meeting-capture-approval"), reusing the exact existing
+    state-switcher convention/JS, just nested one level deeper than every
+    other use in this prototype -- the Approve/Decline buttons drawn on the
+    pending card are themselves inert demo buttons (the switcher above them
+    is the actual review-toggle, consistent with how Settings' own
+    blocked-delete demo already uses inert disabled buttons to show a
+    state, not real logic). The always-present opening agent message and
+    the live free-text send form (data-role="agent-chat-form"/
+    "agent-chat-thread") are UNCHANGED and still fully interactive -- the
+    nested switcher only toggles the proposal/outcome block appended after
+    them, so app.js's existing single-data-role chat-append logic needs no
+    change. The other 4 agents' Chat blocks are untouched -- no proposal
+    concept (they're Autonomous/Manual, which never propose-and-wait per
+    the story's own scenarios).
+  See also: my-day.html (this same pass) for the new Pending Approvals
+  surface -- REQ-SB-21's "gets a real, dedicated surface, built now"
+  resolution -- and the new My Day Intake Agent surface (REQ-SB-23).
+
+  Revision 2026-08-12 (BUG-002 fix — Option D semantic zoom/drill-down,
+  ported from the operator-approved exploration prototype into this
+  canonical screen; REVIEW-QUEUE.md "BUG-002 layout exploration" entry has
+  the full comparison/approval history). BUG-002: layoutAgents.ts's
+  SECTION_ARC_SPAN_DEG is a fixed 80-degree arc every Section's agents fan
+  across regardless of how many Sections exist or how many agents share one
+  Section — confirmed live with all 5 real seeded agents sitting in one
+  Section, spilling into neighboring Sections' territory with heavy label
+  collision (BUGS.md BUG-002). The operator picked Option D (semantic zoom /
+  drill-down) plus two refinements as the approved fix (2026-08-12
+  approval), worked out and reviewed first in html-prototype/
+  agents-map-exploration.html (kept, UNMODIFIED, as historical comparison —
+  Options A/B/C there are rejected alternatives, not part of this fix, and
+  that file is not the design-of-record any more; this screen is). This
+  pass ports Option D + both refinements from that exploration sandbox into
+  this canonical screen as the new real behavior, replacing the old
+  static/fixed-position-only rendering:
+    (a) Every agent now ALWAYS renders as a small, unlabeled
+        .agent-node--compact dot at the overview level (not just past a
+        density threshold) — hover/focus reveals its label. This makes
+        angular crowding within a Section structurally impossible to read
+        as label collision, at any agent count. Agent POSITIONS themselves
+        are UNCHANGED from round 1-6's own hand-computed angle x radius
+        trigonometry (documented earlier in this comment) — this fix
+        changes only how density is rendered/interacted with, not the
+        underlying polar-grid geometry.
+    (b) Each section's .hub-node is now a real <button> (data-section-id)
+        instead of a non-interactive <div> — clicking it triggers a CSS
+        zoom-out transition on the overview (.explore-zoom-overview /
+        .zooming-out, reused verbatim from the exploration's own additive
+        styles.css section) and swaps in that Section's own dedicated
+        "Agents Tree" drill-down view (.explore-drilldown, also reused
+        verbatim) — that Section's agents spread across the full 360
+        degrees instead of a thin wedge, always fully labeled at ordinary
+        .agent-node size, with a "Back to Agents Map" button
+        (data-role="agents-drilldown-back") that reverses it. New
+        page-scoped script: agents-map.js (parallel to app.js, NOT the
+        exploration's own agents-map-exploration.js) wires this, plus the
+        entrance animation below. Per-section drill-down positions use the
+        same angle x radius trigonometry as the exploration's own
+        renderSectionTree() (angle = idx/n * 360 - 90, radius = 40, agents
+        spread evenly around the full circle), computed by hand and
+        verified, not eyeballed.
+    (c) The drill-down view's .hub-node is narrower (8% vs the overview's
+        11%), reusing agents-map-exploration.html's own Refinement 1 CSS
+        verbatim (.explore-drilldown .hub-node, unedited) — so the Hub
+        reads as the connecting/organizing element (dashed border, center
+        position, converging lines) without visually outweighing the
+        full-size agent nodes it groups.
+    (d) An entrance animation plays once on page load (and again whenever
+        the state-switcher is used to enter "Populated"/"5 sections"/
+        "Dense section") and is replayable via each state's own "Replay
+        intro" button: every agent first renders in one flat, evenly-spaced
+        row (Knowledge Base/Hubs/rings/spokes/boundary/Section titles all
+        invisible), holds briefly, then glides to its real circular
+        position while the Knowledge Base grows/fades in at the center it
+        vacated and everything else fades in alongside it — reused verbatim
+        from agents-map-exploration.html's own Refinement 2
+        (.agent-node--intro-move / .agents-map-lines.agents-intro-fade /
+        .section-title.agents-intro-fade / @keyframes kbGrowIn, all
+        unedited in styles.css). agents-map.js's own playIntro() is a
+        lighter port of the exploration's playIntro() — this canonical
+        screen's positions are already present in the static markup (never
+        computed client-side, unlike the exploration's own side-by-side
+        comparison engine), so it only needs to capture/flatten/restore
+        them, not lay out geometry from a dataset.
+    Hub coloring is now neutral (var(--color-accent)) in the "Populated"
+    state too, matching Option D's own actual reviewed/approved rendering
+    (its render() never tints a Hub by agent Type) and the "5 sections"
+    state's own already-neutral convention (set at the REQ-SB-18 pass) —
+    this resolves that pass's own previously-flagged "kept untouched,
+    flagged for the human's attention" inconsistency between the two states
+    as a natural side effect of porting the one approved mechanism
+    uniformly, not a separate redesign decision — called out explicitly
+    here, not silently. Section-title accent bars in "Populated" are
+    neutral for the same reason. Hub sub-labels in "Populated" now show
+    agent counts ("3 agents" etc.), matching "5 sections"'s own convention,
+    instead of the old "Worker section" / "Producer section" / "Expert
+    section" text (which implied a 1:1 Section-equals-Type model REQ-SB-18
+    already superseded).
+    A NEW fourth state, "Dense section (BUG-002 fix demo)", was added
+    (beyond the exploration's own 3 reviewed reference states) — it mirrors
+    BUG-002's own literal original repro (BUGS.md: "all 5 seeded agents
+    currently sit in 'Technical'") using the exact same 5 Sections/Hub
+    positions as the existing "5 sections" state (untouched) but with all 5
+    real agents assigned to Technical instead of spread out, the other 4
+    Sections genuinely empty. This demonstrates the fix directly against
+    the bug's own reported scenario — neither prior state ever actually
+    reached BUG-002's own 4+-agents-in-one-Section trigger condition
+    ("Populated"'s Capture has 3 agents, "5 sections"'s Productivity also
+    has 3), so without this new state the fix would never be visibly
+    exercised by this prototype at all.
+  REQ-SB-20/21's Chat/Working-mode/Keywords side-panel content (below) is
+  UNCHANGED — this pass is scoped entirely to the overview canvas + its new
+  drill-down views + the entrance animation.
+  Reused: .hub-node/.agent-node[--type]/.agent-node--compact (existing,
+    now finally instantiated)/.section-title/.ring-circle/.radar-spoke/
+    .kb-node/.state-switcher/[data-state-panel]/.btn/.agent-type-legend/
+    .empty-state (all pre-existing); .explore-zoom-overview/.zooming-out/
+    .explore-drilldown/.explore-drilldown .hub-node/.agent-node--intro-move/
+    .agents-map-lines.agents-intro-fade/.section-title.agents-intro-fade/
+    @keyframes kbGrowIn (all from agents-map-exploration's own additive
+    styles.css section, reused verbatim here, not duplicated under a second
+    class name — the "explore-" prefix stays as-is per the class already
+    existing in styles.css; renaming it would touch the exploration file's
+    own now-frozen comparison history for no functional benefit). New:
+    agents-map.js (page-scoped companion script, parallel to app.js) — no
+    new CSS was needed for this port.
+  Revision 2026-08-12 (REQ-SB-31 design pass): added the new System Health
+  nav item to the shared sidebar (see system-health.html's own breadcrumb
+  for the full nav-wiring list). No other change on this page.
+
+  Revision 2026-08-13 (REQ-SB-38 design pass — Agents Map Density
+  Clustering, operator-directed the same day BUG-009/BUG-010 were fixed
+  live in layoutAgents.ts/agents-map.css: "This is a problem and will
+  always appear as the number of Agents grow, we will have them on top of
+  each other... We need to be able to cluster some agents together to
+  limit the overlapping in future — a circle with a number and '+' so we
+  can click on it to view the agents inside."). BUG-009's own fix corrected
+  layoutAgents.ts's fan-out angle to stay within a Section's own wedge
+  boundary (SECTION_ARC_SPAN_DEG_CAP), but that only prevents cross-Section
+  spillover — it does nothing about same-Section crowding as agent count
+  grows within that now-correctly-bounded wedge (more agents fanned across
+  the same arc simply render closer together, eventually node-to-node
+  overlapping). REQ-SB-38 is the next layer: a real density/scale problem.
+  A new 5th state-switcher option, "Density clustering (REQ-SB-38 demo)",
+  demonstrates it — a NEW addition; the existing "Populated"/"First run"/
+  "5 sections"/"Dense section" states are all UNTOUCHED.
+
+  What's new, and why (design rationale, not a locked spec — every
+  genuinely open PRD question below stays flagged, not silently resolved):
+    (1) The cluster marker itself instantiates .map-overflow-marker — a
+    primitive already defined in styles.css (the "Scale-to-~100-agents
+    pattern" comment above .agents-map-stage) since REQ-SB-12's own first
+    pass, but never actually used by any screen until now. It is the ONLY
+    existing circular "count" visual in this design system (.badge is a
+    rectangular pill used for status chips like "Indexed"/"Blocked" on
+    settings.html — the wrong shape for the operator's own literal "a
+    circle with a number and +" ask); reused as-is, not reinvented. It is
+    now a real &lt;button&gt; (was an inert div) styled with the same
+    dashed-accent-border + tinted-glow .hub-node already uses at rest, and
+    the same hover-lift .agent-node already uses on interaction — so its
+    clickability reads consistently with every other interactive node on
+    this canvas, not as new, unexplained visual language. Two new inner
+    spans (.map-overflow-marker-count/-label) mirror .hub-node's own
+    bold-main-text + small-muted-subtext structure (see styles.css).
+    (2) Threshold rule — DESIGNER'S OWN PROPOSAL, flagged for the human to
+    confirm/adjust at sign-off, not a hidden assumption (PRD open question
+    1: "the exact threshold that triggers clustering", "left to /spec").
+    Grounded in how layoutAgents.ts actually positions agents, not a
+    guess: within one Section's wedge, an agent's ANGLE comes from its
+    index among that same Section's agents (regardless of Type), but its
+    RADIUS is its own Type's ring (Worker outermost/Expert middle/Producer
+    innermost) — so the real "will they visually collide" question is per
+    (Section x Type-ring) pair, not per Section as a whole: a Section with
+    5 Worker + 5 Expert + 5 Producer agents shows only 5 dots on any one
+    ring (not crowded), while a Section with 15 Worker agents alone puts
+    all 15 on the SAME ring at ever-tighter spacing as count grows
+    (crowded). This also directly resolves PRD open question (4): a
+    cluster never mixes Types, because clustering is scoped to one
+    (Section x Type-ring) slot — the axis crowding actually happens on,
+    not an arbitrary choice. Proposed cap: VISIBLE_SLOT_CAP = 6 agents
+    sharing one Section's wedge AND one Type-ring — sized by hand-checking
+    chord spacing at today's real 5-Section/57.6deg-wedge geometry
+    (BUG-009's own SECTION_ARC_SPAN_DEG_CAP=80,
+    SECTION_ARC_SPAN_FRACTION=0.8 constants): the tightest ring (Producer,
+    r=30) stays collision-free up to ~7 agents at that wedge width before
+    .agent-node--compact's own 5%-wide dots start touching; 6 is a
+    deliberately round, slightly conservative number for a first pass —
+    NOT the "more robust, more work" computed node-size-vs-available-arc-
+    length check the PRD's own open question (1) names as the more
+    correct long-term alternative (a reasonable follow-up once a real
+    Section actually approaches this count — REQ-SB-37, Agent Creation,
+    is the main way agent count grows over time — not built here). Past
+    that cap: the first 5 agents render individually (ordinary
+    .agent-node--compact dots, exactly as today); the wedge's LAST fan
+    slot (6th position) renders one .map-overflow-marker instead of a 6th
+    dot, showing "+N" for however many agents remain — this "last slot
+    becomes the overflow marker" shape is the exact behavior styles.css's
+    own "Scale-to-~100-agents pattern" comment already documented, now
+    actually built.
+    (3) Click-to-view mechanic: the cluster marker is wired through
+    agents-map.js's EXISTING generic click-to-zoom code (wireDrilldown())
+    — the exact same mechanic BUG-002's Option D already established for
+    Section Hubs (a button carrying [data-section-id] opens the matching
+    drill-down panel), applied one level deeper, per this task's own
+    framing. No new JS logic was needed, only a widened element selector
+    (.hub-node[data-section-id] -&gt;
+    .hub-node[data-section-id], .map-overflow-marker[data-section-id]) —
+    see agents-map.js's own updated comment. The cluster marker's own
+    [data-section-id] value ("technical-cluster-overflow") is deliberately
+    distinct from its Section's real id ("technical"), so clicking the
+    Hub itself still opens the FULL Section drill-down (all 15 agents,
+    unchanged/unclustered — see point (4)), while clicking the cluster
+    marker opens a NARROWER drill-down scoped to just the clustered
+    subset (the 10 agents it represents) — both reuse the identical
+    .explore-drilldown/.hub-node(radius 0)/.agent-node/.cluster-line
+    "Agents Tree" visual language SectionDrilldown.tsx already
+    established, just fed a different agent subset. This directly matches
+    the operator's own words ("click on it to view the agents inside") —
+    the marker's own click reveals ONLY what it represents, not the whole
+    Section.
+    (4) Genuinely undecided, deliberately NOT resolved here (PRD open
+    question 2): whether layoutSectionDrilldown's own full-360deg spread
+    also needs this same clustering treatment once a single Section's
+    total count gets large enough. This demo's own "technical" drill-down
+    panel (reached by clicking the Technical Hub itself, not the cluster
+    marker) intentionally shows all 15 agents UNCLUSTERED, spread across
+    the full circle exactly as layoutSectionDrilldown already does today —
+    at 15 agents this visibly reads as dense/crowded too, which is the
+    honest point: this pass does NOT claim to have solved that layer, it
+    demonstrates the residual gap so the human can see it directly rather
+    than have it asserted in prose. A callout inside that panel says so
+    explicitly.
+    (5) Whether a cluster's own count needs to update live as agents are
+    added/removed (PRD open question 5, tied to REQ-SB-37 Agent Creation,
+    itself still Draft) is out of scope for a static HTML/CSS/JS prototype
+    with no live agent count to begin with — left to /spec once both
+    stories are further along.
+  Demo dataset: the Technical Section is given 15 SYNTHETIC "Illustrative
+  Worker NN" agents (all Worker-type, all on the same ring, per point (2)
+  above) — deliberately dense (per this task's own "15-20 agents" range)
+  so the clustering behavior is actually visible/reviewable, since today's
+  real ~7-agent roster never reaches this count. Marked "(illustrative)"
+  throughout, matching agents-map-exploration.html's own established
+  convention for synthetic stress-test fixtures — these are not real,
+  planned, or proposed agents. Sales/Productivity/Customers/Products stay
+  genuinely empty (Scenario 7, same convention as every other state), so
+  this demo isolates the ONE Section actually being stress-tested. All 15
+  illustrative agents share ONE stand-in side-panel detail block
+  (data-agent-id="illustrative-worker", new
+  [data-agent-detail="illustrative-worker"] block in the shared
+  #agentPanel) instead of 15 near-duplicate real panels, since they carry
+  no real Settings/Actions/Chat/History content — REQ-SB-13's real
+  per-agent panel contract is unaffected, unchanged for every real agent.
+  Reused: .hub-node/.agent-node[--worker]/.agent-node--compact/
+  .explore-drilldown/.cluster-line/.spoke-line/.section-boundary/
+  .section-title/.state-switcher/[data-state-panel]/.card/.text-muted/
+  .agent-type-legend/.empty-state/.btn/.side-panel-agent (all pre-existing,
+  same 5-Section KB/radar/rings/boundary/Hub scaffold as the existing
+  "Dense section" state, same trigonometry convention, same
+  data-agents-stage-root/data-agents-overview-stage/data-agents-drilldown
+  wiring agents-map.js already understands generically). New:
+  .map-overflow-marker (existing-but-unused primitive, now instantiated
+  and made interactive — see styles.css's own updated comment above that
+  rule) and its two new inner spans (.map-overflow-marker-count/-label).
+  agents-map.js's wireDrilldown() selector and playIntro()'s
+  hub-treatment selector were both widened by one clause each to also
+  match .map-overflow-marker — no new functions, no new interaction
+  model.
+  This entire pass is flagged for human browser sign-off per this
+  project's standard /design contract (see REVIEW-QUEUE.md) — nothing
+  here is approved, and the threshold/open-question decisions above are
+  explicitly the designer's own proposal, not settled product decisions.
 -->
 <!doctype html>
 <html lang="en">
@@ -162,6 +523,9 @@
       <a class="nav-item active" href="agents-map.html"><span class="nav-icon">&#9678;</span><span class="nav-label">Agents Map</span></a>
       <a class="nav-item" href="my-day.html"><span class="nav-icon">&#9728;</span><span class="nav-label">My Day</span></a>
       <a class="nav-item" href="settings.html"><span class="nav-icon">&#9881;</span><span class="nav-label">Settings</span></a>
+      <a class="nav-item" href="system-health.html"><span class="nav-icon">&#9877;</span><span class="nav-label">System Health</span></a>
+      <a class="nav-item" href="agent-activity.html"><span class="nav-icon">&#128203;</span><span class="nav-label">Agent Activity</span></a>
+      <a class="nav-item" href="vault-browser.html"><span class="nav-icon">&#128269;</span><span class="nav-label">Browse &amp; Search</span></a>
       <a class="nav-item" href="index.html"><span class="nav-icon">&#9638;</span><span class="nav-label">Screens (catalog)</span></a>
     </nav>
     <main class="main">
@@ -169,20 +533,26 @@
       <p class="text-muted">
         A polar grid: angle is section (domain), radius is agent type —
         Worker outermost, Expert middle, Producer innermost, Knowledge Base
-        at the center. Each section's Hub sits close to the Knowledge Base,
-        on the inner ring — the only thing that connects back to it. Click
-        any agent to see its settings, actions, chat with it directly, and
-        its communication history.
+        at the center. Every agent renders as a small, unlabeled dot here —
+        hover or focus one to reveal its label. Click a section's Hub to
+        zoom into that section's own Agents Tree, where every agent in it
+        is fully labeled; a "Back to Agents Map" button returns to the
+        overview. Click any agent (dot or full node) to see its settings,
+        actions, chat with it directly, and its communication history.
       </p>
 
       <div class="state-switcher" data-group="agents-map">
         <button type="button" class="btn btn-primary" data-state-target="populated">Populated</button>
         <button type="button" class="btn" data-state-target="first-run">First run (no agents yet)</button>
+        <button type="button" class="btn" data-state-target="five-section">5 sections (REQ-SB-18 N-section reference)</button>
+        <button type="button" class="btn" data-state-target="dense-section">Dense section (BUG-002 fix demo)</button>
+        <button type="button" class="btn" data-state-target="density-clustering">Density clustering (REQ-SB-38 demo)</button>
       </div>
 
       <!-- First-run state: vault indexed (brain active) and the ambient
            radar/ring grid always renders, but no sections/hubs/agents are
-           configured yet. -->
+           configured yet. Untouched by the BUG-002 fix — no agents/Hubs to
+           make compact or drill into. -->
       <section data-state-panel data-group="agents-map" data-state="first-run">
         <div class="agents-map-stage">
           <div class="agents-map-canvas">
@@ -290,14 +660,20 @@
       </section>
 
       <!-- Populated state: full polar grid — angle = section, radius =
-           agent type — KB (brain, now 34% of canvas width, up from 22%) at
-           center, 3 inner-ring Hubs (r=32, close to the KB), ring-placed
-           agents. Round 6 rebalanced every radius outward from round 5's
-           scale to preserve real clearance now that the KB is bigger — see
-           the top-of-file breadcrumb for the full arithmetic. -->
+           agent type — KB (brain, 34% of canvas width) at center, 3
+           inner-ring Hubs (r=32, close to the KB), ring-placed agents.
+           BUG-002 fix (2026-08-12): agents now always render as unlabeled
+           .agent-node--compact dots; each Hub is a clickable button that
+           zooms into that section's own drill-down Agents Tree (see the
+           .explore-drilldown block below the overview). All positions are
+           UNCHANGED from round 6's own hand-computed trigonometry — only
+           the rendering/interaction model changed. Hub coloring is now
+           neutral (was per-Type) — see the top-of-file breadcrumb. -->
       <section data-state-panel data-group="agents-map" data-state="populated" class="active">
+        <div data-agents-stage-root>
+        <div data-agents-overview-stage>
         <div class="agents-map-stage">
-          <div class="agents-map-canvas">
+          <div class="agents-map-canvas explore-zoom-overview">
             <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
               <!-- Radar background: 12 faint generic spokes every 30°, center to rim (r=58) -->
               <line class="radar-spoke" x1="50" y1="50" x2="108" y2="50" />
@@ -314,9 +690,7 @@
               <line class="radar-spoke" x1="50" y1="50" x2="100.23" y2="21" />
 
               <!-- Radial axis: 3 concentric rings, one per agent type, global across all
-                   sections (round 6: Producer r=30, Expert r=45, Worker r=50 — up from
-                   18/30/42, to keep real clearance from the KB's new ~r=17 edge and
-                   from the Hub band at r=32) -->
+                   sections (Producer r=30, Expert r=45, Worker r=50) -->
               <circle class="ring-circle" cx="50" cy="50" r="30" />
               <circle class="ring-circle" cx="50" cy="50" r="45" />
               <circle class="ring-circle" cx="50" cy="50" r="50" />
@@ -329,9 +703,9 @@
 
               <!-- KB -> Hub spokes (the only KB-facing connection per section) — short,
                    Hubs sit on the inner band (r=32), close to the KB (~r=17 edge) -->
-              <line class="spoke-line" x1="50" y1="50" x2="77.71" y2="34" stroke="var(--agent-color-worker)" />
-              <line class="spoke-line" x1="50" y1="50" x2="72.63" y2="72.63" stroke="var(--agent-color-producer)" />
-              <line class="spoke-line" x1="50" y1="50" x2="22.29" y2="34" stroke="var(--agent-color-expert)" />
+              <line class="spoke-line" x1="50" y1="50" x2="77.71" y2="34" stroke="var(--color-accent)" />
+              <line class="spoke-line" x1="50" y1="50" x2="72.63" y2="72.63" stroke="var(--color-accent)" />
+              <line class="spoke-line" x1="50" y1="50" x2="22.29" y2="34" stroke="var(--color-accent)" />
 
               <!-- Capture section: Hub (r=32, angle=-30, section midpoint) -> agents
                    (Worker ring, r=50), agents <-> agents -->
@@ -434,66 +808,64 @@
               <span class="kb-node-label">Knowledge Base<span class="kb-node-sub">Vault indexed</span></span>
             </div>
 
-            <!-- Section Hubs — on the inner band (r=32, close to the KB, just
-                 outside the Producer ring r=30), not clickable. Round 6 moved this
-                 out from r=19 (round 5) to keep real clearance now the KB grew to
-                 r~17 — edge-to-edge KB-to-Hub gap is now ~9.5 units, ~19% of the
-                 canvas radius. People's Hub is angle-offset from its section's
-                 midpoint (see cluster-line comment above) to clear the
-                 Producer-ring agent already at that angle. -->
-            <div class="hub-node hub-node--worker" style="top:34%; left:77.71%;">
+            <!-- Section Hubs — clickable buttons (BUG-002 fix): click to zoom
+                 into that section's own Agents Tree drill-down below. Same
+                 inner-band positions as before (r=32); neutral coloring now
+                 (see breadcrumb). -->
+            <button type="button" class="hub-node" style="top:34%; left:77.71%;" data-section-id="capture">
               Capture Hub
-              <span class="hub-node-type">Worker section</span>
-            </div>
-            <div class="hub-node hub-node--producer" style="top:72.63%; left:72.63%;">
+              <span class="hub-node-type">3 agents &middot; click to zoom in</span>
+            </button>
+            <button type="button" class="hub-node" style="top:72.63%; left:72.63%;" data-section-id="people">
               People Hub
-              <span class="hub-node-type">Producer section</span>
-            </div>
-            <div class="hub-node hub-node--expert" style="top:34%; left:22.29%;">
+              <span class="hub-node-type">1 agent &middot; click to zoom in</span>
+            </button>
+            <button type="button" class="hub-node" style="top:34%; left:22.29%;" data-section-id="qa">
               Q&amp;A Hub
-              <span class="hub-node-type">Expert section</span>
-            </div>
+              <span class="hub-node-type">1 agent &middot; click to zoom in</span>
+            </button>
 
-            <!-- Capture section agents — Worker ring (outermost, r=50) -->
-            <button type="button" class="agent-node agent-node--worker" style="top:3.01%; left:67.1%; animation-delay:0.1s;" data-agent-id="email-capture">
+            <!-- Capture section agents — Worker ring (outermost, r=50). Always
+                 compact/unlabeled at the overview (BUG-002 fix) — hover/focus
+                 reveals the label; same positions as before. -->
+            <button type="button" class="agent-node agent-node--worker agent-node--compact" style="top:3.01%; left:67.1%; animation-delay:0.1s;" data-agent-id="email-capture">
               <span class="agent-node-label">Email Capture</span>
               <span class="agent-node-type">Worker</span>
             </button>
-            <button type="button" class="agent-node agent-node--worker" style="top:25%; left:93.3%; animation-delay:0.2s;" data-agent-id="meeting-capture">
+            <button type="button" class="agent-node agent-node--worker agent-node--compact" style="top:25%; left:93.3%; animation-delay:0.2s;" data-agent-id="meeting-capture">
               <span class="agent-node-label">Meeting Capture</span>
               <span class="agent-node-type">Worker</span>
             </button>
-            <button type="button" class="agent-node agent-node--worker" style="top:58.68%; left:99.24%; animation-delay:0.3s;" data-agent-id="todo-capture">
+            <button type="button" class="agent-node agent-node--worker agent-node--compact" style="top:58.68%; left:99.24%; animation-delay:0.3s;" data-agent-id="todo-capture">
               <span class="agent-node-label">To-Do Capture</span>
               <span class="agent-node-type">Worker</span>
             </button>
 
             <!-- People section agent — Producer ring (innermost, r=30) -->
-            <button type="button" class="agent-node agent-node--producer" style="top:80%; left:50%; animation-delay:0.4s;" data-agent-id="people-producer">
+            <button type="button" class="agent-node agent-node--producer agent-node--compact" style="top:80%; left:50%; animation-delay:0.4s;" data-agent-id="people-producer">
               <span class="agent-node-label">People Notes</span>
               <span class="agent-node-type">Producer</span>
             </button>
 
             <!-- Q&A section agent — Expert ring (middle, r=45) -->
-            <button type="button" class="agent-node agent-node--expert" style="top:27.5%; left:11.03%; animation-delay:0.5s;" data-agent-id="vault-qa">
+            <button type="button" class="agent-node agent-node--expert agent-node--compact" style="top:27.5%; left:11.03%; animation-delay:0.5s;" data-agent-id="vault-qa">
               <span class="agent-node-label">Vault Q&amp;A</span>
               <span class="agent-node-type">Expert</span>
             </button>
 
             <!-- Section titles — outside the outer boundary (r=66), at each section's
-                 angular midpoint. Untouched by round 6's radial rebalance other than
-                 the outward nudge that comes from a slightly larger boundary. -->
+                 angular midpoint. Neutral accent now (see breadcrumb); positions unchanged. -->
             <div class="section-title" style="top:17%; left:107.16%;">
               Capture
-              <span class="section-title-accent" style="background: var(--agent-color-worker);"></span>
+              <span class="section-title-accent" style="background: var(--color-accent);"></span>
             </div>
             <div class="section-title" style="top:116%; left:50%;">
               People
-              <span class="section-title-accent" style="background: var(--agent-color-producer);"></span>
+              <span class="section-title-accent" style="background: var(--color-accent);"></span>
             </div>
             <div class="section-title" style="top:17%; left:-7.16%;">
               Knowledge Q&amp;A
-              <span class="section-title-accent" style="background: var(--agent-color-expert);"></span>
+              <span class="section-title-accent" style="background: var(--color-accent);"></span>
             </div>
           </div>
         </div>
@@ -502,13 +874,1081 @@
           <span><span class="legend-swatch" style="--legend-color: var(--agent-color-worker);"></span>Worker ring (outermost) — runs a recurring capture job</span>
           <span><span class="legend-swatch" style="--legend-color: var(--agent-color-expert);"></span>Expert ring (middle) — answers questions over the vault</span>
           <span><span class="legend-swatch" style="--legend-color: var(--agent-color-producer);"></span>Producer ring (innermost) — maintains a living document</span>
-          <span class="text-muted">Dashed inner-ring nodes are section Hubs — close to the Knowledge Base, the only connection back to it. Dashed radial lines are section boundaries — a virtual guide, never a filled wedge.</span>
+          <span class="text-muted">Every agent renders as a small unlabeled dot here (BUG-002 fix) — hover or focus any dot to reveal its label, or click a Hub to zoom into that section's own Agents Tree, fully labeled. Dashed radial lines are section boundaries — a virtual guide, never a filled wedge.</span>
+        </div>
+        <button type="button" class="btn" data-agents-replay-intro style="margin-top: var(--space-3);">&#8635; Replay intro</button>
+        </div>
+
+        <div class="explore-drilldown" data-agents-drilldown>
+          <div data-state-panel data-group="drilldown-populated" data-state="capture" class="active">
+            <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
+            <div class="agents-map-stage">
+              <div class="agents-map-canvas">
+                <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+                  <line class="cluster-line" x1="50" y1="50" x2="50" y2="10" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="84.64" y2="70" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="15.36" y2="70" stroke="var(--color-accent)" />
+                </svg>
+                <div class="hub-node" style="top:50%; left:50%;">Capture Hub<span class="hub-node-type">3 agents</span></div>
+                <button type="button" class="agent-node agent-node--worker" style="top:10%; left:50%;" data-agent-id="email-capture">
+                  <span class="agent-node-label">Email Capture</span>
+                  <span class="agent-node-type">Worker</span>
+                </button>
+                <button type="button" class="agent-node agent-node--worker" style="top:70%; left:84.64%;" data-agent-id="meeting-capture">
+                  <span class="agent-node-label">Meeting Capture</span>
+                  <span class="agent-node-type">Worker</span>
+                </button>
+                <button type="button" class="agent-node agent-node--worker" style="top:70%; left:15.36%;" data-agent-id="todo-capture">
+                  <span class="agent-node-label">To-Do Capture</span>
+                  <span class="agent-node-type">Worker</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div data-state-panel data-group="drilldown-populated" data-state="people">
+            <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
+            <div class="agents-map-stage">
+              <div class="agents-map-canvas">
+                <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+                  <line class="cluster-line" x1="50" y1="50" x2="50" y2="10" stroke="var(--color-accent)" />
+                </svg>
+                <div class="hub-node" style="top:50%; left:50%;">People Hub<span class="hub-node-type">1 agent</span></div>
+                <button type="button" class="agent-node agent-node--producer" style="top:10%; left:50%;" data-agent-id="people-producer">
+                  <span class="agent-node-label">People Notes</span>
+                  <span class="agent-node-type">Producer</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div data-state-panel data-group="drilldown-populated" data-state="qa">
+            <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
+            <div class="agents-map-stage">
+              <div class="agents-map-canvas">
+                <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+                  <line class="cluster-line" x1="50" y1="50" x2="50" y2="10" stroke="var(--color-accent)" />
+                </svg>
+                <div class="hub-node" style="top:50%; left:50%;">Q&amp;A Hub<span class="hub-node-type">1 agent</span></div>
+                <button type="button" class="agent-node agent-node--expert" style="top:10%; left:50%;" data-agent-id="vault-qa">
+                  <span class="agent-node-label">Vault Q&amp;A</span>
+                  <span class="agent-node-type">Expert</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        </div>
+      </section>
+
+      <!-- REQ-SB-18 reference state: same polar-grid mechanism (ring=Type,
+           angle=Section, Hub on the inner band, radar/ring background all
+           UNCHANGED), demonstrated with 5 user-created Sections instead of
+           the "Populated" state's fixed 3 — evenly spaced at 72° instead of
+           hand-placed, computed with the identical angle x radius
+           trigonometry every prior round used (not eyeballed; see the
+           top-of-file breadcrumb for the worked numbers). Proves the layout
+           generalizes past 3 hubs without collision; /plan-tasks turns this
+           spacing rule into layoutAgents.ts's real computed function, this
+           is the visual target, not the final geometry. Sections use
+           REQ-SB-18's real starting names (Technical/Sales/Productivity/
+           Customers/Products) and the SAME agent-to-section counts as
+           settings.html's Sections card (Productivity=3, Customers=1,
+           Technical=1, Sales=0, Products=0) — Sales and Products render as
+           genuinely empty Hubs (Scenario 7), no cluster lines, nothing to
+           click. Hub color is neutral (--color-accent) instead of a
+           per-Type color: once a Section can hold agents of any Type
+           (Scenario 6), a single Type-color for its Hub would misrepresent
+           it — the ring/agent-node Type coloring itself is UNCHANGED.
+           Cluster lines stay colored by each connected agent's own Type
+           (still meaningful per-agent), just no longer implying the whole
+           section shares one Type.
+           BUG-002 fix (2026-08-12): agents now always render as unlabeled
+           .agent-node--compact dots; each Hub is a clickable button that
+           zooms into that section's own drill-down Agents Tree — same
+           treatment as the "Populated" state above, positions UNCHANGED. -->
+      <section data-state-panel data-group="agents-map" data-state="five-section">
+        <div data-agents-stage-root>
+        <div data-agents-overview-stage>
+        <div class="agents-map-stage">
+          <div class="agents-map-canvas explore-zoom-overview">
+            <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+              <!-- Radar background: unchanged, ambient chrome -->
+              <line class="radar-spoke" x1="50" y1="50" x2="108" y2="50" />
+              <line class="radar-spoke" x1="50" y1="50" x2="100.23" y2="79" />
+              <line class="radar-spoke" x1="50" y1="50" x2="79" y2="100.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="50" y2="108" />
+              <line class="radar-spoke" x1="50" y1="50" x2="21" y2="100.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="-0.23" y2="79" />
+              <line class="radar-spoke" x1="50" y1="50" x2="-8" y2="50" />
+              <line class="radar-spoke" x1="50" y1="50" x2="-0.23" y2="21" />
+              <line class="radar-spoke" x1="50" y1="50" x2="21" y2="-0.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="50" y2="-8" />
+              <line class="radar-spoke" x1="50" y1="50" x2="79" y2="-0.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="100.23" y2="21" />
+
+              <!-- Radial axis: same 3 Type rings as every other state (unchanged) -->
+              <circle class="ring-circle" cx="50" cy="50" r="30" />
+              <circle class="ring-circle" cx="50" cy="50" r="45" />
+              <circle class="ring-circle" cx="50" cy="50" r="50" />
+              <circle class="boundary-circle" cx="50" cy="50" r="58" />
+
+              <!-- Angular axis: 5 section boundaries, evenly spaced 72° apart
+                   (hub angles -90/-18/54/126/198; boundaries at each
+                   midpoint, -54/18/90/162/234), r=18 to r=58 same as the
+                   3-section state's own boundary radii -->
+              <line class="section-boundary" x1="60.58" y1="35.44" x2="84.09" y2="3.08" />
+              <line class="section-boundary" x1="67.12" y1="55.56" x2="105.16" y2="67.92" />
+              <line class="section-boundary" x1="50" y1="68" x2="50" y2="108" />
+              <line class="section-boundary" x1="32.88" y1="55.56" x2="-5.16" y2="67.92" />
+              <line class="section-boundary" x1="39.42" y1="35.44" x2="15.91" y2="3.08" />
+
+              <!-- KB -> Hub spokes, one per section, neutral accent color
+                   (no single Type owns a Hub anymore) -->
+              <line class="spoke-line" x1="50" y1="50" x2="50" y2="18" stroke="var(--color-accent)" />
+              <line class="spoke-line" x1="50" y1="50" x2="80.43" y2="40.11" stroke="var(--color-accent)" />
+              <line class="spoke-line" x1="50" y1="50" x2="68.82" y2="75.89" stroke="var(--color-accent)" />
+              <line class="spoke-line" x1="50" y1="50" x2="31.18" y2="75.89" stroke="var(--color-accent)" />
+              <line class="spoke-line" x1="50" y1="50" x2="19.57" y2="40.11" stroke="var(--color-accent)" />
+
+              <!-- Technical section: Hub -> Vault Q&A (Expert ring, r=45) -->
+              <line class="cluster-line" x1="50" y1="18" x2="50" y2="5" stroke="var(--agent-color-expert)" />
+
+              <!-- Customers section: Hub -> People Notes (Producer ring, r=30) -->
+              <line class="cluster-line" x1="31.18" y1="75.89" x2="32.37" y2="74.27" stroke="var(--agent-color-producer)" />
+
+              <!-- Productivity section: Hub -> 3 Worker-ring agents (r=50), agents <-> agents -->
+              <line class="cluster-line" x1="68.82" y1="75.89" x2="90.45" y2="79.39" stroke="var(--agent-color-worker)" />
+              <line class="cluster-line" x1="68.82" y1="75.89" x2="79.39" y2="90.45" stroke="var(--agent-color-worker)" />
+              <line class="cluster-line" x1="68.82" y1="75.89" x2="65.45" y2="97.55" stroke="var(--agent-color-worker)" />
+              <line class="cluster-line" x1="90.45" y1="79.39" x2="79.39" y2="90.45" stroke="var(--agent-color-worker)" />
+              <line class="cluster-line" x1="90.45" y1="79.39" x2="65.45" y2="97.55" stroke="var(--agent-color-worker)" />
+              <line class="cluster-line" x1="79.39" y1="90.45" x2="65.45" y2="97.55" stroke="var(--agent-color-worker)" />
+
+              <!-- Sales, Products: zero-agent sections — Hub only, no cluster lines (Scenario 7) -->
+
+              <!-- Ring labels — name the radial axis, unchanged positions (ring radii unchanged) -->
+              <text class="ring-label" x="80" y="51" font-size="2.6" letter-spacing="0.3">PRODUCER</text>
+              <text class="ring-label" x="27.5" y="89.97" font-size="2.6" letter-spacing="0.3">EXPERT</text>
+              <text class="ring-label" x="25" y="8.2" font-size="2.6" letter-spacing="0.3">WORKER</text>
+            </svg>
+
+            <div class="kb-node">
+              <svg class="kb-brain-svg" viewBox="0 0 100 100">
+                <line x1="50" y1="10" x2="65.3" y2="13" />
+                <line x1="65.3" y1="13" x2="78.3" y2="21.7" />
+                <line x1="78.3" y1="21.7" x2="87" y2="34.7" />
+                <line x1="87" y1="34.7" x2="90" y2="50" />
+                <line x1="90" y1="50" x2="87" y2="65.3" />
+                <line x1="87" y1="65.3" x2="78.3" y2="78.3" />
+                <line x1="78.3" y1="78.3" x2="65.3" y2="87" />
+                <line x1="65.3" y1="87" x2="50" y2="90" />
+                <line x1="50" y1="90" x2="34.7" y2="87" />
+                <line x1="34.7" y1="87" x2="21.7" y2="78.3" />
+                <line x1="21.7" y1="78.3" x2="13" y2="65.3" />
+                <line x1="13" y1="65.3" x2="10" y2="50" />
+                <line x1="10" y1="50" x2="13" y2="34.7" />
+                <line x1="13" y1="34.7" x2="21.7" y2="21.7" />
+                <line x1="21.7" y1="21.7" x2="34.7" y2="13" />
+                <line x1="34.7" y1="13" x2="50" y2="10" />
+                <line x1="61" y1="30.95" x2="72" y2="50" />
+                <line x1="72" y1="50" x2="61" y2="69.05" />
+                <line x1="61" y1="69.05" x2="39" y2="69.05" />
+                <line x1="39" y1="69.05" x2="28" y2="50" />
+                <line x1="28" y1="50" x2="39" y2="30.95" />
+                <line x1="39" y1="30.95" x2="61" y2="30.95" />
+                <line x1="61" y1="30.95" x2="50" y2="50" />
+                <line x1="72" y1="50" x2="50" y2="50" />
+                <line x1="61" y1="69.05" x2="50" y2="50" />
+                <line x1="39" y1="69.05" x2="50" y2="50" />
+                <line x1="28" y1="50" x2="50" y2="50" />
+                <line x1="39" y1="30.95" x2="50" y2="50" />
+                <line x1="61" y1="30.95" x2="65.3" y2="13" />
+                <line x1="61" y1="30.95" x2="78.3" y2="21.7" />
+                <line x1="72" y1="50" x2="87" y2="34.7" />
+                <line x1="72" y1="50" x2="87" y2="65.3" />
+                <line x1="61" y1="69.05" x2="78.3" y2="78.3" />
+                <line x1="61" y1="69.05" x2="65.3" y2="87" />
+                <line x1="39" y1="69.05" x2="34.7" y2="87" />
+                <line x1="39" y1="69.05" x2="21.7" y2="78.3" />
+                <line x1="28" y1="50" x2="13" y2="65.3" />
+                <line x1="28" y1="50" x2="13" y2="34.7" />
+                <line x1="39" y1="30.95" x2="21.7" y2="21.7" />
+                <line x1="39" y1="30.95" x2="34.7" y2="13" />
+                <line x1="65.3" y1="13" x2="34.7" y2="87" />
+                <line x1="87" y1="65.3" x2="13" y2="34.7" />
+                <circle class="kb-neuron" cx="50" cy="10" r="3.4" fill-opacity="0.9" style="animation-delay:0s;" />
+                <circle class="kb-neuron" cx="65.3" cy="13" r="2.8" fill-opacity="0.7" style="animation-delay:0.1s;" />
+                <circle class="kb-neuron" cx="78.3" cy="21.7" r="3.1" fill-opacity="0.85" style="animation-delay:0.2s;" />
+                <circle class="kb-neuron" cx="87" cy="34.7" r="2.6" fill-opacity="0.6" style="animation-delay:0.3s;" />
+                <circle class="kb-neuron" cx="90" cy="50" r="3.4" fill-opacity="0.9" style="animation-delay:0.4s;" />
+                <circle class="kb-neuron" cx="87" cy="65.3" r="2.8" fill-opacity="0.7" style="animation-delay:0.5s;" />
+                <circle class="kb-neuron" cx="78.3" cy="78.3" r="3.1" fill-opacity="0.85" style="animation-delay:0.6s;" />
+                <circle class="kb-neuron" cx="65.3" cy="87" r="2.6" fill-opacity="0.6" style="animation-delay:0.7s;" />
+                <circle class="kb-neuron" cx="50" cy="90" r="3.4" fill-opacity="0.9" style="animation-delay:0.8s;" />
+                <circle class="kb-neuron" cx="34.7" cy="87" r="2.8" fill-opacity="0.7" style="animation-delay:0.9s;" />
+                <circle class="kb-neuron" cx="21.7" cy="78.3" r="3.1" fill-opacity="0.85" style="animation-delay:1.0s;" />
+                <circle class="kb-neuron" cx="13" cy="65.3" r="2.6" fill-opacity="0.6" style="animation-delay:1.1s;" />
+                <circle class="kb-neuron" cx="10" cy="50" r="3.4" fill-opacity="0.9" style="animation-delay:1.2s;" />
+                <circle class="kb-neuron" cx="13" cy="34.7" r="2.8" fill-opacity="0.7" style="animation-delay:1.3s;" />
+                <circle class="kb-neuron" cx="21.7" cy="21.7" r="3.1" fill-opacity="0.85" style="animation-delay:1.4s;" />
+                <circle class="kb-neuron" cx="34.7" cy="13" r="2.6" fill-opacity="0.6" style="animation-delay:1.5s;" />
+                <circle class="kb-neuron" cx="61" cy="30.95" r="2.4" fill-opacity="0.65" style="animation-delay:1.6s;" />
+                <circle class="kb-neuron" cx="72" cy="50" r="2.2" fill-opacity="0.55" style="animation-delay:1.75s;" />
+                <circle class="kb-neuron" cx="61" cy="69.05" r="2.4" fill-opacity="0.65" style="animation-delay:1.9s;" />
+                <circle class="kb-neuron" cx="39" cy="69.05" r="2.2" fill-opacity="0.55" style="animation-delay:2.05s;" />
+                <circle class="kb-neuron" cx="28" cy="50" r="2.4" fill-opacity="0.65" style="animation-delay:2.2s;" />
+                <circle class="kb-neuron" cx="39" cy="30.95" r="2.2" fill-opacity="0.55" style="animation-delay:2.35s;" />
+                <circle class="kb-neuron" cx="50" cy="50" r="5" fill-opacity="1" style="animation-delay:0s;" />
+                <circle class="kb-pulse-dot" r="1.8">
+                  <animateMotion dur="2.4s" repeatCount="indefinite" path="M65.3,13 L34.7,87" />
+                </circle>
+                <circle class="kb-pulse-dot" r="1.8">
+                  <animateMotion dur="2.8s" begin="0.7s" repeatCount="indefinite" path="M87,65.3 L13,34.7" />
+                </circle>
+              </svg>
+              <span class="kb-node-label">Knowledge Base<span class="kb-node-sub">Vault indexed</span></span>
+            </div>
+
+            <!-- 5 section Hubs, evenly spaced 72° apart on the same inner band
+                 (r=32) as the 3-section state — clickable buttons (BUG-002
+                 fix), neutral accent color. Sales/Products show "0 agents"
+                 and still zoom into a real, buildable empty Agents Tree
+                 (Scenario 7). -->
+            <button type="button" class="hub-node" style="top:18%; left:50%;" data-section-id="technical">
+              Technical Hub
+              <span class="hub-node-type">1 agent &middot; click to zoom in</span>
+            </button>
+            <button type="button" class="hub-node" style="top:40.11%; left:80.43%;" data-section-id="sales">
+              Sales Hub
+              <span class="hub-node-type">0 agents — empty &middot; click to zoom in</span>
+            </button>
+            <button type="button" class="hub-node" style="top:75.89%; left:68.82%;" data-section-id="productivity">
+              Productivity Hub
+              <span class="hub-node-type">3 agents &middot; click to zoom in</span>
+            </button>
+            <button type="button" class="hub-node" style="top:75.89%; left:31.18%;" data-section-id="customers">
+              Customers Hub
+              <span class="hub-node-type">1 agent &middot; click to zoom in</span>
+            </button>
+            <button type="button" class="hub-node" style="top:40.11%; left:19.57%;" data-section-id="products">
+              Products Hub
+              <span class="hub-node-type">0 agents — empty &middot; click to zoom in</span>
+            </button>
+
+            <!-- Technical section agent — Expert ring (r=45) -->
+            <button type="button" class="agent-node agent-node--expert agent-node--compact" style="top:5%; left:50%; animation-delay:0.1s;" data-agent-id="vault-qa">
+              <span class="agent-node-label">Vault Q&amp;A</span>
+              <span class="agent-node-type">Expert</span>
+            </button>
+
+            <!-- Customers section agent — Producer ring (r=30) -->
+            <button type="button" class="agent-node agent-node--producer agent-node--compact" style="top:74.27%; left:32.37%; animation-delay:0.2s;" data-agent-id="people-producer">
+              <span class="agent-node-label">People Notes</span>
+              <span class="agent-node-type">Producer</span>
+            </button>
+
+            <!-- Productivity section agents — Worker ring (r=50) -->
+            <button type="button" class="agent-node agent-node--worker agent-node--compact" style="top:79.39%; left:90.45%; animation-delay:0.3s;" data-agent-id="email-capture">
+              <span class="agent-node-label">Email Capture</span>
+              <span class="agent-node-type">Worker</span>
+            </button>
+            <button type="button" class="agent-node agent-node--worker agent-node--compact" style="top:90.45%; left:79.39%; animation-delay:0.4s;" data-agent-id="meeting-capture">
+              <span class="agent-node-label">Meeting Capture</span>
+              <span class="agent-node-type">Worker</span>
+            </button>
+            <button type="button" class="agent-node agent-node--worker agent-node--compact" style="top:97.55%; left:65.45%; animation-delay:0.5s;" data-agent-id="todo-capture">
+              <span class="agent-node-label">To-Do Capture</span>
+              <span class="agent-node-type">Worker</span>
+            </button>
+
+            <!-- Section titles — outside the outer boundary (r=66), same
+                 neutral accent color as the Hubs (decoupled from Type) -->
+            <div class="section-title" style="top:-16%; left:50%;">
+              Technical
+              <span class="section-title-accent" style="background: var(--color-accent);"></span>
+            </div>
+            <div class="section-title" style="top:29.61%; left:112.77%;">
+              Sales
+              <span class="section-title-accent" style="background: var(--color-accent);"></span>
+            </div>
+            <div class="section-title" style="top:103.39%; left:88.79%;">
+              Productivity
+              <span class="section-title-accent" style="background: var(--color-accent);"></span>
+            </div>
+            <div class="section-title" style="top:103.39%; left:11.21%;">
+              Customers
+              <span class="section-title-accent" style="background: var(--color-accent);"></span>
+            </div>
+            <div class="section-title" style="top:29.61%; left:-12.77%;">
+              Products
+              <span class="section-title-accent" style="background: var(--color-accent);"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="agent-type-legend">
+          <span><span class="legend-swatch" style="--legend-color: var(--agent-color-worker);"></span>Worker ring (outermost) — runs a recurring capture job</span>
+          <span><span class="legend-swatch" style="--legend-color: var(--agent-color-expert);"></span>Expert ring (middle) — answers questions over the vault</span>
+          <span><span class="legend-swatch" style="--legend-color: var(--agent-color-producer);"></span>Producer ring (innermost) — maintains a living document</span>
+          <span class="text-muted">5 Sections now (REQ-SB-18), evenly spaced instead of the 3-section state's hand-placed angles — Hubs are neutral-colored (no longer 1:1 with a Type, since a Section can hold agents of any Type). Sales and Products are real zero-agent Sections (Scenario 7). Every agent renders as a small unlabeled dot (BUG-002 fix) — hover/focus to reveal its label, or click a Hub to zoom into its own Agents Tree. This is a design reference for /plan-tasks's N-section computed layout, not the final trigonometry.</span>
+        </div>
+        <button type="button" class="btn" data-agents-replay-intro style="margin-top: var(--space-3);">&#8635; Replay intro</button>
+        </div>
+
+        <div class="explore-drilldown" data-agents-drilldown>
+          <div data-state-panel data-group="drilldown-five-section" data-state="technical" class="active">
+            <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
+            <div class="agents-map-stage">
+              <div class="agents-map-canvas">
+                <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+                  <line class="cluster-line" x1="50" y1="50" x2="50" y2="10" stroke="var(--color-accent)" />
+                </svg>
+                <div class="hub-node" style="top:50%; left:50%;">Technical Hub<span class="hub-node-type">1 agent</span></div>
+                <button type="button" class="agent-node agent-node--expert" style="top:10%; left:50%;" data-agent-id="vault-qa">
+                  <span class="agent-node-label">Vault Q&amp;A</span>
+                  <span class="agent-node-type">Expert</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div data-state-panel data-group="drilldown-five-section" data-state="sales">
+            <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
+            <div class="agents-map-stage">
+              <div class="agents-map-canvas">
+                <div class="hub-node" style="top:50%; left:50%;">Sales Hub<span class="hub-node-type">0 agents</span></div>
+              </div>
+            </div>
+            <div class="empty-state">
+              <p class="text-muted">No agents in this section yet — a real, buildable empty section (REQ-SB-18 Scenario 7), same as the overview.</p>
+            </div>
+          </div>
+          <div data-state-panel data-group="drilldown-five-section" data-state="productivity">
+            <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
+            <div class="agents-map-stage">
+              <div class="agents-map-canvas">
+                <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+                  <line class="cluster-line" x1="50" y1="50" x2="50" y2="10" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="84.64" y2="70" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="15.36" y2="70" stroke="var(--color-accent)" />
+                </svg>
+                <div class="hub-node" style="top:50%; left:50%;">Productivity Hub<span class="hub-node-type">3 agents</span></div>
+                <button type="button" class="agent-node agent-node--worker" style="top:10%; left:50%;" data-agent-id="email-capture">
+                  <span class="agent-node-label">Email Capture</span>
+                  <span class="agent-node-type">Worker</span>
+                </button>
+                <button type="button" class="agent-node agent-node--worker" style="top:70%; left:84.64%;" data-agent-id="meeting-capture">
+                  <span class="agent-node-label">Meeting Capture</span>
+                  <span class="agent-node-type">Worker</span>
+                </button>
+                <button type="button" class="agent-node agent-node--worker" style="top:70%; left:15.36%;" data-agent-id="todo-capture">
+                  <span class="agent-node-label">To-Do Capture</span>
+                  <span class="agent-node-type">Worker</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div data-state-panel data-group="drilldown-five-section" data-state="customers">
+            <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
+            <div class="agents-map-stage">
+              <div class="agents-map-canvas">
+                <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+                  <line class="cluster-line" x1="50" y1="50" x2="50" y2="10" stroke="var(--color-accent)" />
+                </svg>
+                <div class="hub-node" style="top:50%; left:50%;">Customers Hub<span class="hub-node-type">1 agent</span></div>
+                <button type="button" class="agent-node agent-node--producer" style="top:10%; left:50%;" data-agent-id="people-producer">
+                  <span class="agent-node-label">People Notes</span>
+                  <span class="agent-node-type">Producer</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div data-state-panel data-group="drilldown-five-section" data-state="products">
+            <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
+            <div class="agents-map-stage">
+              <div class="agents-map-canvas">
+                <div class="hub-node" style="top:50%; left:50%;">Products Hub<span class="hub-node-type">0 agents</span></div>
+              </div>
+            </div>
+            <div class="empty-state">
+              <p class="text-muted">No agents in this section yet — a real, buildable empty section (REQ-SB-18 Scenario 7), same as the overview.</p>
+            </div>
+          </div>
+        </div>
+        </div>
+      </section>
+
+      <!-- BUG-002 fix demo state (new, 2026-08-12): mirrors the bug's own
+           literal original repro (BUGS.md BUG-002 — "all 5 seeded agents
+           currently sit in 'Technical'") using the SAME 5 Sections/Hub
+           positions as the "5 sections" state above (untouched) but with
+           all 5 real agents assigned to Technical instead of spread out,
+           and the other 4 Sections genuinely empty (Scenario 7). Proves the
+           fix directly against the reported repro: every agent stays
+           inside Technical's own angular wedge (computed the same
+           dynamic-wedge way as agents-map-exploration.js's Option A/D
+           layoutDynamicWedge — wedge = 360/5 = 72°, fan span = 72 * 0.8 =
+           57.6°, agents evenly spread across that span, never a fixed 80°)
+           and never spills into Sales/Products' territory, because it is
+           ALWAYS a small compact dot, never full-size labeled text
+           competing for space. Click the Technical Hub to see all 5 agents
+           fully labeled in its own dedicated Agents Tree. -->
+      <section data-state-panel data-group="agents-map" data-state="dense-section">
+        <div data-agents-stage-root>
+        <div data-agents-overview-stage>
+        <div class="agents-map-stage">
+          <div class="agents-map-canvas explore-zoom-overview">
+            <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+              <line class="radar-spoke" x1="50" y1="50" x2="108" y2="50" />
+              <line class="radar-spoke" x1="50" y1="50" x2="100.23" y2="79" />
+              <line class="radar-spoke" x1="50" y1="50" x2="79" y2="100.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="50" y2="108" />
+              <line class="radar-spoke" x1="50" y1="50" x2="21" y2="100.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="-0.23" y2="79" />
+              <line class="radar-spoke" x1="50" y1="50" x2="-8" y2="50" />
+              <line class="radar-spoke" x1="50" y1="50" x2="-0.23" y2="21" />
+              <line class="radar-spoke" x1="50" y1="50" x2="21" y2="-0.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="50" y2="-8" />
+              <line class="radar-spoke" x1="50" y1="50" x2="79" y2="-0.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="100.23" y2="21" />
+
+              <circle class="ring-circle" cx="50" cy="50" r="30" />
+              <circle class="ring-circle" cx="50" cy="50" r="45" />
+              <circle class="ring-circle" cx="50" cy="50" r="50" />
+              <circle class="boundary-circle" cx="50" cy="50" r="58" />
+
+              <line class="section-boundary" x1="60.58" y1="35.44" x2="84.09" y2="3.08" />
+              <line class="section-boundary" x1="67.12" y1="55.56" x2="105.16" y2="67.92" />
+              <line class="section-boundary" x1="50" y1="68" x2="50" y2="108" />
+              <line class="section-boundary" x1="32.88" y1="55.56" x2="-5.16" y2="67.92" />
+              <line class="section-boundary" x1="39.42" y1="35.44" x2="15.91" y2="3.08" />
+
+              <line class="spoke-line" x1="50" y1="50" x2="50" y2="18" stroke="var(--color-accent)" />
+              <line class="spoke-line" x1="50" y1="50" x2="80.43" y2="40.11" stroke="var(--color-accent)" />
+              <line class="spoke-line" x1="50" y1="50" x2="68.82" y2="75.89" stroke="var(--color-accent)" />
+              <line class="spoke-line" x1="50" y1="50" x2="31.18" y2="75.89" stroke="var(--color-accent)" />
+              <line class="spoke-line" x1="50" y1="50" x2="19.57" y2="40.11" stroke="var(--color-accent)" />
+
+              <!-- Technical section: Hub -> all 5 real agents (only crowded section) -->
+              <line class="cluster-line" x1="50" y1="18" x2="25.91" y2="6.19" stroke="var(--color-accent)" />
+              <line class="cluster-line" x1="50" y1="18" x2="37.57" y2="1.57" stroke="var(--color-accent)" />
+              <line class="cluster-line" x1="50" y1="18" x2="50" y2="5" stroke="var(--color-accent)" />
+              <line class="cluster-line" x1="50" y1="18" x2="62.44" y2="1.57" stroke="var(--color-accent)" />
+              <line class="cluster-line" x1="50" y1="18" x2="64.45" y2="23.71" stroke="var(--color-accent)" />
+
+              <!-- Sales, Productivity, Customers, Products: zero-agent sections (Scenario 7) -->
+
+              <text class="ring-label" x="80" y="51" font-size="2.6" letter-spacing="0.3">PRODUCER</text>
+              <text class="ring-label" x="27.5" y="89.97" font-size="2.6" letter-spacing="0.3">EXPERT</text>
+              <text class="ring-label" x="25" y="8.2" font-size="2.6" letter-spacing="0.3">WORKER</text>
+            </svg>
+
+            <div class="kb-node">
+              <svg class="kb-brain-svg" viewBox="0 0 100 100">
+                <line x1="50" y1="10" x2="65.3" y2="13" />
+                <line x1="65.3" y1="13" x2="78.3" y2="21.7" />
+                <line x1="78.3" y1="21.7" x2="87" y2="34.7" />
+                <line x1="87" y1="34.7" x2="90" y2="50" />
+                <line x1="90" y1="50" x2="87" y2="65.3" />
+                <line x1="87" y1="65.3" x2="78.3" y2="78.3" />
+                <line x1="78.3" y1="78.3" x2="65.3" y2="87" />
+                <line x1="65.3" y1="87" x2="50" y2="90" />
+                <line x1="50" y1="90" x2="34.7" y2="87" />
+                <line x1="34.7" y1="87" x2="21.7" y2="78.3" />
+                <line x1="21.7" y1="78.3" x2="13" y2="65.3" />
+                <line x1="13" y1="65.3" x2="10" y2="50" />
+                <line x1="10" y1="50" x2="13" y2="34.7" />
+                <line x1="13" y1="34.7" x2="21.7" y2="21.7" />
+                <line x1="21.7" y1="21.7" x2="34.7" y2="13" />
+                <line x1="34.7" y1="13" x2="50" y2="10" />
+                <line x1="61" y1="30.95" x2="72" y2="50" />
+                <line x1="72" y1="50" x2="61" y2="69.05" />
+                <line x1="61" y1="69.05" x2="39" y2="69.05" />
+                <line x1="39" y1="69.05" x2="28" y2="50" />
+                <line x1="28" y1="50" x2="39" y2="30.95" />
+                <line x1="39" y1="30.95" x2="61" y2="30.95" />
+                <line x1="61" y1="30.95" x2="50" y2="50" />
+                <line x1="72" y1="50" x2="50" y2="50" />
+                <line x1="61" y1="69.05" x2="50" y2="50" />
+                <line x1="39" y1="69.05" x2="50" y2="50" />
+                <line x1="28" y1="50" x2="50" y2="50" />
+                <line x1="39" y1="30.95" x2="50" y2="50" />
+                <line x1="61" y1="30.95" x2="65.3" y2="13" />
+                <line x1="61" y1="30.95" x2="78.3" y2="21.7" />
+                <line x1="72" y1="50" x2="87" y2="34.7" />
+                <line x1="72" y1="50" x2="87" y2="65.3" />
+                <line x1="61" y1="69.05" x2="78.3" y2="78.3" />
+                <line x1="61" y1="69.05" x2="65.3" y2="87" />
+                <line x1="39" y1="69.05" x2="34.7" y2="87" />
+                <line x1="39" y1="69.05" x2="21.7" y2="78.3" />
+                <line x1="28" y1="50" x2="13" y2="65.3" />
+                <line x1="28" y1="50" x2="13" y2="34.7" />
+                <line x1="39" y1="30.95" x2="21.7" y2="21.7" />
+                <line x1="39" y1="30.95" x2="34.7" y2="13" />
+                <line x1="65.3" y1="13" x2="34.7" y2="87" />
+                <line x1="87" y1="65.3" x2="13" y2="34.7" />
+                <circle class="kb-neuron" cx="50" cy="10" r="3.4" fill-opacity="0.9" style="animation-delay:0s;" />
+                <circle class="kb-neuron" cx="65.3" cy="13" r="2.8" fill-opacity="0.7" style="animation-delay:0.1s;" />
+                <circle class="kb-neuron" cx="78.3" cy="21.7" r="3.1" fill-opacity="0.85" style="animation-delay:0.2s;" />
+                <circle class="kb-neuron" cx="87" cy="34.7" r="2.6" fill-opacity="0.6" style="animation-delay:0.3s;" />
+                <circle class="kb-neuron" cx="90" cy="50" r="3.4" fill-opacity="0.9" style="animation-delay:0.4s;" />
+                <circle class="kb-neuron" cx="87" cy="65.3" r="2.8" fill-opacity="0.7" style="animation-delay:0.5s;" />
+                <circle class="kb-neuron" cx="78.3" cy="78.3" r="3.1" fill-opacity="0.85" style="animation-delay:0.6s;" />
+                <circle class="kb-neuron" cx="65.3" cy="87" r="2.6" fill-opacity="0.6" style="animation-delay:0.7s;" />
+                <circle class="kb-neuron" cx="50" cy="90" r="3.4" fill-opacity="0.9" style="animation-delay:0.8s;" />
+                <circle class="kb-neuron" cx="34.7" cy="87" r="2.8" fill-opacity="0.7" style="animation-delay:0.9s;" />
+                <circle class="kb-neuron" cx="21.7" cy="78.3" r="3.1" fill-opacity="0.85" style="animation-delay:1.0s;" />
+                <circle class="kb-neuron" cx="13" cy="65.3" r="2.6" fill-opacity="0.6" style="animation-delay:1.1s;" />
+                <circle class="kb-neuron" cx="10" cy="50" r="3.4" fill-opacity="0.9" style="animation-delay:1.2s;" />
+                <circle class="kb-neuron" cx="13" cy="34.7" r="2.8" fill-opacity="0.7" style="animation-delay:1.3s;" />
+                <circle class="kb-neuron" cx="21.7" cy="21.7" r="3.1" fill-opacity="0.85" style="animation-delay:1.4s;" />
+                <circle class="kb-neuron" cx="34.7" cy="13" r="2.6" fill-opacity="0.6" style="animation-delay:1.5s;" />
+                <circle class="kb-neuron" cx="61" cy="30.95" r="2.4" fill-opacity="0.65" style="animation-delay:1.6s;" />
+                <circle class="kb-neuron" cx="72" cy="50" r="2.2" fill-opacity="0.55" style="animation-delay:1.75s;" />
+                <circle class="kb-neuron" cx="61" cy="69.05" r="2.4" fill-opacity="0.65" style="animation-delay:1.9s;" />
+                <circle class="kb-neuron" cx="39" cy="69.05" r="2.2" fill-opacity="0.55" style="animation-delay:2.05s;" />
+                <circle class="kb-neuron" cx="28" cy="50" r="2.4" fill-opacity="0.65" style="animation-delay:2.2s;" />
+                <circle class="kb-neuron" cx="39" cy="30.95" r="2.2" fill-opacity="0.55" style="animation-delay:2.35s;" />
+                <circle class="kb-neuron" cx="50" cy="50" r="5" fill-opacity="1" style="animation-delay:0s;" />
+                <circle class="kb-pulse-dot" r="1.8">
+                  <animateMotion dur="2.4s" repeatCount="indefinite" path="M65.3,13 L34.7,87" />
+                </circle>
+                <circle class="kb-pulse-dot" r="1.8">
+                  <animateMotion dur="2.8s" begin="0.7s" repeatCount="indefinite" path="M87,65.3 L13,34.7" />
+                </circle>
+              </svg>
+              <span class="kb-node-label">Knowledge Base<span class="kb-node-sub">Vault indexed</span></span>
+            </div>
+
+            <button type="button" class="hub-node" style="top:18%; left:50%;" data-section-id="technical">
+              Technical Hub
+              <span class="hub-node-type">5 agents &middot; click to zoom in</span>
+            </button>
+            <button type="button" class="hub-node" style="top:40.11%; left:80.43%;" data-section-id="sales">
+              Sales Hub
+              <span class="hub-node-type">0 agents — empty &middot; click to zoom in</span>
+            </button>
+            <button type="button" class="hub-node" style="top:75.89%; left:68.82%;" data-section-id="productivity">
+              Productivity Hub
+              <span class="hub-node-type">0 agents — empty &middot; click to zoom in</span>
+            </button>
+            <button type="button" class="hub-node" style="top:75.89%; left:31.18%;" data-section-id="customers">
+              Customers Hub
+              <span class="hub-node-type">0 agents — empty &middot; click to zoom in</span>
+            </button>
+            <button type="button" class="hub-node" style="top:40.11%; left:19.57%;" data-section-id="products">
+              Products Hub
+              <span class="hub-node-type">0 agents — empty &middot; click to zoom in</span>
+            </button>
+
+            <!-- All 5 real agents in Technical's own wedge (-126deg to -54deg),
+                 spread evenly across 80% of that true 72deg wedge (57.6deg),
+                 same dynamic-wedge formula as agents-map-exploration.js —
+                 never a fixed 80deg span regardless of how many Sections
+                 exist. Radius still keyed to each agent's own Type ring
+                 (unchanged), independent of Section. -->
+            <button type="button" class="agent-node agent-node--worker agent-node--compact" style="top:6.19%; left:25.91%; animation-delay:0.1s;" data-agent-id="email-capture">
+              <span class="agent-node-label">Email Capture</span>
+              <span class="agent-node-type">Worker</span>
+            </button>
+            <button type="button" class="agent-node agent-node--worker agent-node--compact" style="top:1.57%; left:37.57%; animation-delay:0.2s;" data-agent-id="meeting-capture">
+              <span class="agent-node-label">Meeting Capture</span>
+              <span class="agent-node-type">Worker</span>
+            </button>
+            <button type="button" class="agent-node agent-node--expert agent-node--compact" style="top:5%; left:50%; animation-delay:0.3s;" data-agent-id="vault-qa">
+              <span class="agent-node-label">Vault Q&amp;A</span>
+              <span class="agent-node-type">Expert</span>
+            </button>
+            <button type="button" class="agent-node agent-node--worker agent-node--compact" style="top:1.57%; left:62.44%; animation-delay:0.4s;" data-agent-id="todo-capture">
+              <span class="agent-node-label">To-Do Capture</span>
+              <span class="agent-node-type">Worker</span>
+            </button>
+            <button type="button" class="agent-node agent-node--producer agent-node--compact" style="top:23.71%; left:64.45%; animation-delay:0.5s;" data-agent-id="people-producer">
+              <span class="agent-node-label">People Notes</span>
+              <span class="agent-node-type">Producer</span>
+            </button>
+
+            <div class="section-title" style="top:-16%; left:50%;">
+              Technical
+              <span class="section-title-accent" style="background: var(--color-accent);"></span>
+            </div>
+            <div class="section-title" style="top:29.61%; left:112.77%;">
+              Sales
+              <span class="section-title-accent" style="background: var(--color-accent);"></span>
+            </div>
+            <div class="section-title" style="top:103.39%; left:88.79%;">
+              Productivity
+              <span class="section-title-accent" style="background: var(--color-accent);"></span>
+            </div>
+            <div class="section-title" style="top:103.39%; left:11.21%;">
+              Customers
+              <span class="section-title-accent" style="background: var(--color-accent);"></span>
+            </div>
+            <div class="section-title" style="top:29.61%; left:-12.77%;">
+              Products
+              <span class="section-title-accent" style="background: var(--color-accent);"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="agent-type-legend">
+          <span><span class="legend-swatch" style="--legend-color: var(--agent-color-worker);"></span>Worker ring (outermost) — runs a recurring capture job</span>
+          <span><span class="legend-swatch" style="--legend-color: var(--agent-color-expert);"></span>Expert ring (middle) — answers questions over the vault</span>
+          <span><span class="legend-swatch" style="--legend-color: var(--agent-color-producer);"></span>Producer ring (innermost) — maintains a living document</span>
+          <span class="text-muted">This is BUG-002's own literal original repro (BUGS.md BUG-002) — all 5 real seeded agents sitting in one Section ("Technical") before per-agent Section reassignment. Every agent still renders inside Technical's own angular wedge, never spilling into Sales/Productivity/Customers/Products' territory, because it's always a small compact dot regardless of density — click the Technical Hub to see all 5 fully labeled.</span>
+        </div>
+        <button type="button" class="btn" data-agents-replay-intro style="margin-top: var(--space-3);">&#8635; Replay intro</button>
+        </div>
+
+        <div class="explore-drilldown" data-agents-drilldown>
+          <div data-state-panel data-group="drilldown-dense-section" data-state="technical" class="active">
+            <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
+            <div class="agents-map-stage">
+              <div class="agents-map-canvas">
+                <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+                  <line class="cluster-line" x1="50" y1="50" x2="50" y2="10" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="88.04" y2="37.64" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="73.51" y2="82.36" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="26.49" y2="82.36" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="11.96" y2="37.64" stroke="var(--color-accent)" />
+                </svg>
+                <div class="hub-node" style="top:50%; left:50%;">Technical Hub<span class="hub-node-type">5 agents</span></div>
+                <button type="button" class="agent-node agent-node--expert" style="top:10%; left:50%;" data-agent-id="vault-qa">
+                  <span class="agent-node-label">Vault Q&amp;A</span>
+                  <span class="agent-node-type">Expert</span>
+                </button>
+                <button type="button" class="agent-node agent-node--worker" style="top:37.64%; left:88.04%;" data-agent-id="email-capture">
+                  <span class="agent-node-label">Email Capture</span>
+                  <span class="agent-node-type">Worker</span>
+                </button>
+                <button type="button" class="agent-node agent-node--worker" style="top:82.36%; left:73.51%;" data-agent-id="meeting-capture">
+                  <span class="agent-node-label">Meeting Capture</span>
+                  <span class="agent-node-type">Worker</span>
+                </button>
+                <button type="button" class="agent-node agent-node--worker" style="top:82.36%; left:26.49%;" data-agent-id="todo-capture">
+                  <span class="agent-node-label">To-Do Capture</span>
+                  <span class="agent-node-type">Worker</span>
+                </button>
+                <button type="button" class="agent-node agent-node--producer" style="top:37.64%; left:11.96%;" data-agent-id="people-producer">
+                  <span class="agent-node-label">People Notes</span>
+                  <span class="agent-node-type">Producer</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div data-state-panel data-group="drilldown-dense-section" data-state="sales">
+            <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
+            <div class="agents-map-stage">
+              <div class="agents-map-canvas">
+                <div class="hub-node" style="top:50%; left:50%;">Sales Hub<span class="hub-node-type">0 agents</span></div>
+              </div>
+            </div>
+            <div class="empty-state">
+              <p class="text-muted">No agents in this section yet — a real, buildable empty section (REQ-SB-18 Scenario 7), same as the overview.</p>
+            </div>
+          </div>
+          <div data-state-panel data-group="drilldown-dense-section" data-state="productivity">
+            <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
+            <div class="agents-map-stage">
+              <div class="agents-map-canvas">
+                <div class="hub-node" style="top:50%; left:50%;">Productivity Hub<span class="hub-node-type">0 agents</span></div>
+              </div>
+            </div>
+            <div class="empty-state">
+              <p class="text-muted">No agents in this section yet — a real, buildable empty section (REQ-SB-18 Scenario 7), same as the overview.</p>
+            </div>
+          </div>
+          <div data-state-panel data-group="drilldown-dense-section" data-state="customers">
+            <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
+            <div class="agents-map-stage">
+              <div class="agents-map-canvas">
+                <div class="hub-node" style="top:50%; left:50%;">Customers Hub<span class="hub-node-type">0 agents</span></div>
+              </div>
+            </div>
+            <div class="empty-state">
+              <p class="text-muted">No agents in this section yet — a real, buildable empty section (REQ-SB-18 Scenario 7), same as the overview.</p>
+            </div>
+          </div>
+          <div data-state-panel data-group="drilldown-dense-section" data-state="products">
+            <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
+            <div class="agents-map-stage">
+              <div class="agents-map-canvas">
+                <div class="hub-node" style="top:50%; left:50%;">Products Hub<span class="hub-node-type">0 agents</span></div>
+              </div>
+            </div>
+            <div class="empty-state">
+              <p class="text-muted">No agents in this section yet — a real, buildable empty section (REQ-SB-18 Scenario 7), same as the overview.</p>
+            </div>
+          </div>
+        </div>
+        </div>
+      </section>
+
+      <!-- Density clustering (REQ-SB-38 demo) — see the top-of-file
+           breadcrumb for the full design rationale (threshold rule,
+           click-to-view mechanic, and every genuinely open PRD question
+           left flagged, not silently resolved). Same 5-Section KB/radar/
+           rings/boundary/Hub scaffold as "Dense section" above (Technical
+           at top, Sales/Productivity/Customers/Products around it,
+           identical positions) — only Technical's own agent count and
+           rendering differ: 15 SYNTHETIC "Illustrative Worker" agents
+           (marked as such throughout — not real, planned, or proposed)
+           instead of the 5 real seeded agents "Dense section" uses. -->
+      <section data-state-panel data-group="agents-map" data-state="density-clustering">
+        <div data-agents-stage-root>
+        <div data-agents-overview-stage>
+        <div class="agents-map-stage">
+          <div class="agents-map-canvas explore-zoom-overview">
+            <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+              <line class="radar-spoke" x1="50" y1="50" x2="108" y2="50" />
+              <line class="radar-spoke" x1="50" y1="50" x2="100.23" y2="79" />
+              <line class="radar-spoke" x1="50" y1="50" x2="79" y2="100.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="50" y2="108" />
+              <line class="radar-spoke" x1="50" y1="50" x2="21" y2="100.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="-0.23" y2="79" />
+              <line class="radar-spoke" x1="50" y1="50" x2="-8" y2="50" />
+              <line class="radar-spoke" x1="50" y1="50" x2="-0.23" y2="21" />
+              <line class="radar-spoke" x1="50" y1="50" x2="21" y2="-0.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="50" y2="-8" />
+              <line class="radar-spoke" x1="50" y1="50" x2="79" y2="-0.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="100.23" y2="21" />
+
+              <circle class="ring-circle" cx="50" cy="50" r="30" />
+              <circle class="ring-circle" cx="50" cy="50" r="45" />
+              <circle class="ring-circle" cx="50" cy="50" r="50" />
+              <circle class="boundary-circle" cx="50" cy="50" r="58" />
+
+              <line class="section-boundary" x1="60.58" y1="35.44" x2="84.09" y2="3.08" />
+              <line class="section-boundary" x1="67.12" y1="55.56" x2="105.16" y2="67.92" />
+              <line class="section-boundary" x1="50" y1="68" x2="50" y2="108" />
+              <line class="section-boundary" x1="32.88" y1="55.56" x2="-5.16" y2="67.92" />
+              <line class="section-boundary" x1="39.42" y1="35.44" x2="15.91" y2="3.08" />
+
+              <line class="spoke-line" x1="50" y1="50" x2="50" y2="18" stroke="var(--color-accent)" />
+              <line class="spoke-line" x1="50" y1="50" x2="80.43" y2="40.11" stroke="var(--color-accent)" />
+              <line class="spoke-line" x1="50" y1="50" x2="68.82" y2="75.89" stroke="var(--color-accent)" />
+              <line class="spoke-line" x1="50" y1="50" x2="31.18" y2="75.89" stroke="var(--color-accent)" />
+              <line class="spoke-line" x1="50" y1="50" x2="19.57" y2="40.11" stroke="var(--color-accent)" />
+
+              <!-- Technical section: Hub -> its own 6-slot fan (5 individual
+                   compact dots + 1 .map-overflow-marker in the last slot),
+                   same wedge/arc math as "Dense section" (arc = min(80,
+                   72*0.8) = 57.6deg, offsets computed at count=6 slots
+                   instead of the real agent count=15 — this is exactly
+                   what VISIBLE_SLOT_CAP=6 means: the FAN always renders at
+                   most 6 positions regardless of how large the real count
+                   grows). -->
+              <line class="cluster-line" x1="50" y1="18" x2="25.91" y2="6.19" stroke="var(--color-accent)" />
+              <line class="cluster-line" x1="50" y1="18" x2="35.15" y2="2.26" stroke="var(--color-accent)" />
+              <line class="cluster-line" x1="50" y1="18" x2="44.98" y2="0.25" stroke="var(--color-accent)" />
+              <line class="cluster-line" x1="50" y1="18" x2="55.02" y2="0.25" stroke="var(--color-accent)" />
+              <line class="cluster-line" x1="50" y1="18" x2="64.85" y2="2.26" stroke="var(--color-accent)" />
+              <line class="cluster-line" x1="50" y1="18" x2="74.09" y2="6.19" stroke="var(--color-accent)" />
+
+              <!-- Sales, Productivity, Customers, Products: zero-agent sections (Scenario 7) -->
+
+              <text class="ring-label" x="80" y="51" font-size="2.6" letter-spacing="0.3">PRODUCER</text>
+              <text class="ring-label" x="27.5" y="89.97" font-size="2.6" letter-spacing="0.3">EXPERT</text>
+              <text class="ring-label" x="25" y="8.2" font-size="2.6" letter-spacing="0.3">WORKER</text>
+            </svg>
+
+            <div class="kb-node">
+              <svg class="kb-brain-svg" viewBox="0 0 100 100">
+                <line x1="50" y1="10" x2="65.3" y2="13" />
+                <line x1="65.3" y1="13" x2="78.3" y2="21.7" />
+                <line x1="78.3" y1="21.7" x2="87" y2="34.7" />
+                <line x1="87" y1="34.7" x2="90" y2="50" />
+                <line x1="90" y1="50" x2="87" y2="65.3" />
+                <line x1="87" y1="65.3" x2="78.3" y2="78.3" />
+                <line x1="78.3" y1="78.3" x2="65.3" y2="87" />
+                <line x1="65.3" y1="87" x2="50" y2="90" />
+                <line x1="50" y1="90" x2="34.7" y2="87" />
+                <line x1="34.7" y1="87" x2="21.7" y2="78.3" />
+                <line x1="21.7" y1="78.3" x2="13" y2="65.3" />
+                <line x1="13" y1="65.3" x2="10" y2="50" />
+                <line x1="10" y1="50" x2="13" y2="34.7" />
+                <line x1="13" y1="34.7" x2="21.7" y2="21.7" />
+                <line x1="21.7" y1="21.7" x2="34.7" y2="13" />
+                <line x1="34.7" y1="13" x2="50" y2="10" />
+                <line x1="61" y1="30.95" x2="72" y2="50" />
+                <line x1="72" y1="50" x2="61" y2="69.05" />
+                <line x1="61" y1="69.05" x2="39" y2="69.05" />
+                <line x1="39" y1="69.05" x2="28" y2="50" />
+                <line x1="28" y1="50" x2="39" y2="30.95" />
+                <line x1="39" y1="30.95" x2="61" y2="30.95" />
+                <line x1="61" y1="30.95" x2="50" y2="50" />
+                <line x1="72" y1="50" x2="50" y2="50" />
+                <line x1="61" y1="69.05" x2="50" y2="50" />
+                <line x1="39" y1="69.05" x2="50" y2="50" />
+                <line x1="28" y1="50" x2="50" y2="50" />
+                <line x1="39" y1="30.95" x2="50" y2="50" />
+                <line x1="61" y1="30.95" x2="65.3" y2="13" />
+                <line x1="61" y1="30.95" x2="78.3" y2="21.7" />
+                <line x1="72" y1="50" x2="87" y2="34.7" />
+                <line x1="72" y1="50" x2="87" y2="65.3" />
+                <line x1="61" y1="69.05" x2="78.3" y2="78.3" />
+                <line x1="61" y1="69.05" x2="65.3" y2="87" />
+                <line x1="39" y1="69.05" x2="34.7" y2="87" />
+                <line x1="39" y1="69.05" x2="21.7" y2="78.3" />
+                <line x1="28" y1="50" x2="13" y2="65.3" />
+                <line x1="28" y1="50" x2="13" y2="34.7" />
+                <line x1="39" y1="30.95" x2="21.7" y2="21.7" />
+                <line x1="39" y1="30.95" x2="34.7" y2="13" />
+                <line x1="65.3" y1="13" x2="34.7" y2="87" />
+                <line x1="87" y1="65.3" x2="13" y2="34.7" />
+                <circle class="kb-neuron" cx="50" cy="10" r="3.4" fill-opacity="0.9" style="animation-delay:0s;" />
+                <circle class="kb-neuron" cx="65.3" cy="13" r="2.8" fill-opacity="0.7" style="animation-delay:0.1s;" />
+                <circle class="kb-neuron" cx="78.3" cy="21.7" r="3.1" fill-opacity="0.85" style="animation-delay:0.2s;" />
+                <circle class="kb-neuron" cx="87" cy="34.7" r="2.6" fill-opacity="0.6" style="animation-delay:0.3s;" />
+                <circle class="kb-neuron" cx="90" cy="50" r="3.4" fill-opacity="0.9" style="animation-delay:0.4s;" />
+                <circle class="kb-neuron" cx="87" cy="65.3" r="2.8" fill-opacity="0.7" style="animation-delay:0.5s;" />
+                <circle class="kb-neuron" cx="78.3" cy="78.3" r="3.1" fill-opacity="0.85" style="animation-delay:0.6s;" />
+                <circle class="kb-neuron" cx="65.3" cy="87" r="2.6" fill-opacity="0.6" style="animation-delay:0.7s;" />
+                <circle class="kb-neuron" cx="50" cy="90" r="3.4" fill-opacity="0.9" style="animation-delay:0.8s;" />
+                <circle class="kb-neuron" cx="34.7" cy="87" r="2.8" fill-opacity="0.7" style="animation-delay:0.9s;" />
+                <circle class="kb-neuron" cx="21.7" cy="78.3" r="3.1" fill-opacity="0.85" style="animation-delay:1.0s;" />
+                <circle class="kb-neuron" cx="13" cy="65.3" r="2.6" fill-opacity="0.6" style="animation-delay:1.1s;" />
+                <circle class="kb-neuron" cx="10" cy="50" r="3.4" fill-opacity="0.9" style="animation-delay:1.2s;" />
+                <circle class="kb-neuron" cx="13" cy="34.7" r="2.8" fill-opacity="0.7" style="animation-delay:1.3s;" />
+                <circle class="kb-neuron" cx="21.7" cy="21.7" r="3.1" fill-opacity="0.85" style="animation-delay:1.4s;" />
+                <circle class="kb-neuron" cx="34.7" cy="13" r="2.6" fill-opacity="0.6" style="animation-delay:1.5s;" />
+                <circle class="kb-neuron" cx="61" cy="30.95" r="2.4" fill-opacity="0.65" style="animation-delay:1.6s;" />
+                <circle class="kb-neuron" cx="72" cy="50" r="2.2" fill-opacity="0.55" style="animation-delay:1.75s;" />
+                <circle class="kb-neuron" cx="61" cy="69.05" r="2.4" fill-opacity="0.65" style="animation-delay:1.9s;" />
+                <circle class="kb-neuron" cx="39" cy="69.05" r="2.2" fill-opacity="0.55" style="animation-delay:2.05s;" />
+                <circle class="kb-neuron" cx="28" cy="50" r="2.4" fill-opacity="0.65" style="animation-delay:2.2s;" />
+                <circle class="kb-neuron" cx="39" cy="30.95" r="2.2" fill-opacity="0.55" style="animation-delay:2.35s;" />
+                <circle class="kb-neuron" cx="50" cy="50" r="5" fill-opacity="1" style="animation-delay:0s;" />
+                <circle class="kb-pulse-dot" r="1.8">
+                  <animateMotion dur="2.4s" repeatCount="indefinite" path="M65.3,13 L34.7,87" />
+                </circle>
+                <circle class="kb-pulse-dot" r="1.8">
+                  <animateMotion dur="2.8s" begin="0.7s" repeatCount="indefinite" path="M87,65.3 L13,34.7" />
+                </circle>
+              </svg>
+              <span class="kb-node-label">Knowledge Base<span class="kb-node-sub">Vault indexed</span></span>
+            </div>
+
+            <button type="button" class="hub-node" style="top:18%; left:50%;" data-section-id="technical">
+              Technical Hub
+              <span class="hub-node-type">15 agents &middot; click to zoom in</span>
+            </button>
+            <button type="button" class="hub-node" style="top:40.11%; left:80.43%;" data-section-id="sales">
+              Sales Hub
+              <span class="hub-node-type">0 agents — empty &middot; click to zoom in</span>
+            </button>
+            <button type="button" class="hub-node" style="top:75.89%; left:68.82%;" data-section-id="productivity">
+              Productivity Hub
+              <span class="hub-node-type">0 agents — empty &middot; click to zoom in</span>
+            </button>
+            <button type="button" class="hub-node" style="top:75.89%; left:31.18%;" data-section-id="customers">
+              Customers Hub
+              <span class="hub-node-type">0 agents — empty &middot; click to zoom in</span>
+            </button>
+            <button type="button" class="hub-node" style="top:40.11%; left:19.57%;" data-section-id="products">
+              Products Hub
+              <span class="hub-node-type">0 agents — empty &middot; click to zoom in</span>
+            </button>
+
+            <!-- Technical section's own 6-slot fan (VISIBLE_SLOT_CAP=6):
+                 first 5 slots are ordinary compact dots (Illustrative Worker
+                 01-05); the LAST slot is the new cluster marker, showing
+                 "+10" for the 10 agents (Illustrative Worker 06-15) it
+                 represents instead of a 6th dot. Same wedge/ring/trig
+                 convention as every other state's Technical agents (Worker
+                 ring, r=50). -->
+            <button type="button" class="agent-node agent-node--worker agent-node--compact" style="top:6.19%; left:25.91%; animation-delay:0.1s;" data-agent-id="illustrative-worker">
+              <span class="agent-node-label">Illustrative Worker 01</span>
+              <span class="agent-node-type">Worker</span>
+            </button>
+            <button type="button" class="agent-node agent-node--worker agent-node--compact" style="top:2.26%; left:35.15%; animation-delay:0.2s;" data-agent-id="illustrative-worker">
+              <span class="agent-node-label">Illustrative Worker 02</span>
+              <span class="agent-node-type">Worker</span>
+            </button>
+            <button type="button" class="agent-node agent-node--worker agent-node--compact" style="top:0.25%; left:44.98%; animation-delay:0.3s;" data-agent-id="illustrative-worker">
+              <span class="agent-node-label">Illustrative Worker 03</span>
+              <span class="agent-node-type">Worker</span>
+            </button>
+            <button type="button" class="agent-node agent-node--worker agent-node--compact" style="top:0.25%; left:55.02%; animation-delay:0.4s;" data-agent-id="illustrative-worker">
+              <span class="agent-node-label">Illustrative Worker 04</span>
+              <span class="agent-node-type">Worker</span>
+            </button>
+            <button type="button" class="agent-node agent-node--worker agent-node--compact" style="top:2.26%; left:64.85%; animation-delay:0.5s;" data-agent-id="illustrative-worker">
+              <span class="agent-node-label">Illustrative Worker 05</span>
+              <span class="agent-node-type">Worker</span>
+            </button>
+            <button type="button" class="map-overflow-marker" style="top:6.19%; left:74.09%; animation-delay:0.6s;" data-section-id="technical-cluster-overflow" title="10 more agents in Technical — click to view">
+              <span class="map-overflow-marker-count">+10</span>
+              <span class="map-overflow-marker-label">agents &middot; click to view</span>
+            </button>
+
+            <div class="section-title" style="top:-16%; left:50%;">
+              Technical
+              <span class="section-title-accent" style="background: var(--color-accent);"></span>
+            </div>
+            <div class="section-title" style="top:29.61%; left:112.77%;">
+              Sales
+              <span class="section-title-accent" style="background: var(--color-accent);"></span>
+            </div>
+            <div class="section-title" style="top:103.39%; left:88.79%;">
+              Productivity
+              <span class="section-title-accent" style="background: var(--color-accent);"></span>
+            </div>
+            <div class="section-title" style="top:103.39%; left:11.21%;">
+              Customers
+              <span class="section-title-accent" style="background: var(--color-accent);"></span>
+            </div>
+            <div class="section-title" style="top:29.61%; left:-12.77%;">
+              Products
+              <span class="section-title-accent" style="background: var(--color-accent);"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="agent-type-legend">
+          <span><span class="legend-swatch" style="--legend-color: var(--agent-color-worker);"></span>Worker ring (outermost) — runs a recurring capture job</span>
+          <span><span class="legend-swatch" style="--legend-color: var(--agent-color-expert);"></span>Expert ring (middle) — answers questions over the vault</span>
+          <span><span class="legend-swatch" style="--legend-color: var(--agent-color-producer);"></span>Producer ring (innermost) — maintains a living document</span>
+          <span class="text-muted">Technical has 15 SYNTHETIC "Illustrative Worker" agents (REQ-SB-38 stress-test fixture, not real/planned/proposed) — deliberately more than fit as individual dots. Past 5 agents sharing one Section's wedge and one Type-ring (this pass's own proposed VISIBLE_SLOT_CAP=6, flagged for sign-off, see this file's top-of-file breadcrumb), the fan's last slot renders one clickable cluster marker ("+10") instead of a 6th overlapping dot. Click the marker to see just the 10 agents it represents; click the Technical Hub itself to see all 15 (still unclustered there — see the callout inside that view for the open follow-up question this pass deliberately does not resolve).</span>
+        </div>
+        <button type="button" class="btn" data-agents-replay-intro style="margin-top: var(--space-3);">&#8635; Replay intro</button>
+        </div>
+
+        <div class="explore-drilldown" data-agents-drilldown>
+          <div data-state-panel data-group="drilldown-density-clustering" data-state="technical" class="active">
+            <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
+            <p class="card" style="border-color: var(--color-warning); margin-bottom: var(--space-4);">
+              <strong>Open question, not resolved by this pass (PRD REQ-SB-38, open question 2):</strong>
+              this is Technical's own FULL, unclustered Agents Tree — the same
+              full-360&deg; <span class="mono">layoutSectionDrilldown</span> spread
+              every Section drill-down already uses, now genuinely stress-tested at
+              15 agents on one ring. It visibly reads as dense/crowded here too —
+              whether the clustering treatment above should <em>also</em> apply
+              inside this drill-down view (not just the overview) is left for the
+              human to decide, not silently resolved here.
+            </p>
+            <div class="agents-map-stage">
+              <div class="agents-map-canvas">
+                <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+                  <line class="cluster-line" x1="50" y1="50" x2="50.00" y2="10.00" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="66.27" y2="13.46" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="79.73" y2="23.23" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="88.04" y2="37.64" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="89.78" y2="54.18" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="84.64" y2="70.00" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="73.51" y2="82.36" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="58.32" y2="89.13" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="41.68" y2="89.13" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="26.49" y2="82.36" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="15.36" y2="70.00" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="10.22" y2="54.18" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="11.96" y2="37.64" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="20.27" y2="23.23" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="33.73" y2="13.46" stroke="var(--color-accent)" />
+                </svg>
+                <div class="hub-node" style="top:50%; left:50%;">Technical Hub<span class="hub-node-type">15 agents</span></div>
+                <button type="button" class="agent-node agent-node--worker" style="top:10.00%; left:50.00%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 01</span><span class="agent-node-type">Worker</span></button>
+                <button type="button" class="agent-node agent-node--worker" style="top:13.46%; left:66.27%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 02</span><span class="agent-node-type">Worker</span></button>
+                <button type="button" class="agent-node agent-node--worker" style="top:23.23%; left:79.73%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 03</span><span class="agent-node-type">Worker</span></button>
+                <button type="button" class="agent-node agent-node--worker" style="top:37.64%; left:88.04%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 04</span><span class="agent-node-type">Worker</span></button>
+                <button type="button" class="agent-node agent-node--worker" style="top:54.18%; left:89.78%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 05</span><span class="agent-node-type">Worker</span></button>
+                <button type="button" class="agent-node agent-node--worker" style="top:70.00%; left:84.64%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 06 (clustered on overview)</span><span class="agent-node-type">Worker</span></button>
+                <button type="button" class="agent-node agent-node--worker" style="top:82.36%; left:73.51%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 07 (clustered on overview)</span><span class="agent-node-type">Worker</span></button>
+                <button type="button" class="agent-node agent-node--worker" style="top:89.13%; left:58.32%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 08 (clustered on overview)</span><span class="agent-node-type">Worker</span></button>
+                <button type="button" class="agent-node agent-node--worker" style="top:89.13%; left:41.68%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 09 (clustered on overview)</span><span class="agent-node-type">Worker</span></button>
+                <button type="button" class="agent-node agent-node--worker" style="top:82.36%; left:26.49%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 10 (clustered on overview)</span><span class="agent-node-type">Worker</span></button>
+                <button type="button" class="agent-node agent-node--worker" style="top:70.00%; left:15.36%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 11 (clustered on overview)</span><span class="agent-node-type">Worker</span></button>
+                <button type="button" class="agent-node agent-node--worker" style="top:54.18%; left:10.22%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 12 (clustered on overview)</span><span class="agent-node-type">Worker</span></button>
+                <button type="button" class="agent-node agent-node--worker" style="top:37.64%; left:11.96%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 13 (clustered on overview)</span><span class="agent-node-type">Worker</span></button>
+                <button type="button" class="agent-node agent-node--worker" style="top:23.23%; left:20.27%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 14 (clustered on overview)</span><span class="agent-node-type">Worker</span></button>
+                <button type="button" class="agent-node agent-node--worker" style="top:13.46%; left:33.73%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 15 (clustered on overview)</span><span class="agent-node-type">Worker</span></button>
+              </div>
+            </div>
+          </div>
+          <div data-state-panel data-group="drilldown-density-clustering" data-state="technical-cluster-overflow">
+            <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
+            <p class="text-muted">This is the NEW narrower view the cluster marker itself opens — only the 10 agents it represents (Illustrative Worker 06-15), not Technical's other 5 individually-visible agents. Click the Technical Hub instead (from the overview) to see all 15 together.</p>
+            <div class="agents-map-stage">
+              <div class="agents-map-canvas">
+                <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+                  <line class="cluster-line" x1="50" y1="50" x2="50.00" y2="10.00" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="73.51" y2="17.64" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="88.04" y2="37.64" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="88.04" y2="62.36" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="73.51" y2="82.36" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="50.00" y2="90.00" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="26.49" y2="82.36" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="11.96" y2="62.36" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="11.96" y2="37.64" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="26.49" y2="17.64" stroke="var(--color-accent)" />
+                </svg>
+                <div class="hub-node" style="top:50%; left:50%;">Technical Hub<span class="hub-node-type">10 of 15 agents (clustered)</span></div>
+                <button type="button" class="agent-node agent-node--worker" style="top:10.00%; left:50.00%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 06</span><span class="agent-node-type">Worker</span></button>
+                <button type="button" class="agent-node agent-node--worker" style="top:17.64%; left:73.51%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 07</span><span class="agent-node-type">Worker</span></button>
+                <button type="button" class="agent-node agent-node--worker" style="top:37.64%; left:88.04%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 08</span><span class="agent-node-type">Worker</span></button>
+                <button type="button" class="agent-node agent-node--worker" style="top:62.36%; left:88.04%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 09</span><span class="agent-node-type">Worker</span></button>
+                <button type="button" class="agent-node agent-node--worker" style="top:82.36%; left:73.51%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 10</span><span class="agent-node-type">Worker</span></button>
+                <button type="button" class="agent-node agent-node--worker" style="top:90.00%; left:50.00%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 11</span><span class="agent-node-type">Worker</span></button>
+                <button type="button" class="agent-node agent-node--worker" style="top:82.36%; left:26.49%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 12</span><span class="agent-node-type">Worker</span></button>
+                <button type="button" class="agent-node agent-node--worker" style="top:62.36%; left:11.96%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 13</span><span class="agent-node-type">Worker</span></button>
+                <button type="button" class="agent-node agent-node--worker" style="top:37.64%; left:11.96%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 14</span><span class="agent-node-type">Worker</span></button>
+                <button type="button" class="agent-node agent-node--worker" style="top:17.64%; left:26.49%;" data-agent-id="illustrative-worker"><span class="agent-node-label">Illustrative Worker 15</span><span class="agent-node-type">Worker</span></button>
+              </div>
+            </div>
+          </div>
+          <div data-state-panel data-group="drilldown-density-clustering" data-state="sales">
+            <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
+            <div class="agents-map-stage">
+              <div class="agents-map-canvas">
+                <div class="hub-node" style="top:50%; left:50%;">Sales Hub<span class="hub-node-type">0 agents</span></div>
+              </div>
+            </div>
+            <div class="empty-state">
+              <p class="text-muted">No agents in this section yet — a real, buildable empty section (REQ-SB-18 Scenario 7), same as the overview.</p>
+            </div>
+          </div>
+          <div data-state-panel data-group="drilldown-density-clustering" data-state="productivity">
+            <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
+            <div class="agents-map-stage">
+              <div class="agents-map-canvas">
+                <div class="hub-node" style="top:50%; left:50%;">Productivity Hub<span class="hub-node-type">0 agents</span></div>
+              </div>
+            </div>
+            <div class="empty-state">
+              <p class="text-muted">No agents in this section yet — a real, buildable empty section (REQ-SB-18 Scenario 7), same as the overview.</p>
+            </div>
+          </div>
+          <div data-state-panel data-group="drilldown-density-clustering" data-state="customers">
+            <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
+            <div class="agents-map-stage">
+              <div class="agents-map-canvas">
+                <div class="hub-node" style="top:50%; left:50%;">Customers Hub<span class="hub-node-type">0 agents</span></div>
+              </div>
+            </div>
+            <div class="empty-state">
+              <p class="text-muted">No agents in this section yet — a real, buildable empty section (REQ-SB-18 Scenario 7), same as the overview.</p>
+            </div>
+          </div>
+          <div data-state-panel data-group="drilldown-density-clustering" data-state="products">
+            <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
+            <div class="agents-map-stage">
+              <div class="agents-map-canvas">
+                <div class="hub-node" style="top:50%; left:50%;">Products Hub<span class="hub-node-type">0 agents</span></div>
+              </div>
+            </div>
+            <div class="empty-state">
+              <p class="text-muted">No agents in this section yet — a real, buildable empty section (REQ-SB-18 Scenario 7), same as the overview.</p>
+            </div>
+          </div>
+        </div>
         </div>
       </section>
     </main>
   </div>
 
-  <!-- Agent detail panel (REQ-SB-13) — opens as an overlay, not a page nav. -->
+  <!-- Agent detail panel (REQ-SB-13) — opens as an overlay, not a page nav.
+       UNCHANGED by the BUG-002 fix (2026-08-12) — every agent, whether a
+       compact overview dot or a full drill-down node, still opens this same
+       panel via data-agent-id, wired by app.js's existing .agent-node click
+       handler (unchanged). -->
   <div class="side-panel-overlay" id="agentPanelOverlay"></div>
   <aside class="side-panel" id="agentPanel" aria-label="Agent details">
     <div class="side-panel-header">
@@ -531,6 +1971,32 @@
             <div class="kv-row"><span class="kv-key">Vault target</span><span class="mono">Work/Emails/</span></div>
             <div class="kv-row"><span class="kv-key">Classifier</span><span>Compass (GPT-5)</span></div>
             <div class="kv-row"><span class="kv-key">Missed-run catch-up</span><span>Enabled</span></div>
+            <div class="kv-row"><span class="kv-key">Section</span>
+              <select class="input kv-select">
+                <option>Technical</option>
+                <option>Sales</option>
+                <option selected>Productivity</option>
+                <option>Customers</option>
+                <option>Products</option>
+              </select>
+            </div>
+            <div class="kv-row"><span class="kv-key">Provider</span>
+              <select class="input kv-select">
+                <option selected>Compass (default)</option>
+                <option>OpenAI GPT-4</option>
+                <option>Anthropic Claude</option>
+              </select>
+            </div>
+            <div class="kv-row"><span class="kv-key">Keywords</span>
+              <input type="text" class="input kv-select" style="min-width:220px;" value="email, inbox, customer correspondence, message classification" />
+            </div>
+            <div class="kv-row"><span class="kv-key">Working mode</span>
+              <select class="input kv-select">
+                <option selected>Autonomous</option>
+                <option>Supervised</option>
+                <option>Manual</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -576,7 +2042,34 @@
             <div class="kv-row"><span class="kv-key">Vault target</span><span class="mono">Work/Meetings/</span></div>
             <div class="kv-row"><span class="kv-key">Classification</span><span>By customer (shared with Email Capture)</span></div>
             <div class="kv-row"><span class="kv-key">Duplicate handling</span><span>Skipped on rerun</span></div>
+            <div class="kv-row"><span class="kv-key">Section</span>
+              <select class="input kv-select">
+                <option>Technical</option>
+                <option>Sales</option>
+                <option selected>Productivity</option>
+                <option>Customers</option>
+                <option>Products</option>
+              </select>
+            </div>
+            <div class="kv-row"><span class="kv-key">Provider</span>
+              <select class="input kv-select">
+                <option selected>Compass (default)</option>
+                <option>OpenAI GPT-4</option>
+                <option>Anthropic Claude</option>
+              </select>
+            </div>
+            <div class="kv-row"><span class="kv-key">Keywords</span>
+              <input type="text" class="input kv-select" style="min-width:220px;" value="meetings, calendar, scheduling, attendees" />
+            </div>
+            <div class="kv-row"><span class="kv-key">Working mode</span>
+              <select class="input kv-select">
+                <option>Autonomous</option>
+                <option selected>Supervised</option>
+                <option>Manual</option>
+              </select>
+            </div>
           </div>
+          <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: var(--space-2);">Supervised (REQ-SB-21) — chat-triggered and background/scheduled actions are proposed and wait for approval, not taken immediately. See Chat below, and the Pending Approvals surface on My Day for this agent's background-pipeline proposals.</p>
         </div>
 
         <div class="side-panel-section">
@@ -592,6 +2085,37 @@
           <h3>Chat</h3>
           <div class="chat-thread" data-role="agent-chat-thread">
             <div class="chat-message chat-message--agent">Hi — ask me about upcoming or captured meetings.</div>
+            <div class="chat-message chat-message--user">Re-run today's capture</div>
+
+            <div class="state-switcher" data-group="meeting-capture-approval" style="margin: var(--space-2) 0;">
+              <button type="button" class="btn btn-primary" data-state-target="pending">Pending approval</button>
+              <button type="button" class="btn" data-state-target="approved">Approved</button>
+              <button type="button" class="btn" data-state-target="declined">Declined</button>
+            </div>
+
+            <div data-state-panel data-group="meeting-capture-approval" data-state="pending" class="active">
+              <div class="chat-proposal">
+                <span class="badge badge-warning">Awaiting your approval</span>
+                <p>I'd like to re-run today's meeting capture — this checks the calendar for new or changed events and files any new Meeting notes. Proceed?</p>
+                <div class="chat-proposal-actions">
+                  <button type="button" class="btn btn-primary">Approve</button>
+                  <button type="button" class="btn btn-danger">Decline</button>
+                </div>
+              </div>
+            </div>
+            <div data-state-panel data-group="meeting-capture-approval" data-state="approved">
+              <div class="chat-proposal chat-proposal--approved">
+                <span class="badge badge-success">Approved</span>
+                <p>Re-ran today's meeting capture as proposed.</p>
+              </div>
+              <div class="chat-message chat-message--agent">Done — 1 new meeting note filed.</div>
+            </div>
+            <div data-state-panel data-group="meeting-capture-approval" data-state="declined">
+              <div class="chat-proposal chat-proposal--declined">
+                <span class="badge badge-danger">Declined</span>
+                <p>Re-run today's meeting capture — not taken. Nothing was written to the vault.</p>
+              </div>
+            </div>
           </div>
           <form class="chat-input-row" data-role="agent-chat-form">
             <input type="text" class="input" data-role="agent-chat-input" placeholder="Message Meeting Capture…" />
@@ -618,7 +2142,34 @@
             <div class="kv-row"><span class="kv-key">Schedule</span><span>Hourly + once on app start</span></div>
             <div class="kv-row"><span class="kv-key">Vault target</span><span class="mono">Work/Tasks/</span></div>
             <div class="kv-row"><span class="kv-key">Task source</span><span>Open question — resolved at /spec</span></div>
+            <div class="kv-row"><span class="kv-key">Section</span>
+              <select class="input kv-select">
+                <option>Technical</option>
+                <option>Sales</option>
+                <option selected>Productivity</option>
+                <option>Customers</option>
+                <option>Products</option>
+              </select>
+            </div>
+            <div class="kv-row"><span class="kv-key">Provider</span>
+              <select class="input kv-select">
+                <option selected>Compass (default)</option>
+                <option>OpenAI GPT-4</option>
+                <option>Anthropic Claude</option>
+              </select>
+            </div>
+            <div class="kv-row"><span class="kv-key">Keywords</span>
+              <input type="text" class="input kv-select" style="min-width:220px;" value="" placeholder="No keywords assigned yet" />
+            </div>
+            <div class="kv-row"><span class="kv-key">Working mode</span>
+              <select class="input kv-select">
+                <option>Autonomous</option>
+                <option>Supervised</option>
+                <option selected>Manual</option>
+              </select>
+            </div>
           </div>
+          <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: var(--space-2);">No keywords assigned — per REQ-SB-20 Scenario 4, an agent with no keywords is never selected as a cross-Section routing target, regardless of what's being asked. Manual (REQ-SB-21) — stays dormant until explicitly asked to do something.</p>
         </div>
 
         <div class="side-panel-section">
@@ -660,7 +2211,37 @@
             <div class="kv-row"><span class="kv-key">Triggers on</span><span>New sender / meeting attendee</span></div>
             <div class="kv-row"><span class="kv-key">Vault target</span><span class="mono">Work/People/</span></div>
             <div class="kv-row"><span class="kv-key">Manual-edit protection</span><span>Preserves user-added content</span></div>
+            <div class="kv-row"><span class="kv-key">Section</span>
+              <select class="input kv-select">
+                <option>Technical</option>
+                <option>Sales</option>
+                <option>Productivity</option>
+                <option selected>Customers</option>
+                <option>Products</option>
+              </select>
+            </div>
+            <div class="kv-row"><span class="kv-key">Provider</span>
+              <span>
+                <select class="input kv-select">
+                  <option>Compass (default)</option>
+                  <option>OpenAI GPT-4</option>
+                  <option selected>Anthropic Claude</option>
+                </select>
+                <span class="badge badge-warning" style="margin-left: var(--space-2);">Not yet available</span>
+              </span>
+            </div>
+            <div class="kv-row"><span class="kv-key">Keywords</span>
+              <input type="text" class="input kv-select" style="min-width:220px;" value="people, contacts, person notes, attendee bios" />
+            </div>
+            <div class="kv-row"><span class="kv-key">Working mode</span>
+              <select class="input kv-select">
+                <option>Autonomous</option>
+                <option selected>Supervised</option>
+                <option>Manual</option>
+              </select>
+            </div>
           </div>
+          <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: var(--space-2);">Anthropic Claude has no real client built yet (REQ-SB-19) — People Notes honestly reports this Provider unavailable rather than silently using Compass instead. Working mode is Supervised (REQ-SB-21) — background-pipeline actions are proposed and wait for approval; see Pending Approvals on My Day.</p>
         </div>
 
         <div class="side-panel-section">
@@ -701,6 +2282,32 @@
             <div class="kv-row"><span class="kv-key">Grounding</span><span>Indexed vault (REQ-SB-01/02)</span></div>
             <div class="kv-row"><span class="kv-key">Reachable via</span><span>This panel + Hermes channels</span></div>
             <div class="kv-row"><span class="kv-key">Write access</span><span>Read-only here (see REQ-SB-04 for write scope)</span></div>
+            <div class="kv-row"><span class="kv-key">Section</span>
+              <select class="input kv-select">
+                <option selected>Technical</option>
+                <option>Sales</option>
+                <option>Productivity</option>
+                <option>Customers</option>
+                <option>Products</option>
+              </select>
+            </div>
+            <div class="kv-row"><span class="kv-key">Provider</span>
+              <select class="input kv-select">
+                <option selected>Compass (default)</option>
+                <option>OpenAI GPT-4</option>
+                <option>Anthropic Claude</option>
+              </select>
+            </div>
+            <div class="kv-row"><span class="kv-key">Keywords</span>
+              <input type="text" class="input kv-select" style="min-width:220px;" value="vault search, question answering, knowledge lookup" />
+            </div>
+            <div class="kv-row"><span class="kv-key">Working mode</span>
+              <select class="input kv-select">
+                <option selected>Autonomous</option>
+                <option>Supervised</option>
+                <option>Manual</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -731,9 +2338,25 @@
         </div>
       </div>
 
+      <!-- Illustrative-only stand-in (REQ-SB-38 density-clustering demo,
+           2026-08-13) — every synthetic "Illustrative Worker NN" node in the
+           new "Density clustering (REQ-SB-38 demo)" state shares this ONE
+           data-agent-id="illustrative-worker" (not 15 near-duplicate real
+           panels), since these agents carry no real Settings/Actions/Chat/
+           History — they don't exist in mockAgents.ts/agent_registry.py and
+           are not a proposal to build them, only a synthetic stress-test
+           fixture sized to actually exercise the clustering threshold,
+           matching agents-map-exploration.html's own "(illustrative)"
+           convention for the same idea. -->
+      <div class="side-panel-agent" data-agent-detail="illustrative-worker">
+        <h2>Illustrative Worker <span class="badge" style="background:color-mix(in srgb, var(--agent-color-worker) 20%, transparent); color:var(--agent-color-worker);">Worker</span></h2>
+        <p class="text-muted">A synthetic stress-test fixture, not a real agent — every "Illustrative Worker" dot and every agent revealed inside the cluster marker share this one stand-in panel. Used only to demonstrate REQ-SB-38's density-clustering pattern at a scale (15 agents in one Section) today's real ~7-agent roster doesn't yet reach.</p>
+      </div>
+
     </div>
   </aside>
 
   <script src="app.js"></script>
+  <script src="agents-map.js"></script>
 </body>
 </html>

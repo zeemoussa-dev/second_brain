@@ -1,0 +1,261 @@
+<!--
+  Screen: Agent Activity (REQ-SB-11) — new top-level nav page.
+  Operator/analyst decisions this screen is built strictly against
+  (REQ-SB-11-US-01's Context/Notes — not re-decided here):
+    1. Placement — a new top-level nav item/page, not a section grafted onto
+       System Health. New `.nav-item` added to the shared sidebar on EVERY
+       prototype page (index.html, agents-map.html,
+       agents-map-exploration.html, my-day.html + its 4 drill-downs +
+       my-day-approvals.html, settings.html, system-health.html, this file)
+       so the shared shell stays consistent everywhere — the same rollout
+       system-health.html's own breadcrumb performed for its own nav item.
+    2. Scope: a chronological, cross-agent list of `run_event` (success) and
+       the new error-outcome entries only — chat_user/chat_agent turns and
+       Supervised-mode "proposal" entries are explicitly excluded (the
+       former is REQ-SB-13's own per-agent Communication History panel on
+       Agents Map, unchanged; the latter is REQ-SB-21's own Pending
+       Approvals surface, not duplicated here).
+    3. Does NOT rebuild System Health's three existing checks (MCP mount,
+       Provider availability, last-capture-run timestamp) — this page adds
+       exactly one new channel-status check (direct Outlook COM
+       reachability) plus the history/log shape System Health deliberately
+       does not attempt (see system-health.html's own header comment and
+       REQ-SB-31-US-01's Context, which named this exact split).
+    4. "Communication channel" is reported honestly as direct Outlook COM
+       reachability — NOT "Hermes-wrapped" — since no live Hermes
+       connection exists anywhere in this codebase yet (REQ-SB-11-US-01's
+       Context; ESC-023, Open). A later story can extend this channel's
+       underlying mechanism once Hermes integration ships.
+    5. Example data is grounded in real code, not invented: the "Capture
+       run completed — N email(s) filed" text is copied verbatim from
+       `email_classification.py::run_capture_and_record_completion`'s own
+       existing history-entry string for email-capture. Meeting-capture's
+       analogous success entry ("N meeting(s) filed") is illustrative,
+       parity text this story's own T01 task will add (exact wording is a
+       /plan-tasks implementation detail, not decided here) — mirrors the
+       shape email-capture already has, per the story's Constraints. The
+       failure entry's error text is copied verbatim from
+       `outlook_com.py::_connect_namespace`'s own real
+       `OutlookUnavailable` message ("couldn't connect to Outlook — is it
+       running? (...)") — the exact failure mode the story's Scenario 2 /
+       T01 honest-failure-funnel fix is meant to surface, not a fabricated
+       string.
+
+  Reused, nothing net-new: .app-shell/.sidebar/.nav-item (shared shell),
+    .card, .badge/.badge-success/.badge-danger (same color-mix(...)-over-
+    token technique used throughout), .log-list/.log-item/.log-item-meta
+    (styles.css's own "Chronological log list — reused for agent
+    communication history and background-run activity" primitive,
+    already live on agents-map.html's per-agent Communication History
+    panel — this page is exactly the cross-agent use that comment already
+    anticipated), .kv-list/.kv-row/.kv-key (System Health's channel-status
+    card shape, reused here for the Outlook COM check), .state-switcher/
+    [data-state-panel] (System Health/Settings' own state-demo
+    convention), .empty-state (System Health's own first real use, reused
+    here for "no runs recorded yet"), .btn/.btn-primary, .mono, .text-muted.
+  New: none — composed entirely from existing tokens/components. The one
+    compositional choice (stacking a muted error-detail line beneath a
+    failed run's own summary line, inside a single .log-item's left-hand
+    slot) is plain content composition of already-existing utility classes
+    (.text-muted, inline <br>), not a new CSS class or pattern.
+
+  States demonstrated (buildable states only, grounded in
+  REQ-SB-11-US-01's own Context — real code read, not assumed):
+    - `data-group="activity-log"`: "Activity recorded" (Scenarios 1, 2, 3 —
+       a chronological, newest-first list spanning more than one configured
+       capture agent, with both a success entry and a failed entry with its
+       own error detail visible inline, never dropped silently) vs. "No
+       runs yet" (Scenario 6 — honestly empty, no fabricated entry, no
+       misleadingly-empty "everything is fine" default).
+    - `data-group="channel-status"`: "Outlook reachable" (Scenario 4) vs.
+       "Outlook unreachable" (Scenario 5 — visibly distinguished via
+       .badge-danger, with the real OutlookUnavailable message shown as the
+       honest detail).
+    - Scenario 7 (reopening reflects fresh state, not a cached snapshot)
+       needs no unique static-prototype treatment, per this project's own
+       established convention (My Day's rolling window, System Health's own
+       identical treatment) — a short text note next to a Refresh
+       affordance says so instead of inventing a new visual pattern for it.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Agent Activity — Second Brain</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <button class="burger-btn" id="sidebarToggle" aria-label="Toggle navigation" aria-expanded="true">&#9776;</button>
+        <h2>Second Brain</h2>
+      </div>
+      <a class="nav-item" href="agents-map.html"><span class="nav-icon">&#9678;</span><span class="nav-label">Agents Map</span></a>
+      <a class="nav-item" href="my-day.html"><span class="nav-icon">&#9728;</span><span class="nav-label">My Day</span></a>
+      <a class="nav-item" href="settings.html"><span class="nav-icon">&#9881;</span><span class="nav-label">Settings</span></a>
+      <a class="nav-item" href="system-health.html"><span class="nav-icon">&#9877;</span><span class="nav-label">System Health</span></a>
+      <a class="nav-item active" href="agent-activity.html"><span class="nav-icon">&#128203;</span><span class="nav-label">Agent Activity</span></a>
+      <a class="nav-item" href="vault-browser.html"><span class="nav-icon">&#128269;</span><span class="nav-label">Browse &amp; Search</span></a>
+      <a class="nav-item" href="index.html"><span class="nav-icon">&#9638;</span><span class="nav-label">Screens (catalog)</span></a>
+    </nav>
+    <main class="main">
+      <h1>Agent Activity</h1>
+      <p class="text-muted">
+        A chronological record of what background agent runs have
+        happened — email, meeting, and (once built) to-do capture — with
+        whether each succeeded or failed, plus whether Outlook is
+        currently reachable, so a real capture failure is visible in the
+        UI itself instead of only discoverable by symptom-chasing or
+        digging through server logs (REQ-SB-11).
+      </p>
+      <p class="text-muted" style="font-size: var(--font-size-sm);">
+        Not the same as <a href="system-health.html">System Health</a>,
+        which is a current-snapshot status board (is each piece healthy
+        <em>right now</em>) — this page is the history/log of individual
+        runs <em>over time</em>. It does not repeat System Health's own
+        MCP-mount, Provider-availability, or last-capture-run checks.
+      </p>
+      <p class="text-muted" style="font-size: var(--font-size-sm);">
+        <button type="button" class="btn" style="padding: var(--space-1) var(--space-3); font-size: var(--font-size-sm); margin-right: var(--space-2);">&#8635; Refresh</button>
+        Both the run list and the Outlook status below recompute fresh on
+        open or refresh — the same "never a cached snapshot" convention
+        already established for My Day's rolling window and System
+        Health, not a stale result from an earlier page load.
+      </p>
+
+      <!-- ==================================================================
+           Chronological activity log — Scenarios 1, 2, 3, 6.
+           ================================================================== -->
+      <h2 style="margin-top: var(--space-6);">Activity log</h2>
+      <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: calc(-1 * var(--space-3));">
+        Every completed background capture run, across every configured
+        capture agent, newest first. Scope: completed <span class="mono">run_event</span>
+        (success) and failure outcomes only — chat messages and
+        Supervised-mode pending-approval proposals are shown elsewhere
+        (each agent's own Communication History on
+        <a href="agents-map.html">Agents Map</a>; <a href="my-day-approvals.html">Pending Approvals</a>)
+        and are not duplicated here.
+      </p>
+
+      <div class="state-switcher" data-group="activity-log">
+        <button type="button" class="btn btn-primary" data-state-target="populated">Activity recorded</button>
+        <button type="button" class="btn" data-state-target="empty">No runs yet</button>
+      </div>
+
+      <!-- ============================= Populated state (Scenarios 1, 2, 3) ============================= -->
+      <section data-state-panel data-group="activity-log" data-state="populated" class="active">
+        <div class="card">
+          <div class="log-list">
+            <div class="log-item">
+              <span>
+                <span class="badge badge-success">Success</span>
+                Email Capture — Capture run completed — 3 email(s) filed
+              </span>
+              <span class="log-item-meta">Today 09:00</span>
+            </div>
+            <div class="log-item">
+              <span>
+                <span class="badge badge-danger">Failed</span>
+                Meeting Capture — Capture run failed
+                <br /><span class="text-muted" style="font-size: var(--font-size-sm);">Error: couldn't connect to Outlook — is it running? (COM error 0x80080005 — Server execution failed)</span>
+              </span>
+              <span class="log-item-meta">Today 08:00</span>
+            </div>
+            <div class="log-item">
+              <span>
+                <span class="badge badge-success">Success</span>
+                Meeting Capture — Capture run completed — 2 meeting(s) filed
+              </span>
+              <span class="log-item-meta">Today 08:00</span>
+            </div>
+            <div class="log-item">
+              <span>
+                <span class="badge badge-success">Success</span>
+                Email Capture — Capture run completed — 0 new emails
+              </span>
+              <span class="log-item-meta">Today 08:00</span>
+            </div>
+            <div class="log-item">
+              <span>
+                <span class="badge badge-success">Success</span>
+                Email Capture — Capture run completed on app start
+              </span>
+              <span class="log-item-meta">Today 07:42</span>
+            </div>
+            <div class="log-item">
+              <span>
+                <span class="badge badge-success">Success</span>
+                Meeting Capture — Capture run completed on app start
+              </span>
+              <span class="log-item-meta">Today 07:42</span>
+            </div>
+          </div>
+        </div>
+        <p class="text-muted" style="font-size: var(--font-size-sm);">
+          Every configured capture agent's runs appear here, not only
+          some of them (Scenario 3) — Email Capture and Meeting Capture
+          both show above. A failed run (Meeting Capture, 08:00) is
+          listed with its own error detail, not silently dropped
+          (Scenario 2) — depends on this story's own T01 fix (every
+          capture pipeline's top-level entry point funnels an escaping
+          exception into a recorded failed-run entry, the same
+          honest-failure-funnel pattern already used for the chat path).
+        </p>
+      </section>
+
+      <!-- ============================= Empty state (Scenario 6) ============================= -->
+      <section data-state-panel data-group="activity-log" data-state="empty">
+        <div class="card">
+          <div class="empty-state">
+            <p style="margin: 0; font-weight: 600; color: var(--color-text);">No agent activity recorded yet</p>
+            <p style="margin: var(--space-1) 0 0;">No background capture agent has completed a run yet — shown honestly, not fabricated as a run entry or a misleadingly-empty "everything is fine" default.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================================================================
+           Outlook communication channel status — Scenarios 4, 5.
+           Independent state from the activity log above, mirroring System
+           Health's own independent state-switcher-group convention.
+           ================================================================== -->
+      <h2 style="margin-top: var(--space-6);">Communication channels</h2>
+      <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: calc(-1 * var(--space-3));">
+        Reported honestly as direct Outlook COM reachability — not a
+        "Hermes-wrapped" channel, since no live Hermes connection exists
+        in this codebase yet. Reuses the same connection mechanism every
+        existing Outlook read (mail, calendar) already relies on
+        (<span class="mono">outlook_com.py::_connect_namespace</span>),
+        attempted here purely as a reachability check — one new,
+        lightweight, local, zero-external-cost call, no polling loop.
+      </p>
+
+      <div class="state-switcher" data-group="channel-status">
+        <button type="button" class="btn btn-primary" data-state-target="reachable">Outlook reachable</button>
+        <button type="button" class="btn" data-state-target="unreachable">Outlook unreachable</button>
+      </div>
+
+      <section data-state-panel data-group="channel-status" data-state="reachable" class="active">
+        <div class="card">
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Channel</span><span>Outlook (direct COM)</span></div>
+            <div class="kv-row"><span class="kv-key">Status</span><span class="badge badge-success">Reachable</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section data-state-panel data-group="channel-status" data-state="unreachable">
+        <div class="card">
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Channel</span><span>Outlook (direct COM)</span></div>
+            <div class="kv-row"><span class="kv-key">Status</span><span class="badge badge-danger">Unreachable</span></div>
+          </div>
+          <p class="text-muted" style="margin: var(--space-3) 0 0; font-size: var(--font-size-sm);">Error: couldn't connect to Outlook — is it running? (COM error 0x80080005 — Server execution failed) — visibly distinguished from the reachable state above, not a silent feature failure discovered later by symptom-chasing.</p>
+        </div>
+      </section>
+
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

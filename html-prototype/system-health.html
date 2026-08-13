@@ -1,0 +1,243 @@
+<!--
+  Screen: System Health (REQ-SB-31) — new top-level nav page.
+  Operator decisions this screen is built strictly against (2026-08-12,
+  REQ-SB-31-US-01's Notes — not re-decided here):
+    1. Placement — a new top-level nav item/page, not a Settings section,
+       not a persistent app-shell indicator. New `.nav-item` added to the
+       shared sidebar on EVERY prototype page (index.html, agents-map.html,
+       agents-map-exploration.html, my-day.html + its 4 drill-downs +
+       my-day-approvals.html, settings.html, this file) so the shared shell
+       stays consistent everywhere, matching how Settings/My Day/Agents Map
+       already appear on every page's sidebar.
+    2. An agent whose selected Provider has no real client configured is
+       shown as Disabled and listed as a Health Issue on THIS view only —
+       a deliberate, scoped override of the neutral "not configured" honesty
+       convention ADR-011 point 3 / ADR-014 point 7 established elsewhere
+       (Agents Map, per-agent Settings are untouched — still neutral there).
+    3. Scenario 8 (the run_agent_conversation crash-gap fix) is backend-only
+       — no unique UI shape needed beyond this page's existing "MCP path
+       unhealthy" state (Scenario 2). Not represented as its own region here
+       (see REQ-SB-31-US-01's Non-Goals — no persisted "last unhandled
+       exception" signal exists yet for this page's passive checks to read).
+
+  Reused, nothing net-new: .app-shell/.sidebar/.nav-item (shared shell),
+    .card, .badge/.badge-success/.badge-warning/.badge-danger (same
+    color-mix(...)-over-token technique already used throughout), .kv-list/
+    .kv-row/.kv-key (Settings' Vault/Connections cards), .item-list/
+    .item-row/.item-row-main/.item-row-title/.item-row-meta (Settings'
+    Sections/Providers rows — reused here for both the Health Issues list
+    and the Providers status list), .state-switcher/[data-state-panel]
+    (Settings' own state-demo convention), .empty-state (defined in
+    styles.css, not yet used by any screen — first real use, exactly the
+    "no issues" case it exists for), .btn/.btn-primary, .mono, .text-muted.
+  New: none — composed entirely from existing tokens/components, per this
+    project's "reuse first, invent last" rule.
+
+  States demonstrated (buildable states only, grounded in
+  REQ-SB-31-US-01's own Context — real code read, not assumed):
+    - `data-group="health-overview"`: "Everything healthy" (Scenario 1 —
+      MCP reachable, every agent's Provider has a real client, zero Health
+      Issues) vs. "Health issues present" (Scenario 2 — MCP mount
+      unreachable, visibly distinguished; Scenario 3 — the one agent whose
+      Provider has no real client, People Notes / Anthropic Claude, matching
+      settings.html's own existing example data exactly, shown Disabled and
+      listed as a Health Issue; Scenario 4 is demonstrated by every other
+      agent's absence from the Health Issues list, not a separate list).
+    - `data-group="capture-run"`: "Completed" (Scenario 5 — the recorded
+      `finished_at` timestamp from `.second-brain/last_capture_run.json`)
+      vs. "Never completed" (Scenario 6 — the file has never been written;
+      shown honestly, no fabricated timestamp or misleading default).
+    - Scenario 7 (reopening reflects fresh state, not a cached snapshot)
+      needs no unique static-prototype treatment per this batch's own
+      instructions — a short text note next to a Refresh affordance says so,
+      mirroring the "recomputes fresh on every call, never cached"
+      precedent already established for My Day's rolling window
+      (REQ-SB-22-US-01), instead of inventing a new visual pattern for it.
+
+  Providers status list is deliberately NOT the same list as Health Issues:
+    per REQ-SB-31-US-01's own Context, Provider availability rolls up the
+    already-computed provider_available signal PER DISTINCT PROVIDER (only
+    Providers actually selected by at least one agent), while Health Issues
+    lists the affected AGENT (Disabled) — the same underlying
+    provider_available:false state renders in two different rows for two
+    different reasons, both real per the story's own Constraints. The
+    Provider row itself keeps the existing neutral "no real client" honesty
+    language from settings.html's own Providers card, unchanged — only the
+    affected agent gets the Disabled/Health-Issue treatment, per the
+    override's own explicit scoping.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>System Health — Second Brain</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <button class="burger-btn" id="sidebarToggle" aria-label="Toggle navigation" aria-expanded="true">&#9776;</button>
+        <h2>Second Brain</h2>
+      </div>
+      <a class="nav-item" href="agents-map.html"><span class="nav-icon">&#9678;</span><span class="nav-label">Agents Map</span></a>
+      <a class="nav-item" href="my-day.html"><span class="nav-icon">&#9728;</span><span class="nav-label">My Day</span></a>
+      <a class="nav-item" href="settings.html"><span class="nav-icon">&#9881;</span><span class="nav-label">Settings</span></a>
+      <a class="nav-item active" href="system-health.html"><span class="nav-icon">&#9877;</span><span class="nav-label">System Health</span></a>
+      <a class="nav-item" href="agent-activity.html"><span class="nav-icon">&#128203;</span><span class="nav-label">Agent Activity</span></a>
+      <a class="nav-item" href="vault-browser.html"><span class="nav-icon">&#128269;</span><span class="nav-label">Browse &amp; Search</span></a>
+      <a class="nav-item" href="index.html"><span class="nav-icon">&#9638;</span><span class="nav-label">Screens (catalog)</span></a>
+    </nav>
+    <main class="main">
+      <h1>System Health</h1>
+      <p class="text-muted">
+        Whether Second Brain's own moving pieces are genuinely working — not
+        just "the process is up" — so a real failure is visible at a glance
+        instead of discovered by symptom-chasing through individual features
+        or digging through raw server logs (REQ-SB-31).
+      </p>
+      <p class="text-muted" style="font-size: var(--font-size-sm);">
+        <button type="button" class="btn" style="padding: var(--space-1) var(--space-3); font-size: var(--font-size-sm); margin-right: var(--space-2);">&#8635; Refresh</button>
+        Every check below recomputes fresh on open or refresh — the same
+        "never a cached snapshot" convention already established for My
+        Day's rolling window (REQ-SB-22-US-01), not a stale result from an
+        earlier page load.
+      </p>
+
+      <!-- ==================================================================
+           Health Issues + MCP status + Providers status — toggled together
+           since Scenario 2/3 (issues) and Scenario 1/4 (all clear) describe
+           the same three regions at once, matching settings.html's own
+           state-switcher convention for its Vault card.
+           ================================================================== -->
+      <div class="state-switcher" data-group="health-overview">
+        <button type="button" class="btn btn-primary" data-state-target="healthy">Everything healthy</button>
+        <button type="button" class="btn" data-state-target="issues">Health issues present</button>
+      </div>
+
+      <!-- ============================= Healthy state (Scenario 1, 4) ============================= -->
+      <section data-state-panel data-group="health-overview" data-state="healthy" class="active">
+
+        <div class="card" style="margin-bottom: var(--space-4);">
+          <h2>Health Issues</h2>
+          <div class="empty-state">
+            <div class="empty-state-icon">&#10003;</div>
+            <p style="margin: 0; font-weight: 600; color: var(--color-text);">No Health Issues</p>
+            <p style="margin: var(--space-1) 0 0;">MCP/agent-orchestration is reachable and every agent's selected Provider has a real client configured.</p>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom: var(--space-4);">
+          <h2>MCP / Agent-orchestration path</h2>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Mount</span><span class="mono">GET /mcp</span></div>
+            <div class="kv-row"><span class="kv-key">Status</span><span class="badge badge-success">Reachable</span></div>
+          </div>
+          <p class="text-muted" style="margin: var(--space-3) 0 0; font-size: var(--font-size-sm);">Responded with its normal "alive" signal (HTTP 406 on a bare GET) — the one check on this page that makes a real, local, in-process call; zero external cost.</p>
+        </div>
+
+        <div class="card">
+          <h2>Providers</h2>
+          <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: calc(-1 * var(--space-3));">Rolled up per distinct Provider, from each agent's own selection (GET /agents). "Available" means a real client is configured for it — not that it has been verified reachable right now.</p>
+          <div class="item-list">
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">Compass <span class="badge badge-success">Available</span></span>
+                <span class="item-row-meta">Selected by 4 agents (Email Capture, Meeting Capture, To-Do Capture, Vault Q&amp;A)</span>
+              </div>
+            </div>
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">Anthropic Claude <span class="badge badge-success">Available</span></span>
+                <span class="item-row-meta">Selected by 1 agent (People Notes)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================= Issues state (Scenario 2, 3) ============================= -->
+      <section data-state-panel data-group="health-overview" data-state="issues">
+
+        <div class="card" style="margin-bottom: var(--space-4);">
+          <h2>Health Issues</h2>
+          <div class="item-list">
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">MCP / Agent-orchestration path <span class="badge badge-danger">Unreachable</span></span>
+                <span class="item-row-meta">GET /mcp did not respond with its expected "alive" signal (HTTP 406) — no response, or an unexpected response.</span>
+              </div>
+            </div>
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">People Notes <span class="badge badge-danger">Disabled</span></span>
+                <span class="item-row-meta">Selected Provider (Anthropic Claude) has no real client configured yet.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom: var(--space-4);">
+          <h2>MCP / Agent-orchestration path</h2>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Mount</span><span class="mono">GET /mcp</span></div>
+            <div class="kv-row"><span class="kv-key">Status</span><span class="badge badge-danger">Unreachable</span></div>
+          </div>
+          <p class="text-muted" style="margin: var(--space-3) 0 0; font-size: var(--font-size-sm);">No response, or an unexpected response, from the shared FastMCP mount — visibly distinguished from the normal "reachable" state above, not a silent feature failure discovered later by symptom-chasing.</p>
+        </div>
+
+        <div class="card">
+          <h2>Providers</h2>
+          <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: calc(-1 * var(--space-3));">Rolled up per distinct Provider, from each agent's own selection (GET /agents). A Provider with no real client is an honest "not yet available" state (ADR-014 point 7) — unchanged from how it reads on Settings; only the affected agent above is shown Disabled / listed as a Health Issue on this view.</p>
+          <div class="item-list">
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">Compass <span class="badge badge-success">Available</span></span>
+                <span class="item-row-meta">Selected by 4 agents (Email Capture, Meeting Capture, To-Do Capture, Vault Q&amp;A)</span>
+              </div>
+            </div>
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">Anthropic Claude <span class="badge badge-warning">No client built yet</span></span>
+                <span class="item-row-meta">Selected by 1 agent (People Notes) — that agent is Disabled and listed above until a real client is configured for this Provider.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================================================================
+           Last capture run (Scenario 5, 6) — independent state, since
+           whether a run has ever completed is orthogonal to MCP/Provider
+           health.
+           ================================================================== -->
+      <h2 style="margin-top: var(--space-6);">Last capture run</h2>
+      <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: calc(-1 * var(--space-3));">Read from <span class="mono">.second-brain/last_capture_run.json</span>'s own recorded completion time — not a pass/fail flag (none exists in the underlying data). Second Brain's capture pipeline runs hourly; no staleness threshold is judged here, the raw completion time (or its honest absence) is shown as-is.</p>
+
+      <div class="state-switcher" data-group="capture-run">
+        <button type="button" class="btn btn-primary" data-state-target="completed">A run has completed</button>
+        <button type="button" class="btn" data-state-target="never">No run has ever completed</button>
+      </div>
+
+      <section data-state-panel data-group="capture-run" data-state="completed" class="active">
+        <div class="card">
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Last completed</span><span class="mono">2026-08-12T06:00:12Z</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section data-state-panel data-group="capture-run" data-state="never">
+        <div class="card">
+          <div class="empty-state">
+            <p style="margin: 0; font-weight: 600; color: var(--color-text);">No capture run has completed yet</p>
+            <p style="margin: var(--space-1) 0 0;"><span class="mono">last_capture_run.json</span> does not exist yet — shown honestly, not fabricated as a timestamp or a misleadingly healthy-looking default.</p>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -18,6 +18,74 @@
     the vault-connected/vault-error state cards and the badges (success/
     warning/danger) still read correctly against the new white/light-green
     surfaces.
+  Revision 2026-08-11 (REQ-SB-18/REQ-SB-19 — run retroactively per both
+  stories' `/design`-requested flags, after `/spec` already locked their
+  Gherkin): adds two new cards, Sections (REQ-SB-18) and Providers
+  (REQ-SB-19), below the existing Vault/Connections cards (which are
+  UNCHANGED — still REQ-SB-12's minimal placeholder). Designed strictly
+  against both stories' already-locked scenarios, including the
+  operator-resolved deletion/removal-while-in-use policy (block until
+  empty/unused, Scenario 4b in both stories) — not a new policy invented
+  here.
+    Reused: .card, .state-switcher/[data-state-panel] (own data-group per
+      card: "sections", "providers" — independent of the existing "settings"
+      group used by Vault), .item-list/.item-row/.item-row-main/
+      .item-row-title/.item-row-meta (borrowed from My Day's drill-down
+      pattern in styles.css — a list-of-entities-with-metadata shape that
+      fits Sections/Providers exactly), .badge (recolored inline via
+      existing color-mix(...) convention, same technique agents-map.html
+      already uses for its per-type badges), .input/label pattern (copied
+      from this file's own Vault-path field), .btn/.btn-primary.
+    New (added to styles.css, documented there): `.item-row-actions` (a
+      small flex-row wrapper for a row's action controls — a direct,
+      minimal extension of the existing `.item-row` family, not a
+      standalone new component); `.btn-danger` (a destructive-action
+      button variant, symmetric with the existing `.btn-primary`, built
+      from `--color-danger` — already a design-system token, not a new
+      hex); a small `summary.btn` marker reset so a native `<summary>`
+      element can visually double as a `.btn` without inventing new
+      interactive JS. Native `<details>/<summary>` (zero JS, works in any
+      browser) is used for every create/rename/edit/add affordance instead
+      of writing new app.js wiring — genuinely interactive in a real
+      browser, not a synthetic toggle, and consistent with this
+      directory's "no build step" ground rule.
+    Blocked-deletion/removal state (Scenario 4b, both stories): represented
+      two ways at once, not just a hover tooltip — (1) the Delete/Remove
+      button carries a real `disabled` attribute plus a `title` tooltip,
+      and (2) a permanently-visible danger-colored `.item-row-meta` line
+      names exactly which agent(s) must move first. This is visible in the
+      default "populated" state for every in-use row, AND isolated on its
+      own state-switcher panel ("blocked deletion/removal attempt") that
+      frames it as the direct result of an attempted delete, per Scenario
+      4b's "the deletion is refused ... a clear message explains ...".
+    Credential treatment (REQ-SB-19's Constraints — "same care as Compass's
+      existing `.env`-sourced credential"): every credential field renders
+      as `type="password"` (masked) with a pre-filled bullet placeholder,
+      never a plaintext value, both in the pre-seeded Compass entry and any
+      new/edited Provider.
+    Grounded in the data model, NOT drawn as empty: neither Sections nor
+      Providers ever renders a literal empty list — both stories' own
+      Scenario 1 requires a non-empty starting state (the 5 seed sections;
+      Compass pre-seeded) whenever nothing has been created/added yet, so a
+      "zero rows" list state would contradict the locked Gherkin, not just
+      be unlikely. The closest buildable "minimal" state is what these
+      cards already show as their default: the seed-only Sections rows
+      (five sections, with Sales and Products having zero agents each), and
+      Compass alone plus a couple of operator-added Providers for the
+      Providers card. The zero-agent
+      Sections rows also directly demonstrate Scenario 7's "section with
+      zero agents" case (paired with the equivalent Agents Map demonstration
+      in agents-map.html, not repeated here).
+    Revision 2026-08-12 (REQ-SB-31 design pass): added the new System Health
+    nav item to the shared sidebar (see system-health.html's own breadcrumb
+    for the full nav-wiring list). No other change on this page.
+    Section/Provider counts here are kept consistent with the matching
+      demonstration added to agents-map.html's side panel and its new
+      5-section reference state: Productivity=3 agents (Email/Meeting/
+      To-Do Capture), Customers=1 (People Notes), Technical=1 (Vault Q&A),
+      Sales=0, Products=0; Providers: Compass=4 agents, Anthropic Claude=1
+      (People Notes — also demonstrates REQ-SB-19 Scenario 7's "no real
+      client yet" honesty badge), OpenAI GPT-4=0 (the removable example).
 -->
 <!doctype html>
 <html lang="en">
@@ -36,11 +104,14 @@
       <a class="nav-item" href="agents-map.html"><span class="nav-icon">&#9678;</span><span class="nav-label">Agents Map</span></a>
       <a class="nav-item" href="my-day.html"><span class="nav-icon">&#9728;</span><span class="nav-label">My Day</span></a>
       <a class="nav-item active" href="settings.html"><span class="nav-icon">&#9881;</span><span class="nav-label">Settings</span></a>
+      <a class="nav-item" href="system-health.html"><span class="nav-icon">&#9877;</span><span class="nav-label">System Health</span></a>
+      <a class="nav-item" href="agent-activity.html"><span class="nav-icon">&#128203;</span><span class="nav-label">Agent Activity</span></a>
+      <a class="nav-item" href="vault-browser.html"><span class="nav-icon">&#128269;</span><span class="nav-label">Browse &amp; Search</span></a>
       <a class="nav-item" href="index.html"><span class="nav-icon">&#9638;</span><span class="nav-label">Screens (catalog)</span></a>
     </nav>
     <main class="main">
       <h1>Settings</h1>
-      <p class="text-muted">Minimal placeholder — full settings content is out of this batch's scope (REQ-SB-12 only requires this page be reachable).</p>
+      <p class="text-muted">Vault and Connections below remain a minimal placeholder (REQ-SB-12 only requires this page be reachable). Sections and Providers are new for this design pass (REQ-SB-18, REQ-SB-19) — pending browser sign-off.</p>
 
       <div class="state-switcher" data-group="settings">
         <button type="button" class="btn btn-primary" data-state-target="ok">Vault connected</button>
@@ -72,13 +143,311 @@
         </div>
       </section>
 
-      <div class="card">
+      <div class="card" style="margin-bottom: var(--space-4);">
         <h2>Connections</h2>
         <div class="kv-list">
           <div class="kv-row"><span class="kv-key">Hermes</span><span class="badge badge-warning">Not configured</span></div>
         </div>
         <p class="text-muted" style="margin-top: var(--space-3); font-size: var(--font-size-sm);">Hermes is an external MCP-based multi-channel communication tool this project integrates with, not something Second Brain builds (see MEMORY.md).</p>
       </div>
+
+      <!-- ==================================================================
+           Sections (REQ-SB-18) — new. Create/rename/delete a user-editable,
+           business-domain Section, independent of an agent's Worker/
+           Producer/Expert Type. Starting set (Scenario 1): Technical, Sales,
+           Productivity, Customers, Products.
+           ================================================================== -->
+      <h2 style="margin-top: var(--space-6);">Sections</h2>
+      <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: calc(-1 * var(--space-3));">Business-domain groupings agents belong to, shown as Hubs on the Agents Map. Independent of an agent's Worker/Producer/Expert Type — a Section can mix agents of any Type.</p>
+
+      <div class="state-switcher" data-group="sections">
+        <button type="button" class="btn btn-primary" data-state-target="populated">Populated</button>
+        <button type="button" class="btn" data-state-target="blocked">Blocked deletion attempt</button>
+      </div>
+
+      <section data-state-panel data-group="sections" data-state="populated" class="active">
+        <div class="card" style="margin-bottom: var(--space-4);">
+          <div class="item-list" style="margin-bottom: var(--space-4);">
+
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">Technical</span>
+                <span class="item-row-meta">1 agent assigned</span>
+                <span class="item-row-meta" style="color: var(--color-danger);">Move Vault Q&amp;A to another section first to delete</span>
+              </div>
+              <div class="item-row-actions">
+                <details>
+                  <summary class="btn">Rename</summary>
+                  <div class="card" style="margin-top: var(--space-2);">
+                    <label class="text-muted" for="renameTechnical" style="font-size: var(--font-size-sm);">New name</label>
+                    <input class="input" id="renameTechnical" type="text" value="Technical" style="margin: var(--space-1) 0 var(--space-2);" />
+                    <button type="button" class="btn btn-primary">Save</button>
+                  </div>
+                </details>
+                <button type="button" class="btn btn-danger" disabled title="Move all agents out of this section first">Delete</button>
+              </div>
+            </div>
+
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">Sales</span>
+                <span class="item-row-meta">No agents assigned</span>
+              </div>
+              <div class="item-row-actions">
+                <details>
+                  <summary class="btn">Rename</summary>
+                  <div class="card" style="margin-top: var(--space-2);">
+                    <label class="text-muted" for="renameSales" style="font-size: var(--font-size-sm);">New name</label>
+                    <input class="input" id="renameSales" type="text" value="Sales" style="margin: var(--space-1) 0 var(--space-2);" />
+                    <button type="button" class="btn btn-primary">Save</button>
+                  </div>
+                </details>
+                <button type="button" class="btn btn-danger">Delete</button>
+              </div>
+            </div>
+
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">Productivity</span>
+                <span class="item-row-meta">3 agents assigned</span>
+                <span class="item-row-meta" style="color: var(--color-danger);">Move Email Capture, Meeting Capture, To-Do Capture first to delete</span>
+              </div>
+              <div class="item-row-actions">
+                <details>
+                  <summary class="btn">Rename</summary>
+                  <div class="card" style="margin-top: var(--space-2);">
+                    <label class="text-muted" for="renameProductivity" style="font-size: var(--font-size-sm);">New name</label>
+                    <input class="input" id="renameProductivity" type="text" value="Productivity" style="margin: var(--space-1) 0 var(--space-2);" />
+                    <button type="button" class="btn btn-primary">Save</button>
+                  </div>
+                </details>
+                <button type="button" class="btn btn-danger" disabled title="Move all agents out of this section first">Delete</button>
+              </div>
+            </div>
+
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">Customers</span>
+                <span class="item-row-meta">1 agent assigned</span>
+                <span class="item-row-meta" style="color: var(--color-danger);">Move People Notes to another section first to delete</span>
+              </div>
+              <div class="item-row-actions">
+                <details>
+                  <summary class="btn">Rename</summary>
+                  <div class="card" style="margin-top: var(--space-2);">
+                    <label class="text-muted" for="renameCustomers" style="font-size: var(--font-size-sm);">New name</label>
+                    <input class="input" id="renameCustomers" type="text" value="Customers" style="margin: var(--space-1) 0 var(--space-2);" />
+                    <button type="button" class="btn btn-primary">Save</button>
+                  </div>
+                </details>
+                <button type="button" class="btn btn-danger" disabled title="Move all agents out of this section first">Delete</button>
+              </div>
+            </div>
+
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">Products</span>
+                <span class="item-row-meta">No agents assigned</span>
+              </div>
+              <div class="item-row-actions">
+                <details>
+                  <summary class="btn">Rename</summary>
+                  <div class="card" style="margin-top: var(--space-2);">
+                    <label class="text-muted" for="renameProducts" style="font-size: var(--font-size-sm);">New name</label>
+                    <input class="input" id="renameProducts" type="text" value="Products" style="margin: var(--space-1) 0 var(--space-2);" />
+                    <button type="button" class="btn btn-primary">Save</button>
+                  </div>
+                </details>
+                <button type="button" class="btn btn-danger">Delete</button>
+              </div>
+            </div>
+
+          </div>
+
+          <details>
+            <summary class="btn btn-primary">+ Create new section</summary>
+            <div class="card" style="margin-top: var(--space-2);">
+              <label class="text-muted" for="newSectionName" style="font-size: var(--font-size-sm);">Section name</label>
+              <input class="input" id="newSectionName" type="text" placeholder="e.g. Operations" style="margin: var(--space-1) 0 var(--space-2);" />
+              <button type="button" class="btn btn-primary">Create section</button>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <section data-state-panel data-group="sections" data-state="blocked">
+        <div class="card" style="margin-bottom: var(--space-4);">
+          <p class="text-muted" style="margin-top: 0;"><span class="badge badge-danger">Deletion blocked</span> Can't delete "Productivity" — 3 agents (Email Capture, Meeting Capture, To-Do Capture) are still assigned to this section. Move them to a different section first, then try again.</p>
+
+          <div class="item-list" style="margin-bottom: var(--space-4);">
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">Productivity <span class="badge badge-danger">Blocked</span></span>
+                <span class="item-row-meta">3 agents assigned</span>
+                <span class="item-row-meta" style="color: var(--color-danger);">Move Email Capture, Meeting Capture, To-Do Capture first to delete</span>
+              </div>
+              <div class="item-row-actions">
+                <button type="button" class="btn">Rename</button>
+                <button type="button" class="btn btn-danger" disabled title="Move all agents out of this section first">Delete</button>
+              </div>
+            </div>
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">Technical</span>
+                <span class="item-row-meta">1 agent assigned — unchanged</span>
+              </div>
+              <div class="item-row-actions">
+                <button type="button" class="btn">Rename</button>
+                <button type="button" class="btn btn-danger" disabled title="Move all agents out of this section first">Delete</button>
+              </div>
+            </div>
+          </div>
+          <p class="text-muted" style="font-size: var(--font-size-sm);">Every agent's own assignment is unchanged — the refusal only blocks the delete, per Scenario 4b.</p>
+        </div>
+      </section>
+
+      <!-- ==================================================================
+           Providers (REQ-SB-19) — new. Add/edit/remove an LLM Provider
+           entry; Compass is pre-seeded from its existing config
+           (compass_base_url/compass_api_key/compass_model). Credentials are
+           always masked.
+           ================================================================== -->
+      <h2 style="margin-top: var(--space-6);">Providers</h2>
+      <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: calc(-1 * var(--space-3));">LLM Providers agents can be pointed at. Compass is pre-seeded and remains every agent's default until explicitly changed. A Provider with no real client yet honestly reports unavailable — it never silently falls back to Compass.</p>
+
+      <div class="state-switcher" data-group="providers">
+        <button type="button" class="btn btn-primary" data-state-target="populated">Populated</button>
+        <button type="button" class="btn" data-state-target="blocked">Blocked removal attempt</button>
+      </div>
+
+      <section data-state-panel data-group="providers" data-state="populated" class="active">
+        <div class="card" style="margin-bottom: var(--space-4);">
+          <div class="item-list" style="margin-bottom: var(--space-4);">
+
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">Compass <span class="badge" style="background: var(--color-accent-muted); color: var(--color-accent);">Default</span></span>
+                <span class="item-row-meta">Endpoint: <span class="mono">https://compass.internal.example/api</span> &middot; Model: GPT-5</span>
+                <span class="item-row-meta">Used by 4 agents</span>
+              </div>
+              <div class="item-row-actions">
+                <details>
+                  <summary class="btn">Edit</summary>
+                  <div class="card" style="margin-top: var(--space-2);">
+                    <label class="text-muted" for="editCompassName" style="font-size: var(--font-size-sm);">Name</label>
+                    <input class="input" id="editCompassName" type="text" value="Compass" style="margin: var(--space-1) 0 var(--space-2);" />
+                    <label class="text-muted" for="editCompassEndpoint" style="font-size: var(--font-size-sm);">Endpoint</label>
+                    <input class="input" id="editCompassEndpoint" type="text" value="https://compass.internal.example/api" style="margin: var(--space-1) 0 var(--space-2);" />
+                    <label class="text-muted" for="editCompassCredential" style="font-size: var(--font-size-sm);">Credential (API key)</label>
+                    <input class="input" id="editCompassCredential" type="password" value="sk-live-••••••••••••" style="margin: var(--space-1) 0 var(--space-1);" />
+                    <p class="text-muted" style="font-size: var(--font-size-sm); margin: 0 0 var(--space-2);">Masked the same way Compass's existing <span class="mono">.env</span>-sourced credential is handled — never shown in plaintext.</p>
+                    <label class="text-muted" for="editCompassModel" style="font-size: var(--font-size-sm);">Model</label>
+                    <input class="input" id="editCompassModel" type="text" value="GPT-5" style="margin: var(--space-1) 0 var(--space-2);" />
+                    <button type="button" class="btn btn-primary">Save</button>
+                  </div>
+                </details>
+                <button type="button" class="btn btn-danger" disabled title="Switch every agent using it to a different Provider first">Remove</button>
+              </div>
+            </div>
+
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">Anthropic Claude <span class="badge badge-warning">No client built yet</span></span>
+                <span class="item-row-meta">Endpoint: <span class="mono">https://api.anthropic.com/v1</span> &middot; Model: claude-3-opus</span>
+                <span class="item-row-meta">Used by 1 agent (People Notes)</span>
+              </div>
+              <div class="item-row-actions">
+                <details>
+                  <summary class="btn">Edit</summary>
+                  <div class="card" style="margin-top: var(--space-2);">
+                    <label class="text-muted" for="editAnthropicName" style="font-size: var(--font-size-sm);">Name</label>
+                    <input class="input" id="editAnthropicName" type="text" value="Anthropic Claude" style="margin: var(--space-1) 0 var(--space-2);" />
+                    <label class="text-muted" for="editAnthropicEndpoint" style="font-size: var(--font-size-sm);">Endpoint</label>
+                    <input class="input" id="editAnthropicEndpoint" type="text" value="https://api.anthropic.com/v1" style="margin: var(--space-1) 0 var(--space-2);" />
+                    <label class="text-muted" for="editAnthropicCredential" style="font-size: var(--font-size-sm);">Credential (API key)</label>
+                    <input class="input" id="editAnthropicCredential" type="password" value="sk-ant-••••••••••••" style="margin: var(--space-1) 0 var(--space-2);" />
+                    <label class="text-muted" for="editAnthropicModel" style="font-size: var(--font-size-sm);">Model</label>
+                    <input class="input" id="editAnthropicModel" type="text" value="claude-3-opus" style="margin: var(--space-1) 0 var(--space-2);" />
+                    <button type="button" class="btn btn-primary">Save</button>
+                  </div>
+                </details>
+                <button type="button" class="btn btn-danger" disabled title="Switch every agent using it to a different Provider first">Remove</button>
+              </div>
+            </div>
+
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">OpenAI GPT-4 <span class="badge badge-warning">No client built yet</span></span>
+                <span class="item-row-meta">Endpoint: <span class="mono">https://api.openai.com/v1</span> &middot; Model: gpt-4</span>
+                <span class="item-row-meta">Used by 0 agents</span>
+              </div>
+              <div class="item-row-actions">
+                <details>
+                  <summary class="btn">Edit</summary>
+                  <div class="card" style="margin-top: var(--space-2);">
+                    <label class="text-muted" for="editOpenAiName" style="font-size: var(--font-size-sm);">Name</label>
+                    <input class="input" id="editOpenAiName" type="text" value="OpenAI GPT-4" style="margin: var(--space-1) 0 var(--space-2);" />
+                    <label class="text-muted" for="editOpenAiEndpoint" style="font-size: var(--font-size-sm);">Endpoint</label>
+                    <input class="input" id="editOpenAiEndpoint" type="text" value="https://api.openai.com/v1" style="margin: var(--space-1) 0 var(--space-2);" />
+                    <label class="text-muted" for="editOpenAiCredential" style="font-size: var(--font-size-sm);">Credential (API key)</label>
+                    <input class="input" id="editOpenAiCredential" type="password" value="sk-••••••••••••" style="margin: var(--space-1) 0 var(--space-2);" />
+                    <label class="text-muted" for="editOpenAiModel" style="font-size: var(--font-size-sm);">Model</label>
+                    <input class="input" id="editOpenAiModel" type="text" value="gpt-4" style="margin: var(--space-1) 0 var(--space-2);" />
+                    <button type="button" class="btn btn-primary">Save</button>
+                  </div>
+                </details>
+                <button type="button" class="btn btn-danger">Remove</button>
+              </div>
+            </div>
+
+          </div>
+
+          <details>
+            <summary class="btn btn-primary">+ Add new Provider</summary>
+            <div class="card" style="margin-top: var(--space-2);">
+              <label class="text-muted" for="newProviderName" style="font-size: var(--font-size-sm);">Name</label>
+              <input class="input" id="newProviderName" type="text" placeholder="e.g. Azure OpenAI" style="margin: var(--space-1) 0 var(--space-2);" />
+              <label class="text-muted" for="newProviderEndpoint" style="font-size: var(--font-size-sm);">Endpoint</label>
+              <input class="input" id="newProviderEndpoint" type="text" placeholder="https://…" style="margin: var(--space-1) 0 var(--space-2);" />
+              <label class="text-muted" for="newProviderCredential" style="font-size: var(--font-size-sm);">Credential (API key)</label>
+              <input class="input" id="newProviderCredential" type="password" placeholder="Never stored in plaintext" style="margin: var(--space-1) 0 var(--space-2);" />
+              <label class="text-muted" for="newProviderModel" style="font-size: var(--font-size-sm);">Model</label>
+              <input class="input" id="newProviderModel" type="text" placeholder="e.g. gpt-4o" style="margin: var(--space-1) 0 var(--space-2);" />
+              <button type="button" class="btn btn-primary">Add provider</button>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <section data-state-panel data-group="providers" data-state="blocked">
+        <div class="card" style="margin-bottom: var(--space-4);">
+          <p class="text-muted" style="margin-top: 0;"><span class="badge badge-danger">Removal blocked</span> Can't remove "Anthropic Claude" — 1 agent (People Notes) currently selects this Provider. Switch it to a different Provider first, then try again.</p>
+
+          <div class="item-list" style="margin-bottom: var(--space-4);">
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">Anthropic Claude <span class="badge badge-danger">Blocked</span></span>
+                <span class="item-row-meta">Used by 1 agent (People Notes) — unchanged</span>
+              </div>
+              <div class="item-row-actions">
+                <button type="button" class="btn">Edit</button>
+                <button type="button" class="btn btn-danger" disabled title="Switch every agent using it to a different Provider first">Remove</button>
+              </div>
+            </div>
+            <div class="item-row">
+              <div class="item-row-main">
+                <span class="item-row-title">Compass <span class="badge" style="background: var(--color-accent-muted); color: var(--color-accent);">Default</span></span>
+                <span class="item-row-meta">Used by 4 agents — unchanged</span>
+              </div>
+              <div class="item-row-actions">
+                <button type="button" class="btn">Edit</button>
+                <button type="button" class="btn btn-danger" disabled title="Switch every agent using it to a different Provider first">Remove</button>
+              </div>
+            </div>
+          </div>
+          <p class="text-muted" style="font-size: var(--font-size-sm);">Every agent's own Provider selection is unchanged — the refusal only blocks the removal, per Scenario 4b. No automatic fallback to Compass ever happens.</p>
+        </div>
+      </section>
     </main>
   </div>
   <script src="app.js"></script>

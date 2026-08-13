@@ -1,0 +1,317 @@
+<!--
+  Screen: Browse & Search (REQ-SB-02-US-01) — new top-level nav page.
+  Genuinely net-new: no html-prototype/ screen covered a notes browser/
+  search UI before this pass (confirmed by direct listing, 2026-08-13, see
+  REQ-SB-02-US-01's own Notes) — every region below is drawn from scratch,
+  strictly against that story's locked scope:
+    1. List/browse all indexed notes (Scenario 1).
+    2. Filter/navigate by tag (Scenario 2 — matches; Scenario 6 — no matches).
+    3. Wikilink-graph navigation as a textual, clickable forward-link/
+       backlink LIST — explicitly NOT a visual graph canvas (ESC-022,
+       Resolved 2026-08-13; ADR-011's "proportionate first" precedent).
+       Demonstrated on the companion note-detail.html, reached by clicking
+       any note row here (Scenario 3).
+    4. Ranked keyword/full-text search, not a bare substring match
+       (Scenario 4 — results; Scenario 5 — honest no-match empty state).
+    5. Honest empty states throughout, including "vault not indexed yet"
+       (Scenario 7) — distinguished from "indexed, but zero matches"
+       (Scenarios 5/6), per the story's own explicit non-negotiable.
+
+  Placement: a new top-level nav item/page (matching System Health/Agent
+  Activity's own precedent — REQ-SB-12-US-01's shell is the natural
+  integration point, per this story's own Context). New `.nav-item` added
+  to the shared sidebar on EVERY prototype page (index.html, agents-map.html,
+  agents-map-exploration.html, my-day.html + its 4 drill-downs +
+  my-day-approvals.html, settings.html, system-health.html, agent-activity.
+  html, this file, and the companion note-detail.html).
+
+  Reused, nothing net-new beyond the two small additive primitives below:
+    .app-shell/.sidebar/.nav-item (shared shell), .card, .state-switcher/
+    [data-state-panel] (this project's own buildable-state-demo convention —
+    three independent groups here: vault-index-state, search-results,
+    browse-tags), .empty-state (the vault-not-indexed state, the no-search-
+    results state, and the no-tag-matches state — three real, distinct
+    honest-empty uses, not one generic "empty" catch-all), .item-list/
+    .item-row-main/.item-row-title/.item-row-meta (note rows), .badge
+    (kind labels, rank indicators, tag labels), .input/.btn/.btn-primary,
+    .mono, .text-muted.
+  New (added to styles.css, documented there — composed entirely from
+    existing tokens, not new hex/a framework): `a.item-row`/`button.item-row`
+    (a real, clickable variant of the existing plain-<div> `.item-row` — used
+    here so every note row genuinely navigates in a browser, per
+    SCREEN_INSTRUCTIONS.md's "genuinely interactive" convention, not a
+    decorative-only mockup); `.tag-chip` (a clickable pill-shaped tag button,
+    reusing `.btn`'s existing state-switcher click-delegation in app.js — the
+    browse-by-tag filter below needed ZERO new JS).
+
+  Real vault numbers, not invented (REQ-SB-01-US-01's own Context, direct
+  vault inspection 2026-08-13, VAULT_PATH): 496 real notes under Work/ — 204
+  Email, 134 People, 51 Meetings, 6 Customers, 1 Partner, plus Notifications/
+  Files/Newsletters not individually counted there. Tag counts and the
+  paginated "Showing 1-8 of 496" header below are grounded in that real
+  breakdown, not arbitrary round numbers. Tag naming (`kind/email`,
+  `kind/person`, `kind/meeting`, `kind/customer`, `kind/partner`,
+  `customer/<slug>`) matches architecture.md's Data Model section and this
+  story's own example tags ("customer/masdar", "kind/email") verbatim.
+
+  Note-row navigation, honestly scoped: this is a design mockup, not a real
+  per-note index — every note row is a genuine, clickable <a> to
+  note-detail.html, but only the small closed 3-note demo graph this story
+  needs to prove wikilink navigation (an Email, a Customer hub, and a
+  Meeting note, all tagged customer/masdar) deep-links via a URL fragment
+  (#email-masdar / #hub-masdar / #meeting-masdar) to its own real,
+  distinct forward-link/backlink state on that page; every other row
+  (illustrative only, not part of the modeled graph) opens note-detail.html
+  on its own default view rather than a fabricated distinct page per note.
+
+  States demonstrated (buildable states only, grounded in REQ-SB-01-US-01's
+  real index shape — not a state the architecture can't produce):
+    - `data-group="vault-index-state"`: "Vault indexed" (default — every
+      region below is live) vs. "Vault not indexed yet" (Scenario 7 — the
+      ENTIRE browse/search surface is replaced by one honest explanation,
+      never a misleadingly-empty search box or list sitting on top of "no
+      index exists yet").
+    - `data-group="search-results"`: "Results" (Scenario 4 — four ranked
+      results for "masdar renewal"; the 4th result deliberately contains the
+      literal query text as an incidental body substring yet still ranks
+      last, demonstrating relevance-over-substring directly, not just
+      asserting it in a caption) vs. "No matches" (Scenario 5 — an honest
+      empty state for a query that matches nothing, visibly distinct from an
+      error).
+    - `data-group="browse-tags"`: doubles as the tag-filter chips themselves
+      (clicking a `.tag-chip` IS the filter — reuses app.js's existing
+      state-switcher delegation, no bespoke filter JS). "All notes"
+      (Scenario 1 — the full paginated browse list) vs. "customer/masdar"
+      (Scenario 2 — a tag filter with real matches) vs. "customer/newventure"
+      (Scenario 6 — a tag filter with zero matches, shown honestly, not a
+      silently-broken empty list).
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Browse &amp; Search — Second Brain</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <button class="burger-btn" id="sidebarToggle" aria-label="Toggle navigation" aria-expanded="true">&#9776;</button>
+        <h2>Second Brain</h2>
+      </div>
+      <a class="nav-item" href="agents-map.html"><span class="nav-icon">&#9678;</span><span class="nav-label">Agents Map</span></a>
+      <a class="nav-item" href="my-day.html"><span class="nav-icon">&#9728;</span><span class="nav-label">My Day</span></a>
+      <a class="nav-item" href="settings.html"><span class="nav-icon">&#9881;</span><span class="nav-label">Settings</span></a>
+      <a class="nav-item" href="system-health.html"><span class="nav-icon">&#9877;</span><span class="nav-label">System Health</span></a>
+      <a class="nav-item" href="agent-activity.html"><span class="nav-icon">&#128203;</span><span class="nav-label">Agent Activity</span></a>
+      <a class="nav-item active" href="vault-browser.html"><span class="nav-icon">&#128269;</span><span class="nav-label">Browse &amp; Search</span></a>
+      <a class="nav-item" href="index.html"><span class="nav-icon">&#9638;</span><span class="nav-label">Screens (catalog)</span></a>
+    </nav>
+    <main class="main">
+      <h1>Browse &amp; Search</h1>
+      <p class="text-muted">
+        List, filter, and search your indexed vault notes directly — no
+        promotion/approval gate between indexed and usable (REQ-SB-02). A
+        note's own forward/back wikilinks are a clickable list, not a visual
+        graph canvas — open any note below to navigate them.
+      </p>
+
+      <div class="state-switcher" data-group="vault-index-state">
+        <button type="button" class="btn btn-primary" data-state-target="indexed">Vault indexed</button>
+        <button type="button" class="btn" data-state-target="not-indexed">Vault not indexed yet</button>
+      </div>
+
+      <!-- ============================= Vault not indexed (Scenario 7) ============================= -->
+      <section data-state-panel data-group="vault-index-state" data-state="not-indexed">
+        <div class="card">
+          <div class="empty-state">
+            <div class="empty-state-icon">&#128269;</div>
+            <p style="margin: 0; font-weight: 600; color: var(--color-text);">Nothing indexed yet</p>
+            <p style="margin: var(--space-1) 0 0;">Second Brain hasn't built a vault index yet (REQ-SB-01) — there is nothing to browse or search. This is not an error and not the same as "indexed, but no matches" (see the Search and Tags examples in the other state above).</p>
+            <p style="margin: var(--space-3) 0 0; font-size: var(--font-size-sm);">Check <a href="settings.html">Settings</a> for the configured vault path, or <a href="system-health.html">System Health</a> for the last capture run's completion time — indexing refreshes on that same hourly schedule, or on demand.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================= Vault indexed (default) ============================= -->
+      <section data-state-panel data-group="vault-index-state" data-state="indexed" class="active">
+
+        <!-- ================================================================
+             Search (Scenarios 4, 5) — ranked keyword/full-text relevance,
+             not a bare substring match. Not embeddings/semantic search
+             (REQ-SB-06, P2, deferred) — see this story's own Constraints.
+             ================================================================ -->
+        <div class="card" style="margin-bottom: var(--space-4);">
+          <h2>Search</h2>
+          <label class="text-muted" for="searchInput" style="font-size: var(--font-size-sm);">Search your vault</label>
+          <div style="display: flex; gap: var(--space-2); margin: var(--space-1) 0 var(--space-3);">
+            <input class="input" id="searchInput" type="text" value="masdar renewal" placeholder="e.g. masdar renewal terms" />
+            <button type="button" class="btn btn-primary" style="flex-shrink: 0;">Search</button>
+          </div>
+
+          <div class="state-switcher" data-group="search-results">
+            <button type="button" class="btn btn-primary" data-state-target="results">Results for &quot;masdar renewal&quot;</button>
+            <button type="button" class="btn" data-state-target="empty">No matches (e.g. &quot;xyzzy nonexistent term&quot;)</button>
+          </div>
+
+          <section data-state-panel data-group="search-results" data-state="results" class="active">
+            <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: calc(-1 * var(--space-2));">Ranked by relevance (field-weighted keyword/full-text score — title and tag matches outweigh an incidental body mention), not a bare substring match. Order below is the actual rank, not alphabetical.</p>
+            <div class="item-list">
+              <a class="item-row" href="note-detail.html#email-masdar">
+                <div class="item-row-main">
+                  <span class="item-row-title"><span class="badge" style="background: var(--color-accent-muted); color: var(--color-accent); margin-right: var(--space-1);">#1</span>Masdar — Q3 renewal terms (action needed)</span>
+                  <span class="item-row-meta">Email &middot; Matched: title, tags (<span class="mono">kind/email</span>, <span class="mono">customer/masdar</span>)</span>
+                </div>
+              </a>
+              <a class="item-row" href="note-detail.html#hub-masdar">
+                <div class="item-row-main">
+                  <span class="item-row-title"><span class="badge" style="background: var(--color-accent-muted); color: var(--color-accent); margin-right: var(--space-1);">#2</span>Masdar</span>
+                  <span class="item-row-meta">Customer hub &middot; Matched: title, frequent body mentions</span>
+                </div>
+              </a>
+              <a class="item-row" href="note-detail.html#meeting-masdar">
+                <div class="item-row-main">
+                  <span class="item-row-title"><span class="badge" style="background: var(--color-accent-muted); color: var(--color-accent); margin-right: var(--space-1);">#3</span>Meeting: Masdar renewal planning sync</span>
+                  <span class="item-row-meta">Meeting &middot; Matched: title, tags (<span class="mono">kind/meeting</span>, <span class="mono">customer/masdar</span>)</span>
+                </div>
+              </a>
+              <a class="item-row" href="note-detail.html">
+                <div class="item-row-main">
+                  <span class="item-row-title"><span class="badge badge-warning" style="margin-right: var(--space-1);">#4</span>Second Brain Weekly Newsletter #14</span>
+                  <span class="item-row-meta">Newsletter &middot; Matched: 1 incidental body mention of "renewal" in a vendor's auto-renewal footer — no title/tag signal, so it ranks last despite literally containing the query text, unlike a bare substring match.</span>
+                </div>
+              </a>
+            </div>
+          </section>
+
+          <section data-state-panel data-group="search-results" data-state="empty">
+            <div class="empty-state">
+              <p style="margin: 0; font-weight: 600; color: var(--color-text);">No notes match "xyzzy nonexistent term"</p>
+              <p style="margin: var(--space-1) 0 0;">Try a different search term, or browse by tag below.</p>
+            </div>
+          </section>
+        </div>
+
+        <!-- ================================================================
+             Browse + tag filter (Scenarios 1, 2, 6). Tag chips ARE the
+             filter — each is a .state-switcher trigger, so filtering reuses
+             app.js's existing click-delegation with zero new JS.
+             ================================================================ -->
+        <div class="card">
+          <h2>Browse by tag</h2>
+          <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: calc(-1 * var(--space-3));">204 Email &middot; 134 Person &middot; 51 Meeting &middot; 6 Customer &middot; 1 Partner, plus Notifications/Files/Newsletters not broken out individually below — 496 real notes total.</p>
+
+          <div class="state-switcher" data-group="browse-tags">
+            <button type="button" class="btn btn-primary tag-chip" data-state-target="all">All notes (496)</button>
+            <button type="button" class="btn tag-chip" data-state-target="masdar">customer/masdar (12)</button>
+            <button type="button" class="btn tag-chip" data-state-target="newventure">customer/newventure (0)</button>
+          </div>
+          <p class="text-muted" style="font-size: var(--font-size-sm); margin: var(--space-1) 0 var(--space-3);">Two tag filters demonstrated here (a match, and a genuine no-match); every real tag in the index — including every <span class="mono">kind/*</span> and <span class="mono">customer/*</span> value named above — filters the same way.</p>
+
+          <!-- "All notes" (Scenario 1) — a representative, paginated slice of the real 496, spanning every real kind. -->
+          <section data-state-panel data-group="browse-tags" data-state="all" class="active">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-3);">
+              <span class="text-muted" style="font-size: var(--font-size-sm);">Showing 1&ndash;8 of 496 notes</span>
+              <span style="display: flex; gap: var(--space-2);">
+                <button type="button" class="btn" style="padding: var(--space-1) var(--space-3); font-size: var(--font-size-sm);" disabled>&larr; Prev</button>
+                <button type="button" class="btn" style="padding: var(--space-1) var(--space-3); font-size: var(--font-size-sm);">Next &rarr;</button>
+              </span>
+            </div>
+            <div class="item-list">
+              <a class="item-row" href="note-detail.html#email-masdar">
+                <div class="item-row-main">
+                  <span class="item-row-title">Masdar — Q3 renewal terms (action needed)</span>
+                  <span class="item-row-meta"><span class="badge badge-success" style="margin-right: var(--space-1);">Email</span><span class="mono">kind/email</span>, <span class="mono">customer/masdar</span></span>
+                </div>
+              </a>
+              <a class="item-row" href="note-detail.html">
+                <div class="item-row-main">
+                  <span class="item-row-title">Re: Azure MACC review</span>
+                  <span class="item-row-meta"><span class="badge badge-success" style="margin-right: var(--space-1);">Email</span><span class="mono">kind/email</span>, <span class="mono">customer/northwind</span></span>
+                </div>
+              </a>
+              <a class="item-row" href="note-detail.html">
+                <div class="item-row-main">
+                  <span class="item-row-title">N. Haddad</span>
+                  <span class="item-row-meta"><span class="badge" style="background: var(--color-accent-muted); color: var(--color-accent); margin-right: var(--space-1);">Person</span><span class="mono">kind/person</span>, <span class="mono">customer/masdar</span></span>
+                </div>
+              </a>
+              <a class="item-row" href="note-detail.html#hub-masdar">
+                <div class="item-row-main">
+                  <span class="item-row-title">Masdar</span>
+                  <span class="item-row-meta"><span class="badge" style="background: var(--color-accent-muted); color: var(--color-accent); margin-right: var(--space-1);">Customer</span><span class="mono">kind/customer</span>, <span class="mono">customer/masdar</span></span>
+                </div>
+              </a>
+              <a class="item-row" href="note-detail.html#meeting-masdar">
+                <div class="item-row-main">
+                  <span class="item-row-title">Meeting: Masdar renewal planning sync</span>
+                  <span class="item-row-meta"><span class="badge badge-warning" style="margin-right: var(--space-1);">Meeting</span><span class="mono">kind/meeting</span>, <span class="mono">customer/masdar</span></span>
+                </div>
+              </a>
+              <a class="item-row" href="note-detail.html">
+                <div class="item-row-main">
+                  <span class="item-row-title">Acme Corp</span>
+                  <span class="item-row-meta"><span class="badge" style="background: var(--color-accent-muted); color: var(--color-accent); margin-right: var(--space-1);">Customer</span><span class="mono">kind/customer</span>, <span class="mono">customer/acme</span></span>
+                </div>
+              </a>
+              <a class="item-row" href="note-detail.html">
+                <div class="item-row-main">
+                  <span class="item-row-title">Contoso</span>
+                  <span class="item-row-meta"><span class="badge" style="background: color-mix(in srgb, var(--agent-color-producer) 20%, transparent); color: var(--agent-color-producer); margin-right: var(--space-1);">Partner</span><span class="mono">kind/partner</span>, <span class="mono">partner/contoso</span></span>
+                </div>
+              </a>
+              <a class="item-row" href="note-detail.html">
+                <div class="item-row-main">
+                  <span class="item-row-title">Second Brain Weekly Newsletter #14</span>
+                  <span class="item-row-meta"><span class="badge badge-warning" style="margin-right: var(--space-1);">Newsletter</span><span class="mono">kind/newsletter</span> &middot; no customer tag</span>
+                </div>
+              </a>
+            </div>
+          </section>
+
+          <!-- Tag filter with matches (Scenario 2) -->
+          <section data-state-panel data-group="browse-tags" data-state="masdar">
+            <p class="text-muted" style="font-size: var(--font-size-sm); margin-bottom: var(--space-3);">4 of 12 notes tagged <span class="mono">customer/masdar</span> shown (illustrative slice, not the full 12).</p>
+            <div class="item-list">
+              <a class="item-row" href="note-detail.html#email-masdar">
+                <div class="item-row-main">
+                  <span class="item-row-title">Masdar — Q3 renewal terms (action needed)</span>
+                  <span class="item-row-meta"><span class="badge badge-success" style="margin-right: var(--space-1);">Email</span><span class="mono">customer/masdar</span></span>
+                </div>
+              </a>
+              <a class="item-row" href="note-detail.html">
+                <div class="item-row-main">
+                  <span class="item-row-title">N. Haddad</span>
+                  <span class="item-row-meta"><span class="badge" style="background: var(--color-accent-muted); color: var(--color-accent); margin-right: var(--space-1);">Person</span><span class="mono">customer/masdar</span></span>
+                </div>
+              </a>
+              <a class="item-row" href="note-detail.html#hub-masdar">
+                <div class="item-row-main">
+                  <span class="item-row-title">Masdar</span>
+                  <span class="item-row-meta"><span class="badge" style="background: var(--color-accent-muted); color: var(--color-accent); margin-right: var(--space-1);">Customer</span><span class="mono">customer/masdar</span></span>
+                </div>
+              </a>
+              <a class="item-row" href="note-detail.html#meeting-masdar">
+                <div class="item-row-main">
+                  <span class="item-row-title">Meeting: Masdar renewal planning sync</span>
+                  <span class="item-row-meta"><span class="badge badge-warning" style="margin-right: var(--space-1);">Meeting</span><span class="mono">customer/masdar</span></span>
+                </div>
+              </a>
+            </div>
+          </section>
+
+          <!-- Tag filter with zero matches (Scenario 6) -->
+          <section data-state-panel data-group="browse-tags" data-state="newventure">
+            <div class="empty-state">
+              <p style="margin: 0; font-weight: 600; color: var(--color-text);">No notes carry the tag "customer/newventure"</p>
+              <p style="margin: var(--space-1) 0 0;">This tag currently matches nothing in the index — not an error, and not the same as "vault not indexed yet."</p>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

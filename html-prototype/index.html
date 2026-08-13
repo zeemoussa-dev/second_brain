@@ -6,6 +6,30 @@
   Agents Map. Replaces the earlier "no screens yet" placeholder.
   Revision 2026-08-10 (round 2, still pre-approval): no markup change — the
   light-theme/green-accent token swap in styles.css cascades here.
+  Revision 2026-08-11 (REQ-SB-20/REQ-SB-21/REQ-SB-23 design pass): listed
+  the new my-day-approvals.html drill-down (REQ-SB-21's Pending Approvals
+  surface) and noted the Agents Map/My Day additions below.
+  Revision 2026-08-11 (BUG-002 layout exploration): added a clearly-marked
+  pointer to the new agents-map-exploration.html — deliberately NOT listed
+  as a nav-item (it isn't a real application screen), just a catalog entry
+  so a reviewer can find it.
+  Revision 2026-08-11 (BUG-002 sign-off pass): updated the catalog card's
+  wording — Option D is now the accepted direction, two refinements
+  (Hub-sizing rebalance, overview entrance animation) are pending sign-off,
+  no markup structure change.
+  Revision 2026-08-12 (REQ-SB-31 design pass): added the new System Health
+  nav item to the shared sidebar (also added to every other prototype page —
+  see system-health.html's own breadcrumb); added a catalog card below
+  pointing at the new page. No other markup change.
+  Revision 2026-08-13 (REQ-SB-11 design pass): added the new Agent Activity
+  nav item to the shared sidebar (also added to every other prototype page —
+  see agent-activity.html's own breadcrumb); added a catalog card below
+  pointing at the new page. No other markup change.
+  Revision 2026-08-13 (REQ-SB-02 design pass): added the new Browse & Search
+  nav item to the shared sidebar (also added to every other prototype page —
+  see vault-browser.html's own breadcrumb); added a catalog card below
+  pointing at the two new pages (vault-browser.html, note-detail.html). No
+  other markup change.
 -->
 <!doctype html>
 <html lang="en">
@@ -24,6 +48,9 @@
       <a class="nav-item" href="agents-map.html"><span class="nav-icon">&#9678;</span><span class="nav-label">Agents Map</span></a>
       <a class="nav-item" href="my-day.html"><span class="nav-icon">&#9728;</span><span class="nav-label">My Day</span></a>
       <a class="nav-item" href="settings.html"><span class="nav-icon">&#9881;</span><span class="nav-label">Settings</span></a>
+      <a class="nav-item" href="system-health.html"><span class="nav-icon">&#9877;</span><span class="nav-label">System Health</span></a>
+      <a class="nav-item" href="agent-activity.html"><span class="nav-icon">&#128203;</span><span class="nav-label">Agent Activity</span></a>
+      <a class="nav-item" href="vault-browser.html"><span class="nav-icon">&#128269;</span><span class="nav-label">Browse &amp; Search</span></a>
       <a class="nav-item active" href="index.html"><span class="nav-icon">&#9638;</span><span class="nav-label">Screens (catalog)</span></a>
     </nav>
     <main class="main">
@@ -49,13 +76,134 @@
         </ul>
       </div>
 
-      <div class="card">
+      <div class="card" style="margin-bottom: var(--space-4);">
         <strong>REQ-SB-13 — Embedded Agent Chat &amp; Communication History</strong>
         <p class="text-muted">
           Not a separate page — click any agent node on
           <a href="agents-map.html">agents-map.html</a> to open its
           right-side detail panel (settings, actions, embedded chat,
           communication history).
+        </p>
+      </div>
+
+      <div class="card">
+        <strong>REQ-SB-20 / REQ-SB-21 / REQ-SB-23 — Hub keyword routing, agent working modes, My Day intake agent</strong>
+        <p class="text-muted">
+          Not separate pages — three additions to already-listed screens,
+          pending browser sign-off:
+        </p>
+        <ul>
+          <li><a href="agents-map.html">agents-map.html</a> — each agent's
+            detail panel Settings block gains Keywords (REQ-SB-20) and
+            Working mode (REQ-SB-21) rows; Meeting Capture's Chat block
+            demonstrates a pending/approved/declined proposal card
+            (REQ-SB-21)</li>
+          <li><a href="my-day.html">my-day.html</a> — new "Quick Capture"
+            card (REQ-SB-23, the My Day Intake Agent) and a 5th
+            "Pending Approvals" dashboard card</li>
+          <li><a href="my-day-approvals.html">my-day-approvals.html</a> —
+            new drill-down: every Supervised agent's background-pipeline
+            proposals awaiting approval (REQ-SB-21)</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <strong>BUG-002 — Agents Map fix (Option D), now ported into the canonical screen — pending browser sign-off</strong>
+        <p class="text-muted">
+          The operator approved Option D (semantic zoom / drill-down) plus
+          two refinements (2026-08-12) after comparing four candidate fixes
+          for BUG-002 (sections with 4+ agents visually spill into
+          neighboring sections, labels collide) in
+          <a href="agents-map-exploration.html">agents-map-exploration.html</a>
+          (kept as unmodified comparison history — Options A/B/C there are
+          rejected, and it is no longer the design-of-record). That approved
+          design has now been ported into
+          <a href="agents-map.html">agents-map.html</a> itself as the new
+          canonical behavior (see its own top-of-file breadcrumb and the new
+          <span class="mono">agents-map.js</span>) — every agent is always a
+          small unlabeled dot at the overview, click a Hub to zoom into that
+          section's own Agents Tree, plus a replayable entrance animation.
+          A new "Dense section (BUG-002 fix demo)" state on
+          <a href="agents-map.html">agents-map.html</a> demonstrates the fix
+          directly against the bug's own original repro. This canonical port
+          is pending its own fresh browser sign-off — see REVIEW-QUEUE.md.
+        </p>
+      </div>
+
+      <div class="card" style="margin-top: var(--space-4);">
+        <strong>REQ-SB-31 — System Health View (new top-level nav page) — pending browser sign-off</strong>
+        <p class="text-muted">
+          A new <a href="system-health.html">system-health.html</a> nav page
+          (operator-directed placement, 2026-08-12) showing: a Health Issues
+          list (an agent whose Provider has no real client is shown Disabled
+          and listed here, per the operator's scoped override — Scenario 3),
+          the MCP/agent-orchestration path's reachability, each configured
+          Provider's availability rolled up per-Provider, and the last
+          capture run's recorded completion time (or its honest absence, if
+          none has ever completed). Two state-switcher groups demonstrate all
+          8 Gherkin scenarios: "Everything healthy" vs. "Health issues
+          present" (Scenarios 1-4), and "A run has completed" vs. "No run has
+          ever completed" (Scenarios 5-6). Scenario 7 (fresh, not cached, on
+          every reopen) is a text note next to a Refresh affordance, not a
+          unique visual state. Scenario 8 (the <span class="mono">run_agent_conversation</span>
+          crash-gap fix) is backend-only and has no UI shape on this page.
+          Composed entirely from existing tokens/components — no new CSS.
+        </p>
+      </div>
+
+      <div class="card" style="margin-top: var(--space-4);">
+        <strong>REQ-SB-11 — Agent Activity &amp; Error Observability (new top-level nav page) — pending browser sign-off</strong>
+        <p class="text-muted">
+          A new <a href="agent-activity.html">agent-activity.html</a> nav
+          page (placement resolved 2026-08-13, mirroring System Health's own
+          precedent) showing a chronological, cross-agent activity log —
+          every completed background capture run (email, meeting, and once
+          built, to-do), newest first, with its outcome (success, or failure
+          with an honest error detail, never silently dropped) — plus a
+          current status indicator for the Outlook communication channel
+          (reported honestly as direct COM reachability, not "Hermes-wrapped",
+          since no live Hermes connection exists in this codebase yet). Two
+          independent state-switcher groups demonstrate every Gherkin
+          scenario: "Activity recorded" (a mix of successes across both
+          configured capture agents plus one real failure with detail) vs.
+          "No runs yet" (the honest empty state), and "Outlook reachable" vs.
+          "Outlook unreachable". Deliberately does not duplicate any of
+          System Health's own three checks (MCP mount, Provider availability,
+          last-capture-run timestamp) — see the page's own header note.
+          Composed entirely from existing tokens/components (reuses
+          styles.css's own <span class="mono">.log-list</span>/<span class="mono">.log-item</span>
+          chronological-log primitive, already live on Agents Map's per-agent
+          Communication History panel) — no new CSS.
+        </p>
+      </div>
+
+      <div class="card" style="margin-top: var(--space-4);">
+        <strong>REQ-SB-02 — Browse &amp; Search (new top-level nav page) — pending browser sign-off</strong>
+        <p class="text-muted">
+          Two new pages, reached from the new
+          <a href="vault-browser.html">vault-browser.html</a> nav item
+          (placement mirroring System Health/Agent Activity's own precedent):
+          list/browse all 496 indexed notes (204 Email, 134 Person, 51
+          Meeting, 6 Customer, 1 Partner, plus Notifications/Files/
+          Newsletters — real vault counts from
+          <span class="mono">REQ-SB-01-US-01</span>'s own direct inspection),
+          filter/navigate by tag, run a ranked keyword/full-text search (not
+          a bare substring match — the example results demonstrate a note
+          ranking above another despite the lower one also containing the
+          literal query text), and — on
+          <a href="note-detail.html">note-detail.html</a> — navigate a
+          note's forward links and backlinks as a real, clickable list, NOT
+          a visual graph canvas (resolved out of scope this pass, ESC-022).
+          Three independent state-switcher groups on
+          <span class="mono">vault-browser.html</span> demonstrate every
+          Gherkin scenario, including the honest "vault not indexed yet"
+          empty state (Scenario 7, distinguished from "indexed, but no
+          matches", Scenarios 5/6). Two small additive CSS primitives
+          (<span class="mono">a.item-row</span>/<span class="mono">button.item-row</span>,
+          <span class="mono">.tag-chip</span>) were added to styles.css so
+          every note row and tag filter is genuinely clickable in a browser,
+          not a decorative mockup — see both files' own top-of-file
+          breadcrumbs for the full design rationale.
         </p>
       </div>
     </main>

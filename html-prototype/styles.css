@@ -288,17 +288,22 @@ h2 { font-size: var(--font-size-lg); }
    .hub-node + .section-title at that span's edges/midpoint) — same ring
    set, no new rings needed.
 
-   Scale-to-~100-agents pattern (documented — this demo only renders the
-   current handful of real agents, proving the pattern rather than
-   instantiating it at scale): within one ring/section arc segment, agents
+   Scale-to-~100-agents pattern: within one ring/section arc segment, agents
    distribute evenly by angle at the .agent-node size below; past a
    per-segment density threshold a new agent uses .agent-node--compact (an
    unlabeled dot — label/type revealed on hover/focus only, via the
    visually-hidden-until-hover technique on .agent-node-label/
    .agent-node-type); if a segment would still be illegibly dense at
-   compact size, its last slot renders a .map-overflow-marker ("+N") instead
-   of another dot. Both are defined below, ready to apply, unused in this
-   demo's actual markup.
+   compact size, its last slot renders a .map-overflow-marker ("+N",
+   clickable) instead of another dot. .agent-node--compact has been live
+   since the BUG-002 fix (every overview agent, always). .map-overflow-marker
+   was defined here but never instantiated until REQ-SB-38 (Agents Map
+   Density Clustering) — see agents-map.html's own "Density clustering
+   (REQ-SB-38 demo)" state and its top-of-file breadcrumb for the first real
+   usage: a Section's own agent count, past a fixed per-(Section x Type-ring)
+   visible-slot cap, collapses its overflow into one clickable cluster
+   marker instead of rendering every agent at a fixed position regardless of
+   count.
    ========================================================================== */
 
 /* Round 4 sizing-bug fix: the stage previously reserved outside-label room
@@ -561,6 +566,25 @@ h2 { font-size: var(--font-size-lg); }
   z-index: 5;
 }
 
+/* Density-cluster marker (REQ-SB-38) — this primitive was defined above
+   (round 4-ish, "Scale-to-~100-agents pattern" comment) but never actually
+   instantiated by any screen until now: this is its first real use, on
+   agents-map.html's own "Density clustering (REQ-SB-38 demo)" state. The
+   operator's own words: "a circle with a number and '+' so we can click on
+   it to view the agents inside" — so unlike its original "static +N chip"
+   shape, it is now always a real <button> (matching .hub-node/.agent-node's
+   own clickable-circle convention) with the same click-to-zoom affordance
+   BUG-002's Option D already established for Section Hubs, applied one
+   level deeper (agents-map.js's wireDrilldown() treats any
+   [data-section-id] button the same way, .hub-node or .map-overflow-marker
+   alike — see agents-map.js's own updated selector comment). Border/shadow
+   switched from the original neutral --color-border/no-shadow (looked like
+   inert decoration) to the same --color-accent dashed-border + tinted-glow
+   treatment .hub-node already uses at rest, plus .agent-node's own
+   hover-lift, so its clickability reads the same way every other
+   interactive node on this canvas already does. Two new inner spans
+   (.map-overflow-marker-count/-label) mirror .hub-node's own
+   bold-main-text + small-muted-subtext structure — reused, not invented. */
 .map-overflow-marker {
   position: absolute;
   transform: translate(-50%, -50%);
@@ -568,13 +592,42 @@ h2 { font-size: var(--font-size-lg); }
   aspect-ratio: 1 / 1;
   border-radius: 50%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: var(--color-surface-raised);
-  border: 1px dashed var(--color-border);
-  color: var(--color-text-muted);
+  text-align: center;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface));
+  border: 2px dashed var(--color-accent);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--color-accent) 25%, transparent);
+  color: var(--color-text);
   font-size: 0.625rem;
   font-weight: 600;
+  line-height: 1.15;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  animation: nodeFadeIn 0.4s ease backwards;
+  z-index: 3;
+}
+
+.map-overflow-marker:hover,
+.map-overflow-marker:focus-visible {
+  transform: translate(-50%, calc(-50% - 3px)) scale(1.14);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
+.map-overflow-marker-count {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+.map-overflow-marker-label {
+  display: block;
+  font-weight: 400;
+  font-size: 0.5rem;
+  color: var(--color-text-muted);
+  margin-top: 1px;
 }
 
 /* Section titles — outside the wheel's outer boundary, at each section's
@@ -807,3 +860,259 @@ h2 { font-size: var(--font-size-lg); }
 .item-row-main { display: flex; flex-direction: column; gap: 2px; }
 .item-row-title { font-weight: 600; }
 .item-row-meta { font-size: var(--font-size-sm); color: var(--color-text-muted); }
+
+/* ==========================================================================
+   Settings entity rows (REQ-SB-18 Sections, REQ-SB-19 Providers) — a small,
+   direct extension of the .item-row family above, not a new list component:
+   an action-controls cluster (Rename/Delete, Edit/Remove) that sits inside
+   an existing .item-row alongside .item-row-main.
+   ========================================================================== */
+
+.item-row-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+
+/* Destructive-action button variant, symmetric with .btn-primary — built
+   from the existing --color-danger token (already used by .badge-danger
+   and the Vault error state), never a new hex. */
+.btn-danger {
+  background: color-mix(in srgb, var(--color-danger) 10%, var(--color-surface-raised));
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger) 20%, var(--color-surface-raised));
+}
+
+.btn:disabled,
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* A native <summary> styled as a .btn so create/rename/edit/add affordances
+   (REQ-SB-18/REQ-SB-19) get real, zero-JS disclosure interactivity instead
+   of a synthetic state-switcher toggle — <summary> keeps every existing
+   .btn/.btn-primary visual rule, this only strips its default marker. */
+summary.btn { list-style: none; }
+summary.btn::-webkit-details-marker { display: none; }
+summary.btn::marker { content: ""; }
+
+/* ==========================================================================
+   Clickable item-row + tag chip (REQ-SB-02, Browse & Search) — two small,
+   additive variants of existing primitives, not new components:
+
+   1. `a.item-row` / `button.item-row` — the existing `.item-row` family
+      (styles.css's own "Generic item list") rendered as a real <a> (page
+      navigation — e.g. vault-browser.html's note list -> note-detail.html)
+      or <button data-state-target="..."> (in-page state-swap navigation —
+      e.g. note-detail.html's own forward-link/backlink rows, reusing the
+      existing .state-switcher click delegation in app.js with ZERO new
+      JS). Both variants only strip the native element's default appearance
+      down to the same already-established `.item-row` visual language,
+      keep every other screen's plain (non-interactive) `.item-row` <div>
+      rows exactly as-is, and add a pointer cursor plus a subtle
+      accent-tinted hover so a row that IS navigable reads differently from
+      an inert one.
+   2. `.tag-chip` — a clickable, pill-shaped tag button, composed from
+      `.btn`'s existing button semantics/hover/focus/`.state-switcher`
+      active-highlight behavior (already-live in app.js — no new JS) plus
+      `.badge`'s own pill radius (999px) and small type scale, so a tag
+      reads as a tag (matching every tag badge already in the app,
+      `customer/<slug>`/`kind/<slug>`), not a generic button. Used as the
+      REQ-SB-02 browse-by-tag filter's own state-switcher triggers.
+   ========================================================================== */
+
+a.item-row,
+button.item-row {
+  text-decoration: none;
+  color: inherit;
+  border: none;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+a.item-row:hover,
+button.item-row:hover {
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface-raised));
+}
+
+.tag-chip {
+  border-radius: 999px;
+  font-size: var(--font-size-sm);
+  padding: 2px var(--space-3);
+}
+
+/* Compact inline <select>, used by the Agents Map side panel's new Section/
+   Provider picker rows (REQ-SB-18/REQ-SB-19) — same .input visual language,
+   sized to sit inline in a .kv-row instead of taking the full row width.
+   Also reused (deliberately, not a misnamed leftover) on the new Keywords
+   free-text <input> (REQ-SB-20) — the class only constrains width/padding/
+   font-size for an inline-in-a-kv-row control, nothing tag-specific. */
+.kv-select { width: auto; min-width: 160px; padding: 2px var(--space-2); font-size: var(--font-size-sm); }
+
+/* ==========================================================================
+   Chat pending-approval proposal card (REQ-SB-21) — a Supervised agent's
+   chat-triggered action proposal, rendered inline in .chat-thread, visually
+   distinct from a normal .chat-message. Same color-mix(...)-over-token
+   technique as .badge-*/.btn-danger (no new hex): dashed + --color-warning
+   while pending, solid + --color-success/--color-danger once resolved.
+   ========================================================================== */
+
+.chat-proposal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  border: 1px dashed var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 10%, var(--color-surface-raised));
+}
+
+.chat-proposal p { margin: 0; }
+
+.chat-proposal-actions { display: flex; gap: var(--space-2); }
+
+.chat-proposal--approved {
+  border: 1px solid var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 10%, var(--color-surface-raised));
+}
+
+.chat-proposal--declined {
+  border: 1px solid var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 10%, var(--color-surface-raised));
+}
+
+/* ==========================================================================
+   Agents Map layout exploration (BUG-002) — additive primitives, originally
+   built only for html-prototype/agents-map-exploration.html's own Option D
+   comparison. Two genuinely new patterns there, everything else in that
+   exploration reuses .hub-node/.agent-node[--type/--compact]/.section-title/
+   .ring-circle/.radar-spoke/.kb-node/.state-switcher as-is.
+
+   Revision 2026-08-12: Option D (+ both refinements below) is now also the
+   CANONICAL agents-map.html's own real behavior (BUG-002's approved fix,
+   ported — see that file's own top-of-file breadcrumb and agents-map.js).
+   Every rule in this section is reused verbatim by both files, unedited —
+   the "explore-" class-name prefix is kept as-is rather than renamed, so as
+   not to touch agents-map-exploration.html's own now-frozen comparison
+   history for no functional benefit; agents-map-exploration.html itself
+   remains exploration-only, not the design-of-record any more (that's now
+   agents-map.html).
+   ========================================================================== */
+
+/* Cross-section "communication affinity" line (exploration Option C) — a
+   Hub-routed relationship between two agents in different Sections (never a
+   direct cross-section line, per REQ-SB-20's own "always via both Hubs"
+   rule), default dim so a dense map doesn't turn into link-spaghetti;
+   highlighted on hover/focus of either endpoint agent. Reused verbatim
+   (undimmed, no hover-gating) for same-section direct lines in Option D's
+   per-Section drill-down view, where there is no Hub-routing concern. */
+.agents-map-lines .affinity-line {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 0.4;
+  stroke-dasharray: 1 1.4;
+  opacity: 0.15;
+  transition: opacity 0.15s ease, stroke-width 0.15s ease;
+}
+
+.agents-map-lines .affinity-line.active {
+  opacity: 0.85;
+  stroke-width: 0.7;
+}
+
+/* Click-a-Hub-to-zoom transition (exploration Option D) — the overview
+   canvas scales up and fades out in place; once the transition ends, JS
+   swaps it for a dedicated per-Section "Agents Tree" view (plain state
+   swap, same convention as .side-panel-agent's own active-toggle), then a
+   "Back" button (a plain .btn) reverses it. No animation library — CSS
+   transition + one JS transitionend listener, consistent with this
+   prototype's zero-framework approach. */
+.explore-zoom-overview {
+  transition: transform 0.35s ease, opacity 0.35s ease;
+  transform-origin: 50% 50%;
+}
+
+.explore-zoom-overview.zooming-out {
+  transform: scale(2.1);
+  opacity: 0;
+}
+
+.explore-drilldown {
+  display: none;
+}
+
+.explore-drilldown.active {
+  display: block;
+  animation: fadeIn 0.3s ease;
+}
+
+/* Refinement 1 (operator sign-off pass, 2026-08-11) — "the Hub looks too
+   big in the Section." Option D's drill-down Agents Tree has no Knowledge
+   Base and no rings/boundary competing for center-stage the way the
+   overview does, so the ordinary .hub-node width (11%, tuned to read
+   correctly next to the overview's always-compact 5%-wide agent dots) reads
+   as an oversized centerpiece here instead, where agents render at their
+   full labeled .agent-node size (10%). Before: hub 11% vs agent 10% (hub
+   ~21% bigger by area). After: hub 8% vs agent 10% (hub ~36% smaller by
+   area) — the Hub still reads as the connecting/organizing element via its
+   dashed accent border, center position, and converging spoke lines (the
+   project's standing "Hub is the only thing that connects back to the
+   Knowledge Base" convention), it just no longer visually outweighs the
+   agents it's grouping. Scoped to this one view only — the overview's own
+   .hub-node (compared against always-compact agent dots) is untouched. */
+.explore-drilldown .hub-node {
+  width: 8%;
+}
+
+.explore-drilldown .hub-node .hub-node-type {
+  font-size: 0.5625rem; /* matches .agent-node-type — the Hub's own type/count line no longer reads larger than the agent labels around it */
+}
+
+/* Refinement 2 (operator sign-off pass, 2026-08-11) — overview entrance
+   animation: "They can be all next to each other then a quick scroll then
+   they turn around and became a Circle with KB in the Center." Plain CSS
+   transitions/keyframes only, same zero-framework approach as this
+   project's existing kbPulse/nodeFadeIn animations — no animation library.
+
+   Mechanics (driven from agents-map-exploration.js's playIntro()):
+     1. Flat arrangement — every agent (already the overview's always-
+        compact dot, per Option D) is first positioned in one flat row
+        (same y, evenly spaced x) instead of its real polar slot; the
+        Knowledge Base, Hubs, rings/spokes/boundary, and Section titles all
+        start invisible.
+     2. Hold — a short pause (agents-map-exploration.js's INTRO_HOLD_MS)
+        so the flat "next to each other" arrangement is clearly readable
+        before anything moves.
+     3. Transition — every agent's top/left animates (via
+        .agent-node--intro-move's own transition, added only for this
+        phase) from its flat position to its real, already-known circular
+        position; simultaneously the KB grows/fades in at center
+        (@keyframes kbGrowIn, layered alongside the existing looping
+        kbPulse via a second `animation` entry — kbGrowIn only touches
+        opacity/transform, kbPulse only touches box-shadow, so neither
+        fights the other) and the Hubs (existing nodeFadeIn, fired via a
+        JS-set animation-delay so it lands exactly when the hold ends) and
+        the rings/spokes/boundary/Section titles (a plain opacity fade)
+        appear together.
+     4. Settled — identical to Option D's ordinary overview: hover any dot
+        to reveal its label, click a Hub to drill in. */
+.agent-node--intro-move {
+  /* Duration matches agents-map-exploration.js's own INTRO_MOVE_MS (900ms) — kept as a plain literal, consistent with every other transition duration already in this file (e.g. .agent-node's own transform/box-shadow rule above). */
+  transition: top 0.9s cubic-bezier(0.65, 0, 0.35, 1),
+              left 0.9s cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+.agents-map-lines.agents-intro-fade,
+.section-title.agents-intro-fade {
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+
+@keyframes kbGrowIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.35); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
