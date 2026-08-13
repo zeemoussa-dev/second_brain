@@ -1,6 +1,12 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import './index.css'
+import './styles/tokens.css'
+import './styles/shell.css'
+import './styles/settings.css'
+import './styles/agents-map.css'
+import './styles/my-day.css'
+import './styles/agent-panel.css'
+import './styles/vault-browser.css'
 import App from './App.tsx'
 
 createRoot(document.getElementById('root')!).render(

@@ -1,0 +1,93 @@
+/* Layout shell every screen reuses */
+.app-shell {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  padding: var(--space-4);
+}
+
+.main {
+  padding: var(--space-6);
+  overflow-y: auto;
+}
+
+.nav-item {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: var(--font-size-sm);
+}
+
+.nav-item:hover {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+.nav-item.active {
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   Collapsible burger-menu sidebar (REQ-SB-12)
+   Shared by every screen's .sidebar. .app-shell transitions its column
+   width so collapse/expand is an animation, not a snap.
+   ========================================================================== */
+
+.app-shell {
+  transition: grid-template-columns 0.25s ease;
+}
+
+.app-shell.sidebar-collapsed {
+  grid-template-columns: 64px 1fr;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.burger-btn {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.burger-btn:hover { background: var(--color-surface-raised); }
+
+.nav-icon {
+  display: inline-block;
+  width: 18px;
+  text-align: center;
+  margin-right: var(--space-2);
+}
+
+.app-shell.sidebar-collapsed .sidebar h2,
+.app-shell.sidebar-collapsed .nav-label {
+  display: none;
+}
+
+.app-shell.sidebar-collapsed .nav-item {
+  text-align: center;
+}
+
+.app-shell.sidebar-collapsed .nav-item .nav-icon {
+  margin-right: 0;
+}

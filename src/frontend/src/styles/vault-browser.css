@@ -1,0 +1,21 @@
+a.item-row,
+button.item-row {
+  text-decoration: none;
+  color: inherit;
+  border: none;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+a.item-row:hover,
+button.item-row:hover {
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface-raised));
+}
+
+.tag-chip {
+  border-radius: 999px;
+  font-size: var(--font-size-sm);
+  padding: 2px var(--space-3);
+}

@@ -1,0 +1,261 @@
+/* ==========================================================================
+   Agent detail side panel (REQ-SB-13) — opens as an overlay panel, not a
+   page navigation, when an Agents Map node is clicked. Ported from
+   html-prototype/styles.css (ADR-010's class-name-verbatim convention);
+   .kv-list/.badge/.btn already live in settings.css, not duplicated here.
+
+   Adaptation from the prototype: the prototype toggles one persistent DOM
+   node's visibility via .open/.active modifier classes (opacity/transform/
+   display gated on them). AgentDetailPanel.tsx instead mounts/unmounts
+   the whole overlay conditionally (React's own idiom for "not shown"), so
+   the .open/.active hidden-by-default states and their transitions are
+   deliberately dropped here — mounted already means visible, no modifier
+   class is ever added in the TSX. Every other rule (dimensions, borders,
+   layout, colors) is unchanged from the prototype.
+   ========================================================================== */
+
+.side-panel-overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, black 55%, transparent);
+  z-index: 40;
+}
+
+.side-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100vh;
+  width: min(560px, 100vw);
+  background: var(--color-surface);
+  border-left: 1px solid var(--color-border);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+}
+
+.side-panel-header {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.side-panel-close {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.side-panel-close:hover { color: var(--color-text); }
+
+.side-panel-title {
+  padding: var(--space-3) var(--space-4) 0;
+}
+
+/* Chat / History / Settings tabs (operator request, 2026-08-12 — the
+   panel's own single-scroll-column layout squeezed the chat thread down
+   to a 220px sliver between Settings/Actions above and Communication
+   history below; splitting into tabs gives Chat the full remaining
+   panel height instead). */
+.side-panel-tabs {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.side-panel-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+
+.side-panel-tab:hover { color: var(--color-text); }
+
+.side-panel-tab--active {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+}
+
+.side-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.side-panel-agent {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.side-panel-section { margin-bottom: var(--space-6); }
+.side-panel-section h3 { margin-bottom: var(--space-2); }
+
+/* The Chat tab's own section fills all available vertical space instead
+   of the fixed max-height the combined-tab layout needed. */
+.side-panel-section--chat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin-bottom: 0;
+}
+
+.action-list { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+/* ==========================================================================
+   Embedded agent chat (REQ-SB-13)
+   ========================================================================== */
+
+.chat-thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-3);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.chat-thread-empty {
+  margin: auto;
+  text-align: center;
+  font-size: var(--font-size-sm);
+  max-width: 80%;
+}
+
+.chat-message {
+  max-width: 85%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  white-space: pre-wrap;
+}
+
+.chat-message--user {
+  align-self: flex-end;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.chat-message--agent {
+  align-self: flex-start;
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+.chat-message--error {
+  background: color-mix(in srgb, var(--color-danger) 15%, var(--color-surface-raised));
+  color: var(--color-danger);
+}
+
+/* Loading indicator (operator request, 2026-08-12 — "no indication
+   that something is happening in the background" while waiting for a
+   real Compass-backed reply, which can take several seconds). */
+.chat-message--pending {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: var(--space-3);
+}
+
+.chat-typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-text-muted);
+  animation: chatTypingDot 1.2s ease-in-out infinite;
+}
+
+.chat-typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.chat-typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes chatTypingDot {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
+
+.chat-input-row {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  flex-shrink: 0;
+}
+
+.chat-input-row .input { flex: 1; }
+.chat-input-row .input:disabled { opacity: 0.6; }
+
+/* ==========================================================================
+   Chronological log list — reused for agent communication history and
+   background-run activity.
+   ========================================================================== */
+
+.log-list { display: flex; flex-direction: column; }
+
+.log-item {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--font-size-sm);
+}
+
+.log-item:last-child { border-bottom: none; }
+.log-item-meta { color: var(--color-text-muted); white-space: nowrap; }
+
+/* ==========================================================================
+   Chat pending-approval proposal card (REQ-SB-21) — a Supervised agent's
+   proposal, rendered inline in Communication History, visually distinct
+   from a normal .log-item. Ported verbatim from the approved prototype
+   (html-prototype/styles.css) — same color-mix(...)-over-token technique
+   as .badge-*, .btn-danger (no new hex): dashed + --color-warning while
+   pending, solid + --color-success/--color-danger once resolved.
+   ========================================================================== */
+
+.chat-proposal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  border: 1px dashed var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 10%, var(--color-surface-raised));
+}
+
+.chat-proposal p { margin: 0; }
+
+.chat-proposal-actions { display: flex; gap: var(--space-2); }
+
+.chat-proposal--approved {
+  border: 1px solid var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 10%, var(--color-surface-raised));
+}
+
+.chat-proposal--declined {
+  border: 1px solid var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 10%, var(--color-surface-raised));
+}

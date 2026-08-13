@@ -1,0 +1,121 @@
+/* Shared components */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px var(--space-2);
+  border-radius: 999px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.badge-success { background: color-mix(in srgb, var(--color-success) 20%, transparent); color: var(--color-success); }
+.badge-warning { background: color-mix(in srgb, var(--color-warning) 20%, transparent); color: var(--color-warning); }
+.badge-danger  { background: color-mix(in srgb, var(--color-danger) 20%, transparent); color: var(--color-danger); }
+
+.btn {
+  display: inline-block;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-size: var(--font-size-base);
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-on-accent);
+  font-weight: 600;
+}
+
+.input {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: var(--font-size-base);
+}
+
+/* ==========================================================================
+   Empty state — reused wherever a list/dashboard has nothing to show yet.
+   ========================================================================== */
+
+.empty-state {
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
+  color: var(--color-text-muted);
+}
+
+.empty-state .empty-state-icon {
+  font-size: 2rem;
+  margin-bottom: var(--space-2);
+}
+
+.kv-list { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-size-sm); }
+.kv-list .kv-row { display: flex; justify-content: space-between; gap: var(--space-3); padding: var(--space-1) 0; border-bottom: 1px solid var(--color-border); }
+.kv-list .kv-row:last-child { border-bottom: none; }
+.kv-key { color: var(--color-text-muted); }
+
+/* ==========================================================================
+   Generic item list — reused across the four My Day drill-down pages,
+   ported verbatim from html-prototype/styles.css.
+   ========================================================================== */
+
+.item-list { display: flex; flex-direction: column; gap: var(--space-2); }
+
+.item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-surface-raised);
+  border-radius: var(--radius-sm);
+}
+
+.item-row-main { display: flex; flex-direction: column; gap: 2px; }
+.item-row-title { font-weight: 600; }
+.item-row-meta { font-size: var(--font-size-sm); color: var(--color-text-muted); }
+
+/* ==========================================================================
+   Settings entity rows (REQ-SB-18 Sections, REQ-SB-19 Providers) — a small,
+   direct extension of the .item-row family above, not a new list component:
+   an action-controls cluster (Rename/Delete, Edit/Remove) that sits inside
+   an existing .item-row alongside .item-row-main.
+   ========================================================================== */
+
+.item-row-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+
+/* Destructive-action button variant, symmetric with .btn-primary — built
+   from the existing --color-danger token (already used by .badge-danger
+   and the Vault error state), never a new hex. */
+.btn-danger {
+  background: color-mix(in srgb, var(--color-danger) 10%, var(--color-surface-raised));
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger) 20%, var(--color-surface-raised));
+}
+
+.btn:disabled,
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Compact inline <select>, used by the Agents Map side panel's new Section/
+   Provider picker rows (REQ-SB-18/REQ-SB-19) — same .input visual language,
+   sized to sit inline in a .kv-row instead of taking the full row width. */
+.kv-select { width: auto; min-width: 160px; padding: 2px var(--space-2); font-size: var(--font-size-sm); }
