@@ -7,6 +7,7 @@ from app.business.partner_hub_linking import migrate_customer_to_partner
 from app.business.people_extraction import retrofit_email_sender_links, retrofit_people_from_emails
 from app.business.pipelines.librarian_housekeeping import (
     backfill_company_folders,
+    backfill_company_review_primary_fields,
     backfill_files,
     link_thread_messages,
     populate_thread_related_links,
@@ -229,3 +230,13 @@ def librarian_propose_company_review_endpoint() -> dict:
     scheduled chain -- manually-triggered only, mirroring ADR-055's own
     explicit precedent for propose_customer_backfill above."""
     return propose_company_review()
+
+
+@router.post("/librarian-backfill-company-review-primary-fields")
+def librarian_backfill_company_review_primary_fields_endpoint() -> dict:
+    """BUG-031 direct fix -- one-time, real, re-runnable correction for
+    already-approved Company Review batches whose primary customer:/
+    partner: field write was silently skipped by the pre-fix
+    _apply_company_to_threads bug. Manually-triggered only, never added
+    to a scheduled pass -- a one-time correction, not a recurring job."""
+    return backfill_company_review_primary_fields()

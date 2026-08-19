@@ -467,7 +467,7 @@ def populate_thread_related_links() -> dict:
         thread_directory = concept_path.parent
         frontmatter, _ = vault_writer.read_note(concept_path)
         conversation_id = frontmatter.get("conversation_id", "")
-        customer = frontmatter.get("customer") or "Unsorted"
+        customer = frontmatter.get("customer") or ""
         participants = frontmatter.get("participants") or []
         project = frontmatter.get("project")
 
@@ -558,7 +558,7 @@ def backfill_company_folders() -> dict:
         thread_directory = concept_path.parent
         frontmatter, _ = vault_writer.read_note(concept_path)
         conversation_id = frontmatter.get("conversation_id", "")
-        customer = frontmatter.get("customer") or "Unsorted"
+        customer = frontmatter.get("customer") or ""
 
         full_content = _thread_full_content(thread_directory / "messages")
         detection = detect_mentioned_companies_for_thread(full_content, primary_customer=customer)
@@ -595,26 +595,27 @@ def backfill_company_folders() -> dict:
 
 def propose_customer_backfill() -> dict:
     """The Customer backfill propose Job (`REQ-SB-74-US-01-T01`, `ADR-055`
-    Decisions 1-2) -- for every real Thread still `customer: "Unsorted"`
+    Decisions 1-2) -- for every real Thread still unclassified (empty
+    `customer:`, no more "Unsorted" placeholder string as of 2026-08-20)
     (`vault_writer.list_thread_notes()`, filtering on each concept file's
     own current `customer` frontmatter -- this filtering alone gives
     Scenario 9's own idempotency for free: an already-routed Thread's
-    `customer` is no longer `"Unsorted"`, so it is never even considered
+    `customer` is no longer empty, so it is never even considered
     again), calls `compass_client.detect_customer_for_thread` grounded in
     the Thread's own full concatenated message content (`_thread_full_
     content`, unchanged) against the real, live `vault_writer.list_
     customer_folders()` names (deliberately NOT `list_known_customers()`,
     per `ADR-055` Decision 3).
 
-    Groups every non-`"Unsorted"` result into ONE batched Pending Approval
+    Groups every non-empty result into ONE batched Pending Approval
     per distinct proposed Customer name -- `trigger="direct"` (never
     `"background"`: one backfill pass can legitimately produce multiple
     distinct per-Customer batches, which `"background"`'s own idempotency
     guard would silently collapse, mirroring `_create_librarian_company_
     link_proposal`'s own established reasoning). A Thread whose detection
-    result is `"Unsorted"` is left out of every batch entirely -- no forced
-    guess (Scenario 8). No Thread's `customer` frontmatter or `tags` are
-    written here -- proposal only, never a silent write (Scenario 1).
+    result is empty/unclassified is left out of every batch entirely -- no
+    forced guess (Scenario 8). No Thread's `customer` frontmatter or `tags`
+    are written here -- proposal only, never a silent write (Scenario 1).
 
     Returns `{"proposed_batches": [{"customer", "is_new_customer",
     "thread_paths", "approval_id"}, ...], "matched_existing_customer_
@@ -627,7 +628,7 @@ def propose_customer_backfill() -> dict:
     disclosed gap found live at full-corpus scale, `REQ-SB-74-US-01-T06`)
     -- a single transient `compass_client.CompassError` for one Thread is
     recorded and skipped, never crashing the whole pass or silently
-    treated as `"Unsorted"`; every OTHER Thread's own real classification
+    treated as unclassified; every OTHER Thread's own real classification
     this same run still lands in a real batch."""
     from app.business import pending_approval_registry  # local import -- see _create_librarian_company_link_proposal's own precedent for why
 
@@ -642,7 +643,7 @@ def propose_customer_backfill() -> dict:
 
     for concept_path in vault_writer.list_thread_notes():
         frontmatter, _ = vault_writer.read_note(concept_path)
-        if frontmatter.get("customer") != "Unsorted":
+        if frontmatter.get("customer"):
             continue  # already routed -- Scenario 9's own idempotency, for free
 
         thread_directory = concept_path.parent
@@ -661,13 +662,13 @@ def propose_customer_backfill() -> dict:
             # handling is the orthogonal fix: mirrors backfill_files's own
             # "failed" key / detect_mentioned_companies_for_thread's own
             # non-raising {"error", ...} contract -- record and continue,
-            # never silently drop into "Unsorted" (a false negative) or
+            # never silently drop into "unclassified" (a false negative) or
             # crash the whole Job.
             failed.append({"thread_path": str(concept_path), "error": str(exc)})
             continue
         customer = detection["customer"]
 
-        if customer == "Unsorted":
+        if not customer:
             left_unsorted.append(str(concept_path))
             continue
 
@@ -697,8 +698,8 @@ def propose_customer_backfill() -> dict:
             payload=batch,
             # ADR-056 (BUGFIX-08-US-01) -- closes BUG-030's own gap: a
             # repeat Job run before this batch's first proposal resolves
-            # re-scans the same still-Unsorted Threads without piling up a
-            # brand-new duplicate batch for the same customer.
+            # re-scans the same still-unclassified Threads without piling
+            # up a brand-new duplicate batch for the same customer.
             dedupe_key=f"propose_customer_backfill_routing:{customer}",
         )
         proposed_batches.append({**batch, "approval_id": record["id"]})
@@ -773,8 +774,8 @@ def finalize_customer_backfill_routing(payload: dict) -> dict:
 def propose_company_review() -> dict:
     """The Company Review propose Job (`REQ-SB-76-US-01-T04`, `ADR-057`
     Decisions 1-2) -- iterates EVERY real Thread (`vault_writer.list_
-    thread_notes()`, NOT filtered to `"Unsorted"` only -- Scenario 9 needs
-    an already-routed Thread considered too), calls `compass_client.
+    thread_notes()`, NOT filtered to unclassified Threads only -- Scenario
+    9 needs an already-routed Thread considered too), calls `compass_client.
     extract_thread_companies_for_review` once per Thread against that
     Thread's full concatenated message content and the live UNION of
     `vault_writer.list_customer_folders()` + `vault_writer.list_known_
@@ -871,36 +872,51 @@ def _apply_company_to_threads(thread_paths: list[str], target_name: str, target_
     For each Thread, freshly reads its CURRENT `customer`/`partner`
     frontmatter AT CALL TIME (never a payload snapshot taken at propose
     time -- a different Company Review batch could resolve first and
-    change that state in between): if the Thread's own primary is still
-    unset/`"Unsorted"` (no real `customer` AND no real `partner` value
-    yet), writes `target_name` to the primary `target_kind` field, REPLACING
-    any existing `customer/...`/`partner/...` tags-list element (e.g. a
-    stale `customer/unsorted` placeholder tag) with the real `target_kind/
+    change that state in between): if the Thread's own `target_kind`
+    field specifically is still empty (2026-08-20: no more "Unsorted"
+    placeholder string anywhere in this codebase), writes `target_name`
+    to the primary `target_kind` field, REPLACING any existing
+    `customer/...`/`partner/...` tags-list element (e.g. a stale
+    placeholder tag) with the real `target_kind/
     <slug>` tag -- the "primary write" path (Scenarios 3-6/10), mirroring
-    `finalize_customer_backfill_routing`'s own tag-correction shape. If the
-    Thread's own primary is ALREADY set to a DIFFERENT real company, the
-    primary field is left byte-for-byte untouched; instead an ADDITIVE
-    `target_kind/<slug>` tag is added (alongside every pre-existing tag,
-    never replacing one) and `## Related` is regenerated via
-    `email_classification.build_thread_related_wikilinks` DIRECTLY
-    (never `populate_thread_related_links()` itself, which has no
+    `finalize_customer_backfill_routing`'s own tag-correction shape. If
+    the Thread's own `target_kind` field is ALREADY set to a DIFFERENT
+    real company, the primary field is left byte-for-byte untouched;
+    instead an ADDITIVE `target_kind/<slug>` tag is added (alongside
+    every pre-existing tag, never replacing one) and `## Related` is
+    regenerated via `email_classification.build_thread_related_wikilinks`
+    DIRECTLY (never `populate_thread_related_links()` itself, which has no
     per-Thread entry point), written under the SAME already-registered
     `librarian_housekeeping.populate_thread_related_links` caller id
     (Scenario 9) -- no new `section_ownership.py` entry.
 
-    `customer:`/`partner:` frontmatter stays single-value by
-    construction -- the primary-write branch only ever fires when BOTH
-    fields are genuinely unset. No Thread outside `thread_paths` is ever
-    touched. Returns the list of Thread paths actually processed."""
+    `customer:` and `partner:` are two INDEPENDENT fields -- a Thread can
+    legitimately carry both at once (e.g. a real Customer it's for,
+    reached through a real Partner) (`BUG-031` fix, 2026-08-20): the
+    primary-unset check below looks ONLY at the field matching
+    `target_kind`, never both together -- an already-set `partner:` must
+    never block writing a genuinely-unset `customer:` (and vice versa).
+    No Thread outside `thread_paths` is ever touched. A `thread_path_str`
+    that no longer exists (a Thread renamed/moved by a later Threads
+    Cleaning pass since this batch's own propose-time path snapshot was
+    taken -- found live running `backfill_company_review_primary_fields`
+    against real historical batches) is skipped, never raised -- one
+    stale path must never abort the rest of a real batch. Returns the
+    list of Thread paths actually processed."""
     target_tag = f"{target_kind}/{vault_writer.tag_slug(target_name)}"
     processed: list[str] = []
 
     for thread_path_str in thread_paths:
         thread_path = Path(thread_path_str)
+        if not thread_path.exists():
+            continue
         frontmatter, _ = vault_writer.read_note(thread_path)
         current_customer = frontmatter.get("customer") or ""
         current_partner = frontmatter.get("partner") or ""
-        primary_unset = (not current_customer or current_customer == "Unsorted") and not current_partner
+        if target_kind == "customer":
+            primary_unset = not current_customer
+        else:
+            primary_unset = not current_partner
 
         existing_tags = list(frontmatter.get("tags") or [])
 
@@ -950,6 +966,63 @@ def _known_entity_exists(name: str, kind: str) -> bool:
     if kind == "partner":
         return vault_writer.partner_hub_note_exists(name)
     return False
+
+
+def backfill_company_review_primary_fields() -> dict:
+    """One-time real, API-reachable correction for `BUG-031` -- every
+    `propose_company_review` Pending Approval already `"approved"` before
+    `_apply_company_to_threads`'s primary-unset fix (2026-08-20) may have
+    silently skipped writing the primary `customer:`/`partner:` field on
+    its own Thread(s), because the OLD check required BOTH fields unset
+    (an already-set `partner:` wrongly blocked a genuinely-unset
+    `customer:`, and vice versa) -- confirmed live against the real vault
+    (Masdar's own approved Threads: `customer/masdar` tag present,
+    `customer:` field still `"Unsorted"`, `partner: "Core42"` already set
+    from an earlier approval).
+
+    Re-derives each already-resolved batch's real outcome kind from
+    CURRENT vault state via `_known_entity_exists` (customer checked
+    first, then partner) rather than trusting a stored `outcome` -- the
+    Pending Approval record's own stored `payload` never persisted the
+    operator's outcome choice (only `company`/`thread_paths`; `outcome` is
+    a POST-time-only decision body key, `pending_approvals_router.py`).
+    A company with neither a real Customer nor a real Partner note today
+    was Declined or Merged into a different name -- skipped, never
+    guessed. Batches for the SAME company across multiple Company Review
+    passes are unioned onto one real, deduplicated Thread-path list before
+    a single `_apply_company_to_threads` call, so the already-idempotent
+    per-Thread logic (a no-op wherever the primary field is correct
+    today, either because it was writable all along or because a prior
+    run of this SAME backfill already fixed it) runs exactly once per
+    company. Real, callable via `POST /poc/librarian-backfill-company-
+    review-primary-fields` (`MEMORY.md` -- API-first, no script
+    workarounds); safe to run more than once."""
+    from app.business import pending_approval_registry  # local import -- see _create_cross_cutting_proposal's own precedent for why
+
+    approved = [
+        r for r in pending_approval_registry.list_pending_approvals(status="approved")
+        if r.get("action_id") == "propose_company_review"
+    ]
+
+    thread_paths_by_company: dict[str, set[str]] = {}
+    for record in approved:
+        company = record["payload"]["company"]
+        thread_paths_by_company.setdefault(company, set()).update(record["payload"]["thread_paths"])
+
+    results: list[dict] = []
+    skipped: list[str] = []
+    for company, thread_paths in thread_paths_by_company.items():
+        if _known_entity_exists(company, "customer"):
+            target_kind = "customer"
+        elif _known_entity_exists(company, "partner"):
+            target_kind = "partner"
+        else:
+            skipped.append(company)
+            continue
+        applied = _apply_company_to_threads(list(thread_paths), company, target_kind)
+        results.append({"company": company, "target_kind": target_kind, "threads_applied": len(applied)})
+
+    return {"companies_processed": results, "companies_skipped_no_entity": skipped}
 
 
 def _existing_duplicate_shape(company: str) -> str | None:

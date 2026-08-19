@@ -165,7 +165,7 @@ def build_thread_related_wikilinks(
     housekeeping.populate_thread_related_links`) -- a Markdown bullet list
     of real, honest `[[wikilink]]`s, never a fabricated/placeholder one for
     an unresolved relationship (Scenario 11): a Customer hub link when
-    `customer` is real (not "Unsorted"/blank), one Person link for each of
+    `customer` is real (non-empty), one Person link for each of
     `participants` that has a REAL, already-existing Person note (a
     participant with none is honestly omitted, never guessed), a Project
     link once `project` is populated (only true after route_to_project's
@@ -185,7 +185,7 @@ def build_thread_related_wikilinks(
     section) when none of the four are currently resolvable -- an honest
     absence."""
     related_lines: list[str] = []
-    if customer and customer != "Unsorted":
+    if customer:
         customer_stem = vault_writer.hub_note_path(customer).stem
         related_lines.append(f"- [[{customer_stem}]]")
     for participant_email in participants:
@@ -1275,9 +1275,10 @@ def classify_captured_email_with_fallback(
     an email stuck retrying silently forever -- staged, never filed, never
     visible anywhere a human would look. Rather than let CompassError
     propagate (classify_captured_email's own documented contract), this
-    wrapper catches it, falls back to the SAME honest "Unsorted rather
-    than guessing" convention this module's own classify prompt already
-    uses for a low-confidence customer guess (module docstring: customer
+    wrapper catches it, falls back to the SAME honest empty-string
+    "unclassified rather than guessing" convention this module's own
+    classify prompt already uses for a low-confidence customer guess
+    (module docstring: customer
     is a tag, not a folder -- reclassifying it later is a tag edit in
     Obsidian, never a file move), and creates a real Pending Approval so
     the failure is visible and actionable instead of silent. The caller
@@ -1295,7 +1296,7 @@ def classify_captured_email_with_fallback(
     except compass_client.CompassError as exc:
         _create_classification_failure_pending_approval(email, exc)
         return {
-            "customer": "Unsorted",
+            "customer": "",
             "kind": "Emails",
             "confidence": 0.0,
             "recurring_candidate": False,
@@ -1310,7 +1311,7 @@ def _create_classification_failure_pending_approval(email: dict, exc: Exception)
     per agent+action, must not apply here). Unlike route_to_project this
     is not really a "guess Compass gets to refine" -- there is nothing to
     approve INTO the vault; the real fix is the human editing the
-    already-filed Unsorted Thread's own `customer`/`tags` frontmatter
+    already-filed, still-unclassified Thread's own `customer`/`tags` frontmatter
     directly (a tag edit, this module's own established convention, see
     module docstring). Approving this record is purely an acknowledgement
     that clears it from the Pending Approvals list once the human has
@@ -1319,7 +1320,7 @@ def _create_classification_failure_pending_approval(email: dict, exc: Exception)
     description = (
         f"Compass couldn't classify \"{email['subject']}\" from "
         f"{email['sender_email'] or email['sender_name']} ({exc}). Filed "
-        "under Unsorted so nothing is lost -- edit the Thread note's own "
+        "unclassified so nothing is lost -- edit the Thread note's own "
         "customer/tags directly in Obsidian to move it, then Approve to "
         "clear this alert."
     )

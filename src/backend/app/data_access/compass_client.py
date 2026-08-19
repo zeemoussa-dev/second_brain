@@ -37,7 +37,7 @@ def classify_email(
         "casing) when it clearly matches one. If it clearly relates to a "
         "real customer/company not yet in that list, propose a concise "
         "proper-noun name — new customers are expected. If you can't "
-        "confidently tell, use \"Unsorted\" rather than guessing.\n\n"
+        "confidently tell, use an empty string \"\" rather than guessing.\n\n"
         f"KIND — what this item actually is, as a short folder-friendly "
         "label (letters only, Title Case, e.g. \"Emails\", \"Files\"). "
         f"Already known kinds: {kind_list}. Reuse an existing kind when it "
@@ -97,7 +97,7 @@ def classify_email(
             content = data["choices"][0]["message"]["content"]
             parsed = json.loads(content)
             return {
-                "customer": parsed.get("customer") or "Unsorted",
+                "customer": parsed.get("customer") or "",
                 "kind": parsed.get("kind") or "Emails",
                 "confidence": float(parsed.get("confidence", 0.0)),
                 "recurring_candidate": bool(parsed.get("recurring_candidate", False)),
@@ -121,7 +121,7 @@ def classify_task(
     classify_email as-is would force a discarded kind guess into every
     call and misrepresent an absent sender inside a prompt worded
     around "inbox item"/`From:` framing designed for email. Same
-    "Unsorted rather than guessing" fallback posture as classify_email."""
+    empty-string "unclassified" fallback posture as classify_email."""
     customer_list = ", ".join(known_customers) if known_customers else "(none yet)"
     default_instructions = (
         "Classify which customer/company this to-do task relates to. "
@@ -132,7 +132,7 @@ def classify_task(
         "one. If it clearly relates to a real customer/company not yet "
         "in that list, propose a concise proper-noun name — new "
         "customers are expected. If you can't confidently tell, use "
-        "\"Unsorted\" rather than guessing.\n\n"
+        "an empty string \"\" rather than guessing.\n\n"
     )
     dynamic_content = f"Task subject: {subject}\n\n{body[:4000]}"
     if prompt_override is not None:
@@ -160,7 +160,7 @@ def classify_task(
         content = data["choices"][0]["message"]["content"]
         parsed = json.loads(content)
         return {
-            "customer": parsed.get("customer") or "Unsorted",
+            "customer": parsed.get("customer") or "",
             "confidence": float(parsed.get("confidence", 0.0)),
         }
     except (KeyError, IndexError, ValueError, json.JSONDecodeError) as exc:
@@ -178,8 +178,8 @@ def detect_customer_for_thread(
     second and third) -- REQ-SB-74-US-01-T01, ADR-055 Decision 2. Asks
     Compass for a Thread's own PRIMARY customer: reuse an exact known name
     when it clearly matches one, propose a new proper-noun name when it
-    clearly relates to a real company not yet known, or answer "Unsorted"
-    rather than guess -- the same honest three-way outcome classify_email/
+    clearly relates to a real company not yet known, or answer with an
+    empty string rather than guess -- the same honest three-way outcome classify_email/
     classify_task already established, so no extra Python-side confidence
     threshold logic is needed here. No retry loop (mirrors classify_task's
     own precedent, not classify_email's separate, unrelated retry
@@ -194,7 +194,7 @@ def detect_customer_for_thread(
         "one. If it clearly relates to a real customer/company not yet "
         "in that list, propose a concise proper-noun name — new "
         "customers are expected. If you can't confidently tell, use "
-        "\"Unsorted\" rather than guessing.\n\n"
+        "an empty string \"\" rather than guessing.\n\n"
     )
     dynamic_content = f"{thread_content[:8000]}"
     if prompt_override is not None:
@@ -222,7 +222,7 @@ def detect_customer_for_thread(
         content = data["choices"][0]["message"]["content"]
         parsed = json.loads(content)
         return {
-            "customer": parsed.get("customer") or "Unsorted",
+            "customer": parsed.get("customer") or "",
             "confidence": float(parsed.get("confidence", 0.0)),
         }
     except (KeyError, IndexError, ValueError, json.JSONDecodeError) as exc:

@@ -14,8 +14,6 @@ from pathlib import Path
 from app.business import agent_prompts, customer_hub_linking
 from app.data_access import compass_client, outlook_com, vault_writer
 
-_UNSORTED_CUSTOMER = "Unsorted"
-
 
 def classify_recent_todos(limit: int = 100) -> list[dict]:
     """The shared "ensure this Outlook Task's Task note exists and is
@@ -42,12 +40,12 @@ def classify_recent_todos(limit: int = 100) -> list[dict]:
             continue
 
         customer = classification["customer"]
-        if customer == _UNSORTED_CUSTOMER:
+        if not customer:
             # Task's own resolved schema requires an absent customer
-            # field (not a written "Unsorted" placeholder) when no
-            # confident match exists (Scenario 3) -- a deliberate
-            # divergence from email's own "Unsorted" written as a real
-            # customer value.
+            # field (None, not a written placeholder string) when no
+            # confident match exists (Scenario 3) -- classify_task's own
+            # honest-unclassified fallback is now an empty string too
+            # (2026-08-20), so this is just a truthiness check.
             customer = None
 
         existing_stem = vault_writer.lookup_task_note_stem(task["id"])

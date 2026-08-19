@@ -563,7 +563,7 @@ def list_known_customers() -> list[str]:
     for path in list_all_note_paths():
         frontmatter, _ = read_note(path)
         customer = frontmatter.get("customer")
-        if customer and customer != "Unsorted":
+        if customer:
             customers.add(customer)
     return sorted(customers)
 

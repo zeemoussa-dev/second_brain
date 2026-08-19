@@ -12,8 +12,6 @@ from pathlib import Path
 
 from app.data_access import vault_writer
 
-_UNSORTED_CUSTOMER = "Unsorted"
-
 
 def ensure_customer_hub_note(customer: str) -> dict:
     """Ensures customer's OKF-conformant directory (ADR-042 point 1,
@@ -60,11 +58,12 @@ def link_note_to_customer_hub(note_path, customer: str) -> bool:
 def ensure_hub_note_and_link(note_path, customer: str) -> dict:
     """The single shared operation, called by both the retrofit and the
     per-write capture hook: ensure customer's hub note exists, then
-    ensure note_path is linked to it. "Unsorted" (the placeholder
-    pseudo-customer list_known_customers() already excludes) and a blank
-    customer are both skipped — there is no real customer to link to."""
-    if not customer or customer == _UNSORTED_CUSTOMER:
-        return {"skipped": True, "reason": "no_customer_or_unsorted"}
+    ensure note_path is linked to it. An empty/unset customer (2026-08-20:
+    no more "Unsorted" placeholder string — unclassified is a genuinely
+    empty `customer` field) is skipped — there is no real customer to
+    link to."""
+    if not customer:
+        return {"skipped": True, "reason": "no_customer"}
     note_path = Path(note_path)
     hub_result = ensure_customer_hub_note(customer)
     linked = link_note_to_customer_hub(note_path, customer)

@@ -113,7 +113,7 @@ class EmailCapturePipelineState(TypedDict):
 def _classify_node(state: EmailCapturePipelineState) -> dict:
     # BUG-015 follow-up (2026-08-17): classify_captured_email_with_fallback
     # never raises CompassError -- a persistent classification failure now
-    # falls back to an honest "Unsorted" classification and raises a real
+    # falls back to an honest empty/unclassified classification and raises a real
     # Pending Approval instead of leaving the email stuck retrying silently
     # forever (see that function's own docstring). The rest of this graph
     # runs exactly as it would for a real Compass success, so the email's

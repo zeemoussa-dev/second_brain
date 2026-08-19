@@ -9,17 +9,17 @@ from datetime import datetime, timedelta
 
 from app.data_access import vault_writer
 
-_UNCLASSIFIED_CUSTOMER = "Unsorted"
 _WINDOW_DAYS_BEFORE = 3
 _WINDOW_DAYS_AFTER = 3
 
 
 def _customer_or_null(frontmatter: dict) -> str | None:
-    """Mirrors list_known_customers()'s existing '!= "Unsorted"' convention
-    for "not really classified" (MEMORY.md) rather than inventing a second
-    one; the frontend renders None as "unclassified"."""
+    """Mirrors list_known_customers()'s existing truthiness convention for
+    "not really classified" (2026-08-20: an empty `customer` field, not a
+    written "Unsorted" placeholder — MEMORY.md) rather than inventing a
+    second one; the frontend renders None as "unclassified"."""
     customer = frontmatter.get("customer")
-    if not customer or customer == _UNCLASSIFIED_CUSTOMER:
+    if not customer:
         return None
     return customer
 
