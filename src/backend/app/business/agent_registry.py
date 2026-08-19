@@ -226,11 +226,11 @@ def get_agent(agent_id: str) -> dict | None:
 def list_agents(include_retired: bool = False) -> list[dict]:
     state = _load_state()
     seed_entries = [
-        {"id": agent_id, "name": agent["name"], "type": agent["type"]}
+        {"id": agent_id, "name": agent["name"], "type": agent["type"], "depends_on": agent.get("depends_on", [])}
         for agent_id, agent in _SEED_AGENTS.items()
     ]
     created_entries = [
-        {"id": agent_id, "name": agent["name"], "type": agent["type"]}
+        {"id": agent_id, "name": agent["name"], "type": agent["type"], "depends_on": agent.get("depends_on", [])}
         for agent_id, agent in state["created_agents"].items()
         if include_retired or not agent.get("retired", False)
     ]
@@ -249,7 +249,9 @@ def get_action(agent_id: str, action_id: str) -> dict | None:
     return next((a for a in agent["actions"] if a["id"] == action_id), None)
 
 
-def create_agent(name: str, type: str, settings: list[dict] | None = None) -> dict:
+def create_agent(
+    name: str, type: str, settings: list[dict] | None = None, depends_on: list[str] | None = None,
+) -> dict:
     """agent_id is derived via vault_writer.tag_slug(name), keeping
     every agent-identifying id in this codebase human-readable and
     consistent (email-capture-pipeline, compass-expert, widgets-expert), not a
@@ -262,16 +264,30 @@ def create_agent(name: str, type: str, settings: list[dict] | None = None) -> di
     already-Done vault-filing-expert/compass-expert "starts with zero
     pre-seeded actions" precedent — REQ-SB-39's Skills unification
     remains the only path to a created agent gaining a capability,
-    via the already-Done skill_registry.grant_skill_access."""
+    via the already-Done skill_registry.grant_skill_access.
+
+    depends_on (2026-08-20) -- ids of Agents this one structurally
+    receives from (a real pipeline predecessor), the first real source
+    for AgentSummary.depends_on (agents_router.py's list_agents no
+    longer hardcodes `[]` for every agent). Each id is validated to
+    already be a real, known agent (seed or created) before this call
+    succeeds -- never a dangling reference a future Job Tree render
+    would silently fail to resolve."""
     state = _load_state()
     known_ids = set(_SEED_AGENTS.keys()) | set(state["created_agents"].keys())
+    for dep_id in depends_on or []:
+        if dep_id not in known_ids:
+            raise ValueError(f"Unknown depends_on agent id: {dep_id}")
     base_id = vault_writer.tag_slug(name)
     agent_id = base_id
     suffix = 2
     while agent_id in known_ids:
         agent_id = f"{base_id}-{suffix}"
         suffix += 1
-    record = {"name": name, "type": type, "settings": settings or [], "actions": [], "retired": False}
+    record = {
+        "name": name, "type": type, "settings": settings or [], "actions": [],
+        "retired": False, "depends_on": depends_on or [],
+    }
     state["created_agents"][agent_id] = record
     vault_writer.save_agents_registry_state(state)
     return {"id": agent_id, **record}

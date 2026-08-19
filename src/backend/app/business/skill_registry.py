@@ -38,11 +38,12 @@ _SKILL_HANDLERS = {
     "write-to-vault-draft": skill_tools.write_to_vault_draft,
     "summarize-file": skill_tools.summarize_file,
     "propose_person_note_update": skill_tools.propose_person_note_update,
-    # REQ-SB-79-US-01 (ADR-058 Decision 5) -- replaces the single
-    # run_housekeeping_pass entry with the Librarian's two now-independent
-    # orchestrating Jobs, each dispatchable so it can carry its own real,
-    # persisted recurring schedule.
-    "run_threads_cleaning_pass": skill_tools.run_threads_cleaning_pass,
+    # 2026-08-20 (operator-directed) -- run_threads_cleaning_pass retired;
+    # its 3 real Jobs are now their own independently-grantable/
+    # dispatchable Skills, one per new Threads Cleaning Sub-Agent.
+    "rename_threads": skill_tools.rename_threads,
+    "link_thread_messages": skill_tools.link_thread_messages,
+    "backfill_thread_summaries": skill_tools.backfill_thread_summaries,
     "run_company_partner_building_pass": skill_tools.run_company_partner_building_pass,
 }
 
@@ -84,15 +85,16 @@ _MIGRATION_GRANT_SEED = {
     # capability_id) schedule mechanism, with zero new plumbing).
     "pull_email": ["email-capture-pipeline"],
     "process_staged_email": ["email-capture-pipeline"],
-    # REQ-SB-79-US-01 (ADR-058 Decision 5) -- replaces the single
-    # run_housekeeping_pass/librarian-housekeeping grant with two, one per
-    # new Librarian sub-agent identity, reusing this same seed dict/
-    # mechanism a further time for the SAME reason pull_email/process_
-    # staged_email did (T04): a new ADR (ADR-058) names the new mapping
-    # entries explicitly, and self-healing the grant on every
-    # _load_state() read is what makes each new agent's own schedule
-    # survive a fresh app start.
-    "run_threads_cleaning_pass": ["threads-cleaning"],
+    # REQ-SB-79-US-01 (ADR-058 Decision 5) -- Company and Partner
+    # Building's own orchestrating Job, self-healing so its schedule
+    # survives a fresh app start. Threads Cleaning's own former entry here
+    # (run_threads_cleaning_pass -> threads-cleaning) is retired
+    # (2026-08-20, operator-directed): its 3 real Jobs are granted
+    # directly to their own new Sub-Agents at agent-creation time
+    # instead, never through this migration-seed mechanism (which is
+    # reserved for backfilling already-shipped agents onto a newly-
+    # migrated id, not for granting a brand-new Sub-Agent its own
+    # brand-new Skill).
     "run_company_partner_building_pass": ["company-and-partner-building"],
 }
 

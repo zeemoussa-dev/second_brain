@@ -16,7 +16,7 @@ import asyncio
 import concurrent.futures
 
 from app.api.mcp_server import mcp_server
-from app.business import agent_registry, email_classification, provider_registry
+from app.business import agent_registry, email_classification, provider_registry, thread_summary_backfill
 from app.business.pipelines import email_pull
 from app.business.pipelines import librarian_housekeeping
 from app.data_access import anthropic_client, compass_client, vault_writer
@@ -164,19 +164,46 @@ SKILLS: dict[str, dict] = {
         "mutates": True,
         "tool": "Vault",
     },
-    # REQ-SB-79-US-01 (ADR-058 Decision 5) -- replaces the single
-    # run_housekeeping_pass entry with two, one per new Librarian
-    # sub-agent, mirroring pull_email/process_staged_email's own precedent
-    # (T04): agent_schedule_registry.create_or_update_schedule refuses any
-    # capability that is not both granted AND classified "mutates": True,
-    # so each new independently-scheduled orchestrator must be its own
-    # real Skill.
-    "run_threads_cleaning_pass": {
-        "id": "run_threads_cleaning_pass",
-        "name": "Run Threads Cleaning Pass",
+    # 2026-08-20 (operator-directed): retires the single monolithic
+    # run_threads_cleaning_pass Skill (was one opaque call wrapping 4
+    # real Jobs) in favor of one real, independently-grantable/
+    # schedulable Skill per Job -- this is what lets each Job become its
+    # own real Sub-Agent with a real depends_on chain, instead of one
+    # collapsed Agents Map/Job Tree node (BUG-033). backfill_files/
+    # populate_thread_related_links are NOT converted this pass (no
+    # Sub-Agent requested for them yet) -- still reachable only via
+    # librarian_housekeeping.run_threads_cleaning_pass() directly (the
+    # orchestrating function itself is untouched, still callable) or the
+    # existing /poc/librarian-backfill-files, /poc/librarian-populate-
+    # related endpoints.
+    "rename_threads": {
+        "id": "rename_threads",
+        "name": "Rename Threads",
         "description": (
-            "Run Threads Cleaning's full pipeline (rename, Thread<->Message "
-            "linking, Files backfill, Related) immediately."
+            "Rename every real Thread directory still on its raw "
+            "conversation_id slug to its own human-readable <date> "
+            "<subject> stem."
+        ),
+        "mutates": True,
+        "tool": "Vault",
+    },
+    "link_thread_messages": {
+        "id": "link_thread_messages",
+        "name": "Link Thread Messages",
+        "description": (
+            "Regenerate every real Thread's ## Messages section from its "
+            "current messages/ folder, and link each message back to its "
+            "Thread via a thread: frontmatter reference."
+        ),
+        "mutates": True,
+        "tool": "Vault",
+    },
+    "backfill_thread_summaries": {
+        "id": "backfill_thread_summaries",
+        "name": "Summarize Threads",
+        "description": (
+            "Regenerate ## Summary and the opening-line sentence for "
+            "every already-captured Thread note, in place."
         ),
         "mutates": True,
         "tool": "Vault",
@@ -345,18 +372,34 @@ def pull_email(agent_id: str) -> dict:
 
 
 @mcp_server.tool()
-def run_threads_cleaning_pass() -> dict:
-    """Runs Threads Cleaning's full pipeline immediately (REQ-SB-79-US-01,
-    ADR-058 Decision 5) -- a thin wrapper delegating to librarian_
-    housekeeping.run_threads_cleaning_pass(), which is what makes this
+def rename_threads() -> dict:
+    """Renames every real Thread directory still on its raw
+    conversation_id slug (2026-08-20) -- a thin wrapper delegating to
+    librarian_housekeeping.rename_threads(), which is what makes this
     Skill genuinely dispatchable/schedulable (agent_schedule_registry.
     create_or_update_schedule refuses any capability id that is not both
     granted AND classified "mutates": True, dispatched via skill_registry.
-    invoke_skill -> this handler). No agent_id gating, unlike run_capture_
-    now/pull_email -- this capability has exactly one real Agent identity
-    that can ever be granted it (threads-cleaning), so there is no
-    honest-unavailable branch to preserve."""
-    return librarian_housekeeping.run_threads_cleaning_pass()
+    invoke_skill -> this handler)."""
+    return librarian_housekeeping.rename_threads()
+
+
+@mcp_server.tool()
+def link_thread_messages() -> dict:
+    """Regenerates every real Thread's ## Messages section and links each
+    message back to its Thread (2026-08-20) -- a thin wrapper delegating
+    to librarian_housekeeping.link_thread_messages()."""
+    return librarian_housekeeping.link_thread_messages()
+
+
+@mcp_server.tool()
+def backfill_thread_summaries() -> dict:
+    """Regenerates ## Summary for every already-captured Thread note
+    (2026-08-20) -- a thin wrapper delegating to thread_summary_backfill.
+    backfill_thread_summaries(). Returns a list, not a dict, unlike its
+    two Job siblings above -- wrapped under a "results" key so every
+    Skill handler in this module keeps returning a dict, matching
+    invoke_skill's own return-shape contract."""
+    return {"results": thread_summary_backfill.backfill_thread_summaries()}
 
 
 @mcp_server.tool()

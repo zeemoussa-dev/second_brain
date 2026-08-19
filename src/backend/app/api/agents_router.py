@@ -106,6 +106,13 @@ class CreateAgentBody(BaseModel):
     domain: str | None = None
     purpose: str | None = None
     trigger: str | None = None
+    # 2026-08-20 -- real pipeline-predecessor ids (AgentSummary.depends_on,
+    # agents_router.py::list_agents), for a Sub-Agent that structurally
+    # receives from another real agent (a Job Tree/Agents Map pipeline
+    # chain). Optional, defaults to no dependency (a pipeline entry point
+    # or a standalone agent) -- every existing wizard call site is
+    # unaffected.
+    depends_on: list[str] | None = None
 
 
 def _execute_action(agent_id: str, action_id: str) -> dict:
@@ -339,15 +346,13 @@ def list_agents() -> list[dict]:
         visual = agent_visual_registry.get_agent_visual(agent["id"])
         agent["icon"] = visual["icon"]
         agent["color"] = visual["color"]
-        # AgentSummary.depends_on/branch_target_agent_id (frontend
-        # agentsApiClient.ts) were never populated by the real backend --
-        # only the separate demo-backend's synthetic data ever set them,
-        # so layoutAgents.ts's unconditional `.depends_on.length` throws
-        # for every real agent, crashing the whole Agents Map into its
-        # empty state. No real pipeline-dependency source exists yet
-        # (agent_registry.py has no such concept), so these are honest,
-        # structurally-correct empty defaults, not fabricated data.
-        agent["depends_on"] = []
+        # AgentSummary.depends_on (frontend agentsApiClient.ts) now has a
+        # real source (2026-08-20): agent_registry.list_agents() already
+        # carries each agent's own real depends_on (empty for every agent
+        # created before this change, and for every seed agent — an
+        # honest, structurally-correct default, not fabricated data).
+        # branch_target_agent_id still has no real backend source.
+        agent["depends_on"] = agent.get("depends_on", [])
         agent["branch_target_agent_id"] = None
     return agents
 
@@ -383,6 +388,7 @@ def create_agent(body: CreateAgentBody) -> dict:
                 {"key": "Domain", "value": domain},
                 {"key": "Trigger", "value": trigger_value},
             ],
+            depends_on=body.depends_on,
         )
     elif body.type == "worker":
         # No Domain-equivalent setting — a Worker's real configuration
@@ -391,6 +397,7 @@ def create_agent(body: CreateAgentBody) -> dict:
         # above).
         created = agent_registry.create_agent(
             name, "worker", settings=[{"key": "Trigger", "value": trigger_value}],
+            depends_on=body.depends_on,
         )
     else:
         # Producer: Purpose is stored via the same generic settings
@@ -411,6 +418,7 @@ def create_agent(body: CreateAgentBody) -> dict:
                 {"key": "Purpose", "value": purpose},
                 {"key": "Trigger", "value": trigger_value},
             ],
+            depends_on=body.depends_on,
         )
     return get_agent(created["id"])
 
