@@ -4,7 +4,7 @@ title: Two new Agent identities + run_housekeeping_pass() split + 5-call-site re
 parent_story: REQ-SB-79-US-01
 requirement_id: REQ-SB-79
 type: backend
-status: Ready
+status: Done
 gate: clear
 gate_reason: ""
 phase: P2
@@ -147,5 +147,95 @@ Create the two new Agent identities (`threads-cleaning`, `company-and-partner-bu
 
 ## Implementation Log
 
-_(Filled in by the coder during implementation: what was changed, any deviations
-from the plan, observed verification outcomes keyed by AC-ID.)_
+**Change:** `src/backend/app/business/pipelines/librarian_housekeeping.py` —
+added `from app.business import ... people_extraction ...` import;
+`ensure_librarian_agent_and_section()` replaced by `ensure_librarian_
+agents_and_section()` (creates/existence-checks both `threads-cleaning`/
+`company-and-partner-building`, both assigned to the same "librarian"
+Section); `run_housekeeping_pass()` replaced by `run_threads_cleaning_
+pass()`/`run_company_partner_building_pass()` exactly per the architecture's
+own code block; all 5 literal `agent_id="librarian-housekeeping"`/
+`requesting_agent_id="librarian-housekeeping"` references rewired to
+`"company-and-partner-building"` (`_create_librarian_company_link_
+proposal`'s own default param + its one call site, `propose_customer_
+backfill`, `propose_company_review`, `propose_customer_archival_
+candidates`). Also corrected one stale docstring reference in `propose_
+company_review` ("never wired into `run_housekeeping_pass()`" →
+"...`run_company_partner_building_pass()`") for accuracy — comment-only,
+in-scope (same file, same task).
+
+**Verification methodology (disclosed):** the real vault has 141 real
+Threads; one real `detect_mentioned_companies` Compass call measured
+~25.6s. `populate_thread_related_links`/`backfill_company_folders` each
+call this once per Thread with NO bounding parameter (existing,
+unmodified job behavior — "Zero new Job logic" forbids adding one) — a
+full-corpus direct call would cost ~2 hours of real Compass round-trips
+for T02 alone, before T04/T06 would need to repeat it. Per this project's
+own established Learnings precedent (`SPRINT-028`: "Bound a live-data
+verification to a real, filtered subset via in-process monkeypatch of the
+real fetch function, rather than re-running a full real capture for every
+single check"), verification below monkeypatches `vault_writer.list_
+thread_notes` to dynamically re-filter (by real `conversation_id`, re-
+resolved fresh on every call — NOT a frozen path list, since `rename_
+threads()` mutates directory names mid-pass) down to 3 real Threads for
+the general checks and 2 real `customer: "Unsorted"` real Threads for the
+AC-04 check — genuine real files, real Compass calls, real writes, just
+bounded in count. The corpus-wide behavior of each individual Job was
+already proven at full scale in `REQ-SB-72/73/74`'s own locked ACs; this
+story only needed to prove the SPLIT introduces no regression.
+
+**Live verification (worktree's own real backend context, real
+`VAULT_PATH`):**
+
+- `[REQ-SB-79-US-01-AC-01]` `ensure_librarian_agents_and_section()` called
+  twice: both `threads-cleaning`/`company-and-partner-building` created
+  under the "librarian" Section on the first call; the second call
+  returned the same two agents with no `-2`-suffixed disambiguated
+  duplicate anywhere in `list_agents(include_retired=True)`. **PASS.**
+- `[REQ-SB-79-US-01-AC-02]` `run_threads_cleaning_pass()` (bounded, real)
+  returned exactly `{"rename_threads", "link_thread_messages",
+  "backfill_files", "populate_thread_related_links"}` — no `backfill_
+  company_folders` key. Same fixed job order preserved (dict-literal
+  order unchanged from the pre-split code). **PASS.**
+- `run_company_partner_building_pass()` (bounded, real) returned exactly
+  `{"backfill_company_folders", "retrofit_people_from_emails"}`; both
+  sub-calls produced real, non-trivial results — `backfill_company_
+  folders` created 4 real Customer folders (2 new pending-approval-
+  bypassing `new_unambiguous` classifications) and 2 real Pending
+  Approvals for `ambiguous` mentions; `retrofit_people_from_emails`
+  processed all 696 real vault notes (not bounded — this Job scans the
+  whole vault by design, unaffected by the Thread-count monkeypatch).
+  **PASS.**
+- `[REQ-SB-79-US-01-AC-04]` `propose_customer_backfill()` (bounded to 2
+  real `Unsorted` Threads) created ONE real batched Pending Approval
+  (`76e6718db8dc`). Independently confirmed via `pending_approval_
+  registry.get_pending_approval` (a fresh, separate read, not trusting
+  the create-call's own return value alone) that all 3 real Pending
+  Approvals created this pass (`1326a80c3f57`, `a05bf0b903ec` from
+  `backfill_company_folders`; `76e6718db8dc` from `propose_customer_
+  backfill`) carry `agent_id == "company-and-partner-building"`. **PASS.**
+- `[REQ-SB-79-US-01-AC-05]` `inspect.getsource(propose_company_review)`
+  confirms its own `create_pending_approval` call site already reads
+  `agent_id="company-and-partner-building"` — true regardless of
+  `REQ-SB-76-US-01`'s own ship status. **PASS.**
+- Grep of the post-edit file for `agent_id="librarian-housekeeping"`/
+  `requesting_agent_id="librarian-housekeeping"` — zero matches (only 4
+  harmless comment/docstring mentions of the OLD identity remain, for
+  historical framing). **PASS.**
+
+**Real, disclosed side effects on the live vault from this bounded
+verification (transparency, not bulk-processing — nothing was approved/
+declined, only created, mirroring the Job's own real, intended,
+already-`Done` behavior):** 4 new real Customer folders created
+(Innovation and Digital Development Agency (IDDA), Ministry of Digital
+Development and Transport (MDDT), AzInTelecom LLC, AZCON Holding); 3 new
+real Pending Approvals left `pending` for the operator's own review; 1
+real Thread routed from `Unsorted` to Ministry of Digital Development and
+Transport (MDDT); `## Related` regenerated on 3 real bounded Threads. All
+of this is the SAME real mechanism `REQ-SB-72/74` already ship — this
+task only changed WHICH agent identity owns the resulting record.
+
+gate: clear 2026-08-19 — no MUST-FLAG trigger fired. Bounded-verification
+methodology is a disclosed, scope-internal judgement call (not a locked-AC
+weakening — every AC's own real mechanism/outcome was directly, genuinely
+observed), logged here for human spot-check.

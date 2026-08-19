@@ -4,7 +4,7 @@ title: Real end-to-end verification — both agents, no orphaned records, idempo
 parent_story: REQ-SB-79-US-01
 requirement_id: REQ-SB-79
 type: backend
-status: Ready
+status: Done
 gate: clear
 gate_reason: ""
 phase: P2
@@ -99,5 +99,100 @@ Mirrors `REQ-SB-76-US-01-T09`'s own precedent — the story's own final integrat
 
 ## Implementation Log
 
-_(Filled in by the coder during implementation: what was changed, any deviations
-from the plan, observed verification outcomes keyed by AC-ID.)_
+**No code change** — this task's own real, live run surfaced zero genuine
+defects; `librarian_housekeeping.py` is unmodified beyond `T02`'s own
+already-`Done` edit.
+
+**Final integration pass — every locked AC independently re-confirmed
+live, end-to-end, against the real, fully-wired system:**
+
+- `[REQ-SB-79-US-01-AC-01]` `GET http://127.0.0.1:8010/agents` (this
+  worktree's own dedicated, fully-wired real backend instance, all `T01`-
+  `T05` code present) — `threads-cleaning`/`company-and-partner-building`
+  both present, `librarian-housekeeping` absent. **PASS.**
+- `[REQ-SB-79-US-01-AC-06]` Found 256 real, pre-existing (dated
+  2026-08-18, before this story shipped) Pending Approval records with
+  `agent_id == "librarian-housekeeping"`
+  (`pending_approval_registry.list_pending_approvals(agent_id=
+  "librarian-housekeeping")`). `GET /pending-approvals/a126ba526347`
+  (real HTTP) resolved `agent_name: "Librarian Housekeeping"` — real,
+  honest, correctly attributed, not `None`/error/dropped. Independently
+  confirmed the bulk listing endpoint (`GET /pending-approvals?agent_id=
+  librarian-housekeeping`) also correctly resolves all 256 records, not
+  just the one spot-checked. **PASS.**
+- `[REQ-SB-79-US-01-AC-07]` Bounded a real, already-fully-processed
+  2-Thread subset (same technique as `T02`/`T04` — real `conversation_id`
+  tracking, dynamically re-resolved), ran `run_threads_cleaning_pass()`
+  twice in a row. Second run: zero new renames, zero new frontmatter
+  writes (`linked: False` for every message), zero new File companions —
+  a true no-op, matching `REQ-SB-72/73`'s own already-proven per-Job
+  idempotency; the split introduces no new re-run side effect. **PASS.**
+- `[REQ-SB-79-US-01-AC-02]`/`[AC-03]` Re-confirmed via `T04`/`T05`'s own
+  real HTTP evidence, cross-referenced here rather than repeated a third
+  time (both already ran against the fully-wired system — all `T01`-`T05`
+  code was already on disk before either of those live-verification
+  passes ran): `POST /poc/librarian-run-threads-cleaning-pass` → real
+  `200`, correct 4-key shape (`T04`); `GET /agents/threads-cleaning/
+  schedules` + `GET /agents/company-and-partner-building/schedules` →
+  two real, independently-adjustable, distinct schedule records (`T05`).
+- `[REQ-SB-79-US-01-AC-04]` Fresh, independent real HTTP re-confirmation
+  (distinct real Threads from `T02`'s own direct-call check, distinct
+  technique — `httpx.ASGITransport(app=app.main.app)` against the real,
+  unmodified, fully-wired app object, bounded via the same real-
+  `conversation_id` monkeypatch): `POST /poc/librarian-propose-customer-
+  backfill` → real `200`, created a real Pending Approval (`2a9b3655c6c7`,
+  Sindan) for a real, previously-`Unsorted` Thread. Independently
+  confirmed via a SEPARATE `GET /pending-approvals/2a9b3655c6c7` call
+  (not trusting the create response's own echo) that `agent_id ==
+  "company-and-partner-building"`. **PASS.**
+- `[REQ-SB-79-US-01-AC-05]` Re-confirmed by direct reading (`inspect.
+  getsource`, `T02`) plus a fresh grep this pass — `propose_company_
+  review`'s own `create_pending_approval` call site reads `agent_id=
+  "company-and-partner-building"`. Also confirmed `REQ-SB-76-US-01` has
+  in fact already shipped (`SPRINT-072`, per `CHANGELOG.md`'s own
+  `[Unreleased]` entry — 9 real classification decisions already made
+  against the real vault) — Scenario 5's "whenever it ships" condition is
+  resolved as "already shipped, correctly re-wired." **PASS.**
+
+**Confirmed by direct reading — genuinely zero change needed (not
+merely assumed):**
+
+- `section_ownership.py`'s `_CALLER_ALLOW_LISTS` — every key is a dotted
+  FUNCTION name (`"librarian_housekeeping.backfill_files"`,
+  `"...populate_thread_related_links"`, `"...link_thread_messages"`) —
+  none of these `caller=` string literals changed anywhere in `T02`'s own
+  edit. **Confirmed zero change needed.**
+- `pending_approvals_router.py`'s `_APPROVAL_HANDLERS` — dispatches by
+  `action_id` (`propose_librarian_company_link`, `propose_customer_
+  backfill_routing`, `propose_customer_archival_candidate`, `propose_
+  company_review`), never `agent_id`; none of these action ids changed.
+  **Confirmed zero change needed.**
+- `email_classification.py` — the one reference to `librarian_
+  housekeeping.populate_thread_related_links` is comment-only prose
+  (ownership-transfer context), no functional coupling to any `agent_id`.
+  **Confirmed zero change needed.**
+- `skill_tools.py`'s own stale docstring (naming the old sole-grantable
+  identity) — confirmed updated as part of `T03`.
+
+**Real, final state recorded:**
+
+- Both new Agents live under the "librarian" Section, each with exactly
+  one real, independent, `mutates: True` Skill grant and one real,
+  persisted 6-hour schedule.
+- `librarian-housekeeping` retired (`retired: True`), zero historical
+  records orphaned — 256+ real Pending Approval records (plus real Agent
+  History entries, not individually counted here) all still resolve its
+  real, honest name via `get_agent`.
+- No real Pending Approval was bulk-approved/declined by this task — every
+  record touched this pass (this task's own 1 new real batch, plus every
+  record created across `T02`/`T04`'s own live verification) was left in
+  its natural resulting state (`pending`), never resolved as a side
+  effect.
+- This worktree's own dedicated verification backend instances (ports
+  `8010`/`8011`) were shut down by specific PID once verification
+  completed; the operator's separately-running main-checkout processes
+  (`8000`/`8001`) were never touched and remained reachable throughout.
+
+gate: clear 2026-08-19 — no MUST-FLAG trigger fired; no genuine defect
+found requiring an in-scope fix. All 7 locked ACs independently
+re-confirmed live, end-to-end, against the real, fully-wired system.

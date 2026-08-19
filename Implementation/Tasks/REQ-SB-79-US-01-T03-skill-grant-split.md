@@ -4,7 +4,7 @@ title: Skill/grant catalog split — run_threads_cleaning_pass / run_company_par
 parent_story: REQ-SB-79-US-01
 requirement_id: REQ-SB-79
 type: backend
-status: Ready
+status: Done
 gate: clear
 gate_reason: ""
 phase: P2
@@ -116,5 +116,61 @@ Replace the single `run_housekeeping_pass` Skill/grant entry with two independen
 
 ## Implementation Log
 
-_(Filled in by the coder during implementation: what was changed, any deviations
-from the plan, observed verification outcomes keyed by AC-ID.)_
+**Change:** `src/backend/app/business/skill_tools.py` — `SKILLS["run_
+housekeeping_pass"]` replaced by `SKILLS["run_threads_cleaning_pass"]`/
+`SKILLS["run_company_partner_building_pass"]` (same `"mutates": True,
+"tool": "Vault"` shape); the old `run_housekeeping_pass()`
+`@mcp_server.tool()` wrapper replaced by two thin wrappers delegating to
+`librarian_housekeeping.run_threads_cleaning_pass()`/`run_company_partner_
+building_pass()`; the stale docstring naming `librarian-housekeeping` as
+the sole grantable identity updated for each new wrapper's own new
+identity. `src/backend/app/business/skill_registry.py` — `_SKILL_HANDLERS`/
+`_MIGRATION_GRANT_SEED`'s single `"run_housekeeping_pass"` entries replaced
+by the matching two, granted to `threads-cleaning`/`company-and-partner-
+building` respectively.
+
+**Verification methodology (disclosed):** the catalog/grant/dispatch-table
+checks below are pure in-memory reads (no real cost). The final "does the
+Skill wrapper genuinely delegate" check uses `skill_registry._dispatch_
+skill(...)` — a REAL call into the real orchestrators, so, per the same
+reasoning already disclosed in `T02`'s own Implementation Log, bounded to 2
+real Threads via the same `vault_writer.list_thread_notes` conversation_id
+monkeypatch technique, rather than paying for a full 141-Thread Compass
+sweep to prove a one-line delegate wrapper works correctly.
+
+**First attempt note:** an earlier, unbounded verification pass (this
+exact same dispatch check, without the bounding above) was started, made
+~10 real Compass calls against the full corpus, then was deliberately
+killed by specific PID (`Stop-Process -Id <pid> -Force`, mirroring this
+project's own established specific-PID-kill protocol) once recognized as
+unnecessarily expensive for what this task's own AC actually needs
+proven. No corruption risk — each per-Thread write inside the killed pass
+is independently idempotent-safe by the underlying Jobs' own existing
+design; a future real pass simply catches up on whichever Threads were
+mid-way through. Re-run bounded immediately after, successfully.
+
+**Live verification:**
+
+- `SKILLS`/`_SKILL_HANDLERS`/`_MIGRATION_GRANT_SEED` all confirmed
+  cleanly replaced — `"run_housekeeping_pass"` absent from all three,
+  both new keys present, both `"mutates": True`. **PASS.**
+- `[REQ-SB-79-US-01-AC-03]` `agent_schedule_registry._is_schedulable
+  ("threads-cleaning", "run_threads_cleaning_pass")` → `True`; same for
+  `("company-and-partner-building", "run_company_partner_building_pass")`
+  → `True` — the real precondition `T05`'s `create_or_update_schedule`
+  needs to succeed. **PASS.**
+- `skill_registry.list_agent_skills(...)` confirms each agent's own
+  catalog entry appears, and ONLY its own (`threads-cleaning` →
+  `["run_threads_cleaning_pass"]`; `company-and-partner-building` →
+  `["run_company_partner_building_pass"]`) — no cross-grant contamination.
+  **PASS.**
+- Bounded real dispatch: `_dispatch_skill("threads-cleaning", "run_
+  threads_cleaning_pass")` → real result with the 4 Threads Cleaning job
+  keys; `_dispatch_skill("company-and-partner-building", "run_company_
+  partner_building_pass")` → real result with `backfill_company_folders`/
+  `retrofit_people_from_emails` keys. Both wrappers confirmed genuinely
+  delegating to `T02`'s own orchestrators, not stubs. **PASS.**
+
+gate: clear 2026-08-19 — no MUST-FLAG trigger fired. The mid-verification
+PID-kill is a scope-internal judgement call (a verification-cost decision,
+not a code change), disclosed here for human spot-check.

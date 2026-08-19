@@ -12,43 +12,28 @@ All notable changes to Second Brain.
 
 ## [Unreleased]
 
-- docs: `SPRINT-075` / `REQ-SB-78-US-01-T04` — real-browser end-to-end
-  live re-verification of all 7 locked ACs for the Pending Approvals
-  grouping/color-coding/bulk-approve story, independently against the
-  real running app (headless-Edge CDP), including the Company Review
-  5-way control's own "Affiliate" picker reveal and a real 3-item bulk
-  approve. `REQ-SB-78-US-01` and `SPRINT-075` both close `Done`.
-- feat: `SPRINT-075` / `REQ-SB-78-US-01-T03` — Pending Approvals: each
-  rendered group whose items are all non-branching-decision now gets a
-  `Bulk approve (<N>)` control (`MyDayApprovalsPage.tsx`), looping the
-  existing single-item approve endpoint **sequentially** (never
-  concurrently — see `ESC-058`), refreshing once at the end; the Company
-  Review group renders no bulk-approve control. Live-verified against the
-  real running app (real backend, disposable test records only).
-- fix: found live during `REQ-SB-78-US-01-T03` verification, logged as
-  `ESC-058` (`ESCALATIONS.md`/`MEMORY.md`) — `vault_writer.py`'s JSON
-  state-file writers have no concurrent-write locking; N simultaneous
-  writes to the same state file silently clobber all but the last one.
-  Not fixed at the primitive level (out of this story's frontend-only
-  scope) — recommended for a future `/bug` capture.
-- feat: `SPRINT-075` / `REQ-SB-78-US-01-T02` — Pending Approvals now render
-  grouped into `[data-group-key]` sections by `action_id`
-  (`MyDayApprovalsPage.tsx`), color-coded via `T01`'s
-  `.group-color-N`/`.group-color-other` classes; empty groups never
-  render, an unmapped `action_id` falls into a visible `Other` catch-all,
-  the Company Review 5-way decision control and the empty state both keep
-  working unchanged, now nested one level deeper inside their own group.
-  Live-verified against the real vault (80 real pending items across 3
-  real `action_id`s, including 73 real Company Review records) via
-  headless-Edge CDP; one disposable test record seeded/declined for the
-  `Other`-catch-all check.
-- feat: `SPRINT-075` / `REQ-SB-78-US-01-T01` — Pending Approvals grouping:
-  new `src/frontend/src/features/agents-map/pendingApprovalGroups.ts`
-  (`KNOWN_GROUPS`/`OTHER_GROUP`/`BRANCHING_DECISION_ACTION_IDS`/
-  `resolveGroup`), plus new `.group-color-1`…`-11`/`.group-color-other`
-  CSS classes (`tokens.css`/`my-day.css`) — purely presentational, zero
-  backend change; not yet wired into `MyDayApprovalsPage.tsx`'s own
-  rendering (`T02`).
+- feat: `SPRINT-073` / `REQ-SB-79-US-01` — The Librarian splits into two real,
+  independently-scheduled Agents: **Threads Cleaning** (`rename_threads` →
+  `link_thread_messages` → `backfill_files` → `populate_thread_related_links`,
+  unchanged fixed order) and **Company and Partner Building**
+  (`backfill_company_folders` + `people_extraction.retrofit_people_from_emails()`
+  on schedule; `propose_customer_backfill`/`propose_customer_archival_candidates`/
+  `propose_company_review` stay manually-triggered), replacing the single shared
+  `librarian-housekeeping` identity (`ADR-058`). `agent_registry.py` gains its
+  first "retire without delete" primitive (`retired: bool`, `retire_agent()`,
+  `list_agents(include_retired=False)`) — `librarian-housekeeping` is retired,
+  never deleted, so every pre-existing Pending Approval/Agent History record
+  keeps resolving a real, honest `agent_name` forever. All 5 real
+  Pending-Approval-creating call sites re-homed onto `company-and-partner-
+  building`; Skill/grant catalog, `/poc/librarian-run-*` routes, and `main.py`'s
+  bootstrap all split to match, with two independent, real, persisted 6-hour
+  schedules created on app start. Live-verified against the real vault: both new
+  Agents confirmed listed (old identity retired, not deleted), a real Pending
+  Approval created under each new pipeline with the correct `agent_id`, 256
+  real pre-existing `librarian-housekeeping`-attributed records confirmed still
+  resolving their real name, a real backend restart confirmed fully idempotent
+  (no duplicate agents/schedules), and a bounded real re-run confirmed the split
+  introduces no new idempotency regression.
 - feat: `SPRINT-072` / `REQ-SB-76-US-01` — Company Review: boilerplate-aware
   company extraction replaces direct Thread→Customer routing; one batched
   Pending Approval per company with a real 5-way outcome (Customer / Partner

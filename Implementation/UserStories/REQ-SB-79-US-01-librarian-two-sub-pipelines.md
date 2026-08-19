@@ -4,9 +4,9 @@ title: The Librarian — Two Sub-Pipelines (Threads Cleaning, Company & Partner 
 requirement_ids: [REQ-SB-79]
 requirement_section: "REQ-SB-79: The Librarian — Two Sub-Pipelines (Threads Cleaning, Company & Partner Building)"
 phase: P2
-status: Ready
+status: Done
 gate: flagged
-gate_reason: "trigger-3 (ADR-058 created) — architect pass, 2026-08-19. The analyst's own prior gate:clear pass (below, unedited) found no MUST-FLAG trigger of its own; this NEW flag is raised entirely by the architect step, which created ADR-058 (a new 'retire without delete' agent_registry.py primitive, the run_housekeeping_pass() split, and the full re-homing of every Pending-Approval-creating call site onto the new Company and Partner Building identity). Does not halt /plan-tasks — the decomposer still locks ACs/tasks against this same architecture pass so the human reviews the ADR and the resulting tasks together in one pass, per Pipeline.md."
+gate_reason: "trigger-3 (ADR-058 created) — architect pass, 2026-08-19. The analyst's own prior gate:clear pass (below, unedited) found no MUST-FLAG trigger of its own; this NEW flag is raised entirely by the architect step, which created ADR-058 (a new 'retire without delete' agent_registry.py primitive, the run_housekeeping_pass() split, and the full re-homing of every Pending-Approval-creating call site onto the new Company and Partner Building identity). Does not halt /plan-tasks — the decomposer still locks ACs/tasks against this same architecture pass so the human reviews the ADR and the resulting tasks together in one pass, per Pipeline.md. STANDING as of coder completion, 2026-08-19 — all 6 tasks Done, every locked AC verified live; this flag is not cleared by task completion, per Pipeline.md's 'Promotion of a flagged item' — the human still owes ADR-058 its own look."
 sprint: "SPRINT-073"
 created: 2026-08-19
 updated: 2026-08-19
@@ -485,3 +485,29 @@ on — `REQ-SB-77-US-01-T03` (verification-only) carries a real `depends_on:
 US-01`'s own `## Notes` (Decomposer pass) for the full reasoning on why
 this is recorded as a task-level edge, not deferred to
 `depends_on_sprints`.
+
+---
+
+## Coder pass, 2026-08-19 (`/implement-sprint SPRINT-073`)
+
+All 6 tasks built and independently live-verified against the real,
+configured vault (`T01`-`T06`, dependency order `T01`/`T02` → `T03`/`T04`
+→ `T05` → `T06`). Every locked AC (`AC-01`-`AC-07`) confirmed live at
+least once during the build and independently re-confirmed end-to-end by
+`T06`'s own final integration pass — see each task file's own
+Implementation Log for the full real-evidence trail (real HTTP round
+trips, real Compass calls, real Pending Approvals created and
+independently re-fetched, a real backend restart proving idempotency).
+
+No genuine defect found requiring an in-scope fix. `agent_registry.py`'s
+new `retire_agent`/`list_agents(include_retired=...)` primitive,
+`librarian_housekeeping.py`'s two-orchestrator split, the Skill/grant
+split, the POC route split, and `main.py`'s bootstrap wiring all match
+`ADR-058`'s own Decision set exactly, with zero deviation.
+
+Story advances **`Ready` → `Done`**. `gate` stays `flagged` — `ADR-058`'s
+own standing human-review item is a separate, already-logged
+`REVIEW-QUEUE.md` entry this role does not clear; task completion is not
+the same event as the human's own sign-off on the ADR.
+
+`BACKLOG.md`'s `REQ-SB-79` row updated to `Done`.

@@ -20,8 +20,9 @@ from app.api.skills_router import router as skills_router
 from app.api.system_health_router import router as system_health_router
 from app.api.vault_index_router import router as vault_index_router
 from app.api.vault_search_router import router as vault_search_router
+from app.business import agent_registry, agent_schedule_registry
 from app.business.agent_schedule_registry import create_or_update_schedule
-from app.business.pipelines.librarian_housekeeping import ensure_librarian_agent_and_section
+from app.business.pipelines.librarian_housekeeping import ensure_librarian_agents_and_section
 from app.scheduling.capture_scheduler import lifespan as capture_scheduler_lifespan
 
 
@@ -38,22 +39,36 @@ async def lifespan(app: FastAPI):
     async with AsyncExitStack() as stack:
         await stack.enter_async_context(mcp_server.session_manager.run())
         await stack.enter_async_context(capture_scheduler_lifespan(app))
-        # REQ-SB-72-US-01-T08 (ADR-049 Decision 6) — one-time, idempotent
-        # "Librarian" Section + librarian-housekeeping Agent bootstrap,
-        # existence-checked so a repeat app start (--reload included)
-        # never creates a duplicate, disambiguated agent.
-        ensure_librarian_agent_and_section()
-        # REQ-SB-72-US-01-T09 (ADR-049 Decision 8) — seeds the real,
-        # persisted default 6-hour schedule for the Librarian's own
-        # orchestrating Job. Must run AFTER the agent/skill grant above
-        # exist (create_or_update_schedule refuses otherwise) and AFTER
-        # capture_scheduler_lifespan has published the live scheduler
-        # (above) — safe to call unconditionally on every app start, since
-        # it replaces the existing entry for this (agent_id, capability_id)
-        # pair in place rather than duplicating it.
+        # REQ-SB-79-US-01 (ADR-058 Decision 5) — one-time, idempotent
+        # "Librarian" Section + its two now-independent Agent identities'
+        # bootstrap (replaces the former single librarian-housekeeping
+        # bootstrap, REQ-SB-72-US-01-T08/ADR-049 Decision 6), existence-
+        # checked per agent so a repeat app start (--reload included)
+        # never creates a duplicate, disambiguated agent. Also idempotently
+        # retires the old librarian-housekeeping identity and removes its
+        # own now-stale schedule entry — a real, self-healing startup step,
+        # never a one-off migration script.
+        ensure_librarian_agents_and_section()
+        agent_registry.retire_agent("librarian-housekeeping")
+        agent_schedule_registry.remove_schedule("librarian-housekeeping", "run_housekeeping_pass")
+        # REQ-SB-79-US-01 (ADR-058 Decision 5) — seeds the real, persisted
+        # default 6-hour schedule for each of the two new, independently-
+        # adjustable orchestrating Jobs (replaces the former single shared
+        # librarian-housekeeping schedule). Must run AFTER the agent/skill
+        # grants above exist (create_or_update_schedule refuses otherwise)
+        # and AFTER capture_scheduler_lifespan has published the live
+        # scheduler (above) — safe to call unconditionally on every app
+        # start, since it replaces the existing entry for each (agent_id,
+        # capability_id) pair in place rather than duplicating it.
         create_or_update_schedule(
-            agent_id="librarian-housekeeping",
-            capability_id="run_housekeeping_pass",
+            agent_id="threads-cleaning",
+            capability_id="run_threads_cleaning_pass",
+            interval_value=6,
+            interval_unit="hours",
+        )
+        create_or_update_schedule(
+            agent_id="company-and-partner-building",
+            capability_id="run_company_partner_building_pass",
             interval_value=6,
             interval_unit="hours",
         )

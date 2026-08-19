@@ -14,7 +14,7 @@ import hashlib
 import re
 from pathlib import Path
 
-from app.business import agent_registry, customer_hub_linking, email_classification, partner_hub_linking, section_registry
+from app.business import agent_registry, customer_hub_linking, email_classification, partner_hub_linking, people_extraction, section_registry
 from app.config import settings
 from app.data_access import compass_client, vault_writer
 
@@ -491,7 +491,7 @@ def populate_thread_related_links() -> dict:
 
 
 def _create_librarian_company_link_proposal(
-    entity_name: str, reason: str, thread_path: str, requesting_agent_id: str = "librarian-housekeeping",
+    entity_name: str, reason: str, thread_path: str, requesting_agent_id: str = "company-and-partner-building",
 ) -> dict:
     """Mirrors `vault_filing_expert._create_cross_cutting_proposal`'s own
     exact shape (`REQ-SB-72-US-01-T07`, `ADR-049` Decision 5) -- a LOCAL
@@ -586,7 +586,7 @@ def backfill_company_folders() -> dict:
                     entity_name=entity_name,
                     reason=reason,
                     thread_path=str(concept_path),
-                    requesting_agent_id="librarian-housekeeping",
+                    requesting_agent_id="company-and-partner-building",
                 )
                 pending_approvals.append(proposal["approval_id"])
 
@@ -690,7 +690,7 @@ def propose_customer_backfill() -> dict:
             f"\"{customer}\"."
         )
         record = pending_approval_registry.create_pending_approval(
-            agent_id="librarian-housekeeping",
+            agent_id="company-and-partner-building",
             trigger="direct",
             action_id="propose_customer_backfill_routing",
             description=description,
@@ -801,7 +801,7 @@ def propose_company_review() -> dict:
     Added ALONGSIDE, never replacing, `propose_customer_backfill`/
     `finalize_customer_backfill_routing` -- both stay live, callable,
     byte-for-byte unedited (frozen, `Done`, superseded in PRACTICE only).
-    Manually-triggered only -- never wired into `run_housekeeping_pass()`.
+    Manually-triggered only -- never wired into `run_company_partner_building_pass()`.
 
     Returns `{"proposed_batches": [{"company", "thread_paths",
     "approval_id"}, ...], "failed": [{"thread_path", "error"}, ...]}`."""
@@ -846,7 +846,7 @@ def propose_company_review() -> dict:
             f"Decline."
         )
         record = pending_approval_registry.create_pending_approval(
-            agent_id="librarian-housekeeping",
+            agent_id="company-and-partner-building",
             trigger="direct",
             action_id="propose_company_review",
             description=description,
@@ -1115,7 +1115,7 @@ def propose_customer_archival_candidates(matched_existing_customer_names: list[s
             f"from its name alone."
         )
         record = pending_approval_registry.create_pending_approval(
-            agent_id="librarian-housekeeping",
+            agent_id="company-and-partner-building",
             trigger="direct",
             action_id="propose_customer_archival_candidate",
             description=description,
@@ -1152,55 +1152,92 @@ def finalize_customer_archival(payload: dict) -> dict:
     }
 
 
-def ensure_librarian_agent_and_section() -> dict:
-    """Idempotent startup bootstrap for the "Librarian" Section +
-    `librarian-housekeeping` Agent identity (`REQ-SB-72-US-01-T08`,
-    `ADR-049` Decisions 6/7) -- existence-checked FIRST via `agent_registry.
+def ensure_librarian_agents_and_section() -> dict:
+    """Idempotent startup bootstrap for the "Librarian" Section + its two
+    real, independently-schedulable Agent identities, `threads-cleaning`
+    and `company-and-partner-building` (`REQ-SB-79-US-01`, `ADR-058`
+    Decision 1) -- replaces the former single `librarian-housekeeping`
+    identity's own bootstrap (`REQ-SB-72-US-01-T08`, `ADR-049` Decisions
+    6/7). Existence-checked FIRST, per agent, via `agent_registry.
     get_agent`, so a repeat call (e.g. every app restart, `--reload`
-    included) is a real no-op returning the already-existing agent record,
-    never creating a second, disambiguated `librarian-housekeeping-2`
-    agent (`agent_registry.create_agent` is NOT idempotent by itself, so
-    this existence check is what makes the bootstrap AS A WHOLE
-    idempotent). `section_registry.create_section` is separately already
-    idempotent-collapse-on-collision, so it is always safe to call again
-    even though the agent-existence check alone would already prevent a
-    repeat run from reaching it in practice."""
-    existing_agent = agent_registry.get_agent("librarian-housekeeping")
-    if existing_agent is not None:
-        return {"id": "librarian-housekeeping", **existing_agent}
-
+    included) is a real no-op for each already-existing agent, never
+    creating a second, disambiguated agent (`agent_registry.create_agent`
+    is NOT idempotent by itself, so this existence check is what makes the
+    bootstrap AS A WHOLE idempotent). `section_registry.create_section` is
+    separately already idempotent-collapse-on-collision, so it is always
+    safe to call again even though the agent-existence check alone would
+    already prevent a repeat run from reaching it in practice. Retiring
+    the old `librarian-housekeeping` identity is NOT this function's own
+    job -- that is `T05`'s own bootstrap-wiring scope."""
     section = section_registry.create_section("Librarian")
-    created_agent = agent_registry.create_agent(
-        "Librarian Housekeeping",
-        type="worker",
-        settings=[
-            {"key": "Schedule", "value": "Every 6 hours (default, operator-adjustable)"},
-            {"key": "Vault target", "value": "Work/Threads/"},
-            {"key": "Job chain", "value": "Rename -> Files/OKF backfill -> ## Related -> Company-folder backfill"},
-            {"key": "Purpose", "value": "Ongoing vault hygiene over the real Thread corpus: renames Thread files to human-readable names, backfills missing Files/OKF companions, takes over ## Related from Stage 2 with real Person/Company wikilinks, and creates a Customer folder for a newly-mentioned company -- ambiguous findings route through a Pending Approval instead of being guessed."},
-        ],
-    )
-    section_registry.set_agent_section(created_agent["id"], section["id"])
-    return created_agent
+    results: dict[str, dict] = {}
+    for agent_id, name, settings_entries in [
+        (
+            "threads-cleaning",
+            "Threads Cleaning",
+            [
+                {"key": "Schedule", "value": "Every 6 hours (default, operator-adjustable)"},
+                {"key": "Vault target", "value": "Work/Threads/"},
+                {"key": "Job chain", "value": "Rename -> Thread<->Message linking -> Files/OKF backfill -> ## Related"},
+                {"key": "Purpose", "value": "Ongoing Thread hygiene over the real Thread corpus: renames Thread files to human-readable names, keeps Thread<->Message links current, backfills missing Files/OKF companions, and regenerates ## Related with real Person/Company wikilinks -- the fixed rename-first ordering guarantee is preserved."},
+            ],
+        ),
+        (
+            "company-and-partner-building",
+            "Company and Partner Building",
+            [
+                {"key": "Schedule", "value": "Every 6 hours (default, operator-adjustable)"},
+                {"key": "Vault target", "value": "Work/Customers/, Work/Partners/, Work/People/"},
+                {"key": "Job chain", "value": "Company-folder backfill -> People retrofit (scheduled); Customer backfill, archival candidates, Company Review (manually triggered)"},
+                {"key": "Purpose", "value": "Builds and maintains Customer/Partner/Affiliate entities from real Thread evidence -- creates a Customer folder for a newly-mentioned company on schedule, retrofits Person notes from captured Email senders, and offers manually-triggered Customer backfill/archival-candidate/Company Review passes; ambiguous findings route through a Pending Approval instead of being guessed."},
+            ],
+        ),
+    ]:
+        existing_agent = agent_registry.get_agent(agent_id)
+        if existing_agent is not None:
+            results[agent_id] = {"id": agent_id, **existing_agent}
+            continue
+        created_agent = agent_registry.create_agent(name, type="worker", settings=settings_entries)
+        section_registry.set_agent_section(created_agent["id"], section["id"])
+        results[agent_id] = created_agent
+    return results
 
 
-def run_housekeeping_pass() -> dict:
-    """The orchestrating capability (`REQ-SB-72-US-01-T08`, `ADR-049`
-    Decision 7) -- runs the Rename Job FIRST (so the other Jobs operate on
+def run_threads_cleaning_pass() -> dict:
+    """Threads Cleaning's own orchestrating capability (`REQ-SB-79-US-01`,
+    `ADR-058` Decision 3) -- renamed from `run_housekeeping_pass`, now
+    chaining ONLY the 4 Threads Cleaning jobs, on Threads Cleaning's own
+    independent schedule; `backfill_company_folders` moves to its own
+    sibling below. Runs the Rename Job FIRST (so the other Jobs operate on
     each Thread's own final, current directory, never a stale pre-rename
     path), then `link_thread_messages()` SECOND (`REQ-SB-73-US-01-T03`,
-    `ADR-054` Decision 4 -- grouping the two Jobs that together own the
-    Thread<->Message relationship adjacent in the chain, for readability;
-    not load-bearing for correctness, since the rename fan-out already
-    keeps `thread:` correct independent of ordering), then the remaining
-    Jobs in this fixed order for determinism -- Files/OKF backfill, `##
-    Related`, Company-folder backfill -- which have no ordering dependency
-    among themselves. Returns a combined result dict keyed by Job name,
-    never swallowing any individual Job's own return shape."""
+    `ADR-054` Decision 4), then the remaining Jobs in this same fixed
+    order for determinism -- behaviourally identical to `run_housekeeping_
+    pass`'s own first 4 entries (Scenario 2/7). Returns a combined result
+    dict keyed by Job name, never swallowing any individual Job's own
+    return shape."""
     return {
         "rename_threads": rename_threads(),
         "link_thread_messages": link_thread_messages(),
         "backfill_files": backfill_files(),
         "populate_thread_related_links": populate_thread_related_links(),
+    }
+
+
+def run_company_partner_building_pass() -> dict:
+    """Company and Partner Building's own new, independently-scheduled
+    orchestrating capability (`REQ-SB-79-US-01`, `ADR-058` Decision 3) --
+    wraps `backfill_company_folders()` (the ONE Job of this pipeline
+    previously on `run_housekeeping_pass`'s own shared schedule, Scenario
+    3) plus `people_extraction.retrofit_people_from_emails()` (`REQ-SB-77-
+    US-01` Scenario 6b's own scheduled, self-healing catch-all -- already-
+    existing, already-`Done`, zero new mechanism, pure wiring).
+    `propose_customer_backfill`/`propose_customer_archival_candidates`/
+    `propose_company_review` stay individually, manually triggered via
+    their own already-existing `/poc/*` endpoints -- never folded into
+    this scheduled wrapper (`ADR-055`/`ADR-057`'s own explicit
+    "manually-triggered only" precedent, untouched)."""
+    return {
         "backfill_company_folders": backfill_company_folders(),
+        "retrofit_people_from_emails": people_extraction.retrofit_people_from_emails(),
     }

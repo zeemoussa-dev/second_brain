@@ -223,7 +223,7 @@ def get_agent(agent_id: str) -> dict | None:
     return _load_state()["created_agents"].get(agent_id)
 
 
-def list_agents() -> list[dict]:
+def list_agents(include_retired: bool = False) -> list[dict]:
     state = _load_state()
     seed_entries = [
         {"id": agent_id, "name": agent["name"], "type": agent["type"]}
@@ -232,6 +232,7 @@ def list_agents() -> list[dict]:
     created_entries = [
         {"id": agent_id, "name": agent["name"], "type": agent["type"]}
         for agent_id, agent in state["created_agents"].items()
+        if include_retired or not agent.get("retired", False)
     ]
     return seed_entries + created_entries
 
@@ -270,7 +271,28 @@ def create_agent(name: str, type: str, settings: list[dict] | None = None) -> di
     while agent_id in known_ids:
         agent_id = f"{base_id}-{suffix}"
         suffix += 1
-    record = {"name": name, "type": type, "settings": settings or [], "actions": []}
+    record = {"name": name, "type": type, "settings": settings or [], "actions": [], "retired": False}
     state["created_agents"][agent_id] = record
     vault_writer.save_agents_registry_state(state)
     return {"id": agent_id, **record}
+
+
+def retire_agent(agent_id: str) -> bool:
+    """The first "retire without delete" primitive (REQ-SB-79-US-01,
+    ADR-058 Decision 2) -- marks a CREATED agent's own record retired so
+    list_agents() stops surfacing it by default, while get_agent() keeps
+    resolving it forever so every already-existing Pending Approval/Agent
+    History record attributed to it keeps a real, honest agent_name.
+    Idempotent -- retiring an already-retired agent is a safe no-op,
+    still returning True (needed for an "every app start" bootstrap
+    call). _SEED_AGENTS entries (shipped, static agents) can never be
+    retired -- returns False, never mutates _SEED_AGENTS."""
+    if agent_id in _SEED_AGENTS:
+        return False
+    state = _load_state()
+    record = state["created_agents"].get(agent_id)
+    if record is None:
+        return False
+    record["retired"] = True
+    vault_writer.save_agents_registry_state(state)
+    return True

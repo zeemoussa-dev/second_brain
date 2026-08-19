@@ -164,18 +164,29 @@ SKILLS: dict[str, dict] = {
         "mutates": True,
         "tool": "Vault",
     },
-    # REQ-SB-72-US-01-T09 (ADR-049 Decision 8) -- a genuinely NEW grant,
-    # mirroring pull_email/process_staged_email's own precedent (T04):
-    # `agent_schedule_registry.create_or_update_schedule` refuses any
+    # REQ-SB-79-US-01 (ADR-058 Decision 5) -- replaces the single
+    # run_housekeeping_pass entry with two, one per new Librarian
+    # sub-agent, mirroring pull_email/process_staged_email's own precedent
+    # (T04): agent_schedule_registry.create_or_update_schedule refuses any
     # capability that is not both granted AND classified "mutates": True,
-    # so the Librarian's own orchestrating Job must become a real Skill
-    # before it can carry a real, persisted recurring schedule.
-    "run_housekeeping_pass": {
-        "id": "run_housekeeping_pass",
-        "name": "Run Housekeeping Pass",
+    # so each new independently-scheduled orchestrator must be its own
+    # real Skill.
+    "run_threads_cleaning_pass": {
+        "id": "run_threads_cleaning_pass",
+        "name": "Run Threads Cleaning Pass",
         "description": (
-            "Run the Librarian's full housekeeping pipeline (rename, "
-            "Files backfill, Related, company folders) immediately."
+            "Run Threads Cleaning's full pipeline (rename, Thread<->Message "
+            "linking, Files backfill, Related) immediately."
+        ),
+        "mutates": True,
+        "tool": "Vault",
+    },
+    "run_company_partner_building_pass": {
+        "id": "run_company_partner_building_pass",
+        "name": "Run Company and Partner Building Pass",
+        "description": (
+            "Run Company and Partner Building's scheduled pipeline "
+            "(company-folder backfill, People retrofit) immediately."
         ),
         "mutates": True,
         "tool": "Vault",
@@ -334,18 +345,29 @@ def pull_email(agent_id: str) -> dict:
 
 
 @mcp_server.tool()
-def run_housekeeping_pass() -> dict:
-    """Runs the Librarian's full housekeeping pipeline immediately
-    (REQ-SB-72-US-01-T09) -- a thin wrapper delegating to librarian_
-    housekeeping.run_housekeeping_pass(), which is what makes this Skill
-    genuinely dispatchable/schedulable (agent_schedule_registry.
+def run_threads_cleaning_pass() -> dict:
+    """Runs Threads Cleaning's full pipeline immediately (REQ-SB-79-US-01,
+    ADR-058 Decision 5) -- a thin wrapper delegating to librarian_
+    housekeeping.run_threads_cleaning_pass(), which is what makes this
+    Skill genuinely dispatchable/schedulable (agent_schedule_registry.
     create_or_update_schedule refuses any capability id that is not both
     granted AND classified "mutates": True, dispatched via skill_registry.
     invoke_skill -> this handler). No agent_id gating, unlike run_capture_
     now/pull_email -- this capability has exactly one real Agent identity
-    that can ever be granted it (librarian-housekeeping), so there is no
+    that can ever be granted it (threads-cleaning), so there is no
     honest-unavailable branch to preserve."""
-    return librarian_housekeeping.run_housekeeping_pass()
+    return librarian_housekeeping.run_threads_cleaning_pass()
+
+
+@mcp_server.tool()
+def run_company_partner_building_pass() -> dict:
+    """Runs Company and Partner Building's scheduled pipeline immediately
+    (REQ-SB-79-US-01, ADR-058 Decision 5) -- a thin wrapper delegating to
+    librarian_housekeeping.run_company_partner_building_pass(). No
+    agent_id gating -- this capability has exactly one real Agent identity
+    that can ever be granted it (company-and-partner-building), so there
+    is no honest-unavailable branch to preserve."""
+    return librarian_housekeeping.run_company_partner_building_pass()
 
 
 @mcp_server.tool()

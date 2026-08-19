@@ -14,7 +14,8 @@ from app.business.pipelines.librarian_housekeeping import (
     propose_customer_archival_candidates,
     propose_customer_backfill,
     rename_threads,
-    run_housekeeping_pass,
+    run_company_partner_building_pass,
+    run_threads_cleaning_pass,
 )
 from app.business.pipelines.raw_message_capture import capture_raw_thread_messages
 from app.business.tag_backfill import backfill_tags
@@ -192,9 +193,14 @@ def librarian_backfill_company_folders_endpoint() -> dict:
     return backfill_company_folders()
 
 
-@router.post("/librarian-run-housekeeping-pass")
-def librarian_run_housekeeping_pass_endpoint() -> dict:
-    return run_housekeeping_pass()
+@router.post("/librarian-run-threads-cleaning-pass")
+def librarian_run_threads_cleaning_pass_endpoint() -> dict:
+    return run_threads_cleaning_pass()
+
+
+@router.post("/librarian-run-company-partner-building-pass")
+def librarian_run_company_partner_building_pass_endpoint() -> dict:
+    return run_company_partner_building_pass()
 
 
 @router.post("/librarian-propose-customer-backfill")

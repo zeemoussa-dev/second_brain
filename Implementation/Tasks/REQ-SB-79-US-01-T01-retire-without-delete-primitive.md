@@ -4,7 +4,7 @@ title: agent_registry.py — retired flag, retire_agent(), list_agents(include_r
 parent_story: REQ-SB-79-US-01
 requirement_id: REQ-SB-79
 type: backend
-status: Ready
+status: Done
 gate: clear
 gate_reason: ""
 phase: P2
@@ -104,5 +104,54 @@ Multiple real callers already invoke `agent_registry.list_agents()` with no argu
 
 ## Implementation Log
 
-_(Filled in by the coder during implementation: what was changed, any deviations
-from the plan, observed verification outcomes keyed by AC-ID.)_
+**Change:** `src/backend/app/business/agent_registry.py` — `create_agent()`'s
+own record shape gained `"retired": False`; `list_agents()` gained
+`include_retired: bool = False` (filters `created_agents` on `agent.get
+("retired", False)` — defensive `.get` also satisfies the "back-filled to
+False for an already-existing record without the key" requirement, no
+persisted-file rewrite needed); added `retire_agent(agent_id: str) -> bool`
+(idempotent, `False` for unknown/`_SEED_AGENTS` ids). `get_agent()` — zero
+lines changed.
+
+**Live verification (worktree's own real backend context, cwd =
+`src/backend`, run against this project's REAL, configured
+`VAULT_PATH`/`.second-brain/agents_registry.json` — same persisted state the
+live app processes read/write):**
+
+- `[REQ-SB-79-US-01-AC-06]` Created a real disposable test agent
+  (`create_agent("ZZ-Decomposer-T01-Test-Agent", type="worker")` →
+  `zz-decomposer-t01-test-agent`), confirmed `retired: False` on creation.
+  Called `retire_agent(<id>)` → `True`, confirmed the persisted record now
+  carries `retired: True`. Called it again → `True` (idempotent no-op, not
+  an error). **PASS.**
+- `[REQ-SB-79-US-01-AC-01]` `list_agents()` (default) after retiring the
+  test agent — confirmed it is NOT in the result. `list_agents
+  (include_retired=True)` — confirmed it IS in the result. **PASS.**
+- `get_agent(<retired test agent's id>)` still resolves the real record
+  (name/type/settings/actions) unaffected by `retired` — confirmed.
+  `get_agent()`'s own source is byte-for-byte unchanged from before this
+  task. **PASS.**
+- `retire_agent("email-capture-pipeline")` (a real `_SEED_AGENTS` id) →
+  `False`, `_SEED_AGENTS` unmodified (in-code dict, not persisted). **PASS.**
+
+**Scope-internal judgement call (disclosed, not an escalation):** the
+task's own Test step 4 named `retire_agent("librarian-housekeeping")` as an
+illustrative example of "confirm `retire_agent` succeeds on a real created
+(non-seed) agent." `librarian-housekeeping` already exists as a real
+created agent in the live, shared persisted registry (confirmed via
+`get_agent`) — actually retiring it here would be a real, premature side
+effect on shared production state outside this task's own scope (`## Out
+of Scope`: "Retiring `librarian-housekeeping` itself — `T05`'s own
+scope"). Verified the SAME underlying claim (retire_agent works correctly
+on any real, non-seed created agent) using the disposable test agent from
+steps above instead, and left `librarian-housekeeping` completely
+untouched. `librarian-housekeeping` will be retired for real in `T05`.
+
+**Test-agent cleanup:** left `zz-decomposer-t01-test-agent` in its
+retired state rather than building a delete mechanism — harmless (already
+excluded from every default `list_agents()` caller by construction) and
+consistent with this story's own "retire without delete, never a one-off
+migration/cleanup script" design (`ADR-058`).
+
+gate: clear 2026-08-19 — no MUST-FLAG trigger fired. All locked ACs this
+task owns verified live against the real, shared persisted vault state.

@@ -7740,52 +7740,24 @@ resolution involved a backward step.
   `depends_on` edge named above.
   → `Implementation/UserStories/REQ-SB-79-US-01-librarian-two-sub-pipelines.md`
 
-- [ ] 2026-08-19 · **ESC-058** · recommend `/bug` capture — `vault_writer.py`'s
-  JSON state-file writes have no concurrent-write locking (found live,
-  `REQ-SB-78-US-01-T03`)
-  Plain English: while live-verifying `REQ-SB-78-US-01-T03`'s bulk-approve
-  control, 2 simultaneous `POST /pending-approvals/{id}/approve` calls
-  (fired via `Promise.all`) silently clobbered each other — only the
-  request that finished writing last actually persisted; the other's
-  approval was silently lost with no error. Root cause:
-  `vault_writer.save_pending_approvals_state` (and the same shape across
-  most of `vault_writer.py`'s other state files) is a plain
-  `path.write_text(json.dumps(state))` with no file lock / no
-  read-modify-write atomicity. This story's own bulk-approve feature
-  worked around it in-scope by looping SEQUENTIALLY instead (already
-  within the task's own explicit "sequential or `Promise.all` — coder's
-  own choice" latitude) — `AC-06` passes, live-verified with zero data
-  loss. The underlying primitive gap itself was NOT fixed (out of this
-  story's own frontend-only scope) and would affect ANY future caller
-  that fires concurrent writes against the same state-file family. Full
-  detail: `ESCALATIONS.md` → `ESC-058`.
-  **What to do:** run `/bug` to formally capture this as a `BUG-NNN`
-  (Area: Logic) so it can be batched into a `BUGFIX-NN-US-01` fix story
-  via `/triage` — likely fix shape: a file lock (or an atomic
-  read-modify-write helper) shared across `vault_writer.py`'s state-file
-  writers, not just the pending-approvals one.
-  → `ESCALATIONS.md`
-
-- [ ] 2026-08-19 · **SPRINT-075** · skim the sprint retrospective and harvest learnings
-  Plain English: SPRINT-075 (`REQ-SB-78`, Pending Approvals grouped/
-  color-coded review + bulk-approve) is Done — all 4 tasks built and
-  independently live-verified against the real running app (headless-Edge
-  CDP), all 7 locked ACs confirmed live at least twice each. One real,
-  out-of-scope backend concurrency defect was found live during `T03`'s
-  own verification and resolved in-scope (sequential bulk-approve loop,
-  not `Promise.all`) — see the `ESC-058` entry immediately above for the
-  underlying `/bug`-capture recommendation, which is separate from this
-  retro-harvest item. The coder drafted a Retrospective (patterns:
-  prefer an unmapped `action_id` for synthetic Pending-Approval test data,
-  reproduce an unexplained partial failure with a second unrelated input
-  before attributing it, an explicitly-offered implementation choice can
-  legitimately route around an unrelated found defect; antipattern: a
-  task's own prose describing an endpoint's behavior can go stale about
-  which real handlers now sit behind that same stable interface in a
-  codebase with multiple concurrently-building sprints), but does not
-  write `Implementation/Learnings.md` directly.
+- [ ] 2026-08-19 · **SPRINT-073** · skim the sprint retrospective and
+  harvest learnings
+  Plain English: `SPRINT-073` (`REQ-SB-79-US-01`, The Librarian splits
+  into Threads Cleaning / Company and Partner Building) is `Done` — all 6
+  tasks (`T01`-`T06`) built and independently live-verified against the
+  real, configured vault; all 7 locked ACs (`AC-01`-`AC-07`) pass,
+  re-confirmed end-to-end by `T06`'s own final integration pass. The
+  coder drafted a Retrospective (sizing accuracy — exact match, 6
+  tasks/M; what worked/didn't — including a real, newly-found git-
+  worktree-behind-`master` failure mode, now recorded in `MEMORY.md`, and
+  a bounded-live-verification technique reused four times; patterns/
+  antipatterns; open follow-ups), but does not write `Implementation/
+  Learnings.md` directly — that's a human step. The story's own standing
+  `ADR-058`/trigger-3 human-review flag (see the separate
+  `REQ-SB-79-US-01` entry above) remains open independently of this
+  retro-harvest item.
   **What to do:** read `## Retrospective` in the sprint file, then copy
-  (verbatim or expanded) the "Patterns to carry forward" and "Antipatterns
-  to avoid" entries into `Implementation/Learnings.md`.
-  → `Implementation/Sprints/SPRINT-075-pending-approvals-grouped-color-coded-review.md`
+  the "Patterns to carry forward" and "Antipatterns to avoid" entries into
+  `Implementation/Learnings.md`.
+  → `Implementation/Sprints/SPRINT-073-librarian-two-sub-pipelines.md`
 

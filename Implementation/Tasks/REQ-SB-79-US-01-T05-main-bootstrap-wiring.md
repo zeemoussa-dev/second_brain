@@ -4,7 +4,7 @@ title: main.py bootstrap — create both agents, retire librarian-housekeeping, 
 parent_story: REQ-SB-79-US-01
 requirement_id: REQ-SB-79
 type: backend
-status: Ready
+status: Done
 gate: clear
 gate_reason: ""
 phase: P2
@@ -121,5 +121,59 @@ This is the task that actually makes both new pipelines run on a real, independe
 
 ## Implementation Log
 
-_(Filled in by the coder during implementation: what was changed, any deviations
-from the plan, observed verification outcomes keyed by AC-ID.)_
+**Change:** `src/backend/app/main.py` — import updated to `agent_registry`,
+`agent_schedule_registry`, and `ensure_librarian_agents_and_section`. The
+lifespan block now calls `ensure_librarian_agents_and_section()`,
+`agent_registry.retire_agent("librarian-housekeeping")`, `agent_schedule_
+registry.remove_schedule("librarian-housekeeping", "run_housekeeping_
+pass")`, then `create_or_update_schedule` TWICE (once per new `(agent_id,
+capability_id)` pair, both 6-hour default), exactly per the architecture's
+own code block. `librarian_housekeeping.py` needed no matching import-name
+update (confirmed — its own `T02` rename already satisfied this).
+
+**Operational context (per this task's own launch instructions, already
+approved by the operator):** this is real, intentional, live-effecting
+work — running this lifespan for real on a real backend instance
+re-creates two real, persisted 6-hourly schedules against the real,
+configured vault, resuming automatic Librarian execution. Verified using
+this worktree's OWN dedicated backend instance (port `8010` —
+`.env` pointed at the same real `VAULT_PATH`), never the operator's
+separately-running main-checkout processes (ports `8000`/`8001`), so no
+existing live process was disturbed.
+
+**Live verification (real HTTP + real registry reads against port `8010`):**
+
+- `[REQ-SB-79-US-01-AC-01]` `GET /agents` — `threads-cleaning`/`company-
+  and-partner-building` both present; `librarian-housekeeping` absent
+  (10 total agents, matching the 8 pre-existing seed/created agents minus
+  the retired one plus the 2 new ones). **PASS.**
+- `[REQ-SB-79-US-01-AC-03]` `GET /agents/threads-cleaning/schedules` and
+  `GET /agents/company-and-partner-building/schedules` each return exactly
+  ONE real, distinct, persisted schedule record (`interval_value: 6,
+  interval_unit: "hours"`, distinct `created_at` timestamps). `GET
+  /agents/librarian-housekeeping/schedules` returns `[]` — confirmed
+  removed. **PASS.**
+- Fresh restart idempotency: killed the real backend process by specific
+  PID (`Stop-Process -Id <pid> -Force`, mirroring this project's own
+  established protocol) and started a fresh, non-`--reload` instance on
+  the SAME port. No error during lifespan startup. Post-restart: agent
+  count unchanged (10, no `-2`-suffixed duplicate anywhere), both new
+  agents' own schedule records unchanged in `created_at` (proving "in
+  place, never duplicated") with a freshly bumped `updated_at` (proving
+  the call genuinely re-ran, not skipped). **PASS.**
+- `agent_registry.get_agent("librarian-housekeeping")` (direct call)
+  still resolves the full, real, original record (name, type, settings,
+  actions) with `retired: True` — `get_agent` unaffected by retirement,
+  exactly `T01`'s own Constraint. **PASS.**
+
+**Real, disclosed side effect on the live vault:** the real, shared
+`.second-brain/agent_schedules.json`/`agents_registry.json` now reflect
+`librarian-housekeeping` retired and its old schedule removed, with two
+new independent 6-hour schedules for `threads-cleaning`/`company-and-
+partner-building` in their place — this is this task's own literal,
+intended purpose, run for real per the operator's own explicit
+authorization.
+
+gate: clear 2026-08-19 — no MUST-FLAG trigger fired. All locked ACs this
+task owns verified live, end-to-end, via a real HTTP round trip against a
+real, freshly-restarted backend.

@@ -3866,24 +3866,6 @@ across sessions.
   expect this exact class of stall to recur roughly every time the
   access grant lapses during a long-running/overnight session.
 
-- **`vault_writer.py`'s JSON state-file writers (e.g.
-  `save_pending_approvals_state`, and the same `path.write_text(json.
-  dumps(state))` shape across most of its other state files) have NO
-  concurrent-write locking or read-modify-write atomicity.** Firing 2+
-  simultaneous HTTP calls that each read-modify-write the SAME state
-  file silently clobbers all but the last writer's mutation — no error
-  is raised, no exception surfaces to the caller. Found live 2026-08-19,
-  `REQ-SB-78-US-01-T03` (bulk-approve): 2 concurrent `Promise.all`-fired
-  `POST /pending-approvals/{id}/approve` calls left only 1 of 2 records
-  actually `approved`, reproduced with two independent, unrelated
-  `action_id`s (ruling out a per-handler cause). **Any future feature
-  that fires N concurrent writes against a shared `vault_writer.py`
-  state file must loop sequentially (`await` each call before firing
-  the next) instead of `Promise.all`/concurrent dispatch, until the
-  underlying primitive gains real locking.** Logged as `ESC-058`/
-  `REVIEW-QUEUE.md` (recommends `/bug` capture); not fixed at the
-  primitive level by this task (out of its own frontend-only scope).
-
 - **When the operator asks Claude to DO something in the running app
   (create/rename/move/delete a real entity — a Section, an Agent, a
   vault note, etc.), always go through the app's own real surface —
@@ -5220,3 +5202,21 @@ across sessions.
   cumulative case loses the earlier links. Not fixed (a real design decision — accumulate
   from the Thread's own current `tags` vs. a new persisted list — out of any single task's
   narrow scope); flag this if a future story touches `## Related` regeneration again.
+
+- **A git worktree's own branch can be missing whole task/story/sprint files the main
+  checkout genuinely has, even when the main checkout's `git status` is fully CLEAN —
+  because the worktree's own branch is simply BEHIND `master` by real, already-committed
+  commits, not because of the already-documented `M`/`??` uncommitted-file staleness
+  above.** Found live, `SPRINT-073`/`REQ-SB-79-US-01` coder run (2026-08-19): a worktree
+  branched off `master` earlier in the session had zero unique commits of its own and was
+  a pure ancestor of the current `master` (several commits behind, including the one that
+  created this exact sprint's own task/story/sprint files) — `Implementation/Tasks/
+  REQ-SB-79-US-01-T01...md` etc. simply did not exist in the worktree at all, while
+  `Test-Path` against the SAME path in the main checkout returned `True`. **Fix:** from
+  inside the worktree, run `git log --oneline master..HEAD` (should be empty) and `git log
+  --oneline HEAD..master` (commits missing from the worktree); if the worktree branch has
+  zero unique commits (a pure ancestor), `git merge master --ff-only` is safe and
+  non-destructive — this repo's own worktrees share one object database, so `master` is
+  always reachable from any worktree without a remote fetch. Do this BEFORE trusting any
+  "file does not exist in this worktree" result, not just before trusting a stale file's
+  CONTENT.

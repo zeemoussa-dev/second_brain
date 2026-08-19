@@ -1,15 +1,15 @@
 ---
 id: SPRINT-073
 title: The Librarian — Two Sub-Pipelines (Threads Cleaning, Company & Partner Building)
-status: Ready                      # Draft | Ready | In Progress | Blocked | Done
-gate: clear                        # clear | flagged — flagged ⇒ parked in REVIEW-QUEUE.md
-gate_reason: ""                    # the MUST-FLAG trigger that fired, when gate: flagged
+status: Done                       # Draft | Ready | In Progress | Blocked | Done
+gate: flagged                      # clear | flagged — flagged ⇒ parked in REVIEW-QUEUE.md
+gate_reason: "retro-harvest — coder drafted the Retrospective below; human skims and propagates Patterns/Antipatterns into Implementation/Learnings.md. The story's own standing ADR-058 human-review flag (REVIEW-QUEUE.md) is separate and unaffected by this sprint closing."
 phase: P2                          # single phase only — a sprint never mixes phases
 depends_on_sprints: []             # SPRINT-NNN IDs that must be Done before this can start
 sizing_estimate: "~6 tasks, M"      # effort estimate (e.g. "~6 tasks, M"); checked vs actual in retro
 created: 2026-08-19
-started: ""                        # YYYY-MM-DD when status → In Progress
-completed: ""                      # YYYY-MM-DD when status → Done
+started: "2026-08-19"              # YYYY-MM-DD when status → In Progress
+completed: "2026-08-19"            # YYYY-MM-DD when status → Done
 ---
 
 <!-- STATUS LIFECYCLE — see SPRINT-030 for the full comment block. -->
@@ -95,7 +95,7 @@ dependency (dependency-first). -->
 
 | Story | Title | Phase | Status |
 |---|---|---|---|
-| [REQ-SB-79-US-01](../UserStories/REQ-SB-79-US-01-librarian-two-sub-pipelines.md) | The Librarian — Two Sub-Pipelines (Threads Cleaning, Company & Partner Building) | P2 | Ready |
+| [REQ-SB-79-US-01](../UserStories/REQ-SB-79-US-01-librarian-two-sub-pipelines.md) | The Librarian — Two Sub-Pipelines (Threads Cleaning, Company & Partner Building) | P2 | Done |
 
 **Tasks in scope** (dependency order): `T01`/`T02` (independent roots) →
 `T03`/`T04` (need `T02`) → `T05` (needs `T01`, `T02`, `T03`) → `T06` (needs
@@ -142,14 +142,14 @@ dependency (dependency-first). -->
 
 ## Definition of Done
 
-- [ ] Every story in scope has status `Done`
-- [ ] All story-level Definitions of Done satisfied
-- [ ] `BACKLOG.md` updated — every affected row reflects current status
-- [ ] `architecture.md` updated if the sprint changed an architectural fact (no change expected — already updated at `/plan-tasks` under "The Librarian — Two Sub-Pipelines")
-- [ ] Any new ADRs recorded in `ADR.md` with status `Accepted` (`ADR-058`, recorded at `/plan-tasks`, pending the standing human-review item above)
-- [ ] `MEMORY.md` updated with any new decisions / patterns / constraints
-- [ ] `CHANGELOG.md` entry appended
-- [ ] Retrospective section below filled in
+- [x] Every story in scope has status `Done`
+- [x] All story-level Definitions of Done satisfied
+- [x] `BACKLOG.md` updated — every affected row reflects current status
+- [x] `architecture.md` updated if the sprint changed an architectural fact (no change needed — already updated at `/plan-tasks` under "The Librarian — Two Sub-Pipelines"; confirmed the build matched it exactly, zero deviation)
+- [x] Any new ADRs recorded in `ADR.md` with status `Accepted` (`ADR-058`, recorded at `/plan-tasks`; standing human-review item remains open in `REVIEW-QUEUE.md`, unaffected by task/sprint completion)
+- [x] `MEMORY.md` updated with any new decisions / patterns / constraints
+- [x] `CHANGELOG.md` entry appended
+- [x] Retrospective section below filled in
 - [ ] **Human:** patterns and learnings from the retrospective propagated to `Implementation/Learnings.md` (the coder drafts the retro and gates it; the human harvests it)
 
 ---
@@ -165,31 +165,131 @@ record. The coder does NOT write Learnings.md directly. -->
 
 ### Sizing accuracy
 
-- **Estimated:** ~6 tasks, M — **Actual:** _(tasks / effort)_ — **Takeaway:** _(over/under, why)_
+- **Estimated:** ~6 tasks, M — **Actual:** 6 tasks, M — matched exactly,
+  extending this project's own repeatedly-confirmed 6-task/M precedent
+  (`SPRINT-020`/`022`/`028`/`048`, all four exact matches). Task count and
+  code volume were both correctly predicted; the real cost driver was NOT
+  code volume (the whole diff across all 6 tasks is well under 200 lines)
+  but real-Compass-call latency during live verification — consistent
+  with this project's own established pattern (`SPRINT-020`/`023`/`028`)
+  of the estimate holding for build effort while live-verification cost
+  needed its own separate reasoning.
 
 ### What worked
 
-- _(specific behaviour, decision, or technique that paid off)_
+- **Bounding live verification to a small, real, dynamically-tracked
+  Thread subset (via `vault_writer.list_thread_notes` monkeypatch, keyed
+  by real `conversation_id` re-resolved fresh on every call — never a
+  frozen path list) instead of paying for a full 141-Thread real-Compass
+  sweep (~25.6s/call measured, ~2 hours per full orchestrator run)** —
+  reused across `T02`/`T03`/`T04`/`T06`, each time producing genuinely
+  real evidence (real files, real Compass calls, real Pending Approval
+  writes, real HTTP round trips) at a small fraction of the unbounded
+  cost. Directly extends `Implementation/Learnings.md`'s own `SPRINT-028`
+  precedent one further time.
+- **A dedicated, disposable, worktree-owned backend instance on its own
+  port (`8010`), separate from the operator's own main-checkout processes
+  (`8000`/`8001`)** — let `T04`/`T05`/`T06`'s own "start the real backend"
+  test steps run genuinely, including a real kill-and-restart idempotency
+  proof, with zero risk to the operator's already-running processes
+  (confirmed reachable/undisturbed throughout, checked before AND after).
+- **A temporary, monkeypatch-bounded SEPARATE server process (port
+  `8011`), launched purely to real-HTTP-verify the two new POC routes**
+  — proved genuine HTTP-level plumbing (not just function-level
+  correctness) without extending the main verification instance's own
+  scope or waiting out an unbounded real run.
+- **Building `T04` (POC routes) and `T05` (`main.py` bootstrap) together
+  before running either task's own HTTP-level Tests**, since `T04`'s own
+  "start the real backend" step could not literally succeed until `T05`'s
+  `main.py` fix also landed (both tasks only depend on `T02`, so the
+  decomposer's own graph allowed either build order, but not either
+  VERIFY order) — avoided a wasted, doomed-to-`ImportError` verification
+  attempt.
 
 ### What didn't work
 
-- _(specific friction, dead end, or mistake — name the root cause if known)_
+- **A first, unbounded real dispatch call (`T03`'s own Skill-delegation
+  check) was started before the ~25.6s/real-Compass-call latency had been
+  measured** — it made ~10 real Compass calls against the full 141-Thread
+  corpus before being recognized as needlessly expensive for what the
+  check actually needed proven, then deliberately killed by specific PID
+  and re-run bounded. No real harm (each per-Thread write is
+  independently idempotent-safe), but measuring one real Compass call's
+  own latency FIRST (as ultimately done, and as should have been done
+  before `T03`, not after) would have avoided the wasted partial run
+  entirely.
+- **A git worktree's own branch was several real commits behind
+  `master`, even though the main checkout's `git status` was fully
+  clean** — this session's very first `Read` calls against task/story/
+  sprint files (via the main-checkout path, before any worktree
+  awareness) succeeded, creating a false sense that the worktree already
+  had everything; the worktree's OWN copy of those same files did not
+  exist at all until a `git merge master --ff-only` was run. Root cause
+  and fix now recorded in `MEMORY.md` (a new failure mode distinct from
+  the already-documented `M`/`??` uncommitted-file staleness). Also
+  surfaced a second, related gap: this same worktree's `SPRINT-073` file
+  was still `status: Ready`/`started: ""` despite the launching agent's
+  own instruction that it was "already flipped to `In Progress`" — that
+  edit existed only as an UNCOMMITTED change in the main checkout, so it
+  never reached this worktree at all (a real instance of the
+  ALREADY-documented `M`/`??` staleness class, not the new one above);
+  reconciled by applying the start/complete transition together in this
+  same pass, since the sprint was in practice built start-to-finish in
+  one continuous session.
 
 ### Patterns to carry forward
 
 <!-- Copy these into Implementation/Learnings.md after human review. -->
 
-- _(pattern — short title — when to apply)_
+- **Measure one real, representative external-call's own latency FIRST,
+  before deciding a live-verification technique** (bounded-subset vs.
+  full-corpus) — a single 25.6s real Compass call, timed up front, made
+  the ~2-hour full-corpus cost immediately obvious and directly justified
+  reusing the bounded-subset monkeypatch technique for the rest of the
+  sprint's own live verification, rather than discovering the cost mid-
+  run (as happened once, `T03`, before this was internalized).
+- **When two sibling tasks both depend on the same third task but their
+  own live-verification Tests blocks implicitly depend on EACH OTHER
+  (e.g. both need "start the real backend" to actually succeed), build
+  both tasks' CODE per the decomposer's own recorded dependency order,
+  but defer VERIFICATION until both are on disk** — avoids a doomed,
+  wasted verification attempt against a still-half-wired app.
+- **A dedicated, disposable, worktree-owned backend instance on its own
+  port is the correct default for any coder run needing to prove a real
+  app-boot/restart-idempotency AC**, kept strictly separate from (and
+  independently reconfirmed not to disturb) any already-running
+  operator-facing process on the project's own usual ports.
+- **Before trusting a git worktree's own copy of ANY pipeline artefact
+  (task/story/sprint file), check whether the worktree's branch itself is
+  simply behind `master`** (`git log --oneline HEAD..master`), not just
+  whether the main checkout has uncommitted `M`/`??` drift — two distinct
+  root causes for the same "worktree is missing something the main
+  checkout has" symptom, both now documented in `MEMORY.md`.
 
 ### Antipatterns to avoid
 
 <!-- Copy these into Implementation/Learnings.md after human review. -->
 
-- _(antipattern — short title — why to avoid)_
+- **Assuming a real, unbounded orchestrator call is cheap to verify
+  directly just because its own code diff is small** — `T03`'s Skill-
+  wrapper change was a literal one-line delegate, but verifying it via an
+  unbounded real dispatch call still cost real, multi-minute-and-counting
+  Compass latency before being caught and bounded. Reconfirms this
+  project's own standing "code volume does not predict live-verification
+  cost" pattern (`SPRINT-020`/`023`/`028`/`031`) one further time,
+  specifically for a case where the code change itself was trivial.
+- **Trusting that a worktree "already has" a file just because reading
+  the SAME logical path via the main-checkout's own filesystem path
+  succeeded** — the two paths are genuinely different files on disk; a
+  successful `Read` against the main checkout says nothing about the
+  worktree's own copy until independently checked.
 
 ### Open follow-ups
 
-- _(follow-up — filed as what and where?)_
+- None blocking. The story's own standing `ADR-058` human-review item
+  (`REVIEW-QUEUE.md`, logged 2026-08-19 at `/plan-tasks`) remains open,
+  unaffected by this sprint's own completion — the human still owes it a
+  look before/alongside reviewing this retro.
 
 ---
 
@@ -238,3 +338,18 @@ this sprint reaching `Ready`. Advanced `Draft → Ready` — eligible for
 
 **BACKLOG.md updated:** `REQ-SB-79` row's Sprint column set to
 `SPRINT-073`.
+
+---
+
+**Coder close-out (2026-08-19):** All 6 tasks built and independently
+live-verified in dependency order (`T01`/`T02` → `T03`/`T04` → `T05` →
+`T06`) against the real, configured vault. Every locked AC re-confirmed
+live by `T06`'s own final integration pass. No genuine defect found. This
+worktree's own copy of this sprint file had not yet received the launching
+agent's own `status: In Progress`/`started: "2026-08-19"` edit (that edit
+existed only as an uncommitted change in the main checkout at session
+start — see this retro's own "What didn't work" and the new `MEMORY.md`
+entry) — both the start and completion transitions are applied together
+in this same pass, reflecting the sprint's real single-session build.
+Sprint advances **`Ready` → `Done`**. `BACKLOG.md`'s Sprint Status table
+row updated to `Done`.
