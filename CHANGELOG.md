@@ -12,6 +12,55 @@ All notable changes to Second Brain.
 
 ## [Unreleased]
 
+- docs: `SPRINT-074` / `REQ-SB-77-US-01-T04` — Live verification of Scenarios
+  1/2/3/4/5/7 across the real vault (no code change). Confirmed live: real
+  Customer-match and Partner-match linking (note location unchanged in both
+  cases), Affiliate linking via the exact same unmodified matching scan with
+  zero special-casing for `affiliate_of` (linked to the Affiliate's own
+  concept file, not its parent's), a genuinely unmatched company staying
+  tag-only and unblocked, a personal-email-domain sender with no company
+  signal left completely byte-for-byte unchanged, and a second re-run against
+  an already-linked vault confirmed as a true, byte-for-byte no-op. All
+  disposable-test classifications made to set up preconditions were fully
+  reverted afterward, confirmed via zero-diff byte-for-byte comparisons
+  against pre-test snapshots.
+- docs: `SPRINT-074` / `REQ-SB-77-US-01-T03` — Verification-only: confirmed live
+  that `REQ-SB-79-US-01`'s own `run_company_partner_building_pass()` genuinely
+  drives the already-existing `people_extraction.retrofit_people_from_emails()`
+  on its own independent schedule (Scenario 6b's scheduled self-heal half). No
+  code change — the composition was already correctly landed by
+  `REQ-SB-79-US-01-T02`. Live-verified with a real precondition (a real Person
+  note whose company was not yet known, made known via a disposable-test
+  Customer confirmation bypassing the instant hook on purpose) and a scoped,
+  reverted stub bounding the unrelated, already-verified `backfill_company_
+  folders()` half — the real, unbounded `retrofit_people_from_emails()` call
+  relinked the targeted Person note as a direct result of the one
+  `run_company_partner_building_pass()` call.
+- feat: `SPRINT-074` / `REQ-SB-77-US-01-T02` — Instant re-link trigger
+  (Scenario 6a): `librarian_housekeeping.finalize_company_review` is retargeted
+  to a thin public wrapper around a renamed-in-place private
+  `_finalize_company_review_outcome` (pure rename, zero behavior change to any
+  of the 4 outcome branches) — the wrapper calls the real outcome write first,
+  then, only once it succeeds, `people_extraction.relink_people_for_thread_paths`
+  exactly once. Live-verified against 3 real Threads/Persons: a real Customer
+  classification and a real Partner classification each produced the real
+  wikilink on the affected Person note as a direct result of the ONE
+  `finalize_company_review` call; a disposable unconfirmable-`parent_name`
+  Affiliate payload confirmed the honest-failure raise still fires before any
+  write and before the relink call (a call-counting spy confirmed zero
+  invocations). All real vault writes from this live verification were
+  disposable and fully reverted afterward.
+- feat: `SPRINT-074` / `REQ-SB-77-US-01-T01` — New
+  `people_extraction.relink_people_for_thread_paths(thread_paths: list[str]) ->
+  list[dict]`, a bounded, per-Thread sibling of the already-existing whole-vault
+  `retrofit_people_from_emails()` — reads each given Thread's own `messages/*.md`
+  raw notes, dedupes senders by lower-cased `sender_email` within the one call,
+  and calls the already-shipped `ensure_person_note` once per unique sender.
+  Zero new linking primitive. Live-verified against a real 2-message Thread
+  (dedup confirmed — one outcome, not two) and a disposable scratch Thread for
+  the no-`sender_email` skip path (no real Thread in the current vault mixes
+  both cases); the one real Person note this created was deleted immediately
+  after.
 - feat: `SPRINT-073` / `REQ-SB-79-US-01` — The Librarian splits into two real,
   independently-scheduled Agents: **Threads Cleaning** (`rename_threads` →
   `link_thread_messages` → `backfill_files` → `populate_thread_related_links`,

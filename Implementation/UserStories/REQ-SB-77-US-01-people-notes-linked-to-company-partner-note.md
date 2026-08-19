@@ -4,7 +4,7 @@ title: People Notes Retroactively Linked to Their Real Company/Partner Note
 requirement_ids: [REQ-SB-77]
 requirement_section: "REQ-SB-77: People Notes Linked to Their Real Company/Partner Note"
 phase: P2
-status: Ready
+status: Done
 gate: clear
 gate_reason: "was flagged trigger-4 (ESC-057, requirement premise partially contradicted by already-shipped REQ-SB-10/ADR-009 code) + trigger-8 (multiple equally-valid trigger-mechanism shapes). Trigger-8 resolved directly by the operator when offered the real options: 'Both: instant on approval + self-healing in REQ-79's pipeline' — the retroactive Person-relink hooks into REQ-SB-76's batch-apply finalize (immediate, on a company's status actually changing) AND is folded into REQ-SB-79's 'Company and Partner Building' sub-pipeline as a periodic self-healing catch-all. ESC-057 stays Open (a real, permanent log entry, not reopened) — its own resolution is this story's real build, not this gate clear. See ## Notes."
 sprint: "SPRINT-074"
@@ -259,12 +259,12 @@ dependency" note below. -->
 
 ## Definition of Done
 
-- [ ] All acceptance-criteria scenarios pass
-- [ ] Every Implementation Task above is complete (or explicitly dropped with reason)
-- [ ] All Constraints respected
-- [ ] Automated tests added/updated and passing (once test tooling exists)
-- [ ] `MEMORY.md` updated with any new decisions / patterns / constraints
-- [ ] `CHANGELOG.md` entry appended
+- [x] All acceptance-criteria scenarios pass
+- [x] Every Implementation Task above is complete (or explicitly dropped with reason)
+- [x] All Constraints respected
+- [x] Automated tests added/updated and passing (n/a — manual verification mode, test tooling still pending project-wide)
+- [x] `MEMORY.md` updated with any new decisions / patterns / constraints (n/a — none emerged)
+- [x] `CHANGELOG.md` entry appended
 
 ## Non-Goals / Out of Scope
 
@@ -470,3 +470,43 @@ is unchanged by this pass (already resolved by the operator at the
 architect step) — breadcrumb: gate: clear 2026-08-19 — no new MUST-FLAG
 trigger fired at this step; the one real cross-story dependency is
 disclosed above, not hidden.
+
+---
+
+## Coder pass, 2026-08-19 (`/implement-sprint`, `SPRINT-074`)
+
+All four tasks built and verified in dependency order, `T01` → `T02`/`T03`/`T04`
+(`T03` built last within this sprint, only after re-confirming this worktree was
+synced to `master`'s own `8ec8f49` — `REQ-SB-79-US-01-T02`'s real, shipped
+`run_company_partner_building_pass()`). Every locked AC verified live against the
+real vault (`AC-01`-`AC-05`/`AC-07` in `T04`; `AC-06` split across `T02`'s real
+instant-trigger call and `T03`'s real scheduled-self-heal call) — see each task
+file's own `## Implementation Log` for the full, per-AC evidence. Every disposable
+real-vault write made during live verification (test Customer/Partner/Affiliate
+classifications on real Threads/Persons) was reverted immediately after being
+confirmed, verified byte-for-byte clean via `Compare-Object` diffs against
+pre-test snapshots. No genuine defect found in any already-shipped composed
+dependency (`ensure_person_note`, `_apply_company_to_threads`,
+`run_company_partner_building_pass`) — one real, disclosed, non-blocking
+observation surfaced in `T02`'s own log (a Thread with an already-set Partner
+primary takes `_apply_company_to_threads`'s own pre-existing additive-tag branch
+for a second company, which does not make that second company "known" via
+`list_known_customers()`'s own primary-field-only scan — a property of
+already-`Done`, out-of-scope code, not a defect this story's own change
+introduced).
+
+**Definition of Done:** all 7 Gherkin scenarios pass (verified live); all 4
+Implementation Tasks complete; every Constraint respected (no rebuild of
+`ensure_person_note`/`find_matching_customer`/`find_matching_partner`/
+`build_person_tags`; no existing Person note ever moved or duplicated, confirmed
+via explicit before/after path checks on every touched note; every wikilink
+written via the already-shipped `customer_hub_linking`/`partner_hub_linking`
+primitives only; idempotent re-run confirmed live, `AC-07`). `MEMORY.md`: not
+updated by this story's own work — no new decision/pattern/constraint emerged
+beyond what `SPRINT-073`'s own sibling run already recorded (the worktree-sync
+finding, reconfirmed not new). `CHANGELOG.md`: one entry per task, four total.
+
+Story advances **`Ready` → `Done`**. `gate: clear` — breadcrumb: gate: clear
+2026-08-19 — no MUST-FLAG trigger fired at this pass (no new ADR, no unresolved
+assumption, no new `ESCALATIONS.md` entry, every locked AC verified live with a
+real positive result, nothing blocked).

@@ -228,6 +228,45 @@ def retrofit_people_from_emails() -> list[dict]:
     return results
 
 
+def relink_people_for_thread_paths(thread_paths: list[str]) -> list[dict]:
+    """Bounded, per-Thread sibling of retrofit_people_from_emails() (REQ-SB-77-
+    US-01 Scenario 6's instant-trigger half) -- for each given Thread concept-
+    note path, reads that Thread's own messages/*.md raw notes (the same
+    directory-derivation librarian_housekeeping._thread_full_content/
+    backfill_files already use: Path(thread_path).parent / "messages"),
+    extracts sender/sender_email from each message's frontmatter, dedupes by
+    lower-cased sender_email WITHIN THIS ONE CALL ONLY (mirrors retrofit_
+    people_from_emails's own dedup exactly -- not a cross-call/global dedup;
+    the two functions' dedup sets are independent by design, since a bounded
+    per-Thread call and a whole-vault call may legitimately re-process the
+    same sender), and calls ensure_person_note(sender_name, sender_email)
+    once per unique sender. A message with no sender_email is skipped, not
+    errored (mirrors retrofit_people_from_emails's own skipped_no_sender_email
+    status). Returns a list of per-sender result dicts, same shape as
+    retrofit_people_from_emails's own return -- zero new linking primitive."""
+    results: list[dict] = []
+    seen_emails: set[str] = set()
+    for thread_path in thread_paths:
+        messages_dir = Path(thread_path).parent / "messages"
+        message_paths = sorted(messages_dir.glob("*.md")) if messages_dir.exists() else []
+        for message_path in message_paths:
+            frontmatter, _ = vault_writer.read_note(message_path)
+            sender_email = frontmatter.get("sender_email")
+            if not sender_email:
+                results.append({"note": str(message_path), "status": "skipped_no_sender_email"})
+                continue
+            dedup_key = sender_email.lower()
+            if dedup_key in seen_emails:
+                results.append({"note": str(message_path), "status": "skipped_duplicate_sender_this_run"})
+                continue
+            seen_emails.add(dedup_key)
+            sender_name = frontmatter.get("sender") or sender_email
+            outcome = ensure_person_note(sender_name, sender_email)
+            status = "created" if outcome["created"] else "already_existed"
+            results.append({"note": str(message_path), "status": status, **outcome})
+    return results
+
+
 def find_existing_person_note(email: str) -> dict | None:
     """Read-only -- returns {"note_path": str, "name": str} if a Person
     note already exists for this email, else None. NEVER creates a

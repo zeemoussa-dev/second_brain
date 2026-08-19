@@ -7761,3 +7761,26 @@ resolution involved a backward step.
   `Implementation/Learnings.md`.
   → `Implementation/Sprints/SPRINT-073-librarian-two-sub-pipelines.md`
 
+- [ ] 2026-08-19 · **SPRINT-074** · skim the sprint retrospective and
+  harvest learnings
+  Plain English: `SPRINT-074` (`REQ-SB-77-US-01`, People Notes Retroactively
+  Linked to Their Real Company/Partner Note) is `Done` — all 4 tasks
+  (`T01`-`T04`) built and independently live-verified against the real,
+  configured vault; all 7 locked ACs (`AC-01`-`AC-07`) pass. The coder
+  drafted a Retrospective (sizing accuracy — exact match, 4 tasks/S; what
+  worked/didn't — including a second, independently-hit confirmation of
+  `SPRINT-073`'s own git-worktree-behind-`master` finding, a real
+  `Read`-tool-vs-worktree-path discrepancy found live this session, and two
+  disclosed live findings about the `_apply_company_to_threads`
+  primary-vs-additive branch and the "hub note existence alone doesn't make
+  a company known" precondition gap; patterns/antipatterns; one open,
+  non-blocking follow-up), but does not write `Implementation/Learnings.md`
+  directly — that's a human step.
+  **What to do:** read `## Retrospective` in the sprint file, then copy
+  the "Patterns to carry forward" and "Antipatterns to avoid" entries into
+  `Implementation/Learnings.md`. Also worth a quick look: the "Open
+  follow-ups" entry about `_apply_company_to_threads`'s own primary-vs-
+  additive branch visibility gap (not a defect in this sprint's own work,
+  disclosed for awareness only).
+  → `Implementation/Sprints/SPRINT-074-people-notes-linked-to-company-partner-note.md`
+

@@ -1,15 +1,15 @@
 ---
 id: SPRINT-074
 title: People Notes Retroactively Linked to Their Real Company/Partner Note
-status: Ready                      # Draft | Ready | In Progress | Blocked | Done
-gate: clear                        # clear | flagged — flagged ⇒ parked in REVIEW-QUEUE.md
-gate_reason: ""                    # the MUST-FLAG trigger that fired, when gate: flagged
+status: Done                        # Draft | Ready | In Progress | Blocked | Done
+gate: flagged                      # clear | flagged — flagged ⇒ parked in REVIEW-QUEUE.md
+gate_reason: "retro-harvest — the coder drafts the Retrospective below; the human skims it and propagates Patterns/Antipatterns into Implementation/Learnings.md. No blocking trigger fired during the build itself (no new ADR, no unresolved assumption, nothing blocked, every locked AC verified live)."
 phase: P2                          # single phase only — a sprint never mixes phases
 depends_on_sprints: [SPRINT-073]   # SPRINT-NNN IDs that must be Done before this can start
 sizing_estimate: "~4 tasks, S"      # effort estimate (e.g. "~6 tasks, M"); checked vs actual in retro
 created: 2026-08-19
-started: ""                        # YYYY-MM-DD when status → In Progress
-completed: ""                      # YYYY-MM-DD when status → Done
+started: "2026-08-19"              # YYYY-MM-DD when status → In Progress
+completed: "2026-08-19"            # YYYY-MM-DD when status → Done
 ---
 
 <!-- STATUS LIFECYCLE — see SPRINT-030 for the full comment block. -->
@@ -98,7 +98,7 @@ dependency (dependency-first). -->
 
 | Story | Title | Phase | Status |
 |---|---|---|---|
-| [REQ-SB-77-US-01](../UserStories/REQ-SB-77-US-01-people-notes-linked-to-company-partner-note.md) | People Notes Retroactively Linked to Their Real Company/Partner Note | P2 | Ready |
+| [REQ-SB-77-US-01](../UserStories/REQ-SB-77-US-01-people-notes-linked-to-company-partner-note.md) | People Notes Retroactively Linked to Their Real Company/Partner Note | P2 | Done |
 
 **Tasks in scope** (dependency order): `T01` (root) → `T02`/`T04` (need
 `T01`) → `T03` (needs `T01` AND `SPRINT-073`'s own `T02`, so it necessarily
@@ -136,14 +136,14 @@ builds last within this sprint, after `SPRINT-073` reaches `Done`).
 
 ## Definition of Done
 
-- [ ] Every story in scope has status `Done`
-- [ ] All story-level Definitions of Done satisfied
-- [ ] `BACKLOG.md` updated — every affected row reflects current status
-- [ ] `architecture.md` updated if the sprint changed an architectural fact (no change expected — already updated at `/plan-tasks` under "People Notes Retroactively Linked to Company/Partner")
-- [ ] Any new ADRs recorded in `ADR.md` with status `Accepted` (none expected — no new ADR created for this story)
-- [ ] `MEMORY.md` updated with any new decisions / patterns / constraints
-- [ ] `CHANGELOG.md` entry appended
-- [ ] Retrospective section below filled in
+- [x] Every story in scope has status `Done`
+- [x] All story-level Definitions of Done satisfied
+- [x] `BACKLOG.md` updated — every affected row reflects current status
+- [x] `architecture.md` updated if the sprint changed an architectural fact (no change made — already updated at `/plan-tasks` under "People Notes Retroactively Linked to Company/Partner"; confirmed still accurate against the real, shipped code)
+- [x] Any new ADRs recorded in `ADR.md` with status `Accepted` (none — no new ADR needed for this story)
+- [x] `MEMORY.md` updated with any new decisions / patterns / constraints (n/a — none emerged; every task's own Implementation Log confirms this explicitly)
+- [x] `CHANGELOG.md` entry appended (one entry per task, four total)
+- [x] Retrospective section below filled in
 - [ ] **Human:** patterns and learnings from the retrospective propagated to `Implementation/Learnings.md` (the coder drafts the retro and gates it; the human harvests it)
 
 ---
@@ -159,31 +159,143 @@ record. The coder does NOT write Learnings.md directly. -->
 
 ### Sizing accuracy
 
-- **Estimated:** ~4 tasks, S — **Actual:** _(tasks / effort)_ — **Takeaway:** _(over/under, why)_
+- **Estimated:** ~4 tasks, S — **Actual:** 4 tasks, S — matched exactly, extending
+  this project's own repeatedly-confirmed 4-task/S precedent (`SPRINT-019`,
+  `SPRINT-025`). No task was split, dropped, or merged. The estimate's own
+  reasoning ("the mechanism this story exercises already exists; the new work is
+  a reach/trigger promotion plus verification, not a new mechanism build") held
+  up exactly — `T01` was the only task that wrote genuinely new code (one
+  function, ~30 lines); `T02` was a rename + a 2-line wrapper; `T03`/`T04` were
+  verification-only, as scoped. The real cost center across all four tasks was
+  live-verification technique (finding real Threads/Persons in the exact right
+  precondition state, disposable-test setup/teardown discipline), not code
+  volume — consistent with this project's own long-running pattern.
 
 ### What worked
 
-- _(specific behaviour, decision, or technique that paid off)_
+- **Reading `T01`'s own `depends_on: []` root task first, in full, before
+  touching any other file** made `T02`/`T03`/`T04` straightforward compositions
+  — each task's own "After/Outputs" code sample matched the real, already-shipped
+  neighboring code almost exactly, with only one real discrepancy found (the
+  `people_extraction` import `T02`'s Constraints named as new was already present
+  — `SPRINT-073`'s own sibling work had added it first).
+- **The worktree-sync check at the very start of the run caught a real, load-
+  bearing gap before any code was written** — this worktree was 8 real commits
+  behind `master` (including `SPRINT-073`'s own landing commit,
+  `run_company_partner_building_pass()` itself), not just individually-modified
+  files. A `git log --oneline HEAD..master` + a safe `git merge master --ff-only`
+  (confirmed a pure-ancestor branch first) resolved it in one step, per
+  `MEMORY.md`'s own already-documented technique from `SPRINT-073`'s own coder
+  run the same day. Without this check, `T03` would have wrongly concluded
+  `run_company_partner_building_pass()` didn't exist and escalated a false
+  blocker.
+- **Disposable-test Customer/Partner/Affiliate classifications, snapshotted and
+  reverted via byte-for-byte `Compare-Object` diffs, proved a genuinely real
+  instant-trigger and self-heal call end-to-end** without leaving any permanent
+  mark on the operator's real vault — reused across `T02`/`T03`/`T04` with zero
+  cleanup failures. Picking a fresh real Thread/Person candidate each time (via a
+  small scan script checking `find_matching_customer`/`find_matching_partner`
+  both return `None` and the Thread's own primary `customer`/`partner` field is
+  genuinely unset) avoided the false-negative trap described below.
+- **Bounding an expensive, already-independently-verified real dependency
+  (`backfill_company_folders()`'s own real, whole-vault Compass sweep) via a
+  scoped, reverted in-process stub**, while leaving the actually-under-test
+  dependency (`retrofit_people_from_emails()`) fully real and unbounded, proved
+  `T03`'s locked AC with a real positive result without a multi-minute,
+  wide-blast-radius, real-Compass-backed full-vault re-run. Directly reused this
+  project's own `SPRINT-028` Learnings pattern.
 
 ### What didn't work
 
-- _(specific friction, dead end, or mistake — name the root cause if known)_
+- **The first `T02` verification attempt picked a real Thread (`2026-07-28 MIC`,
+  company "Microsoft") that already had a Partner (`Core42`) set as its own
+  primary field** — applying a NEW Customer classification correctly took the
+  pre-existing `_apply_company_to_threads` additive-tag branch (adds
+  `customer/microsoft` to `tags`, but never sets the primary `customer:` field,
+  since a Thread's primary is single-value by design), which meant
+  `list_known_customers()` (a primary-field-only scan) never picked up
+  "Microsoft" as known, so the relink correctly found no match and wrote no
+  wikilink. Not a defect — a real, disclosed property of already-`Done`,
+  out-of-scope code (`REQ-SB-76-US-01-T06`) — but it cost one real write/revert
+  cycle before switching to a genuinely primary-unset Thread. Root cause: picked
+  the first Thread found for the right SENDER without first checking the
+  Thread's own current `customer`/`partner` primary state.
+- **Assuming `customer_hub_linking.ensure_customer_hub_note` alone would make a
+  company "known"** for `T03`'s own precondition setup — it does not; only a real
+  Thread's own `customer`/`partner` frontmatter FIELD (not the hub note's mere
+  existence) is what `list_known_customers()`/`list_known_partners()` scan. Cost
+  one real create/verify/revert cycle on a throwaway "Ewec" hub note with zero
+  actual effect before switching to the correct technique (calling
+  `_finalize_company_review_outcome` directly, which both creates the hub note
+  AND sets the Thread's own primary field).
 
 ### Patterns to carry forward
 
 <!-- Copy these into Implementation/Learnings.md after human review. -->
 
-- _(pattern — short title — when to apply)_
+- **Before picking a real Thread for any Company-classification live-verification
+  step, explicitly check its OWN current `customer`/`partner` primary-field state
+  first (not just which sender it references)** — `_apply_company_to_threads`'s
+  own primary-vs-additive branch (`REQ-SB-76-US-01-T06`) means the SAME
+  classification call produces materially different real, observable effects
+  (a `list_known_customers()`-visible primary write vs. an additive tag-only
+  write invisible to that same scan) depending purely on the Thread's own
+  pre-existing state — verify this precondition explicitly before relying on the
+  outcome. Found live, `SPRINT-074`/`T02`.
+- **"A company becomes known" for this codebase's own `find_matching_customer`/
+  `find_matching_partner` mechanism means a real Thread's own primary
+  `customer`/`partner` frontmatter FIELD is set — never the mere existence of a
+  Customer/Partner hub note/OKF directory.** `ensure_customer_hub_note`/
+  `ensure_partner_hub_note` alone are necessary but not sufficient; use
+  `_finalize_company_review_outcome` (or the real `finalize_company_review`
+  wrapper) to set up a genuine "this company just became known" precondition for
+  any future live-verification of this same mechanism family. Found live,
+  `SPRINT-074`/`T03`.
+- **Re-syncing a worktree to `master` via `git log --oneline HEAD..master` + a
+  safe `git merge master --ff-only` (after confirming zero unique commits via
+  `master..HEAD`) generalizes cleanly a second time** — `SPRINT-073`'s own coder
+  run found and documented this technique the same day; this sprint's own coder
+  run independently hit the identical symptom (a worktree created "fresh from
+  master" that was actually 8 commits behind) and the documented fix worked
+  immediately, with zero improvisation needed. Worth treating as a standard
+  FIRST step for any coder run, not just something to reach for after a
+  suspicious "file doesn't exist" finding.
 
 ### Antipatterns to avoid
 
 <!-- Copy these into Implementation/Learnings.md after human review. -->
 
-- _(antipattern — short title — why to avoid)_
+- **Trusting a plain, non-worktree-prefixed file path's `Read` result as
+  authoritative for "what does MY worktree currently contain"** — this session's
+  own `Read` calls against the short `C:\myWorx\Projects\Second Brain\...` path
+  returned content that did NOT match this worktree's own actual, literal
+  git-tracked file state for at least one file (`SPRINT-074`'s own frontmatter
+  showed `status: In Progress`/`started: "2026-08-19"` via the short-path read,
+  but the worktree's own real file — confirmed via the explicit
+  `.claude\worktrees\...` path — still had `status: Ready`/`started: ""`).
+  `Edit`/`Write` tool calls correctly refuse a non-worktree path outright (a
+  hard guard), but `Read` did not, silently returning a DIFFERENT copy's
+  content. Always use the explicit worktree-prefixed path for BOTH Read and
+  Edit/Write once a worktree-isolation error has fired even once in a session —
+  don't assume the short path is safe for reads just because it "worked" for
+  earlier files that happened not to have diverged. Found live, `SPRINT-074`.
+- **Picking the first real Thread that merely references the target sender,
+  without checking whether that Thread's own primary `customer`/`partner` field
+  is already occupied by a DIFFERENT real company** — costs a real write/revert
+  cycle discovering the additive-branch/primary-branch distinction the hard way.
+  See the matching Pattern above.
 
 ### Open follow-ups
 
-- _(follow-up — filed as what and where?)_
+- The disclosed, non-blocking finding from `T02`'s own log (a Thread with an
+  already-set Partner primary silently loses a SECOND company's own
+  `list_known_customers()`-visibility when classified via the additive-tag
+  branch) is a property of already-`Done`, out-of-scope code
+  (`_apply_company_to_threads`, `REQ-SB-76-US-01-T06`) — not filed as a new bug,
+  since it is not this story's own defect and no locked AC of this story depends
+  on the additive branch's own visibility. Worth a human judgement call on
+  whether it is worth a future `BUG-NNN`/`REQ` if a real multi-company Thread
+  scenario turns out to matter more than currently assumed.
 
 ---
 
@@ -219,3 +331,25 @@ equally-valid toss-up with one combined 10-task sprint (full reasoning in
 
 **BACKLOG.md updated:** `REQ-SB-77` row's Sprint column set to
 `SPRINT-074`.
+
+---
+
+## Coder pass, 2026-08-19 (`/implement-sprint`)
+
+Before starting, confirmed this worktree needed re-syncing to `master`
+(`git log --oneline HEAD..master` showed 8 real commits missing, including
+`SPRINT-073`'s own `run_company_partner_building_pass()` landing commit,
+`8ec8f49`) — resolved via a safe `git merge master --ff-only` after confirming
+this worktree's branch was a pure ancestor of `master` (zero unique commits).
+All 4 tasks (`T01`→`T02`/`T03`/`T04`) built and verified in dependency order;
+`T03` built last, only after re-confirming `run_company_partner_building_pass()`
+was real, shipped code. Every locked AC verified live against the real vault
+with a real positive result — see `REQ-SB-77-US-01`'s own `## Coder pass` note
+and each task file's own `## Implementation Log` for the full evidence. Nothing
+blocked; nothing escalated to `ESCALATIONS.md`/`REVIEW-QUEUE.md` during the
+build itself.
+
+Sprint advances **`Ready` → `Done`**, `completed: 2026-08-19`. `gate: flagged`
+— retro-harvest only (see `gate_reason` above); no MUST-FLAG trigger fired
+during the build. `BACKLOG.md`'s `REQ-SB-77` row and `SPRINT-074`'s own Sprint
+Status row both updated to `Done`.

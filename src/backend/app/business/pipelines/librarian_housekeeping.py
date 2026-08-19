@@ -969,6 +969,23 @@ def _existing_duplicate_shape(company: str) -> str | None:
 
 
 def finalize_company_review(payload: dict) -> dict:
+    """Thin public wrapper (`REQ-SB-77-US-01-T02`, Scenario 6a's instant
+    trigger) around `_finalize_company_review_outcome` -- runs the real
+    outcome write first (unchanged, all 4 branches), then, only once that
+    succeeds, relinks every Person note reachable from this company's own
+    `payload["thread_paths"]` via `people_extraction.relink_people_for_
+    thread_paths` -- ONE relink call, not four, since `thread_paths` is
+    identical across every outcome. `_finalize_company_review_outcome`'s
+    own raise (the unconfirmable-`parent_name` honest-failure path)
+    propagates straight through this wrapper before the relink call ever
+    runs, by construction -- a relink failure can never mask, and never
+    runs before, the real outcome write."""
+    result = _finalize_company_review_outcome(payload)
+    people_extraction.relink_people_for_thread_paths(payload["thread_paths"])
+    return result
+
+
+def _finalize_company_review_outcome(payload: dict) -> dict:
     """Called only once the operator approves a `propose_company_review`
     Pending Approval, with the operator's own decision (`outcome`/
     `parent_name`/`parent_kind`) already merged into `payload` by the
@@ -981,7 +998,9 @@ def finalize_company_review(payload: dict) -> dict:
     existing Customer/Partner of the claimed `parent_kind` raises BEFORE
     any write happens -- the existing call order (`_APPROVAL_HANDLERS
     [...]` runs BEFORE `resolve_pending_approval`) already leaves the
-    record `"pending"`, never silently half-applied."""
+    record `"pending"`, never silently half-applied. Renamed in place
+    (`REQ-SB-77-US-01-T02`) from the former public `finalize_company_
+    review` -- this function's own body is unchanged, a pure rename."""
     company = payload["company"]
     thread_paths = payload["thread_paths"]
     outcome = payload["outcome"]

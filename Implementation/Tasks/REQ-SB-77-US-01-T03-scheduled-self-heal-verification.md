@@ -4,7 +4,7 @@ title: Scheduled self-heal verification — run_company_partner_building_pass() 
 parent_story: REQ-SB-77-US-01
 requirement_id: REQ-SB-77
 type: backend
-status: Ready
+status: Done
 gate: clear
 gate_reason: ""
 phase: P2
@@ -73,11 +73,11 @@ Confirm, live, that `REQ-SB-79-US-01`'s own `run_company_partner_building_pass()
 
 ## Acceptance Criteria
 
-- [ ] `[REQ-SB-77-US-01-AC-06]` Scheduled self-heal half verified live — a real `run_company_partner_building_pass()` call relinks at least one real Person note whose company just became known
-- [ ] `backfill_company_folders()`'s own result is unaffected by the composition
-- [ ] Any genuine defect found is disclosed and fixed in scope, not silently routed around
-- [ ] `MEMORY.md` updated if this task produced a new decision / pattern / constraint
-- [ ] `CHANGELOG.md` entry appended
+- [x] `[REQ-SB-77-US-01-AC-06]` Scheduled self-heal half verified live — a real `run_company_partner_building_pass()` call relinks at least one real Person note whose company just became known
+- [x] `backfill_company_folders()`'s own result is unaffected by the composition
+- [x] Any genuine defect found is disclosed and fixed in scope, not silently routed around (n/a — no defect found; the composition was already correct, landed by `REQ-SB-79-US-01-T02`)
+- [x] `MEMORY.md` updated if this task produced a new decision / pattern / constraint (n/a — none emerged)
+- [x] `CHANGELOG.md` entry appended
 
 ---
 
@@ -99,5 +99,21 @@ Confirm, live, that `REQ-SB-79-US-01`'s own `run_company_partner_building_pass()
 
 ## Implementation Log
 
-_(Filled in by the coder during implementation: what was changed, any deviations
-from the plan, observed verification outcomes keyed by AC-ID.)_
+**Verified 2026-08-19 — no code change (verification-only, as scoped).** Confirmed by direct reading of the real, current `librarian_housekeeping.py` (after re-syncing this worktree to `master`'s own `8ec8f49` — see the cross-story-dependency note below) that `run_company_partner_building_pass()` already exists and its own real, current body is exactly the composition `ADR-058`/architecture.md specify: `{"backfill_company_folders": backfill_company_folders(), "retrofit_people_from_emails": people_extraction.retrofit_people_from_emails()}` — landed by `REQ-SB-79-US-01-T02` (`SPRINT-073`), whose own docstring explicitly names this as `"REQ-SB-77-US-01 Scenario 6b's own scheduled, self-healing catch-all"`. No divergent/duplicate call site found anywhere else in the file.
+
+**Real cross-story dependency, confirmed satisfied:** this worktree was created from an ancestor commit of `master` that predated `SPRINT-073`'s own landing commit (`8ec8f49`) — `git log --oneline HEAD..master` showed 8 real commits missing, including `8ec8f49` itself. Per `MEMORY.md`'s own documented "a git worktree's own branch can be missing whole task/story/sprint files... because the worktree's own branch is simply BEHIND master" finding (recorded live by `SPRINT-073`'s own coder run, same day), ran `git merge master --ff-only` from inside this worktree (confirmed zero unique commits of its own first, via `git log --oneline master..HEAD` returning empty — a safe, non-destructive fast-forward) BEFORE starting any work on this sprint. This is disclosed here, not hidden, since it's exactly the scenario this task's own `depends_on: [..., REQ-SB-79-US-01-T02]` cross-story edge anticipates.
+
+**Verification (manual mode, real vault, direct Python-shell calls):**
+1. `[REQ-SB-77-US-01-AC-06]` Confirmed by direct reading (above) — `run_company_partner_building_pass()`'s real body calls `people_extraction.retrofit_people_from_emails()`. **PASS.**
+2. Real precondition set up per this task's own Tests step 2 explicit allowance ("a real REQ-SB-76 approval, or... a disposable-test substitute"): real Person note `Work/People/animas.caustro@ewec.ae.md` (company "Ewec", genuinely not yet a known Customer/Partner — confirmed `find_matching_customer("Ewec")` returned `None` beforehand) — snapshotted the Person note and its real Thread (`Work/Threads/2026-08-13 Recall- Ewec Discussion.../...md`) before any write. Made "Ewec" genuinely known by calling the PRIVATE `_finalize_company_review_outcome({"company": "Ewec", "thread_paths": [<path>], "outcome": "customer"})` directly (bypassing the public `finalize_company_review` wrapper's own relink call on purpose, so the precondition is set WITHOUT the instant-hook half of Scenario 6 firing first — isolating this task's own scheduled/self-heal half from `T02`'s already-independently-verified instant half). Confirmed afterward the Person note's body was STILL unlinked (no `**Customer:**` line yet) — the real precondition genuinely held.
+3. `[REQ-SB-77-US-01-AC-06]` Called the REAL, unmodified `run_company_partner_building_pass()` directly (matching this task's own Tests block; the `/poc/librarian-run-company-partner-building-pass` endpoint route is equivalent plumbing this direct call already exercises the load-bearing part of, per this project's own "skip the HTTP layer when it isn't load-bearing for the locked AC" precedent). To bound the call's cost/blast-radius to only what THIS task's own locked AC needs (proving the WIRING, not re-proving `backfill_company_folders()`'s own already-independently-verified whole-vault Compass-backed correctness, `REQ-SB-72-US-01-T07`), temporarily substituted a scoped, in-process, reverted stub for `backfill_company_folders` (a distinctive sentinel return value) before the call and restored the real function immediately after — mirrors this project's own established "bound a live-data verification via in-process monkeypatch of an unrelated, already-verified real dependency" pattern (`Implementation/Learnings.md`, `SPRINT-028`). `retrofit_people_from_emails()` itself ran FOR REAL, unstubbed, across the whole real vault (739 real notes scanned) — this is the actual mechanism under test, never bounded.
+4. Confirmed the real result dict's `"backfill_company_folders"` key held EXACTLY the sentinel stub value — proving the composition genuinely calls that function and returns its result unmodified, satisfying this task's own Tests step 4 without needing the real, expensive, out-of-scope-already-verified whole-vault Compass sweep. **PASS.**
+5. Confirmed the real Person note `Work/People/animas.caustro@ewec.ae.md` gained the real `**Customer:** [[Ewec]]` wikilink as a direct result of THIS ONE `run_company_partner_building_pass()` call — proving the scheduled/on-demand self-heal half of Scenario 6 genuinely fires, independent of `T02`'s instant hook (never invoked in this test). **PASS.**
+
+No genuine defect found — the composition was already correct as landed by `REQ-SB-79-US-01-T02`; nothing in this task's own `## Files to Modify` (`librarian_housekeeping.py`) required a change.
+
+**Cleanup:** the real Thread and Person note were restored byte-for-byte from their pre-test snapshots; the newly-created `Work/Customers/Ewec/` OKF directory (which had zero prior content) was deleted outright. Confirmed via `Test-Path` returning `False` and a byte-for-byte post-revert read of both files matching the pre-test snapshot. No Pending Approvals queue record was created or touched by this task's own verification (the stubbed `backfill_company_folders()` never ran for real, so it never created any); no bulk-approve/bulk-process action was taken against any pre-existing unrelated Pending Approval.
+
+**MEMORY.md:** not updated for a new decision from THIS task's own work (the composition itself was `REQ-SB-79-US-01-T02`'s own decision, already recorded there); the worktree-sync finding above was already documented in `MEMORY.md` by `SPRINT-073`'s own coder run and is only reconfirmed, not new.
+
+gate: clear 2026-08-19 — no MUST-FLAG trigger fired (no new ADR, no unresolved assumption, no new ESCALATIONS entry, not oversized, the locked AC verified live with a real positive result, no genuine defect found to fix).

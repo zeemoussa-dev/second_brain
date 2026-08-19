@@ -4,7 +4,7 @@ title: New people_extraction.relink_people_for_thread_paths(thread_paths) — bo
 parent_story: REQ-SB-77-US-01
 requirement_id: REQ-SB-77
 type: backend
-status: Ready
+status: Done
 gate: clear
 gate_reason: ""
 phase: P2
@@ -75,11 +75,11 @@ Add `people_extraction.relink_people_for_thread_paths(thread_paths: list[str]) -
 
 ## Acceptance Criteria
 
-- [ ] `relink_people_for_thread_paths` exists, reuses `ensure_person_note` verbatim, introduces no new linking primitive
-- [ ] Within-call dedup by lower-cased `sender_email` confirmed live
-- [ ] A message with no `sender_email` is skipped, not errored
-- [ ] `MEMORY.md` updated if this task produced a new decision / pattern / constraint
-- [ ] `CHANGELOG.md` entry appended
+- [x] `relink_people_for_thread_paths` exists, reuses `ensure_person_note` verbatim, introduces no new linking primitive
+- [x] Within-call dedup by lower-cased `sender_email` confirmed live
+- [x] A message with no `sender_email` is skipped, not errored
+- [x] `MEMORY.md` updated if this task produced a new decision / pattern / constraint (n/a — none emerged)
+- [x] `CHANGELOG.md` entry appended
 
 ---
 
@@ -98,5 +98,18 @@ This is the ONE new mechanism this story introduces; every other task (`T02`/`T0
 
 ## Implementation Log
 
-_(Filled in by the coder during implementation: what was changed, any deviations
-from the plan, observed verification outcomes keyed by AC-ID.)_
+**Built 2026-08-19.** Added `people_extraction.relink_people_for_thread_paths(thread_paths: list[str]) -> list[dict]`, placed directly after `retrofit_people_from_emails` (its nearest structural sibling), per `## Files to Modify`. Body mirrors `retrofit_people_from_emails` exactly: for each given Thread path, derives `messages_dir = Path(thread_path).parent / "messages"`, reads every `messages/*.md` note's `sender`/`sender_email` frontmatter, dedupes by lower-cased `sender_email` scoped to this one call (a fresh `seen_emails` set per call — never shared/persisted), and calls `ensure_person_note(sender_name, sender_email)` once per unique sender, verbatim/unmodified. No new linking primitive introduced — `ensure_person_note` is reused exactly as-is.
+
+**Verification (manual mode, real vault + one disposable-test aside):**
+1. Real Thread `Work/Threads/2026-07-28 MIC/2026-07-28 MIC.md` has 2 real messages, both from `amraze@microsoft.com`. Called `relink_people_for_thread_paths([<that path>])`: first message returned a real `ensure_person_note` outcome (`status: already_existed`, since this sender's Person note already existed from an earlier retrofit run), second message returned `status: skipped_duplicate_sender_this_run` — confirms exactly ONE `ensure_person_note` outcome per unique sender, not one per message. **PASS.**
+2. No real Thread in the current vault happens to mix a real `sender_email` message with a real blank-`sender_email` message in the same Thread (checked live across all 141 real Threads — none matched). Constructed a disposable, clearly-labeled test Thread (2 message notes, correct frontmatter shape) outside the vault under the session scratchpad, `messages/msg1.md` (`sender_email: realsender@example-t01.com`) + `messages/msg2-noemail.md` (no `sender_email` key at all). Called `relink_people_for_thread_paths` against it: `msg1` produced a real `ensure_person_note` outcome (`created: True`, a genuine new Person note written to the real vault at `Work/People/realsender@example-t01.com.md`), `msg2-noemail` produced `status: skipped_no_sender_email` — no error, not counted against the dedup set. **PASS.** The disposable Person note this created was deleted immediately after (`Test-Path` confirmed absence post-cleanup); the disposable scratch Thread/messages directory was also deleted. No other real vault state touched by this step.
+3. Called `relink_people_for_thread_paths([])` — returned `[]`, no error. **PASS.**
+4. The returned dicts from steps 1/2 above carry exactly `note`, `status`, plus (on a real `ensure_person_note` call) `note_path`, `created`, `company`, `customer_matched`, `partner_matched`, `linked` — matches `retrofit_people_from_emails`'s own return shape exactly. **PASS.**
+
+No locked story-level AC is directly tagged to this task (T01 is the shared root mechanism; the story's locked ACs are verified in `T02`/`T03`/`T04`). All 4 of this task's own Tests-block steps pass.
+
+**MEMORY.md:** not updated — no new decision/pattern/constraint; this task is a pure mirror of `retrofit_people_from_emails`'s already-established shape, applied to a narrower input.
+
+**Assumption logged for spot-check (scope-internal, non-blocking):** since no real Thread in the current vault had a mixed sender_email/no-sender_email message pair, step 2 above used a disposable, clearly-labeled scratch Thread outside the real vault (not a real Thread) to exercise the `skipped_no_sender_email` path — the real vault-write side effect (one real Person note) was created and then fully cleaned up. This mirrors this project's own "closest-to-real substitute, disclose disposable-test fallbacks explicitly" verification discipline.
+
+gate: clear 2026-08-19 — no MUST-FLAG trigger fired (no new ADR, no unresolved assumption beyond the disclosed scope-internal one above, no ESCALATIONS entry, not oversized, all 4 Tests-block steps verified with a real positive result).
