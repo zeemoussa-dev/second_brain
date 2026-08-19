@@ -13711,3 +13711,125 @@ Direct reading of the real, current code (confirmed, not assumed):
   company_review`) carries no such dependency.
 
 ---
+
+## ADR-059: Hermes becomes the agent/skill/schedule/approval runtime; Second Brain's backend narrows to a data layer of Tools/Skills - first step (router archive + Hermes REST client scaffold) landed, business-layer split deferred
+
+**Status:** Accepted
+**Date:** 2026-08-20
+
+**Context:** A rapid, cascading sequence of real, live-discovered
+data-quality incidents (`BUG-031`/`032`/`033`, a Partner-vs-Customer OKF
+directory-shape asymmetry the codebase had never disclosed, a full
+Customer/Partner tag revert across the real vault) led the operator to call
+a full stop on `REQ-SB-77`/`78`/`79`'s own hand-built Agent/Skill/Schedule
+machinery and reassess from first principles. A direct challenge -- "why
+are you editing code to put a schedule?" -- surfaced that most of that
+machinery (default schedules, per-agent scheduling, Skill grants) had been
+hand-written where a declarative or platform-native mechanism would have
+served, prompting "we are building a framework, this is not acceptable."
+Research into this codebase's own already-present dependencies (`langgraph
+>=1,<2`, used only for the in-app chat loop today) and into Hermes
+(previously described in `CLAUDE.md` only as "an MCP-based multi-channel
+communication tool," https://github.com/nousresearch/hermes-agent) found
+Hermes to be a full, substantial agent framework: subagent spawning, a
+self-improvement loop, a natural-language cron scheduler, Honcho-based
+memory, 40+ tools, MCP client/server integration, a 25+-platform
+multi-channel gateway, and, critically, a real, documented REST API
+gateway (`hermes gateway`, default `127.0.0.1:8642`, bearer-token auth)
+exposing chat/completions, runs (with SSE events), jobs (full CRUD, the
+real schedule-management surface), sessions, skills, and toolsets.
+
+**Decision:** Hermes replaces Second Brain's own hand-built Agent/Skill/
+Schedule/Approval orchestration layer as the agent runtime. LangGraph's
+role narrows to an execution engine usable *within* a task (Second Brain's
+own remaining use, or something Hermes itself invokes) rather than the
+orchestration layer itself -- no change to `langgraph`'s pin, only to what
+calls it. Second Brain's own web UI stays the PRIMARY frontend (Hermes is
+consumed as a backend, not a UI replacement); extra channels (chat, other
+platforms) run through Hermes' own gateway instead. Second Brain's backend
+narrows to a "data layer": vault capture/indexing, Outlook, and vault
+read/write, organized as discrete Tools (Outlook, Housekeeping, Vault,
+Vault Write, Company/Partner, People, Vault Admin) each exposing
+individually-callable Skills -- consumed both by Second Brain's own
+narrowed LangGraph use and by Hermes' external orchestration, over the
+existing shared `/mcp` mount (`ADR-015`).
+
+First concrete step, taken the same night as this decision (autonomous
+session, operator asleep, explicit instruction to proceed): archived the 9
+now-dead orchestration-layer HTTP routers (`agents_router`, `agent_
+schedules_router`, `agent_activity_router`, `cockpit_router`, `demo_
+taxonomy_router`, `pending_approvals_router`, `providers_router`,
+`sections_router`, `skills_router` -- moved to `src/backend/app/_archive/
+api/`, not deleted) and added a real, structurally sound Hermes REST
+client (`data_access/hermes_client.py`) plus a thin status router mounted
+at `/hermes/*` (`business/hermes_status.py`, `api/hermes_router.py`) --
+honestly "unreachable" until a real Hermes gateway is configured, never a
+fabricated response. Verified live: the backend imports and boots cleanly,
+answers `/health`/`/system-health`/`/hermes/health`, and the capture
+scheduler's own jobs still register exactly as before.
+
+**Deliberately NOT done in this same step** -- archiving the underlying
+business-layer registries (`agent_registry`, `agent_schedule_registry`,
+`skill_registry`, `skill_tools`, `pending_approval_registry`, `working_
+mode_registry`, `provider_registry`, `section_registry`, `scope_registry`/
+`scope_query_tools`, `agent_prompts`, `agent_orchestration/`, `cockpit/`)
+and splitting `librarian_housekeeping.py`/`vault_filing_expert.py` into
+the confirmed Tool/Skill grouping. Real, live dependents were found by
+tracing actual imports (not the original file-classification list alone):
+`capture_scheduler.py`'s hourly Outlook pull and `mcp_server.py`'s own
+tool-registration chain both run through `agent_schedule_registry`/`skill_
+tools`; `vault_write_tools.py`'s write-approval safety gate (every
+Hermes-triggered write proposal is unconditionally gated behind a Pending
+Approval, `REQ-SB-04-US-01`) depends on `agent_registry`/`pending_
+approval_registry`; and `librarian_housekeeping.py`'s Company Review
+pipeline has real, unresolved Pending Approvals awaiting the operator's
+own review right now (`BUG-032`). This split also depends on an
+explicitly still-open question this ADR does NOT resolve: does Hermes' own
+run-approval mechanism replace `pending_approval_registry`/`working_mode_
+registry` outright, or does Second Brain keep its own write-approval gate
+regardless of trigger source? Attempting the deeper split without that
+answer risked breaking live Outlook capture or the write-approval gate
+unsupervised, mirroring the exact "you get lost when fixing many things at
+once" failure mode the operator had just called out hours earlier this
+same session -- see `MEMORY.md` "Decisions"/"Constraints" for the full,
+disclosed reasoning, including a real circular-import fragility
+(`email_classification` <-> `vault_filing_expert` <-> `agent_
+orchestration` <-> `skill_registry`/`skill_tools`) the router archive
+exposed and fixed (import-order-dependent, not source-level) along the
+way.
+
+**Alternatives Considered:** (1) Delete the whole existing orchestration
+layer immediately and rebuild from a clean slate, as the operator's own
+first framing floated ("Move all the Backend to A Archive Folder and Start
+Clean") -- rejected in favor of the narrower "keep the data layer, archive
+the orchestration layer" scope the operator settled on after discussion,
+since the data layer (vault capture/indexing, real Outlook integration,
+Company/Partner/People business logic) represents most of this codebase's
+real, hard-won value and has no Hermes equivalent to replace it with. (2)
+Archive the full business-layer registry set in this same step, accepting
+the risk -- rejected: several of those registries are load-bearing for
+live, currently-running functionality (Outlook capture, the MCP tool
+surface, the write-approval gate) with no tested Hermes-side replacement
+deployed yet, and breaking any of them unsupervised while the operator
+sleeps was judged an unacceptable risk relative to the value of finishing
+the split one night sooner. (3) Leave the dead routers in place until the
+full business-layer split is ready, doing everything in one pass --
+rejected: the routers are provably dead (no other module imports a router
+file, confirmed by grep) and their own frontend surface is already gone in
+practice once Hermes is the intended runtime, so archiving them now is
+low-risk, real progress that does not need to wait on the harder,
+higher-risk decision.
+
+**Consequences:** The frontend (Agents Map, Cockpit, Skills Tree, the
+agent-creation wizard, the Pending Approvals UI) now calls 9 dead
+endpoints and will 404 until that surface is either rebuilt against Hermes
+or retired -- not addressed by this ADR, flagged for the operator alongside
+the remaining business-layer split and the open approval-mechanism
+question. `CLAUDE.md`'s own description of Hermes as "an MCP-based
+multi-channel communication tool" is now known to be a significant
+understatement and should be corrected once the fuller integration shape
+is settled. No Hermes gateway is deployed yet -- `hermes_client.py`'s
+callers all degrade to an honest "unreachable" result today, by design,
+not a defect.
+
+---

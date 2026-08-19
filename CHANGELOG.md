@@ -7638,3 +7638,34 @@ All notable changes to Second Brain.
   unfixed (outside `T02`'s own `## Files to Modify`), per
   `Implementation/Pipeline.md` hard rule 5 — recorded in `ESCALATIONS.md`
   → `ESC-043` and `REVIEW-QUEUE.md`, a `/bug` capture recommended.
+- [2026-08-20] First concrete step of the Hermes/LangGraph architecture
+  pivot (`MEMORY.md` "Decisions" — Hermes replaces Second Brain's own
+  hand-built Agent/Skill/Schedule/Approval orchestration layer),
+  autonomous overnight session per direct operator instruction. Archived
+  (moved to `src/backend/app/_archive/api/`, not deleted) the 9 now-dead
+  orchestration-layer HTTP routers: `agents_router.py`, `agent_schedules_
+  router.py`, `agent_activity_router.py`, `cockpit_router.py`,
+  `demo_taxonomy_router.py`, `pending_approvals_router.py`, `providers_
+  router.py`, `sections_router.py`, `skills_router.py` — see `src/
+  backend/app/_archive/README.md` for the full reasoning, including what
+  was deliberately NOT archived and why. Added a real Hermes REST client
+  (`data_access/hermes_client.py`, `business/hermes_status.py`, `api/
+  hermes_router.py`, mounted at `/hermes/*`), config additions (`HERMES_
+  BASE_URL`/`HERMES_API_KEY` in `config.py`, defaulted since no gateway
+  is deployed yet), and rewired `main.py` accordingly. In the course of
+  this, found and fixed a real, previously-masked circular import
+  (`email_classification` <-> `vault_filing_expert` <-> `agent_
+  orchestration` <-> `skill_registry`/`skill_tools` <-> `thread_summary_
+  backfill`) that the archived routers' own import order had been
+  accidentally preventing — see `MEMORY.md` "Constraints" for the full
+  finding and the current (order-dependent, not source-level) fix.
+  Verified: `python -c "import app.main"` succeeds; a real `uvicorn` boot
+  answers `/health`, `/system-health`, `/hermes/health` correctly, and
+  the capture scheduler's own jobs register exactly as before. NOT done
+  tonight, deliberately deferred (real live dependents found that make
+  it unsafe to attempt unsupervised — see `MEMORY.md`): archiving the
+  underlying business-layer registries, splitting `librarian_
+  housekeeping.py` into the confirmed Tool/Skill grouping, and building
+  the `app/tools/` package. The frontend (Agents Map, Cockpit, Skills
+  Tree, agent-creation wizard) now calls dead endpoints for the 9
+  archived routers — not touched tonight, flagged for the operator.

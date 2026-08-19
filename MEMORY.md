@@ -2845,6 +2845,53 @@ across sessions.
   shared dispatch lock was NOT touched (`ADR-056` Decision 3) — the fix is
   deliberately independent of lock timing.
 
+- [2026-08-20] **Hermes replaces Second Brain's own hand-built Agent/Skill/
+  Schedule/Approval orchestration layer.** Operator decision, made after a
+  cascading sequence of real data-quality incidents (`BUG-031`/`032`/`033`,
+  a Partner-vs-Customer directory-shape asymmetry, a full tag revert) and
+  a direct challenge to hand-writing scheduling/skill/agent machinery
+  ("we are building a framework this is not acceptable"). LangGraph
+  (already `langgraph>=1,<2` in this codebase, previously used only for
+  the in-app chat loop, `agent_orchestration/graph.py`) narrows to an
+  execution-engine role within tasks; Hermes (a full, previously
+  under-described agent framework, https://github.com/nousresearch/
+  hermes-agent — subagent spawning, its own cron scheduler, a documented
+  REST API gateway at `127.0.0.1:8642`) becomes the real agent/skill/
+  schedule/approval runtime. Second Brain's own web UI stays the PRIMARY
+  frontend (not replaced); its backend narrows to a "data layer" (vault
+  capture/indexing, Outlook, MCP tools) organized as discrete Tools
+  exposing Skills, called both by Second Brain's own remaining LangGraph
+  use and by Hermes' external orchestration via the existing `/mcp` mount.
+  First concrete step (2026-08-20, autonomous overnight session, operator
+  asleep): archived the 9 now-dead orchestration-layer HTTP routers
+  (`agents_router`, `agent_schedules_router`, `agent_activity_router`,
+  `cockpit_router`, `demo_taxonomy_router`, `pending_approvals_router`,
+  `providers_router`, `sections_router`, `skills_router` — see
+  `src/backend/app/_archive/README.md`) and added a real Hermes REST
+  client + status router (`data_access/hermes_client.py`, `business/
+  hermes_status.py`, `api/hermes_router.py`, mounted at `/hermes/*`) —
+  honestly "unreachable" until a real Hermes gateway is configured
+  (`HERMES_BASE_URL`/`HERMES_API_KEY` in `config.py`), never a fake/
+  fabricated response. Deliberately did NOT archive the underlying
+  business-layer registries (`agent_registry`, `agent_schedule_registry`,
+  `skill_registry`, `skill_tools`, `pending_approval_registry`, `working_
+  mode_registry`, `provider_registry`, `section_registry`, `scope_
+  registry`/`scope_query_tools`, `agent_prompts`, `agent_orchestration/`,
+  `cockpit/`) or split `librarian_housekeeping.py` into the confirmed
+  Outlook/Housekeeping/Vault/Vault Write/Company-Partner/People/Vault
+  Admin Tool grouping — real, live dependents were found by tracing actual
+  imports (not the original file-classification list alone) that make
+  that surgery unsafe to attempt unsupervised: `capture_scheduler.py`'s
+  hourly Outlook pull, `mcp_server.py`'s tool-registration chain,
+  `vault_write_tools.py`'s write-approval safety gate, and
+  `librarian_housekeeping.py`'s Company Review pipeline, which has real,
+  unresolved Pending Approvals awaiting the operator's own review right
+  now (`BUG-032`). That split also depends on an explicitly operator-
+  deferred question (does Hermes' own approval mechanism replace
+  `pending_approval_registry`/`working_mode_registry`, or does Second
+  Brain keep its own gate regardless of trigger source) — not answered
+  yet, so not assumed.
+
 ## Patterns
 
 - **When changing a shared save-path/data-shape a producer function
@@ -5220,3 +5267,28 @@ across sessions.
   always reachable from any worktree without a remote fetch. Do this BEFORE trusting any
   "file does not exist in this worktree" result, not just before trusting a stale file's
   CONTENT.
+
+- **A real, latent circular import exists across `email_classification.py` ->
+  `vault_filing_expert.py` -> `agent_orchestration/` (`__init__.py` -> `graph.py`) ->
+  `knowledge_gap_tracking.py` -> `agent_orchestration/knowledge_bootstrap.py` ->
+  `skill_registry.py` -> `skill_tools.py` -> `thread_summary_backfill.py` -> back to
+  `email_classification.py` — it has never been fixed at the source, only masked by
+  import order.** Found live, 2026-08-20 (archiving the 9 dead orchestration-layer
+  routers): `main.py`'s own import order previously "worked" only because `agents_
+  router.py`/`agent_schedules_router.py` (both now archived) happened to import `agent_
+  schedule_registry` — and therefore `skill_registry`/`skill_tools` — before anything
+  imported `email_classification.py` directly; removing them and importing `email_poc_
+  router` (which imports `email_classification`) first instead made `thread_summary_
+  backfill.py`'s own `from app.business.email_classification import
+  _THREAD_SUMMARY_SYNTHESIS_DEFAULT_INSTRUCTIONS` fail with `ImportError: cannot import
+  name ... from partially initialized module` — confirmed via `git stash` that this exact
+  failure does NOT reproduce on the prior committed `main.py`, ruling out "always-broken,
+  never noticed." **Current fix (main.py only, not the cycle itself):** `from app.business
+  import agent_registry, agent_schedule_registry` is now the FIRST import in `main.py`,
+  restoring the same resolution order the archived routers used to provide as a side
+  effect — do not reorder or remove this import without re-testing `python -c "import
+  app.main"` first. The cycle itself is still real and will resurface the moment this
+  ordering is disturbed again (e.g. by the still-pending business-layer archive/split,
+  Tasks #163/#164) — worth a real source-level fix (breaking one of these edges, most
+  plausibly `vault_filing_expert.py`'s module-level `agent_orchestration.model_factory`
+  import) whenever that layer is next restructured, not another order-dependent patch.
