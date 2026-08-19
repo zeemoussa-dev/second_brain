@@ -18,126 +18,315 @@
    Ported near-verbatim from html-prototype/styles.css (ADR-010 Decision 3).
    ========================================================================== */
 
+/* Flex column filling `.main`'s own real height (shell.css's own
+   `.app-shell { display: grid; min-height: 100vh; }` gives `.main` — a
+   grid item — a DEFINITE size, which is what makes percentage heights on
+   ITS OWN children reliable) — operator, 2026-08-15: "Not fixed I need
+   to Scoll a full Page to See the Map." A PRIOR fix attempt gave
+   `.agents-map-stage` a hardcoded `min-height: calc(100vh - 96px)`,
+   guessing the topbar's + `.main`'s own padding footprint from ONE
+   measured viewport size — that guess doesn't hold at a different real
+   viewport/zoom/OS-chrome combination, silently overshooting the truly
+   available space and reintroducing scroll (this time worse, since a
+   flex `min-height` that overshoots pushes the vertically-centered
+   canvas half-again further down than the overshoot itself). `flex: 1`
+   on `.agents-map-stage` below has no such guess baked in — it just
+   fills whatever's actually left after the topbar, self-correcting to
+   any real viewport. */
+.agents-map-page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  /* `height: calc(100vh - ...)`, NOT `height: 100%` (operator,
+     2026-08-15, Section View: "big Gap between Back to Map and the
+     Section view The Section Name you need to scroll to see it," this
+     round surviving even after switching `min-height` to `height` on
+     this very rule) — `100%` here resolves against `.main`'s own
+     COMPUTED height, but `.main` has no hard cap of its own either
+     (`shell.css`'s `.app-shell` is `min-height: 100vh`, a floor, not a
+     ceiling): when THIS element's content wanted to be taller (the
+     drill-down's own un-shrunk 700px canvas), `.main` simply grew to
+     match it, and `height: 100%` then "correctly" resolved to that
+     ALREADY-INFLATED value — a self-reinforcing loop with no real
+     extrinsic size anywhere in the chain to break it (verified live:
+     `.agents-map-page`'s own computed `height` was 830.667px, not the
+     800px viewport). `100vh` is a pure viewport unit, immune to this —
+     it can't inflate based on its own descendants' content the way a
+     percentage-of-an-auto-sized-ancestor can. The subtraction is
+     `.main`'s own real, fixed (not guessed) padding — `var(--space-6)`
+     top AND bottom, `shell.css`'s `.main { padding: var(--space-6); }`
+     — not a repeat of the earlier "guess the topbar's footprint"
+     mistake; this number is read directly from the token that sets it,
+     not measured/estimated. */
+  height: calc(100vh - (var(--space-6) * 2));
+}
+
 .agents-map-stage {
   margin: 0 auto;
   padding: 24px;
   box-sizing: border-box;
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  /* Standard flexbox fix allowing this item to shrink below its own
+     content's natural size if the available space is ever tighter than
+     that — without it, a flex item's default `min-height: auto` can
+     force the flex container (and page) to grow to fit the content
+     anyway, one of the exact "flex ignores my sizing" traps this whole
+     fix is meant to avoid. */
+  min-height: 0;
+  /* Explicit, not relying on flex-column's own default `align-items:
+     stretch` for the cross (horizontal) axis — this element is ITSELF a
+     flex container (for centering its own canvas child), and that
+     combination left it sized to shrink-fit instead of stretching,
+     which then starved `.agents-map-canvas`'s own `width: min(100%,
+     504px)` of a real basis to resolve "100%" against, collapsing the
+     whole canvas to 0x0. */
+  width: 100%;
 }
 
+/* Fully removes the OVERVIEW's own stage from rendering once a
+   drill-down is truly mounted (operator, 2026-08-15: "the Section view
+   is Appearing When I Scroll only", then again as "there is a big Gap
+   between Back to Map and the Section view" once THIS turned out to
+   only be a half-fix) — AgentsMapCanvas.tsx applies `is-inactive` once
+   `activeTarget` is set, which only happens AFTER the zoom-in
+   transition has already finished. First attempt used `position:
+   absolute` alone, reasoning that `opacity: 0` (`.zooming-out` below)
+   already hid it and this just needed to stop it competing for
+   `flex: 1` layout space — true, but incomplete: `.zooming-out` ALSO
+   carries `transform: scale(2.1)`, and that transform's own visual
+   (post-transform) bounds keep contributing to `.main`'s own SCROLLABLE
+   OVERFLOW region even once `position: absolute` has removed the
+   element from normal LAYOUT flow — those are two different mechanisms;
+   removing something from layout sizing doesn't stop its rendered pixels
+   (a 504px box scaled 2.1x, ~1058px, well past the viewport) from still
+   being scrollable-into. `display: none` removes it from the render
+   tree entirely — no layout contribution AND no paint/overflow
+   contribution — which is safe here specifically because the animation
+   this class exists for has ALREADY finished by the time `is-inactive`
+   is applied; going "Back" clears `activeTarget` (removing `is-inactive`
+   instantly, restoring `display: flex`) with no reverse animation
+   either, so there's nothing left mid-flight to interrupt. */
+.agents-map-stage.is-inactive {
+  display: none;
+}
+
+/* No filled disc background/shadow (operator, 2026-08-15: "there is a
+   Background that is not there in our Prototype... Remove it") — ported
+   from html-prototype/styles.css's own `.theme-skilltree .agents-map-
+   canvas` pass ("Background/shadow removed entirely (was an opaque
+   light-on-dark disc) — nodes now float directly over the starfield/
+   page background, matching the reference's own transparent-canvas
+   look"). Ring/boundary/radar-spoke SVG lines and the WORKER/EXPERT/
+   PRODUCER ring labels now sit directly over the page background
+   instead of an opaque plate. */
 .agents-map-canvas {
   position: relative;
+  /* NOT `max-height: 100%` here (operator, 2026-08-15: "The Cicles
+     Appear Oval not circlur") — that was added for the drill-down's own
+     benefit, but this rule is SHARED with the overview, which pins
+     `width` to an explicit 504px via `.explore-zoom-overview`'s own
+     override; `max-height` clamping HEIGHT while width stayed at that
+     fixed 504 (no dual-shrink — `aspect-ratio` only shrinks both
+     dimensions together when the non-explicit one is `auto`, and width
+     here never was) squished the overview into an oval whenever the
+     stage's available height dropped below 504px, which the recent
+     flex-height changes made a real, not just theoretical, case. The
+     drill-down has its OWN scoped override below
+     (`.explore-drilldown .agents-map-canvas`) that solves ITS sizing
+     without touching this shared rule at all — this rule doesn't need
+     to carry that fix too. */
   width: min(100%, 700px);
   margin: 0 auto;
   aspect-ratio: 1 / 1;
   border-radius: 50%;
-  background: var(--color-surface);
-  box-shadow: 0 20px 60px color-mix(in srgb, var(--color-text) 8%, transparent);
+  background: transparent;
+  box-shadow: none;
   overflow: visible;
 }
 
+/* Section View drill-down only — drives sizing off HEIGHT instead of
+   width (operator, 2026-08-15: "there is a big Gap between Back to Map
+   and the Section view The Section Name you need to scroll to see it").
+   Unlike the overview (which gets its own small, already-safe fixed
+   width from `.explore-zoom-overview`), this canvas has no such
+   override and stays at the base rule's full 700px — and on this app's
+   real layouts, a FIXED-height viewport with a `flex: 1`-computed stage
+   (`.agents-map-stage`/`.explore-drilldown.active` above) is reliably
+   the tighter constraint, while the stage's own WIDTH is almost always
+   generous (a 240px sidebar left over a normal desktop width). Making
+   `height` the definite/driving dimension here — with `width: auto`
+   deriving from it via `aspect-ratio` — means the square genuinely
+   shrinks to fit the real available height.
+   Deliberately NO `max-width` safety net (operator, 2026-08-15: "The
+   Oval Still There") — `aspect-ratio`'s dual-dimension shrink is only
+   reliable when EXACTLY ONE dimension is definite; adding a SEPARATE
+   `max-width` clamp on the auto-derived width, while `height` stays its
+   own independently-definite `min(...)` value, reintroduces the exact
+   same class of bug as the earlier width-driven oval (this time
+   mirrored: a `max-width` clamp doesn't shrink `height` back down
+   either), producing a TALL oval whenever the stage's width is narrower
+   than the height-derived square. Width being the tighter constraint is
+   rare enough on this app's real desktop layouts that a plain
+   horizontal overflow in that edge case is preferable to a
+   silently-wrong shape in the common case. */
+.explore-drilldown .agents-map-canvas {
+  width: auto;
+  height: min(100%, 700px);
+  /* Animates the click-to-focus camera move (SectionDrilldown.tsx's own
+     canvasStyle, operator 2026-08-16: "when the Panel Open The Agent
+     will be Zoomed in to 3x") — an inline `transform` swaps in/out as
+     selectedAgentId changes; this is what makes that swap glide instead
+     of snap. */
+  transition: transform 0.5s ease;
+}
+
+/* Contains the click-to-focus 3x zoom (above) to this Section's own
+   view — `transform` doesn't affect layout/reflow, so without this the
+   canvas's own visually-3x-bigger rendering would paint past this
+   stage's box into the page/Sidebar around it (the same class of
+   overflow bug documented elsewhere in this file) rather than being
+   clipped at the stage's own edge. Scoped to the drill-down's own stage
+   only — the overview has an entirely separate `.agents-map-stage`
+   element, not a descendant of `.explore-drilldown.active`. */
+.explore-drilldown.active .agents-map-stage {
+  overflow: hidden;
+}
+
+/* pointer-events: none by default (operator, 2026-08-15: "Still the
+   lines overcome the Section Hover") — root cause: the hover-wedge
+   <path> per Section (AgentsMapCanvas.tsx, "the Section Hover is the
+   whole Area between the Hub and the Title") paints FIRST/underneath
+   within this same SVG, with every spoke-line/cluster-line painted
+   AFTER it, on top, in DOM order. An SVG <line> with a stroke is
+   hit-testable by default (visiblePainted) even with no handlers of its
+   own — so the instant the cursor crossed a rendered line's own thin
+   stroke, THAT line (not the wedge underneath it) became the topmost
+   element under the pointer, firing the wedge's own onMouseLeave and
+   dropping hoveredSectionId, then re-entering the wedge past the line
+   fired onMouseEnter again — a flicker/drop-out every time the mouse
+   crossed a line while hovering a Section, worse in busier Sections
+   with more crisscrossing lines. Blanket-disabling pointer-events here
+   and re-enabling ONLY the wedge <path> via its own inline
+   `style={{ pointerEvents: 'all' }}` (an inline style on an element
+   always wins over an inherited property from its own parent) means
+   every decorative SVG element in this file — spoke lines, cluster
+   lines, dependency edges, pulse dots, the (currently unused)
+   radar/ring/boundary guides — is inert to the pointer, and the wedge
+   is the only thing that can ever receive a hover in here. */
 .agents-map-lines {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   overflow: visible;
+  pointer-events: none;
 }
 
 .agents-map-lines .radar-spoke     { stroke: var(--color-border); stroke-width: 0.25; opacity: 0.5; }
 .agents-map-lines .ring-circle     { fill: none; stroke: var(--color-border); stroke-width: 0.35; stroke-dasharray: 1.4 1.6; opacity: 0.6; }
 .agents-map-lines .boundary-circle { fill: none; stroke: var(--color-text-muted); stroke-width: 0.4; stroke-dasharray: 1.6 1.8; opacity: 0.55; }
 .agents-map-lines .section-boundary { stroke: var(--color-text-muted); stroke-width: 0.4; stroke-dasharray: 1.2 1.6; opacity: 0.5; }
-.agents-map-lines .spoke-line      { stroke-width: 0.6; opacity: 0.5; }
-.agents-map-lines .cluster-line    { stroke-width: 0.5; opacity: 0.4; }
+.agents-map-lines .spoke-line      { stroke-width: 0.3; opacity: 0.5; }
+/* White, slimmer (operator, 2026-08-15: "Lines that Connects Agents
+   should be White Slimmer") — was accent-colored at stroke-width 0.5;
+   color now comes from the inline `stroke` prop (AgentsMapCanvas.tsx),
+   not this rule. Slimmed again — 0.25 * 0.7 (operator, 2026-08-15:
+   "mak the lines Slimer a even 0.7 the current weight"). */
+.agents-map-lines .cluster-line    { stroke-width: 0.175; opacity: 0.4; }
 .agents-map-lines .ring-label      { font-family: var(--font-sans); text-anchor: middle; fill: var(--color-text-muted); }
 
-/* Knowledge Base — a dense neuron mesh (23 neurons, ~42 crossing synapse
-   lines), staggered pulse, two traveling signal dots, soft outer bloom. */
+/* KB<->Hub traveling signal dots (operator, 2026-08-14: "Add a small line
+   with 1px width with small circles going to KB in and out like its
+   filling and reading out of KB same circle sizes in the KB" — ported from
+   the prototype's own `.skillmap-kb-link-dot`). Two per `.spoke-line` (one
+   Hub->KB "filling in", one KB->Hub "reading out"), each with its own
+   `<animateMotion>` in AgentsMapCanvas.tsx, desynced per Section so they
+   never all move in lockstep. */
+.agents-map-lines .spoke-pulse-dot { fill: var(--color-accent); }
+
+/* Knowledge Base — ported from the approved html-prototype/
+   agents-map-skilltree-exploration.html redesign (operator, 2026-08-14/15):
+   a dense seeded-random dot constellation (KnowledgeBaseNode.tsx), fully
+   transparent at rest — no border/background/glow/label, the dot field is
+   the only visual. `overflow:hidden`/`clip-path:circle(50%)` keep the
+   constellation clipped to the node's own circular footprint. A faint
+   accent tint + 1.01x scale appears ONLY on hover; the dot field spins
+   slowly on hover and freezes in place (not resets) on mouseleave — see
+   KnowledgeBaseNode.tsx's own mouseenter/mouseleave handlers. Replaces the
+   previous hand-authored 23-neuron/42-synapse mesh entirely. */
 .kb-node {
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%);
-  width: 34%;
+  /* 34% * .75 (operator, 2026-08-15: "Make the Vault Visual smaler to
+     .75"). */
+  width: 25.5%;
   aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%);
   border-radius: 50%;
+  overflow: hidden;
+  clip-path: circle(50%);
+  border: none;
+  background: transparent;
+  box-shadow: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-surface-raised);
-  border: 2px solid var(--color-accent);
-  filter: drop-shadow(0 0 26px color-mix(in srgb, var(--color-accent) 50%, transparent));
-  animation: kbPulse 3s ease-in-out infinite;
+  transition: transform 0.25s ease, background 0.25s ease;
   z-index: 3;
 }
 
-.kb-brain-svg { width: 82%; height: 82%; overflow: visible; }
-
-.kb-brain-svg line {
-  stroke: var(--color-accent);
-  stroke-width: 0.9;
-  opacity: 0.35;
+.kb-node:hover {
+  transform: translate(-50%, -50%) scale(1.01);
+  background: color-mix(in srgb, var(--color-accent) 1%, transparent);
 }
 
-.kb-neuron {
-  fill: var(--color-accent);
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: neuronPulse 2.4s ease-in-out infinite;
+/* Always-rotating now, not just on hover (operator, 2026-08-15: "make
+   it rotate at a very slow speed then the current speed when hover
+   maintain") — a very slow ambient idle spin (200s/revolution) at
+   rest, speeding up to the existing 18s hover rate unchanged. Same
+   `animation-name` (`kbSpin`) in both rules, only `animation-duration`
+   differs — per the CSS Animations spec this preserves the
+   animation's own current time across the duration change instead of
+   restarting the keyframe cycle, so hovering/unhovering speeds the
+   spin up/down rather than snapping the dot field back to a fixed
+   angle (the same "stops in place, never resets" requirement the
+   original hover-only version had, just satisfied natively now
+   instead of via the manual computed-transform-freeze JS this
+   replaces below). */
+.kb-brain-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  animation: kbSpin 200s linear infinite;
 }
 
-.kb-pulse-dot {
-  fill: var(--color-accent);
-  filter: drop-shadow(0 0 3px var(--color-accent));
-}
+.kb-brain-svg.is-spinning { animation-duration: 18s; }
 
-@keyframes neuronPulse {
-  0%, 100% { opacity: 0.55; transform: scale(0.8); }
-  50% { opacity: 1; transform: scale(1); }
-}
-
-.kb-node-label {
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translate(-50%, var(--space-2));
-  text-align: center;
-  white-space: nowrap;
-  font-weight: 600;
-  font-size: var(--font-size-sm);
-}
-
-.kb-node-label .kb-node-sub {
-  display: block;
-  font-weight: 400;
-  color: var(--color-text-muted);
-}
-
-.kb-node.kb-node--not-indexed {
-  animation: none;
-  border-color: var(--color-border);
-  border-style: dashed;
-  filter: none;
-  opacity: 0.7;
-}
-
-.kb-node.kb-node--not-indexed .kb-neuron,
-.kb-node.kb-node--not-indexed .kb-pulse-dot { animation: none; opacity: 0.35; }
-
-@keyframes kbPulse {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 40%, transparent); }
-  50% { box-shadow: 0 0 42px 16px color-mix(in srgb, var(--color-accent) 26%, transparent); }
+@keyframes kbSpin {
+  to { transform: rotate(360deg); }
 }
 
 /* Section Hub — sits on the inner band, close to the KB, the section's one
-   KB-facing connector. Dashed border, non-clickable (plain div, not a
-   button) — REQ-SB-13's settings/actions/chat/history panel contract
-   stays agent-only. */
+   KB-facing connector. Non-clickable at the drill-down call site (plain
+   div, not a button) — REQ-SB-13's settings/actions/chat/history panel
+   contract stays agent-only. Real extracted treatment ported from the
+   prototype's own `.rootb` (operator, 2026-08-15 "Also Include the new
+   Hub Design"): a thin, mostly-transparent ring (not the previous
+   dashed/tinted-fill look) with a soft outer halo built from a wide,
+   low-opacity box-shadow ring — a calmer "instrument panel" read. */
 .hub-node {
   position: absolute;
+  /* Opts back into pointer events despite inheriting `pointer-events:
+     none` from the new .section-node-group wrapper (see that rule's own
+     comment) — this real interactive target must keep working. */
+  pointer-events: auto;
   transform: translate(-50%, -50%);
-  width: 6%;
+  width: 5%;
   aspect-ratio: 1 / 1;
   border-radius: 50%;
   display: flex;
@@ -146,15 +335,148 @@
   justify-content: center;
   text-align: center;
   padding: var(--space-1);
-  border: 2px dashed var(--hub-color, var(--color-accent));
-  background: color-mix(in srgb, var(--hub-color, var(--color-accent)) 12%, var(--color-surface));
-  box-shadow: 0 2px 10px color-mix(in srgb, var(--hub-color, var(--color-accent)) 25%, transparent);
+  /* `overflow: hidden` on the CONTAINER — not its own `.hub-node-icon`
+     child, which is where an earlier fix attempt wrongly put it and
+     which did NOT work (operator, 2026-08-15: "the Hubs in the main
+     Screen is not Circluar any more"; verified live afterward: an
+     icon-less `.agent-node` measured perfectly square while an
+     otherwise-identical one WITH an icon measured 9.33x22.33 — isolating
+     the icon as the cause even with `overflow: hidden` already on the
+     icon span itself). `aspect-ratio` on a flex CONTAINER only reliably
+     governs sizing when the container's own box doesn't ALSO need to
+     grow to fit its content's natural size — an icon glyph's own
+     line-height can exceed the aspect-ratio-derived height regardless of
+     which specific descendant clips its own overflow; only clipping
+     overflow at the CONTAINER's own boundary stops that descendant's
+     natural size from inflating the container in the first place. */
+  overflow: hidden;
+  border: 1.5px solid color-mix(in srgb, var(--hub-color, var(--color-accent)) 65%, transparent);
+  background: color-mix(in srgb, var(--color-text) 5%, transparent);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--hub-color, var(--color-accent)) 7%, transparent);
   color: var(--color-text);
   font-size: 0.5625rem;
   font-weight: 600;
   line-height: 1.15;
   animation: nodeFadeIn 0.4s ease backwards;
+  /* top/left transition — so the "Section rotation" wheel (AgentsMapCanvas
+     .tsx's own rotationDeg) turns smoothly between angle steps instead of
+     the Hub jumping straight to its new position; opacity transition backs
+     the hover-dim `.is-dimmed` toggle below; transform transition backs
+     the hover-zoom below. */
+  transition: top 0.5s ease, left 0.5s ease, opacity 0.2s ease, transform 0.2s ease;
   z-index: 2;
+}
+
+.hub-node-icon {
+  font-size: 0.875rem;
+  line-height: 1;
+  color: var(--hub-color, var(--color-accent));
+  /* `.hub-node` is a `display: flex` container with `aspect-ratio: 1/1`
+     and an explicit `width` — this icon is one of its flex items, and
+     an icon glyph's own intrinsic line-box size can otherwise force the
+     WHOLE flex container taller than its aspect-ratio-derived height
+     (the box's own "automatic minimum size" defaults to its content's
+     natural size for `overflow: visible`, the default, overriding the
+     ratio) — `overflow: hidden` here makes THIS element's own automatic
+     minimum size resolve to 0 instead, so it can shrink to fit whatever
+     space the flex container's own square shape actually has, rather
+     than stretching that shape to fit itself (operator, 2026-08-15:
+     "the Hubs in the main Screen is not Circluar any more"). */
+  overflow: hidden;
+}
+
+/* Hover glow (operator, 2026-08-15: "Bring the Hover Effect of the
+   Section from the Prototype") — ported from html-prototype/
+   agents-map-skilltree-exploration.html's own `.skillmap-tree-hub:hover,
+   .skillmap-tree-hub:focus-visible { animation: smPop ..., smGlow
+   1.4s ease-in-out infinite; }`. This app has no `smPop` bounce-entrance
+   equivalent to layer in (its own `nodeFadeIn` above already plays once
+   on mount, not something to repeat per-hover), so only the pulsing
+   glow itself is ported. `.hub-hit-region` (the oversized invisible
+   click/hover target sharing this Hub's own hover state, SectionHub.tsx)
+   is included too — otherwise hovering the larger surrounding hit-area
+   wouldn't trigger the glow, only a precise hover directly on the small
+   visible icon would. */
+/* Glow-only on direct Hub hover/focus (operator, 2026-08-15: "Hovering
+   on a Section Should Zoom the Section in..."; then "Only the Hub is
+   Zooming not the Whole Section", clarified as "Hub + its Agents + its
+   lines together") — the ZOOM itself moved to .section-node-group below
+   (a per-Section wrapper around the Hub AND its Agents in
+   AgentsMapCanvas.tsx), so it's no longer set here: this rule used to
+   ALSO scale .hub-node by 1.1x, which — once the wrapper started scaling
+   the same element as part of the whole group — would have compounded
+   into 1.1 * 1.1 = 1.21x. `:hover`/`:focus-visible`/the
+   `.hub-hit-region:hover ~` sibling trick still exist for the glow pulse
+   alone; the group-wide zoom trigger (`.section-node-group.is-hovered`)
+   is driven by the SAME shared `hoveredSectionId` state as the title's
+   own `.is-hovered`, from anywhere in the Section's hover-wedge, not
+   just a literal cursor-over-hub. */
+.hub-node.is-hovered,
+.hub-node:hover,
+.hub-node:focus-visible,
+.hub-hit-region:hover ~ .hub-node {
+  animation: nodeFadeIn 0.4s ease backwards, smGlow 1.4s ease-in-out infinite;
+}
+
+/* The actual "whole Section" hover-zoom unit — Hub + its own Agents,
+   wrapped together in AgentsMapCanvas.tsx (operator, 2026-08-15: "Only
+   the Hub is Zooming not the Whole Section" -> "Hub + its Agents + its
+   lines together"). `position: absolute; inset: 0` UNCONDITIONALLY (not
+   toggled by hover) is load-bearing: applying any `transform` other than
+   `none` makes an element the containing block for its own
+   `position: absolute` descendants regardless of the element's own
+   `position` value — if this rule only added `position: absolute` on
+   `.is-hovered`, the Hub/Agent children's own top/left percentages would
+   resolve against a DIFFERENT ancestor when hovered vs. not, visibly
+   jumping. Keeping it unconditional means the wrapper is always the
+   Hub/Agent children's containing block, hover or not, so toggling just
+   the `transform` is safe. `transform-origin` is set inline per-Section
+   (the Hub's own %,% position) since it's data-dependent; the matching
+   SVG <g> for this Section's own lines (AgentsMapCanvas.tsx) shares the
+   identical origin so both layers zoom in lockstep. */
+.section-node-group {
+  position: absolute;
+  inset: 0;
+  transition: transform 0.2s ease;
+  /* pointer-events: none by default (operator, 2026-08-15: "The Hover
+     is on the Hub only I need it to be on the Everything in that
+     Section") — this wrapper is `inset: 0`, i.e. FULL-CANVAS-SIZE, one
+     per Section, all stacked directly on top of each other AND on top
+     of .agents-map-lines' own per-Section hover-wedge <path>
+     (AgentsMapCanvas.tsx, later in DOM order than that svg). Unlike an
+     SVG shape, a plain HTML <div> is hit-testable across its ENTIRE box
+     by default even with nothing painted in it — so without this, the
+     LAST-rendered Section's own wrapper silently captured every pointer
+     event across the whole canvas (except where an actual Hub/Agent
+     button sat on top of it), leaving only a literal hover directly on
+     a button working at all, and even that always attributed to the
+     topmost wrapper rather than whichever Section the cursor was
+     actually over. `.hub-node`/`.hub-hit-region`/`.agent-node` below
+     explicitly set `pointer-events: auto` back on themselves (the
+     `none` here is inherited, not a stacking-context change, so a
+     descendant can freely opt back in) so those real interactive
+     targets keep working exactly as before; every other point in this
+     wrapper's box is now transparent to the pointer, same as
+     .agents-map-lines' own fix for the identical class of bug one pass
+     ago. */
+  pointer-events: none;
+}
+
+.section-node-group.is-hovered {
+  /* Matches the SVG lines' own scale(1.1) (AgentsMapCanvas.tsx) and the
+     title's own zoom scale below. */
+  transform: scale(1.1);
+  /* Above every .agent-node's own z-index:3 (base .section-node-group has
+     no z-index — CSS transform alone already makes it a stacking context
+     for its own children, this just ensures the zoomed-in Section's
+     WHOLE subtree paints above a neighboring, non-hovered/dimmed
+     Section's nodes rather than an ambiguous DOM-order tiebreak. */
+  z-index: 4;
+}
+
+@keyframes smGlow {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--hub-color, var(--color-accent)) 45%, transparent); }
+  50%      { box-shadow: 0 0 12px 4px color-mix(in srgb, var(--hub-color, var(--color-accent)) 45%, transparent); }
 }
 
 .hub-node .hub-node-type {
@@ -171,10 +493,21 @@
 .hub-node--producer { --hub-color: var(--agent-color-producer); }
 .hub-node--expert   { --hub-color: var(--agent-color-expert); }
 
+/* 25% of the Hub's own width (operator, 2026-08-15: "The Agents Should
+   be 25% the size of the Hub") — Hub is 5% (agents-map.css's own
+   .hub-node), so 5% * .25 = 1.25%. Same value everywhere now (overview
+   AND drill-down), since the Hub itself no longer differs in size
+   between those two views either (an earlier pass) — .agent-node--
+   compact's own width override below is gone for the same reason: it
+   would just be re-declaring this identical number. */
 .agent-node {
   position: absolute;
+  /* Opts back into pointer events despite inheriting `pointer-events:
+     none` from the new .section-node-group wrapper — see that rule's
+     own comment; this real interactive target must keep working. */
+  pointer-events: auto;
   transform: translate(-50%, -50%);
-  width: 10%;
+  width: 1.25%;
   aspect-ratio: 1 / 1;
   border-radius: 50%;
   display: flex;
@@ -182,24 +515,194 @@
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: var(--space-1);
+  /* 1px, not `var(--space-1)` (4px) — operator, 2026-08-15: "The Icon
+     are too big inside the agents it Clips". This node's own box is a
+     few px to ~24px depending on context (1.25% of the overview canvas,
+     or 3.75% in the Section View's own `--large` variant) — 4px of
+     padding on EVERY side was eating most of that box before any
+     content even got placed, leaving almost no room for the icon glyph
+     `.agent-node-icon` (now correctly clipped to the container's own
+     bounds instead of stretching it — the earlier `overflow: hidden`
+     fix — but clipped an icon that barely fit its OWN font-size, let
+     alone padding on top of it). */
+  padding: 1px;
   cursor: pointer;
-  border: 2px solid var(--node-color, var(--color-accent));
-  background: color-mix(in srgb, var(--node-color, var(--color-accent)) 16%, var(--color-surface));
+  /* Same fix as `.hub-node`'s own identical comment, and confirmed live
+     there before applying it here too (operator, 2026-08-15: "Hubs now
+     Circular" after that fix landed, "the Section View All Agents
+     appear in Oval and on top of each other" — the on-top-of-each-other
+     part is very likely just these oversized oval hitboxes visually
+     colliding even though their actual CENTER points, from
+     layoutSectionDrilldown's own angle/radius math, are correctly
+     spaced apart). `overflow: hidden` on the CONTAINER, not the icon
+     span alone. */
+  overflow: hidden;
+  /* Slimmer, slightly translucent (operator, 2026-08-15: "The Agents
+     Border should be much Slimmer and a bit of Alpha") — was a full
+     2px opaque ring; now 1px at 70% opacity (a LITTLE alpha, not a
+     faded-out one). Shared by both fill treatments below (--autonomous
+     /--assisted), neither overrides border. */
+  border: 1px solid color-mix(in srgb, var(--node-color, var(--color-accent)) 70%, transparent);
   box-shadow: 0 2px 8px color-mix(in srgb, var(--node-color, var(--color-accent)) 22%, transparent);
   color: var(--color-text);
   font-size: 0.6875rem;
   font-weight: 600;
   line-height: 1.2;
   animation: nodeFadeIn 0.4s ease backwards;
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  /* top/left/opacity — see .hub-node's own identical comment above.
+     transform added for the Section View's own hover-zoom
+     (.agent-node--large:hover below) — harmless here at rest, since
+     the overview's plain .agent-node transform never changes (no
+     hover rule targets it), so this addition has no visible effect on
+     the overview's own already-static nodes. */
+  transition: top 0.5s ease, left 0.5s ease, opacity 0.2s ease, transform 0.15s ease;
   z-index: 3;
 }
 
-.agent-node:hover,
-.agent-node:focus-visible {
-  transform: translate(-50%, calc(-50% - 3px)) scale(1.14);
-  box-shadow: 0 6px 16px color-mix(in srgb, var(--node-color, var(--color-accent)) 35%, transparent);
+/* No hover scale-up/glow on the OVERVIEW (operator, 2026-08-15: "Remove
+   the Hover Effect on the Agent as Its Really hard to see anything in
+   this view") — at 155+ tiny (1.25%-width) agents packed closely
+   together, one node scaling to 1.14x and throwing a wide glow on
+   hover made its immediate neighbors unreadable, not clearer. Scoped
+   to `.agent-node--large` only (Section View drill-down, ~5x bigger
+   and far less crowded — one Section's Agents at a time, not 150+ at
+   once) — operator, 2026-08-16: "the hover over an Agent should Zoom
+   the Agent to 1.1x". No glow/shadow bump here, just the scale itself,
+   since the crowding complaint above was specifically about the glow
+   swallowing neighbors, not the scale alone. 1.2x, not 1.1x (operator,
+   2026-08-16: "I guess the Zoom need to be 1.2 for Agents"). */
+.agent-node--large:hover {
+  transform: translate(-50%, -50%) scale(1.2);
+  z-index: 5;
+}
+
+/* INNER focus ring (SectionDrilldown.tsx's own `focused` prop, set for
+   whichever Agent's AgentDetailPanel is currently open) — operator,
+   2026-08-16: "2 Borders will be added one the closer one is 2x the
+   Original Border". This one is just the node's own existing border,
+   thickened — `border-width` alone (not the full `border` shorthand)
+   so it only overrides the width, leaving the base rule's own color/
+   style untouched. The OUTER ring is a separate sibling element
+   (.agent-focus-ring below) — see that rule's own comment for why. */
+.agent-node--focused {
+  border-width: 2px;
+}
+
+/* OUTER focus-ring halo (SectionDrilldown.tsx) — operator, 2026-08-16:
+   "1 outer 1x the Size and 0,8 the Alpha", paired with
+   .agent-node--focused above as the INNER ring. Rendered as a SIBLING
+   of the Agent nodes, not a child of one: `.agent-node` needs
+   `overflow: hidden` for its own oval-shape fix, which would clip a
+   ring sized bigger than the node itself trying to render past its
+   tiny circle. z-index 4 (above the node's resting 3, below its own
+   :hover 5) is harmless either way — the ring's own interior is
+   transparent, just a hollow stroke, so it never visually covers the
+   node's content regardless of paint order. */
+.agent-focus-ring {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 5.5%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  /* 1x the node's own ORIGINAL (un-thickened) border width — the same
+     1px .agent-node itself uses at rest, not the 2px the inner ring
+     above just doubled it to. */
+  border: 1px solid var(--node-color, var(--color-accent));
+  opacity: 0.8;
+  pointer-events: none;
+  z-index: 4;
+  animation: fadeIn 0.2s ease;
+}
+
+.agent-focus-ring--worker   { --node-color: var(--agent-color-worker); }
+.agent-focus-ring--producer { --node-color: var(--agent-color-producer); }
+.agent-focus-ring--expert   { --node-color: var(--agent-color-expert); }
+
+/* Hover/zoom info card (SectionDrilldown.tsx) — operator, 2026-08-16:
+   "show the Agent name we zoomed on and a Description of that Agent if
+   Exist below the name and the type of that agent think of a nice
+   layout for that". Rendered as a SIBLING of the Agent nodes (not a
+   child of one — `.agent-node`'s own `overflow: hidden`, needed for its
+   oval-shape fix, would clip a child trying to render past its tiny
+   circle), positioned at the hovered node's own point via inline
+   top/left (same 0-100 polar-layout scale every other node in this
+   canvas already uses) and offset down past its visual radius. */
+.agent-hover-card {
+  position: absolute;
+  transform: translate(-50%, 0);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 120px;
+  max-width: 200px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  border: 1px solid color-mix(in srgb, var(--node-color, var(--color-accent)) 40%, var(--color-border));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  text-align: center;
+  /* This card sits on TOP of whichever Agent triggered it — it must
+     never itself be the thing the mouse is over, or hovering the card
+     would re-trigger no node's own onMouseEnter, leaving hoveredAgentId
+     stuck with nothing left to un-set it. */
+  pointer-events: none;
+  z-index: 6;
+  animation: fadeIn 0.15s ease;
+}
+
+/* Same --node-color-per-Type convention as .agent-node--worker/
+   -producer/-expert above — an inline --node-color (from the hovered
+   Agent's own Visual-tab override, set by SectionDrilldown.tsx) still
+   wins over these when present. */
+.agent-hover-card--worker   { --node-color: var(--agent-color-worker); }
+.agent-hover-card--producer { --node-color: var(--agent-color-producer); }
+.agent-hover-card--expert   { --node-color: var(--agent-color-expert); }
+
+.agent-hover-card-name {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: var(--font-size-sm);
+  line-height: 1.25;
+  color: var(--color-text);
+}
+
+.agent-hover-card-type {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--node-color, var(--color-accent));
+}
+
+.agent-hover-card-description {
+  margin: 2px 0 0;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: var(--color-text-muted);
+}
+
+.agent-node-icon {
+  /* 0.375rem (6px), not 0.8125rem (13px) — operator, 2026-08-15: "The
+     Icon are too big inside the agents it Clips". The overview's own
+     `.agent-node` box is only ~1.25% of the canvas (often well under
+     10px) — even with `overflow: hidden` correctly keeping the SHAPE a
+     circle (not stretching it, the earlier oval fix), a 13px glyph
+     inside a <10px circle was still mostly getting cropped away to
+     nothing recognizable. 6px is small but at least renders as a
+     legible dot-of-color at this scale, matching the container's own
+     real size instead of a fixed value tuned for a bigger node. */
+  font-size: 0.375rem;
+  line-height: 1;
+  /* Same fix as `.hub-node-icon`'s own identical comment — this icon's
+     own intrinsic size (bigger than a compact overview dot, ~9px, at
+     this font-size) was forcing `.agent-node`'s own flex-container box
+     taller than its `aspect-ratio: 1/1`-derived square, distorting it
+     into an oval (operator, 2026-08-15: "the Agents in the Section
+     views Still Oval" — the same underlying bug, worse there since the
+     drill-down shows an icon on EVERY Agent via its own Section-icon
+     fallback, not just the ones with an icon of their own). */
+  overflow: hidden;
 }
 
 .agent-node .agent-node-type {
@@ -215,6 +718,69 @@
 .agent-node--worker   { --node-color: var(--agent-color-worker); }
 .agent-node--producer { --node-color: var(--agent-color-producer); }
 .agent-node--expert   { --node-color: var(--agent-color-expert); }
+
+/* Section View (drill-down) only — 0.75x the Hub's own 5% width
+   (operator, 2026-08-15: "Now Agents will be Bigger 0.75 of the Hub") —
+   a much bigger footprint than the overview's own 25%-of-Hub default,
+   since one Section now owns the whole canvas instead of sharing a
+   crowded arc with every other Section. Font sizes scale up to match —
+   the base .agent-node's own sizes were tuned for a dot 3x smaller. */
+.agent-node--large {
+  width: 3.75%;
+  font-size: 0.8125rem;
+  /* Tighter than the base rule's own 1px override would give by
+     itself — this variant is bigger (3.75% vs 1.25% width) so it can
+     afford a LITTLE more padding than the tiniest overview dots,
+     without going back to the original 4px that swallowed most of the
+     box (operator, 2026-08-15: "The Icon are too big inside the agents
+     it Clips"). */
+  padding: 2px;
+}
+
+.agent-node--large .agent-node-icon {
+  /* 0.625rem (10px), not 1.25rem (20px) — same fix as the base
+     `.agent-node-icon` rule's own comment, scaled up proportionally for
+     this bigger variant instead of using a flat value tuned before the
+     "Icon are too big... it Clips" report. */
+  font-size: 0.625rem;
+}
+
+.agent-node--large .agent-node-type {
+  font-size: 0.625rem;
+}
+
+/* Fill treatment keyed to working mode, not Type (operator, 2026-08-15:
+   "The Autonmous Agents will be Filled and Human Assistant will be a
+   border with a background 10% alpha") — "Human Assistant" covers both
+   non-autonomous modes together (supervised/manual), a 2-way split, not
+   the working-mode selector's own 3-way one (Settings/AgentDetailPanel).
+   Composes with (does not replace) the border/box-shadow the base
+   .agent-node rule above already sets. */
+.agent-node--autonomous {
+  background: var(--node-color, var(--color-accent));
+}
+
+/* Operator, 2026-08-16: "the text of the icon is white on top of a
+   while [white] Background" — `--agent-color-worker` IS `--color-text`
+   itself (near-white), so a filled (`--autonomous`) Worker node put a
+   near-white icon glyph (inherited `color: var(--color-text)` from the
+   base `.agent-node` rule) on a near-white fill: functionally
+   invisible. `--color-on-accent` (tokens.css) is this codebase's own
+   existing "text-on-a-filled-accent-color" pairing (already used by
+   agent-panel.css/settings.css for the same reason) — reused here
+   rather than inventing a new token. Scoped to the icon only, not the
+   whole `.agent-node--autonomous` rule: the label/type text
+   (`.agent-node-label`/`.agent-node-type`) repositions OUTSIDE the
+   filled circle on hover/focus reveal (`top: 100%`), landing on the
+   dark canvas background instead — a dark color there would just
+   trade one invisible-text bug for another. */
+.agent-node--autonomous .agent-node-icon {
+  color: var(--color-on-accent);
+}
+
+.agent-node--assisted {
+  background: color-mix(in srgb, var(--node-color, var(--color-accent)) 10%, transparent);
+}
 
 @keyframes nodeFadeIn {
   from { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
@@ -233,7 +799,8 @@
   white-space: nowrap;
 }
 
-.agent-node--compact { width: 5%; }
+/* No more of its own `width` override here — it would just re-declare
+   the base .agent-node's own 1.25% (see that rule's own comment). */
 
 /* BUG-010 fix: .agent-node-label/.agent-node-type were both anchored to
    the identical `top: 100%; left: 50%` position on reveal, rendering
@@ -244,10 +811,21 @@
    only works when both stay in flex flow). Label anchors the tooltip
    box; type is offset below it by the label's own reveal height
    (line-height + vertical padding + border), so the two never overlap
-   regardless of name length. */
-.agent-node--compact:hover .agent-node-label,
+   regardless of name length.
+   `:hover` trigger removed (operator, 2026-08-15: "Remove the Agents
+   Hover as it affects the Section Hover") — an Agent node sits on top
+   of its own Section's hover-wedge (it needs real pointer-events to stay
+   clickable), so hovering it was the same class of interference the
+   wedge/lines/section-node-group fixes already chased down: the cursor
+   passing over an agent made the AGENT (not the wedge underneath) the
+   hover target, popping this label AND, more importantly, dropping
+   hoveredSectionId — stuttering the Section's own zoom/glow/title every
+   time the mouse crossed an agent dot while moving around inside a
+   Section. `:focus-visible` (keyboard Tab navigation, a different
+   interaction mode that never touches hoveredSectionId) still reveals
+   the label — the only way left to read a compact agent's name/type
+   without clicking is Tab-focus or opening its detail panel. */
 .agent-node--compact:focus-visible .agent-node-label,
-.agent-node--compact:hover .agent-node-type,
 .agent-node--compact:focus-visible .agent-node-type {
   position: absolute;
   width: auto;
@@ -265,13 +843,11 @@
   z-index: 5;
 }
 
-.agent-node--compact:hover .agent-node-label,
 .agent-node--compact:focus-visible .agent-node-label {
   top: 100%;
   margin-top: 4px;
 }
 
-.agent-node--compact:hover .agent-node-type,
 .agent-node--compact:focus-visible .agent-node-type {
   top: calc(100% + 1.9em);
   margin-top: 4px;
@@ -286,7 +862,58 @@
    mount via a local transient state flag instead of the prototype's own
    plain JS class-toggle + transitionend listener, but the CSS contract
    is identical. */
+/* Default overview sits visually smaller/further-back — matches the
+   skilltree prototype's own resting `--tree-scale: 0.55` (operator,
+   2026-08-15: "The Map is big it was zoomed out in the Protype do the
+   same"), refined twice since: first (operator: "The Map is Displayed
+   After scrolling down") from `transform: scale(0.72)` — which shrinks
+   what's PAINTED but not the LAYOUT SPACE reserved, leaving
+   `.agents-map-stage` reserving room for the full unscaled 700px box
+   regardless — to a real `width` override (0.72 * 700 = 504px), which
+   made the reserved space match what's actually painted. That FIXED
+   fixed size then became its own problem once the surrounding layout
+   was properly centered (`.agents-map-stage`'s own `flex: 1` fix,
+   entries above): a flat 504px inside a now-correctly-sized, much
+   bigger available stage just reads as "small map, huge empty margin"
+   (operator: "the map is Consunrated in the Center with alot of Empty
+   space"). Same fix as the drill-down's own scoped override below:
+   drive off HEIGHT (`min(100%, 700px)`, capped at the base rule's own
+   full un-zoomed size, `width: auto` deriving from it via
+   `aspect-ratio`) instead of a flat width — the overview now fills
+   however much room the stage actually has, up to a genuine 700px "not
+   zoomed out at all" ceiling, rather than sitting fixed at an
+   ARBITRARY 504px regardless of how much real space surrounds it.
+   Percentage-positioned children (Hub/Agent nodes, SVG viewBox
+   coordinates) are unaffected either way — their positions are still
+   0-100% of whatever box they're in. Scoped to `.explore-zoom-overview`
+   specifically (only ever applied to the true overview canvas in
+   AgentsMapCanvas.tsx) — the Section/cluster drill-down's own
+   `.agents-map-canvas` never gets this class, so it keeps its own
+   separate sizing/behavior. */
 .explore-zoom-overview {
+  width: auto;
+  /* Deliberately NO `max-width` safety net (operator, 2026-08-15: "The
+     Oval Still There") — see `.explore-drilldown .agents-map-canvas`'s
+     own identical comment: pairing a separate `max-width` clamp on this
+     auto-derived width with `height` staying its own independently-
+     definite value reintroduces the exact oval bug this whole change
+     was fixing, just mirrored onto the other axis. */
+  /* `calc(100% - 80px)`, not a flat `100%` — Section titles
+     (.section-title, positioned at SECTION_TITLE_RADIUS = 66 out of the
+     0-100 polar scale) sit INSIDE the canvas's own nominal circle, but
+     their own rendered text box (label + subtitle, often 2 lines) can
+     extend a few real pixels further out than that single anchor point.
+     At the OLD flat 504px width, this was invisibly absorbed by the
+     ~100px of slack the stage had on each side from centering a smaller
+     box in more space; filling the stage's FULL available height (this
+     rule's own previous version, `min(100%, 700px)`) removed that slack
+     entirely, so the same title overflow became real page-level
+     overflow (verified live: `.section-title` was the element with the
+     largest `getBoundingClientRect().bottom`, past the viewport). 80px
+     is a flat, canvas-size-independent buffer — title text doesn't grow
+     with the canvas, so the margin it needs doesn't need to scale with
+     it either. */
+  height: min(calc(100% - 140px), 700px);
   transition: transform 0.35s ease, opacity 0.35s ease;
   transform-origin: 50% 50%;
 }
@@ -300,31 +927,72 @@
   display: none;
 }
 
+/* Same flex-column-fills-remaining-space treatment as .agents-map-page/
+   .agents-map-stage above, and for the identical reason: as a flex CHILD
+   of .agents-map-page with no explicit sizing, `display: block` alone
+   left this shrinking to fit its own content in the cross (horizontal)
+   axis instead of stretching to fill it — which then starved its own
+   nested .agents-map-stage's `width: 100%` of a real basis to resolve
+   against, collapsing IT to 0 width too (the exact same collapse
+   .agents-map-stage's own comment already documents, just one level
+   deeper — operator, 2026-08-15: "the Section view is Appearing When I
+   Scroll only"). `flex-direction: column` + the nested .agents-map-stage
+   already being `flex: 1` means the "<- Back to Agents Map" button
+   (a normal, non-fixed flow child rendered before the stage) keeps its
+   own natural height at the top, and the stage fills whatever's left —
+   the same header-then-fill pattern .agents-map-topbar/.agents-map-stage
+   already use one level up. */
 .explore-drilldown.active {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  /* `flex-start`, not the flex default `stretch` (operator, 2026-08-16:
+     "the Back to main view is now in th center of the view with
+     background Same as the Pervious and Next Section") — the "<- Back
+     to Agents Map" button is this container's first flex-column CHILD
+     with no explicit width of its own, so the default `stretch`
+     cross-axis alignment forced it to fill the FULL row width; a plain
+     <button> centers its own text by default, so the label rendered
+     dead-center of the screen instead of as a small top-left button —
+     which also explains "background Same as..." (`.btn`'s
+     --color-surface-raised fill, now stretched into a full-width bar,
+     visually read as one continuous strip with `.section-edge-nav`'s
+     own --color-surface background). `.agents-map-stage` below is
+     unaffected — it already sets its own explicit `width: 100%`, which
+     wins over `align-items` regardless. */
+  align-items: flex-start;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
   animation: fadeIn 0.3s ease;
 }
 
-/* Drill-down Hub sizing refinement (ported from the prototype's own
-   Refinement 1) — the drill-down has no Knowledge Base / rings /
-   boundary competing for center-stage the way the overview does, so the
-   ordinary .hub-node width (11%) reads as an oversized centerpiece next
-   to the full-size (10%) agent nodes surrounding it here. Scoped to this
-   one view only via the .explore-drilldown ancestor selector — the
-   overview's own .hub-node is untouched. */
-.explore-drilldown .hub-node {
-  width: 8%;
-}
-
-.explore-drilldown .hub-node .hub-node-type {
-  font-size: 0.5625rem;
-}
+/* Hub stays the SAME visual size in the drill-down as in the overview
+   (operator, 2026-08-15: "in the Section View I want the Same Visual
+   and Size when I click on it it zoom in and now the Visual Will be
+   Same") — this used to bump the drill-down Hub up to 8% (vs the
+   overview's 6%) to read as a centerpiece; that per-view size drift is
+   exactly what the operator is now asking to remove, so this override
+   is intentionally gone rather than merely rebalanced. Only the
+   surrounding space (agent ring radius, drill-down layout) grows on
+   zoom-in — the Hub itself renders identically either way. */
 
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
+/* Density-cluster marker (REQ-SB-38-US-01) — ported verbatim from
+   html-prototype/styles.css's now-clickable version (its own "Density
+   cluster marker (REQ-SB-38)" comment), replacing the earlier
+   never-instantiated static-chip shape above. Now a real <button>
+   (matching .hub-node/.agent-node's own clickable-circle convention),
+   reusing the same click-to-zoom affordance BUG-002's Option D already
+   established for Section Hubs, applied one level deeper
+   (AgentsMapCanvas.tsx/T04 wires this the same way). Border/shadow use the
+   same --color-accent dashed-border + tinted-glow treatment .hub-node
+   already uses at rest, plus .agent-node's own hover-lift. The two inner
+   spans (.map-overflow-marker-count/-label) mirror .hub-node's own
+   bold-main-text + small-muted-subtext structure — reused, not invented. */
 .map-overflow-marker {
   position: absolute;
   transform: translate(-50%, -50%);
@@ -332,13 +1000,42 @@
   aspect-ratio: 1 / 1;
   border-radius: 50%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: var(--color-surface-raised);
-  border: 1px dashed var(--color-border);
-  color: var(--color-text-muted);
+  text-align: center;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface));
+  border: 2px dashed var(--color-accent);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--color-accent) 25%, transparent);
+  color: var(--color-text);
   font-size: 0.625rem;
   font-weight: 600;
+  line-height: 1.15;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, top 0.5s ease, left 0.5s ease, opacity 0.2s ease;
+  animation: nodeFadeIn 0.4s ease backwards;
+  z-index: 3;
+}
+
+.map-overflow-marker:hover,
+.map-overflow-marker:focus-visible {
+  transform: translate(-50%, calc(-50% - 3px)) scale(1.14);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
+.map-overflow-marker-count {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+.map-overflow-marker-label {
+  display: block;
+  font-weight: 400;
+  font-size: 0.5rem;
+  color: var(--color-text-muted);
+  margin-top: 1px;
 }
 
 /* Section titles — outside the wheel's outer boundary, at each section's
@@ -349,11 +1046,37 @@
   transform: translate(-50%, -50%);
   text-align: center;
   white-space: nowrap;
+  cursor: pointer;
+  /* Serif, not the app's default --font-sans (operator, 2026-08-15:
+     "Titles and Subtitles for Sections Should have a Different Font
+     the one in the Prototype") — the same --font-serif (Marcellus)
+     treatment the prototype already reserves for its own distinctive
+     headings (sidebar wordmark, About-panel heading, ghost-name
+     watermark), not the plain UI sans every other label on this page
+     uses. */
+  font-family: var(--font-serif);
   font-size: var(--font-size-base);
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--color-text);
+  transition: top 0.5s ease, left 0.5s ease, color 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+}
+
+/* Short line under the Section title (operator, 2026-08-15: "I need to
+   have a Section Subtitle and Description The Subtitle will be
+   Displayed in the Agent Map") — plain --font-sans, not the title's own
+   --font-serif, and normal case/tighter tracking so it visually reads as
+   a caption under a heading rather than a second, competing headline. */
+.section-title .section-title-subtitle {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font-sans);
+  font-size: 0.625rem;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--color-text-muted);
 }
 
 .section-title .section-title-accent {
@@ -363,6 +1086,39 @@
   margin: var(--space-1) auto 0;
   border-radius: 999px;
 }
+
+/* Hover-dim + title glow (ported from html-prototype/styles.css's own
+   .skillmap-title.is-hovered/.skillmap-tree.dimmed — "when I hover a
+   Section Other Sections go Dimmed the title of that Section goes to a
+   Yellow Color and Zoomed in to 1.04x"). Uses --color-accent rather than
+   the prototype's own hardcoded #fbbf24 so the glow matches whichever
+   accent this app's tokens.css currently defines. */
+/* The Section's OWN color, not a fixed accent (operator, 2026-08-15:
+   "the Hover effect of the Section Change the Section title to that
+   Same Color") — `--section-color` is set inline per-title
+   (AgentsMapCanvas.tsx), falling back to --color-accent for a Section
+   with none set. */
+.section-title.is-hovered {
+  color: var(--section-color, var(--color-accent));
+  text-shadow: 0 0 8px color-mix(in srgb, var(--section-color, var(--color-accent)) 55%, transparent);
+  /* 1.07x (operator, 2026-08-15: "Increase the Zoom a bit 1.1 for
+     Sections and 1.07 for title") — was 1.06x. */
+  transform: translate(-50%, -50%) scale(1.07);
+}
+
+.hub-node.is-dimmed,
+.agent-node.is-dimmed,
+.map-overflow-marker.is-dimmed,
+.section-title.is-dimmed {
+  opacity: 0.32;
+}
+
+/* Per-Section spoke-line/cluster-line <g> groups (AgentsMapCanvas.tsx's own
+   `<g className={... ? 'is-dimmed' : undefined}>` wrappers) — no
+   transition property of their own on the <g> since SVG line endpoints
+   don't animate the same way; opacity alone still reads as a smooth-enough
+   dim given the .18-.4s durations everything else around it uses. */
+g.is-dimmed { opacity: 0.32; }
 
 .agent-type-legend {
   display: flex;
@@ -382,3 +1138,515 @@
   vertical-align: middle;
   background: var(--legend-color);
 }
+
+/* Agent Creation Wizard — bottom-right FAB + popup modal + visual step bar
+   (REQ-SB-46-US-01, ADR-039). The FAB reuses .map-overflow-marker's own
+   circular dashed-border/tinted-glow treatment (bottom-right `position:
+   fixed` instead of map-relative). The modal/step-bar are deliberately NOT
+   a reuse of .side-panel-overlay/.side-panel's own class names or
+   edge-anchored slide-in behavior — Scenario 2 requires this new modal be
+   visually distinct from the existing agent-detail side panel, so this is
+   a centered overlay + panel instead, built entirely from this codebase's
+   own existing tokens and the same color-mix(...) glow idiom
+   .hub-node/.map-overflow-marker already use. */
+.map-fab {
+  position: fixed;
+  right: var(--space-6);
+  bottom: var(--space-6);
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface));
+  border: 2px dashed var(--color-accent);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--color-accent) 30%, transparent);
+  color: var(--color-accent);
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  z-index: 30;
+}
+
+.map-fab:hover,
+.map-fab:focus-visible {
+  transform: scale(1.08);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
+
+.wizard-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, black 55%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+}
+
+.wizard-modal {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 60px color-mix(in srgb, var(--color-text) 20%, transparent);
+  width: min(560px, 92vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wizard-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.wizard-modal-close {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.wizard-modal-body {
+  padding: var(--space-4);
+  overflow-y: auto;
+}
+
+.wizard-step-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.wizard-step-item {
+  display: flex;
+  align-items: center;
+}
+
+.wizard-step {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  background: var(--color-surface-raised);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.wizard-step--current {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 16%, var(--color-surface));
+  color: var(--color-accent);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--color-accent) 30%, transparent);
+  transform: scale(1.08);
+}
+
+.wizard-step-connector {
+  width: var(--space-6);
+  height: 2px;
+  background: var(--color-border);
+  margin: 0 var(--space-1);
+}
+
+/* ==========================================================================
+   Oversized Hub hit-region (REQ-SB-52 rebuild pass port) — ported from
+   html-prototype/styles.css's own .skillmap-tree-hit ("Section is the Full
+   Area not the Hub Check the website"). A transparent circle, concentric
+   with .hub-node, meaningfully bigger than the Hub's own 5%-width dot so
+   entering a Section doesn't require a pixel-precise click — the
+   prototype's own hit-region additionally reaches out toward its Section's
+   title along a hand-computed ellipse; this port keeps only the
+   *behavior* (a wider click/hover target sharing the Hub's own onActivate)
+   against this app's own concentric-ring layout, not that exact shape.
+   No explicit z-index needed: .hub-node's own z-index:2 already outranks
+   this element's default auto stacking, so a precise click on the visible
+   Hub icon still resolves to the Hub itself. */
+.hub-hit-region {
+  position: absolute;
+  /* Opts back into pointer events despite inheriting `pointer-events:
+     none` from the new .section-node-group wrapper — see that rule's
+     own comment; this real interactive target must keep working. */
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+  width: 16%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  transition: top 0.5s ease, left 0.5s ease;
+}
+
+/* ==========================================================================
+   Ghost-name watermark (SectionDrilldown.tsx) — ported from html-prototype/
+   styles.css's own .skillmap-ghost-name (~lines 2461-2484). The prototype
+   reads as "faded" purely via z-index layering at full text color/opacity
+   (its own comment: "not literally faded... low z-index under the
+   connector lines/nodes"); this port uses a genuinely low-opacity tint
+   instead (color-mix against --color-text) since this drill-down's own
+   line/node density is much lower than the prototype's tree and a
+   full-opacity giant name would read as loud rather than a background
+   watermark.
+   ========================================================================== */
+.section-ghost-name {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: var(--font-serif);
+  font-size: clamp(2rem, 8vw, 5rem);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 8%, transparent);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ==========================================================================
+   Edge chevron section paging (SectionDrilldown.tsx) — ported from
+   html-prototype/styles.css's own .skillmap-edge-nav/.skillmap-chev
+   (~lines 3027-3075), with the chevnudge idle animation additionally
+   pulled from the earlier `.map-edge-nav-btn` pass (~line 1864) that
+   .skillmap-chev itself never carried. Positioned within the page's own
+   content column (not the viewport edges, unlike .map-fab/
+   .map-rotate-controls below), so it never overlaps the Sidebar.
+   ========================================================================== */
+.section-edge-nav {
+  /* `absolute`, not `fixed` (operator, 2026-08-16: "The previous
+     Section Appear on top of the Side bar It should be in the same
+     view not on top of the Side Bar") — `fixed` positions against the
+     whole VIEWPORT, so `left: var(--space-4)` landed 16px from the
+     browser window's own left edge, underneath the app's persistent
+     Sidebar (Sidebar.tsx) rather than inside this page's own content
+     column. `.agents-map-page` (the nearest ancestor with
+     `position: relative`) already excludes the Sidebar's own width, so
+     switching to `absolute` contains this within the same content area
+     every other Map element already respects. */
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  /* Transparent, not `none` (operator: "It has a Border remove the
+     Border and maintain the same Clickable Area") — an invisible
+     1px border keeps the exact same box-model dimensions (padding +
+     border, border-box sizing) as before, so the clickable hit area
+     doesn't shrink by 2px on each axis the way a bare `border: none`
+     would. */
+  border: 1px solid transparent;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  z-index: 15;
+}
+
+.section-edge-nav:hover {
+  color: var(--color-text);
+}
+
+.section-edge-nav--left  { left: var(--space-4); }
+.section-edge-nav--right { right: var(--space-4); }
+
+.section-edge-chev {
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--color-accent);
+  display: inline-block;
+  /* Idle nudge (operator, 2026-08-16: "Find the Animation for the
+     Pervious and Next Section in the Prototype") — ported from
+     html-prototype/styles.css's own `.map-edge-nav-btn`/`chevnudge`
+     (~line 1864), the ONE prototype edge-nav pass that actually
+     carried an animation (the later `.skillmap-chev` rebuild this
+     component was originally ported from, ~line 3041, never had one).
+     Same 1.8s idle back-and-forth nudge, reversed on the left/prev
+     side so both chevrons visually point "outward, away from the
+     current Section" instead of nudging in the same screen direction. */
+  animation: chevnudge 1.8s ease-in-out infinite;
+}
+
+.section-edge-nav--left .section-edge-chev { animation-direction: reverse; }
+
+@keyframes chevnudge {
+  0%, 100% { transform: translateX(0); }
+  50%      { transform: translateX(3px); }
+}
+
+.section-edge-label {
+  writing-mode: vertical-rl;
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.section-edge-nav--left .section-edge-label { transform: rotate(180deg); }
+
+/* ==========================================================================
+   Section-rotation wheel controls (AgentsMapCanvas.tsx) — ported from
+   html-prototype/styles.css's own .skillmap-rotate-controls (~lines
+   3096-3120), "Arrows at the bottom so I can Rotate which section is at
+   the top." Reuses .map-fab's own fixed-bottom-HUD positioning
+   convention, centered instead of right-anchored.
+   ========================================================================== */
+.map-rotate-controls {
+  position: fixed;
+  left: 50%;
+  bottom: var(--space-4);
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  padding: 4px var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--color-text) 8%, transparent);
+}
+
+.map-rotate-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.map-rotate-btn {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.map-rotate-btn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+/* ==========================================================================
+   Agents Map top bar (AgentsMapPage.tsx) — ported from html-prototype/
+   agents-map-skilltree-exploration.html's own `.skillmap-topbar` (fixed,
+   glassy, left/center/right layout). This app has no viewport-fixed
+   chrome elsewhere, so it's `position: sticky` within `.main`'s own
+   scroll container instead of `fixed` over the whole page — negative
+   margins cancel out `.main`'s own padding so it still spans edge-to-
+   edge like the prototype's own bar, with its own inner padding
+   re-applied so the content isn't flush against the viewport edge.
+   ========================================================================== */
+.agents-map-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  height: 56px;
+  margin: calc(-1 * var(--space-6)) calc(-1 * var(--space-6)) var(--space-4);
+  padding: 0 var(--space-6);
+  background: color-mix(in srgb, var(--color-bg) 85%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.agents-map-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+}
+
+.agents-map-topbar-title {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  font-size: 0.9375rem;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.agents-map-topbar-right {
+  flex: 1;
+  text-align: right;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   Search palette (AgentsMapSearchPalette.tsx) — ported from html-prototype/
+   agents-map-skilltree-exploration.js's own openSearch/filterSearch +
+   styles.css's own .skillmap-search-* rules (~lines 2136-2218). Reuses
+   .wizard-modal-overlay (CreateAgentWizardModal.tsx) for the scrim rather
+   than duplicating overlay chrome; only the panel/input/result styling
+   below is new.
+   ========================================================================== */
+.map-search-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px var(--space-3);
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.map-search-trigger:hover {
+  color: var(--color-text);
+  border-color: var(--color-text-muted);
+}
+
+.map-search-kbd {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--color-surface-raised);
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+}
+
+.map-search-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 60px color-mix(in srgb, var(--color-text) 20%, transparent);
+  width: min(520px, 92vw);
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.map-search-input {
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--font-size-lg);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+  outline: none;
+}
+
+.map-search-input::placeholder { color: var(--color-text-muted); }
+
+.map-search-results {
+  overflow-y: auto;
+  padding: var(--space-2);
+}
+
+.map-search-result {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.map-search-result:hover,
+.map-search-result:focus-visible {
+  background: var(--color-surface-raised);
+}
+
+.map-search-result-meta {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.map-search-empty {
+  padding: var(--space-4) var(--space-5);
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+/* ==========================================================================
+   Doctrine / "how to read this map" panel (AgentsMapAboutPanel.tsx) —
+   ported from html-prototype/agents-map-skilltree-exploration.html's own
+   #skillmapAbout + styles.css's own .skillmap-about-* rules (~lines
+   2053-2134). Reuses .wizard-modal/.wizard-modal-header/.wizard-modal-body
+   (CreateAgentWizardModal.tsx) for the shared card chrome; only the
+   doctrine-specific text styling below is new.
+   ========================================================================== */
+.map-about-trigger {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.map-about-trigger:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.map-about-panel h2 {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 1.125rem;
+  letter-spacing: 0.06em;
+}
+
+.map-about-tag {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--space-6);
+}
+
+.map-about-sec {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--color-accent);
+  margin: var(--space-6) 0 var(--space-2);
+}
+
+.map-about-sec:first-of-type { margin-top: 0; }
+
+.map-about-panel p {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.65;
+  margin: 0 0 var(--space-2);
+}
+
+.map-about-panel p b { color: var(--color-text); }

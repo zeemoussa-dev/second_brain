@@ -10,6 +10,23 @@ export interface PendingApproval {
   status: 'pending' | 'approved' | 'declined';
   created_at: string;
   resolved_at: string | null;
+  // Additive (REQ-SB-76-US-01-T08) -- already present on the real API
+  // response (pending_approval_registry.py already stores/returns it),
+  // simply not yet typed. The Company Review decision control reads
+  // payload.thread_paths for its own display; every other proposal kind
+  // ignores this field entirely.
+  payload?: Record<string, unknown> | null;
+}
+
+export interface CompanyReviewDecision {
+  outcome: string;
+  parent_name?: string;
+  parent_kind?: string;
+}
+
+export interface KnownCompanies {
+  customers: string[];
+  partners: string[];
 }
 
 export function fetchPendingApprovals(params?: {
@@ -27,10 +44,20 @@ export function fetchPendingApproval(approvalId: string): Promise<PendingApprova
   return apiFetch<PendingApproval>(`/pending-approvals/${approvalId}`);
 }
 
-export function approvePendingApproval(approvalId: string): Promise<PendingApproval> {
-  return apiFetch<PendingApproval>(`/pending-approvals/${approvalId}/approve`, { method: 'POST' });
+export function approvePendingApproval(
+  approvalId: string,
+  decision?: CompanyReviewDecision,
+): Promise<PendingApproval> {
+  return apiFetch<PendingApproval>(`/pending-approvals/${approvalId}/approve`, {
+    method: 'POST',
+    ...(decision ? { body: JSON.stringify(decision) } : {}),
+  });
 }
 
 export function declinePendingApproval(approvalId: string): Promise<PendingApproval> {
   return apiFetch<PendingApproval>(`/pending-approvals/${approvalId}/decline`, { method: 'POST' });
+}
+
+export function fetchKnownCompanies(): Promise<KnownCompanies> {
+  return apiFetch<KnownCompanies>('/pending-approvals/known-companies');
 }

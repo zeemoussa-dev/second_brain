@@ -68,3 +68,12 @@ export interface NoteDetail extends NoteSummary {
 export function fetchNoteDetail(stem: string): Promise<NoteDetail> {
   return apiFetch<NoteDetail>(`/vault-search/notes/${encodeURIComponent(stem)}`);
 }
+
+export interface ScopeSuggestions {
+  tags: TagCount[];
+  folders: string[];
+}
+
+export function fetchScopeSuggestions(): Promise<ScopeSuggestions> {
+  return apiFetch<ScopeSuggestions>('/vault-search/scope-suggestions');
+}

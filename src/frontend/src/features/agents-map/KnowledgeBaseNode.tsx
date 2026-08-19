@@ -1,88 +1,90 @@
-// The central Knowledge Base element — a dense neuron-mesh "brain" SVG
-// ported verbatim from html-prototype/agents-map.html (23 neurons: 16 outer
-// ring + 6 mid ring + 1 center, ~42 crossing synapse lines, 2 traveling
-// pulse dots). Static approved-design SVG, not derived from polarLayout.
+import { useState } from 'react';
+
+// The central Knowledge Base element — ported from the approved
+// html-prototype/agents-map-skilltree-exploration.html redesign (operator,
+// 2026-08-14/15): a dense, seeded-random dot constellation (not the
+// previous hand-authored 23-neuron/42-synapse mesh), fully transparent at
+// rest, no border/background/label — the dot field itself is the only
+// visual. Colors cycle through this app's own real agent-type tokens plus
+// the shared accent, matching the constellation's own real data grounding.
+// 220 * 1.5 (operator, 2026-08-15: "increase the number of points by 50%").
+const DOT_COUNT = 330;
+const DOT_COLOR_VARS = [
+  'var(--agent-color-worker)',
+  'var(--agent-color-producer)',
+  'var(--agent-color-expert)',
+  'var(--color-accent)',
+];
+
+interface ConstellationDot {
+  cx: number;
+  cy: number;
+  r: number;
+  color: string;
+  opacity: number;
+}
+
+// Small seeded LCG (same recipe as the prototype's own renderKbConstellation)
+// so the scatter is deterministic across reloads/renders, not different
+// every time — module-level, computed once, not per-render.
+function generateConstellation(): ConstellationDot[] {
+  let seed = 1337;
+  const rnd = () => {
+    seed = (seed * 9301 + 49297) % 233280;
+    return seed / 233280;
+  };
+  const dots: ConstellationDot[] = [];
+  for (let i = 0; i < DOT_COUNT; i += 1) {
+    const angle = rnd() * Math.PI * 2;
+    // Radius biased toward center (rnd()^1.7) — most dots land close in,
+    // progressively fewer reach the outer edge.
+    const radius = 3 + 41 * Math.pow(rnd(), 1.7);
+    dots.push({
+      cx: 50 + radius * Math.cos(angle),
+      cy: 50 + radius * Math.sin(angle),
+      r: 0.35 + rnd() * 1.0,
+      color: DOT_COLOR_VARS[i % DOT_COLOR_VARS.length],
+      opacity: 0.3 + rnd() * 0.4,
+    });
+  }
+  return dots;
+}
+
+const CONSTELLATION = generateConstellation();
 
 export function KnowledgeBaseNode() {
+  const [isSpinning, setIsSpinning] = useState(false);
+
+  // Always rotating now, not just on hover (operator, 2026-08-15: "rotate
+  // at a very slow speed then the current speed when hover maintain") —
+  // a slow ambient idle spin at rest, speeding up to the existing hover
+  // rate on `.is-spinning`. Both rules share the same `animation-name`
+  // (agents-map.css's own `.kb-brain-svg`/`.kb-brain-svg.is-spinning`,
+  // only `animation-duration` differs), so the CSS animation itself
+  // keeps rotating continuously across the hover/unhover toggle — no
+  // manual computed-transform freezing needed anymore (that was only
+  // ever working around the OLD fully-static rest state).
   return (
-    <div className="kb-node">
-      <svg className="kb-brain-svg" viewBox="0 0 100 100">
-        <line x1="50" y1="10" x2="65.3" y2="13" />
-        <line x1="65.3" y1="13" x2="78.3" y2="21.7" />
-        <line x1="78.3" y1="21.7" x2="87" y2="34.7" />
-        <line x1="87" y1="34.7" x2="90" y2="50" />
-        <line x1="90" y1="50" x2="87" y2="65.3" />
-        <line x1="87" y1="65.3" x2="78.3" y2="78.3" />
-        <line x1="78.3" y1="78.3" x2="65.3" y2="87" />
-        <line x1="65.3" y1="87" x2="50" y2="90" />
-        <line x1="50" y1="90" x2="34.7" y2="87" />
-        <line x1="34.7" y1="87" x2="21.7" y2="78.3" />
-        <line x1="21.7" y1="78.3" x2="13" y2="65.3" />
-        <line x1="13" y1="65.3" x2="10" y2="50" />
-        <line x1="10" y1="50" x2="13" y2="34.7" />
-        <line x1="13" y1="34.7" x2="21.7" y2="21.7" />
-        <line x1="21.7" y1="21.7" x2="34.7" y2="13" />
-        <line x1="34.7" y1="13" x2="50" y2="10" />
-        <line x1="61" y1="30.95" x2="72" y2="50" />
-        <line x1="72" y1="50" x2="61" y2="69.05" />
-        <line x1="61" y1="69.05" x2="39" y2="69.05" />
-        <line x1="39" y1="69.05" x2="28" y2="50" />
-        <line x1="28" y1="50" x2="39" y2="30.95" />
-        <line x1="39" y1="30.95" x2="61" y2="30.95" />
-        <line x1="61" y1="30.95" x2="50" y2="50" />
-        <line x1="72" y1="50" x2="50" y2="50" />
-        <line x1="61" y1="69.05" x2="50" y2="50" />
-        <line x1="39" y1="69.05" x2="50" y2="50" />
-        <line x1="28" y1="50" x2="50" y2="50" />
-        <line x1="39" y1="30.95" x2="50" y2="50" />
-        <line x1="61" y1="30.95" x2="65.3" y2="13" />
-        <line x1="61" y1="30.95" x2="78.3" y2="21.7" />
-        <line x1="72" y1="50" x2="87" y2="34.7" />
-        <line x1="72" y1="50" x2="87" y2="65.3" />
-        <line x1="61" y1="69.05" x2="78.3" y2="78.3" />
-        <line x1="61" y1="69.05" x2="65.3" y2="87" />
-        <line x1="39" y1="69.05" x2="34.7" y2="87" />
-        <line x1="39" y1="69.05" x2="21.7" y2="78.3" />
-        <line x1="28" y1="50" x2="13" y2="65.3" />
-        <line x1="28" y1="50" x2="13" y2="34.7" />
-        <line x1="39" y1="30.95" x2="21.7" y2="21.7" />
-        <line x1="39" y1="30.95" x2="34.7" y2="13" />
-        <line x1="65.3" y1="13" x2="34.7" y2="87" />
-        <line x1="87" y1="65.3" x2="13" y2="34.7" />
-        <circle className="kb-neuron" cx="50" cy="10" r="3.4" fillOpacity="0.9" style={{ animationDelay: '0s' }} />
-        <circle className="kb-neuron" cx="65.3" cy="13" r="2.8" fillOpacity="0.7" style={{ animationDelay: '0.1s' }} />
-        <circle className="kb-neuron" cx="78.3" cy="21.7" r="3.1" fillOpacity="0.85" style={{ animationDelay: '0.2s' }} />
-        <circle className="kb-neuron" cx="87" cy="34.7" r="2.6" fillOpacity="0.6" style={{ animationDelay: '0.3s' }} />
-        <circle className="kb-neuron" cx="90" cy="50" r="3.4" fillOpacity="0.9" style={{ animationDelay: '0.4s' }} />
-        <circle className="kb-neuron" cx="87" cy="65.3" r="2.8" fillOpacity="0.7" style={{ animationDelay: '0.5s' }} />
-        <circle className="kb-neuron" cx="78.3" cy="78.3" r="3.1" fillOpacity="0.85" style={{ animationDelay: '0.6s' }} />
-        <circle className="kb-neuron" cx="65.3" cy="87" r="2.6" fillOpacity="0.6" style={{ animationDelay: '0.7s' }} />
-        <circle className="kb-neuron" cx="50" cy="90" r="3.4" fillOpacity="0.9" style={{ animationDelay: '0.8s' }} />
-        <circle className="kb-neuron" cx="34.7" cy="87" r="2.8" fillOpacity="0.7" style={{ animationDelay: '0.9s' }} />
-        <circle className="kb-neuron" cx="21.7" cy="78.3" r="3.1" fillOpacity="0.85" style={{ animationDelay: '1.0s' }} />
-        <circle className="kb-neuron" cx="13" cy="65.3" r="2.6" fillOpacity="0.6" style={{ animationDelay: '1.1s' }} />
-        <circle className="kb-neuron" cx="10" cy="50" r="3.4" fillOpacity="0.9" style={{ animationDelay: '1.2s' }} />
-        <circle className="kb-neuron" cx="13" cy="34.7" r="2.8" fillOpacity="0.7" style={{ animationDelay: '1.3s' }} />
-        <circle className="kb-neuron" cx="21.7" cy="21.7" r="3.1" fillOpacity="0.85" style={{ animationDelay: '1.4s' }} />
-        <circle className="kb-neuron" cx="34.7" cy="13" r="2.6" fillOpacity="0.6" style={{ animationDelay: '1.5s' }} />
-        <circle className="kb-neuron" cx="61" cy="30.95" r="2.4" fillOpacity="0.65" style={{ animationDelay: '1.6s' }} />
-        <circle className="kb-neuron" cx="72" cy="50" r="2.2" fillOpacity="0.55" style={{ animationDelay: '1.75s' }} />
-        <circle className="kb-neuron" cx="61" cy="69.05" r="2.4" fillOpacity="0.65" style={{ animationDelay: '1.9s' }} />
-        <circle className="kb-neuron" cx="39" cy="69.05" r="2.2" fillOpacity="0.55" style={{ animationDelay: '2.05s' }} />
-        <circle className="kb-neuron" cx="28" cy="50" r="2.4" fillOpacity="0.65" style={{ animationDelay: '2.2s' }} />
-        <circle className="kb-neuron" cx="39" cy="30.95" r="2.2" fillOpacity="0.55" style={{ animationDelay: '2.35s' }} />
-        <circle className="kb-neuron" cx="50" cy="50" r="5" fillOpacity="1" style={{ animationDelay: '0s' }} />
-        <circle className="kb-pulse-dot" r="1.8">
-          <animateMotion dur="2.4s" repeatCount="indefinite" path="M65.3,13 L34.7,87" />
-        </circle>
-        <circle className="kb-pulse-dot" r="1.8">
-          <animateMotion dur="2.8s" begin="0.7s" repeatCount="indefinite" path="M87,65.3 L13,34.7" />
-        </circle>
+    <div
+      className="kb-node"
+      onMouseEnter={() => setIsSpinning(true)}
+      onMouseLeave={() => setIsSpinning(false)}
+    >
+      <svg
+        className={`kb-brain-svg${isSpinning ? ' is-spinning' : ''}`}
+        viewBox="0 0 100 100"
+      >
+        {CONSTELLATION.map((dot, index) => (
+          <circle
+            key={index}
+            cx={dot.cx.toFixed(1)}
+            cy={dot.cy.toFixed(1)}
+            r={dot.r.toFixed(2)}
+            fill={dot.color}
+            opacity={dot.opacity.toFixed(2)}
+          />
+        ))}
       </svg>
-      <span className="kb-node-label">
-        Knowledge Base
-        <span className="kb-node-sub">Vault indexed</span>
-      </span>
     </div>
   );
 }

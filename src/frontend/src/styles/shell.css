@@ -57,6 +57,17 @@
   margin-bottom: var(--space-4);
 }
 
+/* Marcellus target element (REQ-SB-52-US-01-T01, Scenario 4) — the "Second
+   Brain" wordmark, matching html-prototype/styles.css's own
+   .theme-skilltree .sidebar-header h2 precedent. Coder judgement call
+   (story Note #1 leaves the specific element open); recorded in this
+   task's own Implementation Log. */
+.sidebar-header h2 {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
 .burger-btn {
   flex-shrink: 0;
   width: 32px;

@@ -16,6 +16,7 @@ export interface MyDayEmailItem {
   sender: string;
   customer: string | null;
   received: string;
+  stem: string;
 }
 
 export function fetchMyDayEmails(day?: string): Promise<MyDayEmailItem[]> {
@@ -26,6 +27,7 @@ export interface MyDayCalendarItem {
   subject: string;
   start: string;
   customer: string | null;
+  stem: string;
 }
 
 export function fetchMyDayCalendar(day?: string): Promise<MyDayCalendarItem[]> {

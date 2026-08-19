@@ -23,15 +23,15 @@ export function MyDayEmailsPage() {
       <div className="card">
         {items && items.length > 0 ? (
           <div className="item-list">
-            {items.map((item, index) => (
-              <div className="item-row" key={index}>
+            {items.map((item) => (
+              <Link className="item-row" to={`/inbox-cockpit/${item.stem}`} key={item.stem}>
                 <div className="item-row-main">
                   <span className="item-row-title">{item.subject}</span>
                   <span className="item-row-meta">
                     {item.received} &middot; {item.customer ?? 'Unclassified'} &middot; from {item.sender}
                   </span>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         ) : (

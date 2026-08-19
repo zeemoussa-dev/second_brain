@@ -7,6 +7,8 @@ import './styles/agents-map.css'
 import './styles/my-day.css'
 import './styles/agent-panel.css'
 import './styles/vault-browser.css'
+import './styles/vault-graph.css'
+import './styles/cockpit.css'
 import App from './App.tsx'
 
 createRoot(document.getElementById('root')!).render(

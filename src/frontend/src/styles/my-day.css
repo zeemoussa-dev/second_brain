@@ -73,6 +73,11 @@
   padding: var(--space-3);
   background: var(--color-surface-raised);
   border-radius: var(--radius-sm);
+  /* .item-row is now also used as a react-router Link (REQ-SB-43-US-01-T09,
+     clickable Calendar rows) — an anchor needs an explicit reset so it
+     renders identically to the plain div it replaces. */
+  text-decoration: none;
+  color: inherit;
 }
 
 .item-row-main { display: flex; flex-direction: column; gap: 2px; }

@@ -4,6 +4,15 @@ import {
   type SystemHealthResponse,
 } from '../features/system-health/client';
 
+function formatDuration(seconds: number | null): string {
+  if (seconds === null) return 'an unknown duration';
+  const totalSeconds = Math.round(seconds);
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainingSeconds = totalSeconds % 60;
+  return `${minutes}m ${remainingSeconds}s`;
+}
+
 export function SystemHealthPage() {
   const [health, setHealth] = useState<SystemHealthResponse | null>(null);
 
@@ -145,27 +154,51 @@ export function SystemHealthPage() {
         </div>
       </div>
 
-      <h2 style={{ marginTop: 'var(--space-6)' }}>Last capture run</h2>
+      <h2 style={{ marginTop: 'var(--space-6)' }}>Scheduling</h2>
+      <p
+        className="text-muted"
+        style={{ fontSize: 'var(--font-size-sm)', marginTop: 'calc(-1 * var(--space-2))' }}
+      >
+        The three capture-style jobs that can otherwise freeze the app while
+        running — whether each is currently running, how long its current or
+        most recent run took, and its last real outcome.
+      </p>
       <div className="card">
-        {health.last_capture_run ? (
-          <div className="kv-list">
-            <div className="kv-row">
-              <span className="kv-key">Last completed</span>
-              <span className="mono">{health.last_capture_run.finished_at}</span>
+        <div className="item-list">
+          {health.scheduling.map((job) => (
+            <div className="item-row" key={`${job.agent_id}::${job.capability_id}`}>
+              <div className="item-row-main">
+                <span className="item-row-title">
+                  <span className="mono">{job.agent_id}</span>{' '}
+                  {!job.has_run ? (
+                    <span className="badge">No runs yet</span>
+                  ) : job.running ? (
+                    <span className="badge badge-warning">Running</span>
+                  ) : job.last_outcome === 'success' ? (
+                    <span className="badge badge-success">Success</span>
+                  ) : job.last_outcome === 'error' ? (
+                    <span className="badge badge-danger">Failed</span>
+                  ) : job.last_outcome === 'skipped' ? (
+                    <span className="badge badge-warning">Skipped</span>
+                  ) : (
+                    <span className="badge">Unknown</span>
+                  )}
+                </span>
+                <span className="item-row-meta">
+                  {!job.has_run
+                    ? 'Not dispatched yet (manually or on a schedule) since run-state tracking was introduced.'
+                    : job.running
+                      ? `Running for ${formatDuration(job.elapsed_seconds)} so far.`
+                      : job.last_outcome === 'error'
+                        ? `Last run failed after ${formatDuration(job.last_duration_seconds)}: ${job.last_error_message}`
+                        : job.last_outcome === 'skipped'
+                          ? 'Last run was skipped — another run was already in progress.'
+                          : `Last run took ${formatDuration(job.last_duration_seconds)} — completed successfully.`}
+                </span>
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="empty-state">
-            <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)' }}>
-              No capture run has completed yet
-            </p>
-            <p style={{ margin: 'var(--space-1) 0 0' }}>
-              <span className="mono">last_capture_run.json</span> does not
-              exist yet — shown honestly, not fabricated as a timestamp or a
-              misleadingly healthy-looking default.
-            </p>
-          </div>
-        )}
+          ))}
+        </div>
       </div>
     </>
   );

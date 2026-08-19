@@ -1,0 +1,41 @@
+/* Shared Meeting/Inbox Cockpit 3-panel workspace (REQ-SB-43-US-01,
+   REQ-SB-44-US-01, ADR-036) — ported verbatim from the approved
+   html-prototype/styles.css "3-panel Cockpit workspace" section. Every
+   other class this component uses (.card, .chat-thread, .chat-message,
+   .item-list/.item-row, .tag-chip, .kv-list, .badge, .btn, .action-list,
+   .empty-state, .chat-proposal) already exists in this project's own
+   frontend stylesheets. */
+
+.cockpit-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr 300px;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .cockpit-layout { grid-template-columns: 1fr; }
+}
+
+.cockpit-layout .chat-thread { max-height: 380px; }
+
+.tag-chip--static {
+  display: inline-block;
+  border-radius: 999px;
+  font-size: var(--font-size-sm);
+  padding: 2px var(--space-3);
+  border: 1px dashed var(--color-border);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: default;
+}
+
+.chat-message-author {
+  display: block;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 2px;
+  color: var(--author-color, var(--color-text-muted));
+}

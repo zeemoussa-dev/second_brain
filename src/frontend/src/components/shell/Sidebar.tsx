@@ -29,6 +29,13 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         <span className="nav-label">Agents Map</span>
       </NavLink>
       <NavLink
+        to="/crawlers"
+        className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
+      >
+        <span className="nav-icon">&#128375;</span>
+        <span className="nav-label">Crawlers</span>
+      </NavLink>
+      <NavLink
         to="/my-day"
         className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
       >
@@ -62,6 +69,13 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       >
         <span className="nav-icon">&#128269;</span>
         <span className="nav-label">Browse &amp; Search</span>
+      </NavLink>
+      <NavLink
+        to="/vault"
+        className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
+      >
+        <span className="nav-icon">&#128279;</span>
+        <span className="nav-label">The Vault</span>
       </NavLink>
     </nav>
   );

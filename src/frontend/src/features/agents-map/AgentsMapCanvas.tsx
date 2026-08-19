@@ -1,191 +1,529 @@
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react';
 import type { AgentSection, MockAgent } from './mockAgents';
-import { BOUNDARY_RADIUS, HUB_RADIUS, RING_RADIUS, polarToCartesian } from './polarLayout';
+import type { ClusterMarker, DependencyEdge } from './layoutAgents';
+import {
+  HUB_RADIUS,
+  RING_RADIUS,
+  SECTION_TITLE_RADIUS,
+  describeAnnularSector,
+  pointTowards,
+  polarToCartesian,
+} from './polarLayout';
 import { KnowledgeBaseNode } from './KnowledgeBaseNode';
 import { SectionHub } from './SectionHub';
 import { AgentNode } from './AgentNode';
 import { SectionDrilldown } from './SectionDrilldown';
+import { ClusterDrilldown } from './ClusterDrilldown';
 
-const SECTION_TITLE_RADIUS = 66;
-const SECTION_BOUNDARY_INNER_RADIUS = 18;
+// Spoke-line endpoints pulled to each circle's own EDGE, not center
+// (operator, 2026-08-14/15, porting the prototype's own real technique).
+// KB_EDGE_RADIUS = the KB node's own real width footprint / 2 (25.5% —
+// 34% * .75, operator 2026-08-15 "Make the Vault Visual smaler to .75"
+// — was still 17, the OLD 34%-width value, until the operator's next
+// pass flagged the connector lines as no longer reaching the shrunk
+// KB: "the Connections to the Hub need to reach the Vault That is now
+// Broken when we did the Modification"). HUB_VISUAL_RADIUS = the Hub
+// node's own real width footprint / 2 (5% — was also still the OLD 6%
+// -width value of 3 from before that Hub was sized down; corrected
+// here too, same class of bug, same fix).
+const KB_EDGE_RADIUS = 12.75;
+const HUB_VISUAL_RADIUS = 2.5;
 
 interface AgentsMapCanvasProps {
   sections: AgentSection[];
+  // Overview's own compact-dot set (REQ-SB-38-US-01: already excludes any
+  // agent a cluster marker now represents — T01's own `mapAgents`
+  // contract).
   agents: MockAgent[];
+  // Every agent, unreduced — fed to SectionDrilldown/ClusterDrilldown so
+  // neither drill-down ever loses an agent T01's clustering hid from the
+  // overview (Scenario 6/AC-06's own "must not narrow the full drill-down"
+  // constraint; ClusterDrilldown/T03 filters this down to one cluster's
+  // own agentIds).
+  fullAgents: MockAgent[];
+  clusters: ClusterMarker[];
+  // Real depends_on pipeline connections (layoutAgents.ts's own
+  // buildDependencyEdges) — replaces the old all-pairs agent<->agent
+  // mesh (operator, 2026-08-15: "there is too many Dependencies which
+  // will not be true").
+  dependencyEdges: DependencyEdge[];
+  // Currently-open AgentDetailPanel's own agent id (AgentsMapPage.tsx's
+  // selectedAgentId), null when none is open. Passed through to
+  // SectionDrilldown so it can apply the click-to-focus
+  // center+zoom+ring treatment (operator, 2026-08-16: "when the Panel
+  // Open The Agent will be Zoomed in to 3x...") — Section View only,
+  // not the overview.
+  selectedAgentId: string | null;
   onSelectAgent: (agentId: string) => void;
 }
 
-export function AgentsMapCanvas({ sections, agents, onSelectAgent }: AgentsMapCanvasProps) {
+// Widened click-to-zoom target (REQ-SB-38-US-01) — BUG-002 Option D's
+// original zoomTargetSectionId/activeSectionId pair only ever addressed a
+// Section. A cluster marker's click needs a second, distinct identity so
+// its own click target can never collide with a Section Hub's (cluster ids
+// are always `${sectionId}-${type}-cluster`, never a bare sectionId).
+type ZoomTarget = { kind: 'section'; id: string } | { kind: 'cluster'; id: string };
+
+export function AgentsMapCanvas({ sections, agents, fullAgents, clusters, dependencyEdges, selectedAgentId, onSelectAgent }: AgentsMapCanvasProps) {
   const hasAgents = sections.length > 0 && agents.length > 0;
 
   // Drill-down / semantic-zoom state (BUG-002 fix, Option D) — both local
-  // to this component (architect's Notes): `zoomTargetSectionId` drives
-  // the overview's own .explore-zoom-overview/.zooming-out CSS
-  // transition (set the instant a Hub is clicked, cleared only on Back);
-  // `activeSectionId` mounts that Section's SectionDrilldown, set only
-  // once the CSS transition has actually finished (transitionend), so
-  // the drill-down never appears mid-zoom.
-  const [zoomTargetSectionId, setZoomTargetSectionId] = useState<string | null>(null);
-  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
+  // to this component (architect's Notes): `zoomTarget` drives the
+  // overview's own .explore-zoom-overview/.zooming-out CSS transition (set
+  // the instant a Hub or cluster marker is clicked, cleared only on Back);
+  // `activeTarget` mounts that target's own drill-down, set only once the
+  // CSS transition has actually finished (transitionend), so the
+  // drill-down never appears mid-zoom.
+  const [zoomTarget, setZoomTarget] = useState<ZoomTarget | null>(null);
+  const [activeTarget, setActiveTarget] = useState<ZoomTarget | null>(null);
   const overviewCanvasRef = useRef<HTMLDivElement | null>(null);
+
+  // Section-rotation wheel (ported from html-prototype's own #skillmapRotor
+  // — "Arrows at the bottom so I can Rotate which section is at the top").
+  // A base angle offset added to every Section's hubAngleDeg (and, so
+  // agents/lines/titles stay attached to their own Hub, every derived angle
+  // below) — local-only, deliberately not threaded up to AgentsMapPage:
+  // nothing outside this overview reads it, and it never applies inside a
+  // Section's own drill-down (that view has no competing rings/KB to turn
+  // against, matching the prototype's own "Section Rotation is a
+  // Default-map-only concept" rule).
+  const [rotationDeg, setRotationDeg] = useState(0);
+
+  // Hover-dim (ported from html-prototype's own hover-dim/title-glow pass
+  // — "when I hover a Section Other Sections go Dimmed the title of that
+  // Section goes to a Yellow Color"). One Section id at a time; cleared on
+  // mouseleave from whichever Hub/hit-region/title triggered it.
+  const [hoveredSectionId, setHoveredSectionId] = useState<string | null>(null);
 
   useEffect(() => {
     const canvasEl = overviewCanvasRef.current;
-    if (!canvasEl || !zoomTargetSectionId || activeSectionId === zoomTargetSectionId) return;
+    if (!canvasEl || !zoomTarget || activeTarget?.id === zoomTarget.id) return;
 
     const handleTransitionEnd = (event: TransitionEvent) => {
       if (event.target !== canvasEl) return;
-      setActiveSectionId(zoomTargetSectionId);
+      setActiveTarget(zoomTarget);
     };
     canvasEl.addEventListener('transitionend', handleTransitionEnd);
     return () => canvasEl.removeEventListener('transitionend', handleTransitionEnd);
-  }, [zoomTargetSectionId, activeSectionId]);
+  }, [zoomTarget, activeTarget]);
 
   const handleActivateSection = (sectionId: string) => {
-    setZoomTargetSectionId(sectionId);
+    setZoomTarget({ kind: 'section', id: sectionId });
+  };
+
+  const handleActivateCluster = (clusterId: string) => {
+    setZoomTarget({ kind: 'cluster', id: clusterId });
   };
 
   const handleBack = () => {
-    setActiveSectionId(null);
-    setZoomTargetSectionId(null);
+    setActiveTarget(null);
+    setZoomTarget(null);
   };
 
-  const activeSection = activeSectionId
-    ? sections.find((section) => section.id === activeSectionId) ?? null
+  // Edge chevron paging (ported from html-prototype's own #skillmapChevL/R)
+  // — pages directly between two Section drill-downs without an
+  // intermediate return to the overview animation. The overview is already
+  // fully scaled-out/opacity-0 behind the active drill-down (zoomTarget is
+  // already set), so this just swaps BOTH zoomTarget and activeTarget to
+  // the new Section in one go instead of routing back through the
+  // transitionend-gated flow handleActivateSection/the effect above use for
+  // a fresh overview->drilldown entry.
+  const handleNavigateSection = (sectionId: string) => {
+    const target: ZoomTarget = { kind: 'section', id: sectionId };
+    setZoomTarget(target);
+    setActiveTarget(target);
+  };
+
+  const activeSection = activeTarget?.kind === 'section'
+    ? sections.find((section) => section.id === activeTarget.id) ?? null
+    : null;
+  const activeCluster = activeTarget?.kind === 'cluster'
+    ? clusters.find((cluster) => cluster.id === activeTarget.id) ?? null
+    : null;
+  const activeClusterSection = activeCluster
+    ? sections.find((section) => section.id === activeCluster.sectionId) ?? null
     : null;
 
   return (
     <>
-      <div className="agents-map-stage">
+      {/* `is-inactive` once a drill-down is fully mounted (operator,
+          2026-08-15: "the Section view is Appearing When I Scroll only")
+          — this stage is a flex child of AgentsMapPage.tsx's own
+          `.agents-map-page` column; `opacity: 0` (from `.zooming-out`
+          below) hides it visually once a Section/cluster is activated,
+          but does NOT remove it from FLEX LAYOUT — it kept reserving a
+          full screen's worth of `flex: 1` space in the column
+          simultaneously with the drill-down's own `.explore-drilldown`
+          block rendered right after it, pushing the now-visible
+          drill-down below the fold, needing a scroll to reach. `
+          is-inactive` (agents-map.css) takes it out of flow entirely via
+          `position: absolute` once `activeTarget` is set — which only
+          happens AFTER the zoom-in transition has already finished (the
+          `transitionend` effect above), so the transition itself still
+          plays out normally in-flow beforehand. */}
+      <div className={`agents-map-stage${activeTarget ? ' is-inactive' : ''}`}>
         <div
           ref={overviewCanvasRef}
-          className={`agents-map-canvas explore-zoom-overview${zoomTargetSectionId ? ' zooming-out' : ''}`}
+          className={`agents-map-canvas explore-zoom-overview${zoomTarget ? ' zooming-out' : ''}`}
         >
+          {/* No dashed background grid at all (operator, 2026-08-15,
+              second pass: "The map still Have Dashed Separator and a Text
+              for Worker, Producer and Expert in the background Shouldn't
+              be there") — the earlier pass removed radar-spoke/ring-
+              circle/boundary-circle but kept section-boundary (the dashed
+              per-Section divider lines) and the WORKER/EXPERT/PRODUCER
+              ring-label text, reasoning they were "functional, not
+              decorative." Operator says otherwise — both removed too, so
+              the background is now purely the KB/Hub/Agent nodes and
+              their real connector lines, nothing else. */}
           <svg className="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
-            <line className="radar-spoke" x1="50" y1="50" x2="108" y2="50" />
-            <line className="radar-spoke" x1="50" y1="50" x2="100.23" y2="79" />
-            <line className="radar-spoke" x1="50" y1="50" x2="79" y2="100.23" />
-            <line className="radar-spoke" x1="50" y1="50" x2="50" y2="108" />
-            <line className="radar-spoke" x1="50" y1="50" x2="21" y2="100.23" />
-            <line className="radar-spoke" x1="50" y1="50" x2="-0.23" y2="79" />
-            <line className="radar-spoke" x1="50" y1="50" x2="-8" y2="50" />
-            <line className="radar-spoke" x1="50" y1="50" x2="-0.23" y2="21" />
-            <line className="radar-spoke" x1="50" y1="50" x2="21" y2="-0.23" />
-            <line className="radar-spoke" x1="50" y1="50" x2="50" y2="-8" />
-            <line className="radar-spoke" x1="50" y1="50" x2="79" y2="-0.23" />
-            <line className="radar-spoke" x1="50" y1="50" x2="100.23" y2="21" />
-            <circle className="ring-circle" cx="50" cy="50" r={RING_RADIUS.producer} />
-            <circle className="ring-circle" cx="50" cy="50" r={RING_RADIUS.expert} />
-            <circle className="ring-circle" cx="50" cy="50" r={RING_RADIUS.worker} />
-            <circle className="boundary-circle" cx="50" cy="50" r={BOUNDARY_RADIUS} />
-
             {hasAgents && (
               <>
                 {sections.map((section) => {
+                  // Invisible hover target spanning the WHOLE wedge between
+                  // this Section's own Hub and its title (operator,
+                  // 2026-08-15: "the Section Hover is the whole Area
+                  // between the Hub and the Title") — the Hub's own small
+                  // hit-region and the title text were each independently
+                  // hoverable already, but the empty space between them
+                  // (past the Hub, short of the title) was dead — hovering
+                  // there did nothing. `fill="transparent"` (not `none`) +
+                  // `pointerEvents: 'all'` makes an otherwise-invisible
+                  // shape genuinely hoverable across every browser, not
+                  // just ones that treat a transparent fill as painted by
+                  // default. Sits UNDER every HTML node (hub-node/
+                  // agent-node/title all carry their own explicit z-index,
+                  // this SVG doesn't) — hovering directly on one of those
+                  // still resolves to that element's own handler first,
+                  // this wedge only ever catches the gaps around them.
                   const sortedAngles = [...sections.map((s) => s.hubAngleDeg)].sort((a, b) => a - b);
                   const currentIndex = sortedAngles.indexOf(section.hubAngleDeg);
+                  const prevAngle = currentIndex > 0
+                    ? sortedAngles[currentIndex - 1]
+                    : sortedAngles[sortedAngles.length - 1] - 360;
                   const nextAngle = currentIndex + 1 < sortedAngles.length
                     ? sortedAngles[currentIndex + 1]
                     : sortedAngles[0] + 360;
-                  const midAngle = (sortedAngles[currentIndex] + nextAngle) / 2;
-                  const inner = polarToCartesian(SECTION_BOUNDARY_INNER_RADIUS, midAngle);
-                  const outer = polarToCartesian(BOUNDARY_RADIUS, midAngle);
+                  const wedgeStartAngle = (prevAngle + section.hubAngleDeg) / 2 + rotationDeg;
+                  const wedgeEndAngle = (section.hubAngleDeg + nextAngle) / 2 + rotationDeg;
                   return (
-                    <line
-                      key={`${section.id}-boundary`}
-                      className="section-boundary"
-                      x1={inner.x}
-                      y1={inner.y}
-                      x2={outer.x}
-                      y2={outer.y}
+                    <path
+                      key={`${section.id}-hover-wedge`}
+                      d={describeAnnularSector(HUB_RADIUS, SECTION_TITLE_RADIUS, wedgeStartAngle, wedgeEndAngle)}
+                      fill="transparent"
+                      style={{ pointerEvents: 'all', cursor: 'pointer' }}
+                      onMouseEnter={() => setHoveredSectionId(section.id)}
+                      onMouseLeave={() => setHoveredSectionId(null)}
+                      // Operator, 2026-08-16: "The Clicking Area of the
+                      // Section is only the hub not the whole Section as
+                      // Hover" — this wedge already covers the Section's
+                      // whole hover-zoom footprint (the gaps around the
+                      // Hub/Agents/title); it just never had a click
+                      // handler, so navigating in only worked if you
+                      // landed exactly on the Hub's own small hit-region.
+                      onClick={() => handleActivateSection(section.id)}
                     />
                   );
                 })}
 
-                {sections.map((section) => {
-                  const hubPoint = polarToCartesian(HUB_RADIUS, section.hubAngleDeg);
+                {sections.map((section, index) => {
+                  // Endpoints pulled to each circle's own EDGE, not center
+                  // (operator, 2026-08-14/15, porting the prototype's own
+                  // real technique) — KB_EDGE_RADIUS = 17 (KB's real 34%
+                  // width / 2), HUB_EDGE_RADIUS = HUB_RADIUS(21) minus the
+                  // Hub node's own real 3-unit visual radius (6% width / 2).
+                  const kbEdge = polarToCartesian(KB_EDGE_RADIUS, section.hubAngleDeg + rotationDeg);
+                  const hubEdge = polarToCartesian(HUB_RADIUS - HUB_VISUAL_RADIUS, section.hubAngleDeg + rotationDeg);
+                  const path = `M ${kbEdge.x.toFixed(2)} ${kbEdge.y.toFixed(2)} L ${hubEdge.x.toFixed(2)} ${hubEdge.y.toFixed(2)}`;
+                  // Desynced per-Section timing (operator: "the circles
+                  // need to be moving in random times not same over on all
+                  // lines") — deterministic from index, not truly random,
+                  // so it's stable across re-renders.
+                  const durIn = (2.2 + (index % 4) * 0.2).toFixed(1);
+                  const durOut = (2.6 + ((index + 2) % 4) * 0.2).toFixed(1);
+                  const beginIn = ((index % 3) * 0.3).toFixed(1);
+                  const beginOut = (0.5 + (index % 5) * 0.15).toFixed(2);
+                  const spokeDimmed = hoveredSectionId !== null && hoveredSectionId !== section.id;
                   return (
-                    <line
-                      key={`${section.id}-spoke`}
-                      className="spoke-line"
-                      x1="50"
-                      y1="50"
-                      x2={hubPoint.x}
-                      y2={hubPoint.y}
-                      stroke="var(--color-accent)"
-                    />
+                    <g key={`${section.id}-spoke`} className={spokeDimmed ? 'is-dimmed' : undefined}>
+                      <line
+                        className="spoke-line"
+                        x1={kbEdge.x}
+                        y1={kbEdge.y}
+                        x2={hubEdge.x}
+                        y2={hubEdge.y}
+                        stroke="var(--color-accent)"
+                      />
+                      <circle className="spoke-pulse-dot" r="0.3">
+                        <animateMotion dur={`${durIn}s`} begin={`${beginIn}s`} repeatCount="indefinite" path={path} />
+                      </circle>
+                      <circle className="spoke-pulse-dot" r="0.3">
+                        <animateMotion
+                          dur={`${durOut}s`}
+                          begin={`${beginOut}s`}
+                          repeatCount="indefinite"
+                          path={`M ${hubEdge.x.toFixed(2)} ${hubEdge.y.toFixed(2)} L ${kbEdge.x.toFixed(2)} ${kbEdge.y.toFixed(2)}`}
+                        />
+                      </circle>
+                    </g>
                   );
                 })}
 
                 {sections.map((section) => {
-                  const hubPoint = polarToCartesian(HUB_RADIUS, section.hubAngleDeg);
+                  // Hub's own CENTER — used only as the FROM point for
+                  // pointTowards() below, never as a line endpoint itself
+                  // anymore (operator, 2026-08-15, correcting the previous
+                  // pass's own "goes to the center" read: "The Lines
+                  // should Reach the Edge of the Hub not the Center of
+                  // the hub"). Each Agent sits at a different angle from
+                  // the Hub, so — unlike the KB<->Hub spoke-line above,
+                  // which can subtract a fixed radius along its own one
+                  // shared polar ray — getting "the Hub's edge facing
+                  // THIS agent" needs real per-line direction math, done
+                  // per agent below via pointTowards().
+                  const hubCenter = polarToCartesian(HUB_RADIUS, section.hubAngleDeg + rotationDeg);
                   const sectionAgents = agents.filter((agent) => agent.sectionId === section.id);
                   const agentPoints = sectionAgents.map((agent) => ({
                     agent,
-                    point: polarToCartesian(RING_RADIUS[agent.type], agent.angleDeg),
+                    // Depth-based radius (layoutAgents.ts's own
+                    // computeAgentDepth), not the old flat Type-keyed
+                    // RING_RADIUS (operator, 2026-08-15: "the Tree lets
+                    // Start by Spreading the Agents between the title
+                    // and the Hub").
+                    point: polarToCartesian(agent.radius, agent.angleDeg + rotationDeg),
                   }));
-                  const stroke = 'var(--color-accent)';
-                  const lines: ReactElement[] = agentPoints.map(({ agent, point }) => (
-                    <line
-                      key={`${section.id}-hub-${agent.id}`}
-                      className="cluster-line"
-                      x1={hubPoint.x}
-                      y1={hubPoint.y}
-                      x2={point.x}
-                      y2={point.y}
-                      stroke={stroke}
-                    />
-                  ));
-                  for (let i = 0; i < agentPoints.length; i += 1) {
-                    for (let j = i + 1; j < agentPoints.length; j += 1) {
-                      lines.push(
+                  // White, not accent-colored (operator, 2026-08-15:
+                  // "Lines that Connects Agents should be White Slimmer").
+                  const stroke = 'var(--color-text)';
+                  // Only an agent with no real dependency-tree predecessor
+                  // gets a direct Hub line — a standalone agent (no
+                  // depends_on at all) IS its own root, so this still
+                  // covers the plain single-agent case unchanged. Every
+                  // other Job in a multi-stage pipeline already has a real
+                  // line to its own predecessor (below); operator,
+                  // 2026-08-16: "All Agents Are Connected to the hub while
+                  // it should be the last one in the Tree" (root-only,
+                  // confirmed directly) — a second, redundant Hub spoke on
+                  // top of the tree's own edges was the bug.
+                  const dependentAgentIds = new Set(
+                    dependencyEdges.filter((edge) => edge.sectionId === section.id).map((edge) => edge.toAgentId),
+                  );
+                  const lines: ReactElement[] = agentPoints
+                    .filter(({ agent }) => !dependentAgentIds.has(agent.id))
+                    .map(({ agent, point }) => {
+                      const hubEdge = pointTowards(hubCenter, point, HUB_VISUAL_RADIUS);
+                      return (
                         <line
-                          key={`${section.id}-agent-${agentPoints[i].agent.id}-${agentPoints[j].agent.id}`}
+                          key={`${section.id}-hub-${agent.id}`}
                           className="cluster-line"
-                          x1={agentPoints[i].point.x}
-                          y1={agentPoints[i].point.y}
-                          x2={agentPoints[j].point.x}
-                          y2={agentPoints[j].point.y}
+                          x1={hubEdge.x}
+                          y1={hubEdge.y}
+                          x2={point.x}
+                          y2={point.y}
                           stroke={stroke}
-                        />,
+                        />
                       );
-                    }
+                    });
+                  // Real depends_on connections only, not every possible
+                  // pair (operator, 2026-08-15: "there is too many
+                  // Dependencies which will not be true limit Max Agent
+                  // Connection to 5") — layoutAgents.ts's own
+                  // buildDependencyEdges already applies the 5-connection
+                  // cap and scopes each edge to its own Section; this just
+                  // resolves the two endpoint ids to this render's own
+                  // rotated points.
+                  const pointById = new Map(agentPoints.map(({ agent, point }) => [agent.id, point]));
+                  for (const edge of dependencyEdges) {
+                    if (edge.sectionId !== section.id) continue;
+                    const fromPoint = pointById.get(edge.fromAgentId);
+                    const toPoint = pointById.get(edge.toAgentId);
+                    if (!fromPoint || !toPoint) continue;
+                    lines.push(
+                      <line
+                        key={`${section.id}-dep-${edge.id}`}
+                        className="cluster-line"
+                        x1={fromPoint.x}
+                        y1={fromPoint.y}
+                        x2={toPoint.x}
+                        y2={toPoint.y}
+                        stroke={stroke}
+                      />,
+                    );
                   }
-                  return lines;
+                  const clusterLinesDimmed = hoveredSectionId !== null && hoveredSectionId !== section.id;
+                  // Zoom this Section's own Hub<->Agent/dependency lines
+                  // together with the Hub+Agents themselves (operator,
+                  // 2026-08-15: "Only the Hub is Zooming not the Whole
+                  // Section" -> clarified: "Hub + its Agents + its lines
+                  // together") — anchored on the SAME Hub point the HTML
+                  // .section-node-group wrapper below scales around, so
+                  // both layers (this SVG <g> and that HTML wrapper) grow
+                  // in visual lockstep. The KB<->Hub spoke line (its own
+                  // separate <g> above) is deliberately NOT included here
+                  // — one of ITS endpoints is the KB itself, which isn't
+                  // part of this Section's own zooming subtree, so
+                  // scaling it would visibly detach that line from the KB.
+                  const isSectionHoveredForLines = hoveredSectionId === section.id;
+                  const linesGroupStyle: CSSProperties | undefined = isSectionHoveredForLines
+                    ? { transform: 'scale(1.1)', transformOrigin: `${hubCenter.x}px ${hubCenter.y}px` }
+                    : undefined;
+                  return (
+                    <g
+                      key={`${section.id}-lines`}
+                      className={clusterLinesDimmed ? 'is-dimmed' : undefined}
+                      style={linesGroupStyle}
+                    >
+                      {lines}
+                    </g>
+                  );
                 })}
-
-                <text className="ring-label" x="80" y="51" fontSize="2.6" letterSpacing="0.3">PRODUCER</text>
-                <text className="ring-label" x="27.5" y="89.97" fontSize="2.6" letterSpacing="0.3">EXPERT</text>
-                <text className="ring-label" x="25" y="8.2" fontSize="2.6" letterSpacing="0.3">WORKER</text>
               </>
             )}
           </svg>
           <KnowledgeBaseNode />
-          {hasAgents && sections.map((section) => (
-            <SectionHub
-              key={section.id}
-              section={section}
-              onActivate={() => handleActivateSection(section.id)}
-            />
-          ))}
-          {hasAgents && agents.map((agent) => (
-            <AgentNode key={agent.id} agent={agent} onSelect={onSelectAgent} compact />
-          ))}
+          {/* One wrapper per Section, containing that Section's own Hub AND
+              its own Agents — the actual "whole Section" hover-zoom unit
+              (operator, 2026-08-15: "Only the Hub is Zooming not the Whole
+              Section", clarified as "Hub + its Agents + its lines
+              together"). `position: absolute; inset: 0` unconditionally
+              (not toggled by hover) is what makes this safe: it makes the
+              wrapper the containing block for its `position: absolute`
+              Hub/Agent children EVERY render, hovered or not, so those
+              children's own top/left percentages always resolve against
+              this exact box (identical in size/position to
+              .agents-map-canvas itself) — the SVG lines' matching <g>
+              transform above shares the same Hub-anchored transform-origin
+              so both layers zoom in lockstep. */}
           {hasAgents && sections.map((section) => {
-            const { x, y } = polarToCartesian(SECTION_TITLE_RADIUS, section.hubAngleDeg);
+            const hubPoint = polarToCartesian(HUB_RADIUS, section.hubAngleDeg + rotationDeg);
+            const sectionAgentsForGroup = agents.filter((agent) => agent.sectionId === section.id);
+            const isSectionHovered = hoveredSectionId === section.id;
+            const groupClassName = `section-node-group${isSectionHovered ? ' is-hovered' : ''}`;
+            const groupStyle: CSSProperties = { transformOrigin: `${hubPoint.x}% ${hubPoint.y}%` };
+            const isGroupDimmed = hoveredSectionId !== null && !isSectionHovered;
             return (
-              <div key={`${section.id}-title`} className="section-title" style={{ top: `${y}%`, left: `${x}%` }}>
+              <div key={`${section.id}-node-group`} className={groupClassName} style={groupStyle}>
+                <SectionHub
+                  section={section}
+                  onActivate={() => handleActivateSection(section.id)}
+                  angleOffsetDeg={rotationDeg}
+                  dimmed={isGroupDimmed}
+                  isHovered={isSectionHovered}
+                  onHoverChange={(hovering) => setHoveredSectionId(hovering ? section.id : null)}
+                />
+                {sectionAgentsForGroup.map((agent) => (
+                  <AgentNode
+                    key={agent.id}
+                    agent={agent}
+                    onSelect={onSelectAgent}
+                    compact
+                    angleOffsetDeg={rotationDeg}
+                    dimmed={isGroupDimmed}
+                    onHoverChange={(hovering) => setHoveredSectionId(hovering ? section.id : null)}
+                  />
+                ))}
+              </div>
+            );
+          })}
+          {hasAgents && clusters.map((cluster) => {
+            const { x, y } = polarToCartesian(RING_RADIUS[cluster.type], cluster.angleDeg + rotationDeg);
+            const clusterDimmed = hoveredSectionId !== null && hoveredSectionId !== cluster.sectionId;
+            return (
+              <button
+                key={cluster.id}
+                type="button"
+                className={`map-overflow-marker${clusterDimmed ? ' is-dimmed' : ''}`}
+                style={{ top: `${y}%`, left: `${x}%` }}
+                data-cluster-id={cluster.id}
+                onClick={() => handleActivateCluster(cluster.id)}
+              >
+                <span className="map-overflow-marker-count">{cluster.count}</span>
+                <span className="map-overflow-marker-label">+</span>
+              </button>
+            );
+          })}
+          {hasAgents && sections.map((section) => {
+            const { x, y } = polarToCartesian(SECTION_TITLE_RADIUS, section.hubAngleDeg + rotationDeg);
+            const isHoveredTitle = hoveredSectionId === section.id;
+            const isDimmedTitle = hoveredSectionId !== null && !isHoveredTitle;
+            const titleClassName = [
+              'section-title',
+              isHoveredTitle ? 'is-hovered' : null,
+              isDimmedTitle ? 'is-dimmed' : null,
+            ].filter(Boolean).join(' ');
+            // Every Section's own color (operator, 2026-08-15: "the Hover
+            // effect of the Section Change the Section title to that Same
+            // Color") — `--section-color` backs `.section-title.is-hovered`
+            // (agents-map.css), falling back to --color-accent when a
+            // Section has none set; the underline accent bar below uses
+            // the same color always, not just on hover, for one
+            // consistent per-Section identity.
+            const titleStyle: CSSProperties = { top: `${y}%`, left: `${x}%` };
+            if (section.color) titleStyle['--section-color' as string] = section.color;
+            return (
+              <div
+                key={`${section.id}-title`}
+                className={titleClassName}
+                style={titleStyle}
+                onMouseEnter={() => setHoveredSectionId(section.id)}
+                onMouseLeave={() => setHoveredSectionId(null)}
+                onClick={() => handleActivateSection(section.id)}
+              >
                 {section.label}
-                <span className="section-title-accent" style={{ background: 'var(--color-accent)' }} />
+                {/* Operator, 2026-08-15: "I need to have a Section
+                    Subtitle... The Subtitle will be Displayed in the
+                    Agent Map" — null (a Section with none set) renders
+                    nothing extra, same convention color/icon already
+                    use. */}
+                {section.subtitle && <span className="section-title-subtitle">{section.subtitle}</span>}
+                <span className="section-title-accent" style={{ background: section.color ?? 'var(--color-accent)' }} />
               </div>
             );
           })}
         </div>
       </div>
+      {hasAgents && !zoomTarget && !activeTarget && (
+        // Section-rotation arrows (ported from html-prototype's own
+        // #skillmapRotateControls) — hidden once a Section/cluster is
+        // focused, matching the prototype's own "the wheel itself isn't
+        // relevant once you're inside a Section's own dedicated view" rule.
+        <div className="map-rotate-controls">
+          <button
+            type="button"
+            className="map-rotate-btn"
+            onClick={() => setRotationDeg((deg) => deg - 60)}
+            aria-label="Rotate sections left"
+          >
+            &#9666;
+          </button>
+          <span className="map-rotate-label">Rotate</span>
+          <button
+            type="button"
+            className="map-rotate-btn"
+            onClick={() => setRotationDeg((deg) => deg + 60)}
+            aria-label="Rotate sections right"
+          >
+            &#9656;
+          </button>
+        </div>
+      )}
       {activeSection && (
         <SectionDrilldown
           section={activeSection}
-          agents={agents}
+          sections={sections}
+          agents={fullAgents}
+          dependencyEdges={dependencyEdges}
+          selectedAgentId={selectedAgentId}
+          onBack={handleBack}
+          onNavigate={handleNavigateSection}
+          onSelectAgent={onSelectAgent}
+        />
+      )}
+      {activeCluster && activeClusterSection && (
+        <ClusterDrilldown
+          cluster={activeCluster}
+          section={activeClusterSection}
+          agents={fullAgents}
           onBack={handleBack}
           onSelectAgent={onSelectAgent}
         />

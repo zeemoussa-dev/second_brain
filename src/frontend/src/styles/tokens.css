@@ -1,24 +1,86 @@
+/* Real local font files, no CDN/network fetch (REQ-SB-52, 2026-08-15) —
+   src is root-relative into public/fonts/, matching this app's own
+   existing public/ static-asset convention (favicon.svg/icons.svg).
+   Plus Jakarta Sans is a variable font (one file, weight range 200-800);
+   Marcellus is a single static weight. Recipe matches
+   html-prototype/styles.css's own established @font-face rules verbatim. */
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("/fonts/PlusJakartaSans-Variable.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Marcellus";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/Marcellus-Regular.woff2") format("woff2");
+}
+
+/* Material Symbols (operator, 2026-08-15: "Using Google Fonts there is
+   one that is Icons Based mdi... beautify the UI") — Google's own
+   current icon-font family (successor to "Material Icons"; the
+   community "MDI"/Material Design Icons project the operator half-
+   remembered isn't on Google Fonts itself). Same self-hosted,
+   no-runtime-network-fetch recipe as Plus Jakarta Sans/Marcellus above
+   — downloaded once from Google Fonts' own static CDN
+   (fonts.gstatic.com) to public/fonts/, not linked live. Each icon is
+   rendered as plain text naming the icon (e.g. "psychology") inside an
+   element carrying the `.material-symbols-outlined` class below — the
+   font's own `liga` OpenType feature substitutes that name with the
+   actual glyph; see visualOptions.ts for this app's own curated name
+   list. */
+@font-face {
+  font-family: "Material Symbols Outlined";
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: block;
+  src: url("/fonts/MaterialSymbolsOutlined.woff2") format("woff2");
+}
+
+.material-symbols-outlined {
+  font-family: "Material Symbols Outlined";
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: "liga";
+  font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
+}
+
 :root {
-  /* Color — light theme, green accent (revised 2026-08-10 per operator
-     browser review; was a dark theme with a blue accent). Every screen
-     composes from these tokens, so this swap is meant to cascade with no
-     per-screen edits — see the revision breadcrumbs on agents-map.html/
-     my-day.html/settings.html for what was checked after the swap. */
-  --color-bg: #ffffff;
-  --color-surface: #f6f8f6;
-  --color-surface-raised: #eaf0ea;
-  --color-border: #d7ded7;
-  --color-text: #14181a;
-  --color-text-muted: #5c6b62;
-  --color-accent: #15803d;
-  --color-accent-muted: #dcfce7;
-  --color-on-accent: #ffffff;
+  /* Color — dark theme, copper accent (REQ-SB-52, 2026-08-15 — supersedes
+     the 2026-08-10 reversal to light/green per a fresh, explicit operator
+     instruction, "Whole app," not a silent flip-flop). Every screen
+     composes from these tokens, so this swap cascades with no per-screen
+     edits. Values sourced from the PRD's REQ-SB-52 2026-08-15 update block
+     and html-prototype/styles.css's own body.theme-skilltree block (~line
+     1360) — see REQ-SB-52-US-01-T01's own Context/Notes mapping table for
+     the full source trace. */
+  --color-bg: #0e1118;
+  --color-surface: #171a22;
+  --color-surface-raised: #1f2430;
+  --color-border: rgba(233, 228, 214, 0.1);
+  --color-text: #e9e4d6;
+  --color-text-muted: #b9b4a6;
+  --color-accent: #c58b5f;
+  --color-accent-muted: rgba(197, 139, 95, 0.16);
+  --color-on-accent: #0e1118;
   --color-success: #16a34a;
   --color-warning: #b45309;
   --color-danger: #b91c1c;
 
   /* Type */
-  --font-sans: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-sans: "Plus Jakarta Sans", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: "Marcellus", Georgia, "Times New Roman", serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   --font-size-sm: 0.8125rem;
   --font-size-base: 0.9375rem;
@@ -40,13 +102,45 @@
 
   /* Agent-type colors (REQ-SB-12) — a new agent type is a new
      --agent-color-<type> token here plus one .agent-node--<type> rule below
-     that sets --node-color from it; never a layout change. Deliberately
-     kept out of the green family so they read as distinct accents from
-     --color-accent, not a collapsed single hue (darkened from the original
-     dark-theme values for contrast on the new white background). */
-  --agent-color-worker: #2563eb;
-  --agent-color-producer: #7c3aed;
-  --agent-color-expert: #db2777;
+     that sets --node-color from it; never a layout change. Reworked
+     2026-08-15 (operator: "the Workers/Jobs to be White, Experts to have
+     a Color That Matches our design, Producers a different color that
+     matchs the design as well") — worker is plain --color-text (the same
+     "white" the Agent<->Hub connector lines already use, not a literal
+     #fff); expert takes --color-accent itself, the app's own real
+     signature copper, as the most literal "matches our design" color;
+     producer draws its own distinct hue from the SAME curated palette
+     visualOptions.ts's VISUAL_COLORS already exercises (not a new
+     invented value), picked to avoid colliding with any Section's own
+     color (sample_data.py's SECTIONS) so a Producer node never gets
+     mistaken for "belongs to that Section" at a glance. Superseded the
+     prior arbitrary blue/purple/pink trio from before REQ-SB-52's
+     copper-theme pass ever revisited them. */
+  --agent-color-worker: var(--color-text);
+  --agent-color-producer: #65a30d;
+  --agent-color-expert: var(--color-accent);
+
+  /* The Vault graph — node-kind-color palette (REQ-SB-75-US-01-T02) — an
+     8-slot ROTATING palette, not a fixed kind-name mapping: the vault's
+     real frontmatter `type` values are open-ended (AC-01), so
+     VaultGraphCanvas.tsx hashes each node's own real `kind` string
+     deterministically into one of these 8 slots rather than naming any
+     specific kind here. Values are this app's own already-curated
+     palette (visualOptions.ts's VISUAL_COLORS / the existing
+     --agent-color-producer/--color-success/--color-warning/--color-danger
+     tokens), not new arbitrary hues — an ordinary extension of the
+     "Agent-type colors" rotating-token-per-category pattern above.
+     --graph-edge-color is a dedicated, slightly-more-visible-than-border
+     stroke color for edge lines on the dark canvas background. */
+  --graph-kind-color-1: var(--color-accent);
+  --graph-kind-color-2: var(--agent-color-producer);
+  --graph-kind-color-3: var(--color-success);
+  --graph-kind-color-4: var(--color-warning);
+  --graph-kind-color-5: var(--color-danger);
+  --graph-kind-color-6: #2563eb;
+  --graph-kind-color-7: #7c3aed;
+  --graph-kind-color-8: #0891b2;
+  --graph-edge-color: rgba(233, 228, 214, 0.25);
 }
 
 * { box-sizing: border-box; }

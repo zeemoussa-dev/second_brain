@@ -1,0 +1,80 @@
+/* The Vault — Knowledge Graph screen (REQ-SB-75-US-01-T03) — page chrome
+   (topbar/search/filter chips/canvas stage) around T02's own
+   VaultGraphCanvas. Same "flex column fills .main's real height" recipe
+   agents-map.css already established (height: calc(100vh - the .main
+   padding token, twice), flex: 1 + min-height: 0 on the growing stage) —
+   read here, not modified there. Every color value below resolves
+   through a real tokens.css custom property — zero hardcoded colors
+   (AC-06). */
+
+.vault-graph-page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - (var(--space-6) * 2));
+  gap: var(--space-3);
+}
+
+.vault-graph-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.vault-graph-topbar-left {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.vault-graph-title {
+  margin: 0;
+}
+
+.vault-graph-count {
+  font-size: var(--font-size-sm);
+}
+
+.vault-graph-search {
+  max-width: 320px;
+}
+
+.vault-graph-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.vault-graph-kind-chip {
+  border-radius: 999px;
+  padding: 2px var(--space-3);
+  font-size: var(--font-size-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-accent-muted);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.vault-graph-kind-chip.is-hidden {
+  background: transparent;
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
+  text-decoration: line-through;
+}
+
+.vault-graph-stage {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.vault-graph-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}

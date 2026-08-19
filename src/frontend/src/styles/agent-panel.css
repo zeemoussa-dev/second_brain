@@ -259,3 +259,67 @@
   border: 1px solid var(--color-danger);
   background: color-mix(in srgb, var(--color-danger) 10%, var(--color-surface-raised));
 }
+
+/* ==========================================================================
+   Visual picker (icon + color) — shared by the Agent detail panel's
+   Visual tab and, once Hubs get their own settings surface, Section
+   Hubs (VisualPicker.tsx). One component/one stylesheet instead of the
+   6 hand-duplicated copies the html-prototype needed for its own static
+   markup.
+   ========================================================================== */
+
+.visual-picker-hint {
+  margin: var(--space-3) 0 var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.visual-picker-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--space-2);
+}
+
+.visual-picker-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.visual-picker-icon:hover { transform: translateY(-1px); }
+
+.visual-picker-icon--selected {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+
+.visual-picker-color-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.visual-picker-color {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.visual-picker-color--selected {
+  border-color: var(--color-text);
+  box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-accent);
+}
+
+.visual-picker-reset {
+  margin-top: var(--space-4);
+}
