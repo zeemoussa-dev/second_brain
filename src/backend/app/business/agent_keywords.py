@@ -5,7 +5,7 @@ itself is not modified (ADR-011 point 2's "agent identity/type/actions
 stay hardcoded" reasoning stays untouched). Powers Section-Hub
 cross-Section keyword-substring routing (REQ-SB-20), reusing ADR-011's
 exact matching posture one layer up at the Hub level."""
-from app.business import agent_registry, section_registry
+from app.business import agent_registry, background_agent_registry, section_registry
 from app.data_access import vault_writer
 
 
@@ -49,6 +49,8 @@ def list_candidate_agents_for_keyword_match(
         agent_id = agent["id"]
         if agent_id == requesting_agent_id:
             continue
+        if background_agent_registry.get_is_background_agent(agent_id):
+            continue  # REQ-SB-51-US-01 -- never a Hub-routing candidate
         agent_section = section_registry.get_agent_section(agent_id)
         agent_section_id = agent_section["id"] if agent_section else None
         if agent_section_id == requester_section_id:

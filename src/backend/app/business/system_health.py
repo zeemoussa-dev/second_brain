@@ -1,13 +1,18 @@
 """Read-only aggregation of Second Brain's own operational signals for
-the System Health view (REQ-SB-31-US-01) -- writes no new persisted
-state at all, composes only already-existing/already-computed signals
-from provider_registry, agent_registry, and vault_writer, plus one
-local, in-process GET /mcp reachability check. Recompute fresh on every
-call -- no caching (Scenario 7)."""
+the System Health view (REQ-SB-31-US-01, extended REQ-SB-68-US-01) --
+writes no new persisted state at all, composes only already-existing/
+already-computed signals from provider_registry, agent_registry, and
+agent_schedule_registry, plus one local, in-process GET /mcp
+reachability check. Recompute fresh on every call -- no caching
+(Scenario 7, REQ-SB-31-US-01).
+
+REQ-SB-68-US-01-T03 dropped the "last_capture_run" key/vault_writer
+import: agent_schedule_registry.get_job_run_states()'s own richer
+"scheduling" list supersedes the former single aggregate finished_at
+timestamp this module used to read directly via vault_writer."""
 import httpx
 
-from app.business import agent_registry, provider_registry
-from app.data_access import vault_writer
+from app.business import agent_registry, agent_schedule_registry, provider_registry
 
 # Same hardcoded loopback host:port agent_orchestration/mcp_client.py
 # already calls -- this project's own documented port convention
@@ -73,5 +78,11 @@ def get_system_health() -> dict:
         "mcp": {"reachable": mcp_mount_reachable()},
         "providers": _providers_with_agent_names(),
         "disabled_agents": list_disabled_agents(),
-        "last_capture_run": vault_writer.load_last_capture_run(),
+        # REQ-SB-68-US-01 / ADR-045 point 5 -- replaces the former
+        # "last_capture_run" key (a single, aggregate finished_at
+        # timestamp) with the richer per-covered-job running/duration/
+        # outcome list. agent_schedule_registry.get_job_run_states()
+        # recomputes fresh on every call, exactly like every other
+        # signal in this dict.
+        "scheduling": agent_schedule_registry.get_job_run_states(),
     }

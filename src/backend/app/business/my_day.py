@@ -68,12 +68,14 @@ def _resolve_day_bounds(day: str | None) -> tuple[str, str]:
 
 
 def list_email_items(day: str | None = None) -> list[dict]:
-    """[{"subject", "sender", "customer", "received"}] for notes under
-    Work/Emails/ whose `received` date falls inside the current 7-day
-    window (Scenarios 1, 3, 5), or inside just `day` when provided (the
-    My Day day-navigator). `received` is now surfaced for the first
+    """[{"subject", "sender", "customer", "received", "stem"}] for notes
+    under Work/Emails/ whose `received` date falls inside the current
+    7-day window (Scenarios 1, 3, 5), or inside just `day` when provided
+    (the My Day day-navigator). `received` is now surfaced for the first
     time — an existing captured frontmatter field the projection
-    previously omitted, not a new data source."""
+    previously omitted, not a new data source. `stem` (REQ-SB-44-US-01-T02)
+    mirrors `list_calendar_items`'s own `"stem"` field exactly — the note
+    identity the Inbox Cockpit route needs."""
     range_start, range_end = _resolve_day_bounds(day)
     items = []
     for path in vault_writer.list_notes_in_kind_folder("Emails"):
@@ -86,6 +88,7 @@ def list_email_items(day: str | None = None) -> list[dict]:
             "sender": frontmatter.get("sender", ""),
             "customer": _customer_or_null(frontmatter),
             "received": received,
+            "stem": path.stem,
         })
     items.sort(key=lambda item: item["received"])
     return items
@@ -108,6 +111,7 @@ def list_calendar_items(day: str | None = None) -> list[dict]:
             "subject": frontmatter.get("subject", ""),
             "start": start,
             "customer": _customer_or_null(frontmatter),
+            "stem": path.stem,
         })
     items.sort(key=lambda item: item["start"])
     return items

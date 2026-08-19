@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from app.business import customer_hub_linking
+from app.business import agent_prompts, customer_hub_linking
 from app.data_access import compass_client, outlook_com, vault_writer
 
 _UNSORTED_CUSTOMER = "Unsorted"
@@ -35,6 +35,7 @@ def classify_recent_todos(limit: int = 100) -> list[dict]:
                 subject=task["subject"],
                 body=task["body"],
                 known_customers=known_customers,
+                prompt_override=agent_prompts.get_prompt("todo-capture"),
             )
         except compass_client.CompassError as exc:
             results.append({"subject": task["subject"], "error": str(exc)})

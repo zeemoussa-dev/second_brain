@@ -6,7 +6,7 @@ registering new tools on this same server, never a new server per
 capability (ADR-015 point 9)."""
 from mcp.server.fastmcp import FastMCP
 
-from app.business import vault_query_tools, vault_write_tools
+from app.business import scope_query_tools, vault_query_tools, vault_write_tools
 
 # streamable_http_path="/" -- FastMCP's own internal Streamable HTTP route
 # defaults to "/mcp"; left at that default, mounting this sub-app at
@@ -59,3 +59,17 @@ def propose_vault_write(
     so this check is fail-closed and every write is honestly rejected as
     out of scope until that registry ships -- never silently allowed."""
     return vault_write_tools.propose_vault_write(agent_id, subfolder, filename_stem, frontmatter, body)
+
+
+@mcp_server.tool()
+def retrieve_notes_in_agent_scope(agent_id: str) -> dict:
+    """Retrieve every vault note matching agent_id's own assigned vault
+    tag/folder scope (REQ-SB-29-US-01). Never accepts a freeform
+    tags/folders argument -- the calling agent's own scope is always
+    resolved and enforced server-side via scope_registry.get_agent_scope.
+    An unknown agent_id is rejected outright. An agent with no assigned
+    scope gets an explicit "no bounded vault query access" result, never
+    a silent whole-vault search. An assigned scope with no matching
+    notes gets an explicit "nothing found" result, never a fabricated
+    one."""
+    return scope_query_tools.retrieve_notes_in_agent_scope(agent_id)

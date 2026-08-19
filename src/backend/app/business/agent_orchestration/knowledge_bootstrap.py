@@ -50,7 +50,7 @@ async def bootstrap_agent_knowledge(agent_id: str, subject: str) -> dict:
     # of real-Provider-call failure.
     try:
         research_result = skill_registry.invoke_skill(
-            research_expert_id, "web-research", {"query": subject}
+            research_expert_id, "web-research", {"query": subject}, trigger="hub_routed"
         )
     except Exception as exc:  # noqa: BLE001 -- honest-failure-reporting funnel (Scenario 5)
         _record(agent_id, f"{research_expert_id}'s web research about {subject} failed: {exc}")

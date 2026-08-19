@@ -28,7 +28,16 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from langchain_core.tools import tool
 from langgraph.graph import END, StateGraph
 
-from app.business import agent_keywords, agent_registry, provider_registry, section_registry
+from app.business import (
+    agent_keywords,
+    agent_registry,
+    glimpse_first_qa,
+    knowledge_gap_tracking,
+    people_extraction,
+    provider_registry,
+    section_registry,
+    skill_registry,
+)
 from app.business.agent_orchestration import mcp_client, model_factory
 from app.business.agent_orchestration.state import (
     AgentConversationState,
@@ -75,6 +84,58 @@ def request_cross_section_help(need_description: str) -> str:
     raise NotImplementedError(
         "request_cross_section_help is intercepted by the route_hub_request "
         "graph node -- this function body is never actually invoked."
+    )
+
+
+@tool
+def record_knowledge_gap(topic: str) -> str:
+    """Call this BEFORE giving an honest "I don't know" reply, when
+    none of your tools/history/memory can answer the user's question.
+    topic: a short label for what you don't know, in your own words.
+
+    Deliberately NOT registered on the shared MCP server, mirroring
+    request_cross_section_help (ADR-017 point 7) -- bound directly to
+    this graph's own model call only. This function's own body is
+    never actually invoked -- the graph's conditional edge (see
+    _route_after_model, below) intercepts every call to this tool and
+    routes to the _record_knowledge_gap node instead, which records
+    the gap using the turn's REAL originating question, never this
+    tool's own topic argument alone (models can paraphrase) -- see
+    ADR-032 point 1."""
+    raise NotImplementedError(
+        "record_knowledge_gap is intercepted by the _record_knowledge_gap "
+        "graph node -- this function body is never actually invoked."
+    )
+
+
+@tool
+def propose_person_note_update(person_name: str, instruction: str) -> str:
+    """Call this when a person-directed Cockpit instruction names a
+    real person and describes a specific change to make to their
+    Person note (e.g. "@AhmedMoussa is leaving for Core42, update his
+    note"). person_name: the mentioned person's name, as written (e.g.
+    "Ahmed Moussa" or "AhmedMoussa"). instruction: the specific change
+    to propose, in your own words. Only call this once you have
+    identified a REAL, SPECIFIC change to propose -- a bare mention
+    with no discernible instruction must never trigger this tool.
+
+    Deliberately NOT registered on the shared MCP server, mirroring
+    request_cross_section_help/record_knowledge_gap (ADR-017 point 7,
+    ADR-032 point 1) -- bound directly to this graph's own model call
+    only, and ONLY when the calling agent has a real
+    skill_registry.has_skill_access grant for the
+    "propose_person_note_update" Skill (ADR-038 point 2 -- this
+    graph's first CONDITIONALLY bound tool). This function's own body
+    is never actually invoked -- the graph's conditional edge (see
+    _route_after_model, below) intercepts every call to this tool and
+    routes to the _propose_person_note_update node instead, which
+    resolves the real Person note read-only first, then dispatches
+    through skill_registry.invoke_skill's full working-mode gate
+    (ADR-038 point 4)."""
+    raise NotImplementedError(
+        "propose_person_note_update is intercepted by the "
+        "_propose_person_note_update graph node -- this function body "
+        "is never actually invoked."
     )
 
 
@@ -126,6 +187,55 @@ def _retrieve_memory(current_state: AgentConversationState) -> dict:
     )
     messages = list(current_state["messages"])
     messages.insert(1, memory_message)
+    return {"messages": messages}
+
+
+def _glimpse_first_context(current_state: AgentConversationState) -> dict:
+    """New node (REQ-SB-58), wired retrieve_memory ->
+    glimpse_first_context -> call_model (both edges unconditional,
+    mirrors _retrieve_memory's own "always runs, a no-op most of the
+    time" shape). Gated to agent_id == "vault-qa" ONLY -- the first
+    literal agent-identity gate in this graph (every existing
+    conditional gate so far is skill-based or Cockpit-context-based,
+    never a hardcoded agent id) -- deliberately narrow: the story's
+    own Constraint locks this to an extension of the existing
+    vault-qa Expert only; an ungated version would silently change
+    every OTHER already-Done agent's chat behavior. Reads the turn's
+    real question from the last HumanMessage in current_state[
+    "messages"] (mirrors _record_knowledge_gap's own "never trust a
+    model-paraphrased arg, read the real originating message"
+    precedent, ADR-032 point 1). On a real match, inserts ONE new
+    SystemMessage at position 1 -- runs AFTER _retrieve_memory in
+    this graph's own edge order, so inserting at position 1 here
+    pushes any already-inserted memory SystemMessage back one slot --
+    final order [identity, glimpse-context, memory, ...], purely
+    additive, no collision. On no match -- an unresolved question, OR
+    any agent other than vault-qa -- returns {}, a genuine no-op;
+    every existing behavior (Scenario 6, every other agent) stays
+    byte-for-byte unchanged. No new AgentConversationState field."""
+    if current_state["agent_id"] != "vault-qa":
+        return {}
+    question = next(
+        m.content for m in reversed(current_state["messages"]) if isinstance(m, HumanMessage)
+    )
+    context = glimpse_first_qa.resolve_glimpse_first_context(question)
+    if context is None:
+        return {}
+    context_message = SystemMessage(
+        content=(
+            f"The following is the current, synthesized status "
+            f"(Glimpse) and durable background (Background) for the "
+            f"{context['entity_type']} \"{context['entity_name']}\", "
+            f"which this question appears to be about. Prefer this "
+            f"content as your primary answer; only fall back to your "
+            f"other tools if the operator asks for more detail or a "
+            f"citation back to the original evidence.\n\n"
+            f"## Glimpse\n{context['glimpse']}\n\n"
+            f"## Background\n{context['background']}"
+        )
+    )
+    messages = list(current_state["messages"])
+    messages.insert(1, context_message)
     return {"messages": messages}
 
 
@@ -288,6 +398,69 @@ def _route_hub_request(current_state: AgentConversationState) -> dict:
     }
 
 
+def _record_knowledge_gap(current_state: AgentConversationState) -> dict:
+    last_message = current_state["messages"][-1]
+    tool_call = next(
+        tc for tc in last_message.tool_calls if tc["name"] == "record_knowledge_gap"
+    )
+    topic = tool_call["args"]["topic"]
+    # Never trust the model's own topic argument as the durable
+    # question text (ADR-032 point 1, models can paraphrase) --
+    # deterministically read the turn's real originating HumanMessage
+    # instead: this graph replays the full, untruncated history on
+    # every call (state.py's own documented no-truncation-this-pass
+    # design), so the LAST HumanMessage in current_state["messages"]
+    # is reliably this turn's real question.
+    question = next(
+        m.content for m in reversed(current_state["messages"]) if isinstance(m, HumanMessage)
+    )
+    record = knowledge_gap_tracking.record_gap(current_state["agent_id"], question, topic)
+    tool_message = ToolMessage(
+        content=json.dumps({"recorded": True, "gap_id": record["id"]}),
+        tool_call_id=tool_call["id"],
+    )
+    return {
+        "messages": current_state["messages"] + [tool_message],
+        "gap_recorded": record,
+    }
+
+
+def _propose_person_note_update(current_state: AgentConversationState) -> dict:
+    last_message = current_state["messages"][-1]
+    tool_call = next(
+        tc for tc in last_message.tool_calls if tc["name"] == "propose_person_note_update"
+    )
+    person_name = tool_call["args"]["person_name"]
+    instruction = tool_call["args"]["instruction"]
+    match = people_extraction.find_person_note_by_name(person_name)
+    if match is None:
+        # No gate involvement at all -- an honest "not found" reply,
+        # never a fabricated match, never a created note (Scenario 4,
+        # ADR-038 point 4).
+        tool_message = ToolMessage(
+            content=json.dumps({
+                "found": False,
+                "message": f"No matching Person note found for {person_name}.",
+            }),
+            tool_call_id=tool_call["id"],
+        )
+        return {"messages": current_state["messages"] + [tool_message]}
+    result = skill_registry.invoke_skill(
+        current_state["agent_id"],
+        "propose_person_note_update",
+        args={
+            "note_path": match["note_path"],
+            "person_name": match["name"],
+            "instruction": instruction,
+            "subject_kind": current_state.get("cockpit_subject_kind"),
+            "subject_note_stem": current_state.get("cockpit_subject_note_stem"),
+        },
+        trigger="cockpit_mention",
+    )
+    tool_message = ToolMessage(content=json.dumps(result), tool_call_id=tool_call["id"])
+    return {"messages": current_state["messages"] + [tool_message]}
+
+
 def _route_after_model(current_state: AgentConversationState) -> str:
     if current_state.get("error") is not None or current_state.get("reply") is not None:
         return "extract_memory"
@@ -299,23 +472,44 @@ def _route_after_model(current_state: AgentConversationState) -> str:
         # NotImplementedError) body; the two-hop Hub relay lives in
         # route_hub_request instead (ADR-017 point 5/6).
         return "route_hub_request"
+    if any(tc["name"] == "record_knowledge_gap" for tc in tool_calls):
+        # Intercepted BEFORE the generic execute_tools node, exactly
+        # like request_cross_section_help above -- see
+        # record_knowledge_gap's own NotImplementedError body.
+        return "record_knowledge_gap"
+    if any(tc["name"] == "propose_person_note_update" for tc in tool_calls):
+        # Intercepted BEFORE the generic execute_tools node, exactly
+        # like the two existing bound tools above -- see
+        # propose_person_note_update's own NotImplementedError body.
+        return "propose_person_note_update"
     return "execute_tools"
 
 
 def _build_graph():
     builder = StateGraph(AgentConversationState)
     builder.add_node("retrieve_memory", _retrieve_memory)
+    builder.add_node("glimpse_first_context", _glimpse_first_context)
     builder.add_node("call_model", _call_model)
     builder.add_node("execute_tools", _execute_tools)
     builder.add_node("route_hub_request", _route_hub_request)
+    builder.add_node("record_knowledge_gap", _record_knowledge_gap)
+    builder.add_node("propose_person_note_update", _propose_person_note_update)
     builder.add_node("extract_memory", _extract_memory)
     builder.set_entry_point("retrieve_memory")
-    builder.add_edge("retrieve_memory", "call_model")
+    builder.add_edge("retrieve_memory", "glimpse_first_context")
+    builder.add_edge("glimpse_first_context", "call_model")
     builder.add_conditional_edges(
-        "call_model", _route_after_model, ["execute_tools", "route_hub_request", "extract_memory"]
+        "call_model",
+        _route_after_model,
+        [
+            "execute_tools", "route_hub_request", "record_knowledge_gap",
+            "propose_person_note_update", "extract_memory",
+        ],
     )
     builder.add_edge("execute_tools", "call_model")
     builder.add_edge("route_hub_request", "call_model")
+    builder.add_edge("record_knowledge_gap", "call_model")
+    builder.add_edge("propose_person_note_update", "call_model")
     builder.add_edge("extract_memory", END)
     return builder.compile()
 
@@ -324,7 +518,12 @@ _GRAPH = _build_graph()
 
 
 async def run_agent_conversation(
-    agent_id: str, message: str, history: list[dict], memory: list[dict] | None = None
+    agent_id: str,
+    message: str,
+    history: list[dict],
+    memory: list[dict] | None = None,
+    cockpit_subject_kind: str | None = None,
+    cockpit_subject_note_stem: str | None = None,
 ) -> dict:
     """Returns {"reply": str, "extracted_facts": list[str]} on a real,
     successful conversational reply, or {"error": str} on honest
@@ -351,9 +550,14 @@ async def run_agent_conversation(
         return {"error": f"{provider_name} is not available yet — no client has been built for it."}
 
     try:
-        tools = list(await mcp_client.load_agent_tools(agent_id)) + [request_cross_section_help]
+        tools = list(await mcp_client.load_agent_tools(agent_id)) + [
+            request_cross_section_help,
+            record_knowledge_gap,
+        ]
+        if skill_registry.has_skill_access(agent_id, "propose_person_note_update"):
+            tools.append(propose_person_note_update)
 
-        messages = history_entries_to_messages(agent["name"], agent["type"], history)
+        messages = history_entries_to_messages(agent["name"], agent["type"], history, agent_id)
         messages.append(HumanMessage(content=message))
 
         initial_state: AgentConversationState = {
@@ -366,6 +570,9 @@ async def run_agent_conversation(
             "memory": memory or [],
             "extracted_facts": [],
             "hub_routing_result": None,
+            "gap_recorded": None,
+            "cockpit_subject_kind": cockpit_subject_kind,
+            "cockpit_subject_note_stem": cockpit_subject_note_stem,
         }
         result = await _GRAPH.ainvoke(initial_state)
     except Exception as exc:  # noqa: BLE001 -- honest-failure-reporting funnel (REQ-SB-31 Scenario 8); closes the one remaining unwrapped gap in this function's own body, never left to propagate as a raw 500

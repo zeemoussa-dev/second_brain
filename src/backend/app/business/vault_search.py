@@ -67,6 +67,17 @@ def list_notes(
     }
 
 
+def list_scope_suggestions() -> dict:
+    """REQ-SB-50-US-01-T01 -- composes list_tags() with vault_writer.
+    list_known_kinds() into one combined, un-merged {"tags", "folders"}
+    payload for the Vault Scope field's own typeahead (T02). No q= filter
+    -- always the full current snapshot; keystroke filtering is a
+    frontend concern (T02's own Constraints)."""
+    tags = list_tags()["tags"]
+    folders = vault_writer.list_known_kinds()
+    return {"tags": tags, "folders": folders}
+
+
 def list_tags() -> dict:
     """Scenario 2's own prerequisite -- the real, current list of tags
     that actually exist in the index (with counts), sorted by count
@@ -107,6 +118,42 @@ def _resolve_backlinks(entry: dict, index: dict[str, dict]) -> list[dict]:
     """entry["incoming_wikilinks"] is already a list of resolved source
     stems (ADR-024 point 3) -- a direct lookup, no re-matching needed."""
     return [_summary(index[stem]) for stem in entry["incoming_wikilinks"] if stem in index]
+
+
+def _resolve_forward_link_stems(entry: dict, index: dict[str, dict]) -> list[str]:
+    """Same case-insensitive stem-matching rule as _resolve_forward_links,
+    factored out so get_graph() can emit {"source", "target"} edges
+    without paying for a full _summary() resolve per target (edges only
+    need the matched stem, not the full node projection). Dangling/self
+    targets are silently omitted -- identical posture to
+    _resolve_forward_links, not a new rule."""
+    stems_by_lower_stem = {stem.lower(): stem for stem in index}
+    matched_stems = []
+    for target in entry["outgoing_wikilinks"]:
+        matched_stem = stems_by_lower_stem.get(target.lower())
+        if matched_stem is None or matched_stem == entry["stem"]:
+            continue
+        matched_stems.append(matched_stem)
+    return matched_stems
+
+
+def get_graph() -> dict:
+    """The Vault knowledge graph screen (REQ-SB-75-US-01) -- reshapes
+    vault_indexing.get_index() into {"nodes", "edges"}, zero new
+    indexing/caching. Nodes reuse _summary() verbatim (kind via
+    _kind_for(entry), no fixed-enum coercion); edges reuse the same
+    case-insensitive stem-matching rule _resolve_forward_links already
+    applies, dangling/self targets silently omitted. No pagination/filter
+    params -- kind-filtering and name search are the frontend's own
+    client-side concern over this one fetched snapshot."""
+    index = vault_indexing.get_index()
+    nodes = [_summary(entry) for entry in index.values()]
+    edges = [
+        {"source": entry["stem"], "target": matched_stem}
+        for entry in index.values()
+        for matched_stem in _resolve_forward_link_stems(entry, index)
+    ]
+    return {"nodes": nodes, "edges": edges}
 
 
 def get_note_detail(stem: str) -> dict | None:

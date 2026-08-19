@@ -43,104 +43,139 @@ def link_note_to_partner_hub(note_path, partner: str) -> bool:
     return vault_writer.insert_body_line_if_missing(note_path, link_line)
 
 
-def migrate_customer_to_partner(customer_name: str) -> dict:
-    """One-time migration (ADR-009, match predicate extended by ADR-012):
-    moves customer_name's Customer hub note into the Partner namespace,
-    then retags every vault note matching either of two signals — a
-    **generic, vault-wide scan**, never a hardcoded note list (ADR-009's
-    rejected alternative), so it correctly picks up every mistagged note
-    regardless of kind (Person/Email/Newsletter/Notification alike).
-
-    Step 1 moves Work/Customers/<name>.md to Work/Partners/<name>.md via
-    vault_writer.move_note_and_attachments (already exists), guarded by
-    an existence check so a rerun — finding the Customer hub note
-    already gone — skips the move entirely (this step's own idempotency
-    mechanism). Deliberately does NOT rewrite the moved note's
-    frontmatter here: step 2's single generic scan picks up the
-    just-moved note too (list_all_note_paths() finds it at its new
-    Work/Partners/ path, still carrying its old customer/type: Customer/
-    tags/affiliate_of frontmatter until the scan rewrites it) — so
-    exactly one retag mechanism handles both the hub note and every
-    other mistagged note, with no duplicated rewrite logic between the
-    two steps.
-
-    Step 2 iterates every vault note via list_all_note_paths()/
-    read_note() (the same pattern retrofit_customer_hub_links/
-    retrofit_people_from_emails already use) and processes a note if
-    either of two signals matches (ADR-012, extends ADR-009 point 4):
-    Signal A — `customer` frontmatter equals customer_name (the original
-    ADR-009 signal, catches Email/Newsletter/Notification notes and the
-    hub note itself); or Signal B — the note's body contains the exact
-    inline `**Customer:** [[<hub note filename stem>]]` wikilink line,
-    regardless of whether `customer` frontmatter is present at all (the
-    ADR-012 addition, catches Person notes, which never carry a
-    `customer` frontmatter field or a `customer/<slug>` tag — only a
-    `company/<slug>` tag plus this inline wikilink, written separately by
-    customer_hub_linking.link_note_to_customer_hub). Both signals are
-    read from the same read_note() call already made once per note — no
-    second scan, no extra vault I/O. For a matched note: swaps
-    `type: Customer` -> `type: Partner` (a no-op for every non-hub note,
-    since their `type` is never "Customer"), drops `affiliate_of` if
-    present (present only on the hub note — Partner has no such key),
-    renames `customer` -> `partner` (same value, a no-op for a note
-    matched only via Signal B, since it never had a `customer` key),
-    swaps the `customer/<slug>` tag for `partner/<slug>` and
-    `kind/customer` for `kind/partner` (both no-ops for a Signal-B-only
-    note, which never carries either tag), and — only where present —
-    relabels the inline `**Customer:** [[<name>]]` body line to
-    `**Partner:** [[<name>]]` (this is the only primitive that actually
-    fires for a Signal-B-only note, e.g. a Person note — exactly the
-    "only the inline wikilink is relabeled, nothing else touched"
-    behavior ADR-012 requires). Every primitive this step calls is
-    itself a no-op-if-absent, so a second full run makes zero further
-    changes anywhere (idempotent by construction — no separate "already
-    migrated" tracking needed; a note already migrated no longer matches
-    Signal A *or* Signal B, so the very first `if` below already
-    excludes it on a rerun).
-
-    Returns {"hub_note_moved": bool, "hub_note_path": str | None,
-    "notes_retagged": list[dict]}.
-    """
-    old_hub_path = vault_writer.hub_note_path(customer_name)
-    hub_note_moved = False
-    new_hub_note_path: str | None = None
-    if old_hub_path.exists():
-        new_hub_dir = vault_writer.partner_hub_note_path(customer_name).parent
-        new_hub_note_path = vault_writer.move_note_and_attachments(old_hub_path, new_hub_dir)
-        hub_note_moved = True
-
-    old_tag = f"customer/{vault_writer.tag_slug(customer_name)}"
-    new_tag = f"partner/{vault_writer.tag_slug(customer_name)}"
-    hub_stem = vault_writer.hub_note_path(customer_name).stem
-    old_body_line = f"**Customer:** [[{hub_stem}]]"
-    new_body_line = f"**Partner:** [[{hub_stem}]]"
+def _retag_company_references(
+    old_name: str, old_kind: str, new_name: str, new_kind: str,
+) -> list[dict]:
+    """old_kind/new_kind in {"customer", "partner"} -- the SAME two-signal
+    scan (frontmatter-field-equals-old_name / inline **<Old label>:**
+    [[old hub stem]] body wikilink, ADR-012's own extension of ADR-009
+    point 4) and the SAME four per-note rewrite primitives
+    (rename_frontmatter_key/swap_tag/replace_body_line, plus the type
+    swap) migrate_customer_to_partner used to hardcode, generalized from
+    literal "Customer"/"Partner"/"customer"/"partner" values to the four
+    parameters -- REQ-SB-76-US-01-T03, ADR-057 Decisions 5/6. The
+    affiliate_of-drop step from the original hardcoded version is REMOVED
+    (Partner now legitimately carries affiliate_of -- ADR-057 Decision
+    4/REQ-SB-76-US-01-T02); an entity's own affiliate_of value, real or
+    empty, always carries forward untouched. Every primitive is itself
+    no-op-if-nothing-to-change (and a same-kind/same-label branch is
+    skipped outright when old==new, so it never produces a spurious
+    "changed" flag for a value that is already correct) -- idempotent by
+    construction, mirroring the original function's own discipline.
+    Returns a list of {"note": str, "status": "retagged" |
+    "already_migrated", "changes": list[str]} entries, one per note that
+    matched either signal."""
+    old_label = "Customer" if old_kind == "customer" else "Partner"
+    new_label = "Customer" if new_kind == "customer" else "Partner"
+    old_tag = f"{old_kind}/{vault_writer.tag_slug(old_name)}"
+    new_tag = f"{new_kind}/{vault_writer.tag_slug(new_name)}"
+    old_hub_stem = (
+        vault_writer.hub_note_path(old_name).stem if old_kind == "customer"
+        else vault_writer.partner_hub_note_path(old_name).stem
+    )
+    new_hub_stem = (
+        vault_writer.hub_note_path(new_name).stem if new_kind == "customer"
+        else vault_writer.partner_hub_note_path(new_name).stem
+    )
+    old_body_line = f"**{old_label}:** [[{old_hub_stem}]]"
+    new_body_line = f"**{new_label}:** [[{new_hub_stem}]]"
 
     notes_retagged: list[dict] = []
     for path in vault_writer.list_all_note_paths():
         frontmatter, body = vault_writer.read_note(path)
-        matches_frontmatter = frontmatter.get("customer") == customer_name
+        matches_frontmatter = frontmatter.get(old_kind) == old_name
         matches_body_wikilink = old_body_line in body
         if not (matches_frontmatter or matches_body_wikilink):
             continue
         changed: list[str] = []
-        if frontmatter.get("type") == "Customer":
-            if vault_writer.rename_frontmatter_key(path, "type", "type", new_value="Partner"):
+        if old_label != new_label and frontmatter.get("type") == old_label:
+            if vault_writer.rename_frontmatter_key(path, "type", "type", new_value=new_label):
                 changed.append("type")
-        if vault_writer.remove_frontmatter_key_if_present(path, "affiliate_of"):
-            changed.append("affiliate_of_dropped")
-        if vault_writer.rename_frontmatter_key(path, "customer", "partner"):
-            changed.append("customer_to_partner")
-        if vault_writer.swap_tag(path, old_tag, new_tag):
+        if vault_writer.rename_frontmatter_key(path, old_kind, new_kind, new_value=new_name):
+            changed.append(f"{old_kind}_to_{new_kind}" if old_kind != new_kind else f"{old_kind}_renamed")
+        if old_tag != new_tag and vault_writer.swap_tag(path, old_tag, new_tag):
             changed.append("tag_swapped")
-        if vault_writer.swap_tag(path, "kind/customer", "kind/partner"):
+        if old_kind != new_kind and vault_writer.swap_tag(path, f"kind/{old_kind}", f"kind/{new_kind}"):
             changed.append("kind_tag_swapped")
-        if vault_writer.replace_body_line(path, old_body_line, new_body_line):
+        if old_body_line != new_body_line and vault_writer.replace_body_line(path, old_body_line, new_body_line):
             changed.append("body_line_relabeled")
         notes_retagged.append({
             "note": str(path),
             "status": "retagged" if changed else "already_migrated",
             "changes": changed,
         })
+
+    return notes_retagged
+
+
+def retarget_company_references(
+    old_name: str, old_kind: str, new_name: str, new_kind: str,
+) -> list[dict]:
+    """One-line pass-through to _retag_company_references -- the Merge
+    outcome's own entry point (REQ-SB-76-US-01-T06, ADR-057 Decision 7),
+    supporting a same-kind (Customer->Customer/Partner->Partner) or
+    cross-kind name change alike, never a new, third move/retag
+    primitive."""
+    return _retag_company_references(old_name, old_kind, new_name, new_kind)
+
+
+def migrate_customer_to_partner(customer_name: str) -> dict:
+    """One-time migration (ADR-009, match predicate extended by ADR-012,
+    OKF-directory-shape gap fixed by REQ-SB-76-US-01-T03/ADR-057 Decision
+    5): moves customer_name's Customer hub note/directory into the
+    Partner namespace, then retags every vault note referencing it — a
+    thin wrapper over _retag_company_references, behaviourally IDENTICAL
+    to the original hardcoded version by construction (same name in,
+    same name out, kind flips customer->partner), its own external
+    contract/return shape unchanged, zero call-site changes anywhere.
+
+    Step 1 resolves the hub note/directory to move, trying the CURRENT
+    OKF directory shape FIRST (mirrors resolve_thread_directory's own
+    "directory-shaped scan first, flat-note scan second" ordering,
+    ADR-052): if customer_name has a real OKF concept file
+    (vault_writer.customer_concept_file_exists), the WHOLE OKF directory
+    is moved via vault_writer.move_okf_directory — every file inside
+    (index.md/<slug>.md/log.md/captures.md, any nested subdirectory)
+    preserved byte-for-byte, in one atomic move. Only when no OKF concept
+    file exists does the LEGACY flat-file branch run — moves
+    Work/Customers/<name>.md to Work/Partners/<name>.md via
+    vault_writer.move_note_and_attachments, guarded by an existence check
+    so a rerun (finding the Customer hub note already gone, in either
+    shape) skips the move entirely (this step's own idempotency
+    mechanism). Deliberately does NOT rewrite the moved note's
+    frontmatter here: Step 2's single generic scan picks up the
+    just-moved note too — so exactly one retag mechanism handles both the
+    hub note and every other mistagged note, with no duplicated rewrite
+    logic between the two steps.
+
+    Step 2 is _retag_company_references(customer_name, "customer",
+    customer_name, "partner") — the same generic, vault-wide two-signal
+    scan (Signal A: `customer` frontmatter equals customer_name; Signal
+    B: the note's body contains the exact inline `**Customer:**
+    [[<hub note filename stem>]]` wikilink, regardless of whether
+    `customer` frontmatter is present at all — catches Person notes) this
+    function has always used, now shared with the new Merge outcome
+    (retarget_company_references, above) instead of duplicated.
+
+    Returns {"hub_note_moved": bool, "hub_note_path": str | None,
+    "notes_retagged": list[dict]}.
+    """
+    hub_note_moved = False
+    new_hub_note_path: str | None = None
+    if vault_writer.customer_concept_file_exists(customer_name):
+        source_directory = vault_writer.customer_directory_paths(customer_name)["directory"]
+        target_parent_directory = vault_writer.partner_hub_note_path(customer_name).parent
+        new_directory = vault_writer.move_okf_directory(source_directory, target_parent_directory)
+        new_hub_note_path = str(new_directory / f"{new_directory.name}.md")
+        hub_note_moved = True
+    else:
+        old_hub_path = vault_writer.hub_note_path(customer_name)
+        if old_hub_path.exists():
+            new_hub_dir = vault_writer.partner_hub_note_path(customer_name).parent
+            new_hub_note_path = vault_writer.move_note_and_attachments(old_hub_path, new_hub_dir)
+            hub_note_moved = True
+
+    notes_retagged = _retag_company_references(customer_name, "customer", customer_name, "partner")
 
     return {
         "hub_note_moved": hub_note_moved,

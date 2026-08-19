@@ -48,10 +48,21 @@ def _load_state() -> dict:
     if state is None:
         state = _seed_state()
     changed = False
-    for agent in agent_registry.list_agents():
-        if agent["id"] not in state["assignments"]:
-            state["assignments"][agent["id"]] = _DEFAULT_PROVIDER_ID
+    known_agent_ids = {agent["id"] for agent in agent_registry.list_agents()}
+    for agent_id in known_agent_ids:
+        if agent_id not in state["assignments"]:
+            state["assignments"][agent_id] = _DEFAULT_PROVIDER_ID
             changed = True
+    # ESC-042 self-healing reconciliation: an assignment key for an agent
+    # id that no longer exists (e.g. after a rename, ADR-043 point 6)
+    # would otherwise sit orphaned forever and crash the first consumer
+    # that dereferences it without a None-guard (system_health.py's
+    # _providers_with_agent_names). Symmetric with the add-missing loop
+    # above, mirroring working_mode_registry.py/background_agent_registry.py's
+    # own self-healing-default convention.
+    for orphaned_agent_id in set(state["assignments"]) - known_agent_ids:
+        del state["assignments"][orphaned_agent_id]
+        changed = True
     if changed:
         vault_writer.save_providers_state(state)
     return state

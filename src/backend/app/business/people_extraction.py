@@ -14,9 +14,10 @@ business layer, not an ADR-003 boundary violation.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
-from app.business import customer_hub_linking, partner_hub_linking
+from app.business import customer_hub_linking, partner_hub_linking, vault_indexing
 from app.data_access import vault_writer
 
 # Well-known personal/free email-provider domains — deliberately a fixed,
@@ -91,15 +92,47 @@ def find_matching_partner(company: str | None) -> str | None:
     return None
 
 
-def ensure_person_note(name: str, email: str) -> dict:
-    """The shared "ensure this sender's Person note exists and is up to
+def ensure_person_note(name: str, email: str | None, customer: str | None = None) -> dict:
+    """The shared "ensure this person's Person note exists and is up to
     date" operation, called once as a one-time batch
     (retrofit_people_from_emails) and once as a per-write hook
-    (ensure_person_note_for_captured_email). Creates a baseline note if
-    missing, or tops up any missing baseline frontmatter keys if it
-    already exists (Scenarios 2 and 6), without touching a key already
-    present or the body. Derives the sender's company from their email
-    domain and checks it against known Customers first (unchanged) —
+    (ensure_person_note_for_captured_email, meeting_classification.py's
+    own attendee loop). Creates a baseline note if missing, or tops up
+    any missing baseline frontmatter keys if it already exists (Scenarios
+    2 and 6), without touching a key already present or the body.
+
+    `email` may now be None/"" (REQ-SB-71-US-03-T03, ADR-048 Decision 6)
+    — the real, no-longer-silently-skipped no-email-attendee case
+    (meeting_classification.py's own former `if not email: continue`
+    gap). `customer` (new, optional, defaults to None — PUBLIC SIGNATURE
+    otherwise unchanged, so email_classification.py's own existing
+    2-positional-argument calls need zero change) is the CALLER's own
+    already-derived Customer, used ONLY as the nesting Customer for the
+    no-email case (there is no email domain of this person's own to
+    derive one from — the ONLY Customer signal available for them at
+    all); an email-resolvable person always nests under their OWN
+    email-domain-matched Customer (or the flat fallback if it doesn't
+    match one), exactly per Scenario 6's own "never force-nested under a
+    Customer they don't genuinely belong to" — `customer` is never used
+    to override an email-resolvable person's own matched_customer, even
+    when the two differ. Logged as a scope-internal judgement call
+    (Implementation Log) — the task's own Notes leave the exact parameter
+    shape open, locking only the outcome (Scenario 4).
+
+    `find_person_note_path` is checked FIRST, vault-wide — an
+    already-existing note (email-keyed or name-keyed) is topped up in
+    place, NEVER moved or duplicated, even when this call's own newly-
+    derived Customer differs from where the note already lives
+    (Scenario 5 — the existing note stays put; the calling Meeting's own
+    unchanged upsert_attendee_links wikilink mechanism is what actually
+    links the OTHER Customer's relevant note to it, no new linking
+    mechanism). Only when no note exists anywhere yet is a NEW one
+    created, nested under the matched Customer or, absent one, at the
+    flat Work/People/ fallback (Scenario 6, operator-confirmed
+    2026-08-18).
+
+    Derives the person's company from their email domain (None when no
+    email) and checks it against known Customers first (unchanged) —
     only when no Customer match is found does it check known Partners
     (ADR-009: customer/<slug> and partner/<slug> are mutually
     exclusive, so at most one of customer_matched/partner_matched is
@@ -116,18 +149,22 @@ def ensure_person_note(name: str, email: str) -> dict:
     anything else. Returns {"note_path": str, "created": bool,
     "company": str | None, "customer_matched": str | None,
     "partner_matched": str | None, "linked": bool}."""
-    company = derive_company_from_email(email)
+    company = derive_company_from_email(email) if email else None
     tags = vault_writer.build_person_tags(company)
-    note_path = vault_writer.person_note_path(email)
+    dedup_key = vault_writer.person_note_dedup_key(name, email)
+    matched_customer = find_matching_customer(company)
+    nesting_customer = matched_customer if email else (matched_customer or customer)
 
-    if vault_writer.person_note_exists(email):
+    existing_note_path = vault_writer.find_person_note_path(dedup_key)
+    if existing_note_path is not None:
+        note_path = existing_note_path
         vault_writer.ensure_person_note_baseline_frontmatter(note_path, name, email, tags)
         created = False
     else:
-        vault_writer.create_person_note_baseline(name, email, tags)
+        note_path = vault_writer.person_note_path(dedup_key, nesting_customer)
+        vault_writer.create_person_note_baseline(note_path, name, email, tags)
         created = True
 
-    matched_customer = find_matching_customer(company)
     matched_partner = None
     linked = False
     if matched_customer:
@@ -189,6 +226,45 @@ def retrofit_people_from_emails() -> list[dict]:
         status = "created" if outcome["created"] else "already_existed"
         results.append({"note": str(path), "status": status, **outcome})
     return results
+
+
+def find_existing_person_note(email: str) -> dict | None:
+    """Read-only -- returns {"note_path": str, "name": str} if a Person
+    note already exists for this email, else None. NEVER creates a
+    Person note (unlike ensure_person_note) -- the Cockpit must not
+    mutate the vault as a side effect of merely opening (ADR-036 point
+    7). Retargeted (REQ-SB-71-US-03-T03, ADR-048 Decision 6) to
+    person_note_dedup_key/find_person_note_path's own vault-wide scan --
+    finds a real Person note regardless of whether it's nested under a
+    Customer or at the flat fallback location."""
+    if not email:
+        return None
+    dedup_key = vault_writer.person_note_dedup_key("", email)
+    note_path = vault_writer.find_person_note_path(dedup_key)
+    if note_path is None:
+        return None
+    frontmatter, _ = vault_writer.read_note(note_path)
+    return {"note_path": str(note_path), "name": frontmatter.get("name") or frontmatter.get("subject") or email}
+
+
+def find_person_note_by_name(person_name: str) -> dict | None:
+    """Read-only, name-keyed sibling of find_existing_person_note
+    (ADR-038 point 4) -- resolves an @PersonName mention (e.g.
+    "AhmedMoussa" or "Ahmed Moussa") against every real Person note's
+    own frontmatter "name" field, by case-insensitive,
+    whitespace-stripped equality. Scans vault_indexing.get_index() for
+    entries with frontmatter.get("type") == "Person" -- NEVER creates a
+    note, never guesses at the nearest-sounding name (Scenario 4).
+    Returns {"note_path": str, "name": str} or None."""
+    normalized_target = re.sub(r"\s+", "", person_name).lower()
+    for entry in vault_indexing.get_index().values():
+        frontmatter = entry["frontmatter"]
+        if frontmatter.get("type") != "Person":
+            continue
+        candidate_name = frontmatter.get("name") or ""
+        if re.sub(r"\s+", "", candidate_name).lower() == normalized_target:
+            return {"note_path": entry["path"], "name": candidate_name}
+    return None
 
 
 def link_email_to_person(email_note_path, person_note_path) -> bool:

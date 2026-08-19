@@ -8,8 +8,10 @@ import hashlib
 import json
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 
 from app.config import settings
+from app.data_access import section_ownership
 
 _SLUG_INVALID_CHARS = re.compile(r'[\\/:*?"<>|]')
 _TAG_INVALID_CHARS = re.compile(r"[^a-z0-9/]+")
@@ -26,6 +28,16 @@ _AGENT_SKILLS_FILE = "agent_skills.json"
 _AGENT_KEYWORDS_FILE = "agent_keywords.json"
 _AGENT_WORKING_MODES_FILE = "agent_working_modes.json"
 _AGENT_PENDING_APPROVALS_FILE = "agent_pending_approvals.json"
+_AGENT_SCOPES_FILE = "agent_scopes.json"
+_AGENT_PROMPTS_FILE = "agent_prompts.json"
+_AGENTS_REGISTRY_FILE = "agents_registry.json"
+_AGENT_KNOWLEDGE_GAPS_FILE = "agent_knowledge_gaps.json"
+_COCKPIT_THREADS_FILE = "cockpit_threads.json"
+_AGENT_BACKGROUND_FLAGS_FILE = "agent_background_flags.json"
+_AGENT_VISUALS_FILE = "agent_visuals.json"
+_AGENT_SCHEDULES_FILE = "agent_schedules.json"
+_JOB_RUN_STATE_FILE = "job_run_state.json"
+_MEETING_THREAD_LINK_CONFIG_FILE = "meeting_thread_link_config.json"
 _FRONTMATTER_LINE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*):\s?(.*)$")
 _LIST_ITEM_PATTERN = re.compile(r'"((?:[^"\\]|\\.)*)"')
 
@@ -104,7 +116,7 @@ def read_note(path) -> tuple[dict, str]:
 
 def extract_wikilink_targets(body: str) -> list[str]:
     """Every [[target]] wikilink target found anywhere in a note's body
-    text, in first-seen order — reuses the same _WIKILINK_PATTERN
+    text, in first-seen order — reuses the same WIKILINK_PATTERN
     upsert_attendee_links already relies on for one matched
     **Attendees:** line, generalized to the whole body (REQ-SB-01-US-01,
     the vault indexing layer's own outgoing-wikilink capture). Resolving
@@ -112,7 +124,7 @@ def extract_wikilink_targets(body: str) -> list[str]:
     job (app/business/vault_indexing.py), not this function's — this is
     a raw text-extraction primitive only, matching read_note()'s own
     "not a general parser" scope."""
-    return _WIKILINK_PATTERN.findall(body)
+    return WIKILINK_PATTERN.findall(body)
 
 
 def insert_tags_line(path, tags: list[str]) -> None:
@@ -128,11 +140,53 @@ def insert_tags_line(path, tags: list[str]) -> None:
     path.write_text(text[: end + 1] + insertion + text[end + 1:], encoding="utf-8")
 
 
+_OKF_RESERVED_FILENAMES = {"index.md", "log.md", "captures.md"}
+_THREAD_SIDECAR_RESERVED_FILENAMES = {
+    "pre_migration_summary.md", "pre_migration_summary.consumed.md",
+}
+
+
 def list_all_note_paths() -> list:
+    """Every real, normally-frontmattered note anywhere under `Work/`, at
+    ANY depth — a single bounded recursive scan (`REQ-SB-71-US-02`,
+    `ADR-048` Decision 7), replacing this function's own prior 1-level
+    flat glob plus two hardcoded `Customers/*/*.md`/`Customers/*/projects/
+    */*.md` globs (`ADR-042`'s own flagged Consequence, resolved narrowly
+    for Customer/Project only, `REQ-SB-54-US-01-T06`). Strictly
+    behavior-preserving for every existing caller — a superset of the old
+    flat + two-hardcoded-glob result, since every note that scheme already
+    found still lives at a depth `rglob("*.md")` also reaches; newly,
+    correctly discovers Thread's own distilled concept file, every raw
+    message note, and (once other note kinds gain a directory shape) any
+    further nested concept file — closing the SAME class of blind spot
+    `ADR-042` already flagged once for Customer/Project, generalized
+    instead of special-cased a third/fourth time (`Implementation/
+    Learnings.md`, `SPRINT-048`). `index.md`/`log.md`/`captures.md` are
+    OKF-reserved/append-only files with no ordinary key: value frontmatter
+    shape, excluded so every existing caller's read_note(path) contract
+    keeps holding. `path.is_file()` guard (`REQ-SB-72-US-01-T04`, found
+    live) -- `rglob("*.md")` matches DIRECTORIES whose own name happens to
+    end in `.md`, not only regular files; a real, pre-existing gap in
+    `email_classification.write_file_companion`'s own `file_slug`
+    convention (out of this task's own `## Files to Modify`, disclosed
+    separately) can produce exactly such a directory when the original
+    attachment's own filename already ends in `.md` -- without this guard,
+    `read_note(path)` crashes with a real `PermissionError` trying to open
+    a directory as a file. Purely defensive: zero behavior change for any
+    well-formed note, which is always a regular file. Also excludes
+    `pre_migration_summary.md`/`pre_migration_summary.consumed.md`
+    (`BUGFIX-05-US-01`, `ADR-053`) -- the plain-text, non-frontmatter
+    Thread-directory sidecar `migrate_flat_thread_to_directory` writes and
+    `synthesize_thread` archives, never a real note."""
     work_root = settings.vault_path / _WORK_ROOT
     if not work_root.exists():
         return []
-    return sorted(work_root.glob("*/*.md"))
+    return sorted(
+        path for path in work_root.rglob("*.md")
+        if path.name not in _OKF_RESERVED_FILENAMES
+        and path.name not in _THREAD_SIDECAR_RESERVED_FILENAMES
+        and path.is_file()
+    )
 
 
 def list_notes_in_kind_folder(kind: str) -> list:
@@ -149,18 +203,354 @@ def list_notes_in_kind_folder(kind: str) -> list:
     return sorted(kind_root.glob("*.md"))
 
 
-def write_note(subfolder: str, filename_stem: str, frontmatter: dict, body: str) -> str:
-    target_dir = settings.vault_path / subfolder
-    target_dir.mkdir(parents=True, exist_ok=True)
-
+def _write_frontmatter_note(path: Path, frontmatter: dict, body: str) -> None:
+    """Unconditional full-file write of a frontmatter+body note at an
+    already-resolved path — extracted (ADR-042 point 1) from write_note's
+    own prior inline body so both write_note (flat note kinds) and the new
+    OKF directory family's concept-file creation (create_okf_directory_
+    baseline) share one frontmatter-rendering mechanism instead of two
+    parallel copies. Behavior-preserving: identical output to write_note's
+    pre-extraction inline version for every existing caller."""
     frontmatter_lines = ["---"]
     for key, value in frontmatter.items():
         frontmatter_lines.append(f"{key}: {_format_frontmatter_value(value)}")
     frontmatter_lines.append("---")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(frontmatter_lines) + "\n\n" + body, encoding="utf-8")
 
-    note_path = target_dir / f"{_slugify(filename_stem)}.md"
-    note_path.write_text("\n".join(frontmatter_lines) + "\n\n" + body, encoding="utf-8")
+
+def write_note(subfolder: str, filename_stem: str, frontmatter: dict, body: str) -> str:
+    note_path = settings.vault_path / subfolder / f"{_slugify(filename_stem)}.md"
+    _write_frontmatter_note(note_path, frontmatter, body)
     return str(note_path)
+
+
+def format_okf_provenance(by: str, at: str) -> str:
+    """JSON-encodes an OKF actor-provenance value (`generated`/`verified`,
+    ADR-042 point 3) as a string under the field's own literal name —
+    extends, rather than duplicates, the same _format_frontmatter_value
+    dict-round-trip workaround already shipped for Meeting `attendees`/
+    Email `recipients`. `by`/`at` are stored verbatim; populating them
+    with a real agent id / ISO timestamp is a business-layer concern
+    (REQ-SB-57), not this data_access function's own job."""
+    return json.dumps({"by": by, "at": at})
+
+
+def okf_directory_paths(directory_root: Path, slug: str) -> dict:
+    """Resolves the deterministic path set for one OKF-conformant
+    directory note kind (ADR-042 point 1) rooted at directory_root:
+    index.md/<slug>.md/log.md/captures.md, all inside a
+    <directory_root>/<slug-of-slug>/ directory — without checking whether
+    any of them exist yet. Mirrors every other note kind's own
+    deterministic-path-from-a-stable-key precedent (hub_note_path/
+    meeting_note_path/thread_note_path), generalized to a 4-file
+    directory shape instead of one flat file."""
+    concept_slug = _slugify(slug)
+    base = Path(directory_root) / concept_slug
+    return {
+        "directory": base,
+        "index": base / "index.md",
+        "concept": base / f"{concept_slug}.md",
+        "log": base / "log.md",
+        "captures": base / "captures.md",
+    }
+
+
+def okf_concept_file_exists(directory_root: Path, slug: str) -> bool:
+    return okf_directory_paths(directory_root, slug)["concept"].exists()
+
+
+def move_okf_directory(source_directory: Path, target_parent_directory: Path) -> Path:
+    """Generic, cross-parent OKF-directory archival-move primitive
+    (`REQ-SB-74-US-01-T04`, `ADR-055` Decision 4) -- not Customer-specific,
+    named/placed alongside `okf_directory_paths` for the same reason
+    `okf_directory_paths` itself is shared across Customer/Project. Mirrors
+    `rename_thread_directory`'s own atomic-move-plus-refuse-to-overwrite
+    discipline, WIDENED to a DIFFERENT parent directory (not just a new
+    slug under the same parent), NARROWED by NOT renaming the concept file
+    inside -- the directory's own name/slug is unchanged, only its
+    LOCATION moves, so every file inside (`index.md`/`<slug>.md`/`log.md`/
+    `captures.md`, plus any nested subdirectory such as `People/`) is
+    moved byte-for-byte, untouched, in one atomic `Path.rename()` --
+    satisfies "content byte-for-byte unchanged" by construction, not by a
+    defensive check. Raises `FileExistsError` on a genuine collision at
+    the target, never silently overwrites. Returns the new directory
+    path."""
+    target_parent_directory.mkdir(parents=True, exist_ok=True)
+    target_directory = target_parent_directory / source_directory.name
+    if target_directory.exists():
+        raise FileExistsError(
+            f"would overwrite existing directory at {target_directory}"
+        )
+    source_directory.rename(target_directory)
+    return target_directory
+
+
+def _write_or_backfill_identifying_header(path: Path, identifying_name: str) -> None:
+    """Writes/backfills the bare `# {name}` HALF of index.md's own
+    already-Accepted header convention onto log.md/captures.md
+    (BUGFIX-07-US-01, BUG-028) — shared by both the fresh-creation path
+    (create_okf_directory_baseline) and the top-up/backfill path
+    (ensure_okf_directory_baseline), and also reachable from create_okf_
+    directory_baseline itself for the partial/interrupted-prior-run case.
+    Fresh creation (path does not exist yet): writes the header as the
+    file's full content. Backfill (path already exists): a file is
+    "headerless" iff its current first line does not start with "# " —
+    confirmed against every real caller that appends content into an
+    already-existing log.md/captures.md (append_person_note_update_line's
+    three call sites), none of which ever writes a line starting with
+    "# " — so the header is prepended, every existing byte preserved,
+    never reordered/duplicated. An already-headered file (first line
+    already starts with "# ") is left completely untouched — idempotent
+    on a repeat ensure_* run."""
+    header = f"# {identifying_name}\n\n"
+    if not path.exists():
+        path.write_text(header, encoding="utf-8")
+        return
+    text = path.read_text(encoding="utf-8")
+    first_line = text.split("\n", 1)[0]
+    if first_line.startswith("# "):
+        return
+    path.write_text(header + text, encoding="utf-8")
+
+
+def create_okf_directory_baseline(
+    directory_root: Path, slug: str, concept_frontmatter: dict, identifying_name: str,
+    index_listing_body: str = "",
+) -> dict:
+    """Creates an OKF-conformant directory note kind for the first time
+    (ADR-042 point 1): index.md (whole-file, auto-generated listing —
+    never header-scoped, never preserved on top-up, since it has zero
+    user- or agent-owned prose), <slug>.md (the OKF concept file, via
+    _write_frontmatter_note, with a body of exactly the two OKF-required
+    empty sections ## Glimpse and ## Background), and log.md/captures.md
+    each gaining/keeping their own identifying `# {identifying_name}`
+    header via _write_or_backfill_identifying_header (BUGFIX-07-US-01,
+    BUG-028) — fresh-created with the header on first creation, or
+    backfilled with it if a prior partial/interrupted run already left an
+    already-existing-but-headerless file behind; captures.md's own body
+    content, once real content exists there, is never disturbed by this
+    function beyond that header-presence check — the structural (not
+    conventional) guarantee that no <slug>.md regeneration code path can
+    ever reach it (ADR-042 Scenario 2/3). Always writes index.md/<slug>.md
+    unconditionally, mirroring every other note kind's own create_*_
+    baseline contract — callers must check okf_concept_file_exists()
+    first. Returns the same path set okf_directory_paths() resolves, each
+    value stringified."""
+    paths = okf_directory_paths(directory_root, slug)
+    paths["directory"].mkdir(parents=True, exist_ok=True)
+    paths["index"].write_text(index_listing_body, encoding="utf-8")
+    _write_frontmatter_note(paths["concept"], concept_frontmatter, "## Glimpse\n\n## Background\n")
+    _write_or_backfill_identifying_header(paths["log"], identifying_name)
+    _write_or_backfill_identifying_header(paths["captures"], identifying_name)
+    return {key: str(value) for key, value in paths.items()}
+
+
+def ensure_okf_directory_baseline(
+    directory_root: Path, slug: str, concept_frontmatter_defaults: dict, identifying_name: str,
+    index_listing_body: str = "",
+) -> list[str]:
+    """Tops up an already-existing OKF directory note kind: surgically
+    inserts any missing concept_frontmatter_defaults key into <slug>.md
+    via insert_frontmatter_key_if_missing (never touches an already-
+    present key or the body — same baseline-preservation contract every
+    other note kind's own ensure_*_baseline_frontmatter already
+    established), creates log.md/captures.md with their own identifying
+    header if missing, or backfills that same header onto an already-
+    existing headerless one without disturbing any already-appended real
+    content (BUGFIX-07-US-01, BUG-028 — see
+    _write_or_backfill_identifying_header), and unconditionally rewrites
+    index.md (whole-file swap, same as create_okf_directory_baseline —
+    index.md has no user-owned content to preserve). Returns the list of
+    concept frontmatter keys actually inserted (empty if the concept file
+    already had all of them)."""
+    paths = okf_directory_paths(directory_root, slug)
+    inserted: list[str] = []
+    for key, value in concept_frontmatter_defaults.items():
+        if insert_frontmatter_key_if_missing(paths["concept"], key, value):
+            inserted.append(key)
+    _write_or_backfill_identifying_header(paths["log"], identifying_name)
+    _write_or_backfill_identifying_header(paths["captures"], identifying_name)
+    paths["index"].write_text(index_listing_body, encoding="utf-8")
+    return inserted
+
+
+def customer_directory_paths(customer: str) -> dict:
+    return okf_directory_paths(settings.vault_path / _CUSTOMERS_SUBFOLDER, customer)
+
+
+def customer_concept_file_exists(customer: str) -> bool:
+    return okf_concept_file_exists(settings.vault_path / _CUSTOMERS_SUBFOLDER, customer)
+
+
+def build_customer_concept_frontmatter(customer: str) -> dict:
+    """OKF-required concept-file frontmatter for a Customer directory
+    (ADR-042 point 1, REQ-SB-54-US-01 Scenario 3): type/title/description/
+    tags/status/stale_after/generated/verified/sources. `status`/
+    `stale_after` default values ("active"/"") are a reasonable-default
+    choice only — no locked AC tests specific field values, only field
+    presence. `generated`/`verified` start blank (format_okf_provenance
+    with empty by/at) — populating them with a real agent id/timestamp is
+    REQ-SB-57's own synthesis-layer job, out of this data_access
+    function's scope."""
+    return {
+        "type": "customer",
+        "title": customer,
+        "description": "",
+        "tags": build_tags(customer, "customer"),
+        "status": "active",
+        "stale_after": "",
+        "generated": format_okf_provenance(by="", at=""),
+        "verified": format_okf_provenance(by="", at=""),
+        "sources": [],
+        "affiliate_of": "",
+    }
+
+
+def create_customer_directory_baseline(customer: str) -> dict:
+    return create_okf_directory_baseline(
+        settings.vault_path / _CUSTOMERS_SUBFOLDER, customer,
+        build_customer_concept_frontmatter(customer),
+        identifying_name=customer,
+        index_listing_body=f"# {customer}\n\n- [[{_slugify(customer)}]]\n",
+    )
+
+
+def ensure_customer_directory_baseline(customer: str) -> list[str]:
+    return ensure_okf_directory_baseline(
+        settings.vault_path / _CUSTOMERS_SUBFOLDER, customer,
+        build_customer_concept_frontmatter(customer),
+        identifying_name=customer,
+        index_listing_body=f"# {customer}\n\n- [[{_slugify(customer)}]]\n",
+    )
+
+
+def _project_directory_root(customer: str) -> Path:
+    """A Project's own directory_root, one level inside its Customer's
+    directory (ADR-042 point 4) — always computed via
+    customer_directory_paths()'s own resolved "directory" path, never a
+    separately-hardcoded 'Work/Customers/<slug>/projects' string, so a
+    future change to Customer's own directory location is never silently
+    out of sync with where Project nests underneath it."""
+    return customer_directory_paths(customer)["directory"] / "projects"
+
+
+def project_directory_paths(customer: str, project: str) -> dict:
+    return okf_directory_paths(_project_directory_root(customer), project)
+
+
+def project_concept_file_exists(customer: str, project: str) -> bool:
+    return okf_concept_file_exists(_project_directory_root(customer), project)
+
+
+def build_project_concept_frontmatter(customer: str, project: str) -> dict:
+    """OKF-required concept-file frontmatter for a Project directory
+    (ADR-042 point 4), mirroring build_customer_concept_frontmatter's own
+    field set and reasonable-default choices exactly — only `tags` differs,
+    carrying both the owning customer/<slug> tag and kind/project (so a
+    Project stays findable both by its own kind and by its parent
+    Customer, the same customer/-plus-kind/ pairing build_tags/build_
+    meeting_tags already establish elsewhere). `last_synthesized_status`
+    (`REQ-SB-57-US-01-T01`) is the Project Synthesizer's own History-line
+    idempotency marker — defaults to the SAME value `status` itself
+    defaults to ("active"), so a brand-new Project's first-ever synthesis
+    pass naturally compares `status` against `"active"` with zero
+    special-casing (`architecture.md` → "Project & Customer Synthesizer")."""
+    return {
+        "type": "project",
+        "title": project,
+        "description": "",
+        "tags": [f"customer/{tag_slug(customer)}", "kind/project"],
+        "status": "active",
+        "stale_after": "",
+        "generated": format_okf_provenance(by="", at=""),
+        "verified": format_okf_provenance(by="", at=""),
+        "sources": [],
+        "last_synthesized_status": "active",
+    }
+
+
+def create_project_directory_baseline(customer: str, project: str) -> dict:
+    return create_okf_directory_baseline(
+        _project_directory_root(customer), project,
+        build_project_concept_frontmatter(customer, project),
+        identifying_name=project,
+        index_listing_body=f"# {project}\n\n- [[{_slugify(project)}]]\n",
+    )
+
+
+def ensure_project_directory_baseline(customer: str, project: str) -> list[str]:
+    return ensure_okf_directory_baseline(
+        _project_directory_root(customer), project,
+        build_project_concept_frontmatter(customer, project),
+        identifying_name=project,
+        index_listing_body=f"# {project}\n\n- [[{_slugify(project)}]]\n",
+    )
+
+
+def list_customer_projects(customer: str) -> list[dict]:
+    """Enumerates one Customer's own `projects/*/` subdirectories (ADR-042
+    point 4's directory shape), for Route-to-Project's "currently open
+    Projects" guess (REQ-SB-55-US-01-T01, ADR-043 Consequences) — a
+    mechanical extension of list_known_customers()'s own frontmatter-scan
+    shape, bounded to one customer's own projects subtree rather than the
+    whole vault. Returns [] if the customer has no `projects/`
+    subdirectory yet at all — mirrors list_notes_in_kind_folder()'s own
+    "not-yet-created folder returns []" contract; never raises for a
+    genuinely new Customer with zero Projects. Each real Project
+    directory's own concept file is read directly via read_note (never a
+    hardcoded/assumed status) — returns whatever `title`/`status` that
+    file's own frontmatter actually carries, including a blank or missing
+    status, honestly, as None/"" rather than fabricating "active". No
+    "which Project counts as currently open" judgement is made here —
+    that filtering is Route-to-Project's own business-logic job (T04),
+    out of this pure data_access enumeration primitive's scope."""
+    projects_root = _project_directory_root(customer)
+    if not projects_root.exists():
+        return []
+    results: list[dict] = []
+    for project_dir in sorted(p for p in projects_root.iterdir() if p.is_dir()):
+        concept_slug = project_dir.name
+        concept_path = project_dir / f"{concept_slug}.md"
+        if not concept_path.exists():
+            continue
+        frontmatter, _ = read_note(concept_path)
+        results.append({
+            "project": frontmatter.get("title"),
+            "slug": concept_slug,
+            "status": frontmatter.get("status"),
+        })
+    return results
+
+
+def list_customer_folders() -> list[dict]:
+    """Every real Customer OKF directory under Work/Customers/ (REQ-SB-74-
+    US-01-T01, ADR-055 Decision 3) — mirrors list_customer_projects()'s own
+    "enumerate this directory level, read title from concept file" shape
+    one level up (a Customer's own sibling directly under Work/Customers/,
+    rather than a Customer's own projects/ subdirectory). Deliberately
+    DIFFERENT from list_known_customers(), which scans `customer:`
+    frontmatter USAGE across every note, not folder existence — the two
+    answer two different questions and are never merged (ADR-055
+    Consequences). Returns [] if Work/Customers/ does not exist yet, same
+    not-yet-created-folder contract every sibling enumeration primitive
+    already has."""
+    customers_root = settings.vault_path / _CUSTOMERS_SUBFOLDER
+    if not customers_root.exists():
+        return []
+    results: list[dict] = []
+    for customer_dir in sorted(p for p in customers_root.iterdir() if p.is_dir()):
+        concept_slug = customer_dir.name
+        concept_path = customer_dir / f"{concept_slug}.md"
+        if not concept_path.exists():
+            continue
+        frontmatter, _ = read_note(concept_path)
+        results.append({
+            "customer": frontmatter.get("title"),
+            "slug": concept_slug,
+            "directory": customer_dir,
+        })
+    return results
 
 
 def list_known_customers() -> list[str]:
@@ -191,19 +581,33 @@ def list_known_kinds() -> list[str]:
     return sorted(p.name for p in work_root.iterdir() if p.is_dir())
 
 
-def write_attachments(subfolder: str, note_stem: str, attachments: list[dict]) -> list[dict]:
+def write_attachments(
+    subfolder: str, note_stem: str, message_segment: str, attachments: list[dict]
+) -> list[dict]:
     """Saves each attachment next to its note, Obsidian-convention style:
-    <subfolder>/attachments/<note_stem>/<filename>. Returns one entry per
-    attachment with a vault-relative link (relative to the note's own
-    location) for embedding in the note body — oversized attachments (content
-    already None per outlook_com.py's size cap) are recorded but not written,
-    same "filename-only, not silently dropped" precedent as agentic-map."""
+    <subfolder>/attachments/<note_stem>/<slug-of-message_segment>/<filename>
+    -- nested one level deeper per message (BUGFIX-03-US-01, closes
+    BUG-014's gap 2) so two different messages sharing one note (a
+    Thread) can never silently overwrite same-named attachments (e.g.
+    recurring image001.png signature images). message_segment is the
+    caller's own per-message identifier -- the Thread pipeline passes
+    the message's own full `received` timestamp (see email_
+    classification.summarize_attachment), not a day-only date, since a
+    Thread routinely receives multiple same-day messages. Returns one
+    entry per attachment with a vault-relative link (relative to the
+    note's own location) for embedding in the note body — oversized
+    attachments (content already None per outlook_com.py's size cap)
+    are recorded but not written, same "filename-only, not silently
+    dropped" precedent as agentic-map."""
     results: list[dict] = []
     if not attachments:
         return results
 
     note_slug = _slugify(note_stem)
-    attachments_dir = settings.vault_path / subfolder / "attachments" / note_slug
+    message_slug = _slugify(message_segment)
+    attachments_dir = (
+        settings.vault_path / subfolder / "attachments" / note_slug / message_slug
+    )
 
     for attachment in attachments:
         filename = attachment["filename"]
@@ -213,7 +617,7 @@ def write_attachments(subfolder: str, note_stem: str, attachments: list[dict]) -
         attachments_dir.mkdir(parents=True, exist_ok=True)
         file_path = attachments_dir / filename
         file_path.write_bytes(attachment["content"])
-        relative_link = f"attachments/{note_slug}/{filename}"
+        relative_link = f"attachments/{note_slug}/{message_slug}/{filename}"
         results.append({
             "filename": filename,
             "size": attachment["size"],
@@ -222,6 +626,79 @@ def write_attachments(subfolder: str, note_stem: str, attachments: list[dict]) -
         })
 
     return results
+
+
+def staged_attachment_files(conversation_id: str, message_id: str) -> list:
+    """Lists every real attachment file `raw_message_capture.
+    capture_raw_thread_messages` (`REQ-SB-71-US-02-T03`) durably persisted
+    for one raw message, via `write_attachments`'s own already-established
+    `<subfolder>/attachments/<note_slug>/<message_slug>/` convention
+    (`subfolder="Work/Threads"`, `note_stem=conversation_id`,
+    `message_segment=message_id`), reused verbatim -- the deterministic
+    location `T07`'s own Files/OKF companion composition re-derives to
+    read real attachment bytes back, since `email_staging`'s own copy is
+    already gone by Stage 2 time. Returns `[]` (the common case -- most
+    emails carry none) if no attachments were ever saved for this
+    message."""
+    directory = (
+        settings.vault_path / _THREADS_SUBFOLDER / "attachments"
+        / _slugify(conversation_id) / _slugify(message_id)
+    )
+    if not directory.exists():
+        return []
+    return sorted(path for path in directory.iterdir() if path.is_file())
+
+
+def write_file_companion(
+    subfolder: str,
+    note_stem: str,
+    file_slug: str,
+    original_filename: str,
+    content: bytes,
+    summary: str,
+) -> dict:
+    """Generic Files/OKF-companion primitive (`REQ-SB-71-US-02-T07`,
+    `ADR-048` Decision 4) -- `<subfolder>/files/<slug-of-file_slug>/
+    <original_filename>` (raw bytes, untouched) beside `<subfolder>/
+    files/<slug-of-file_slug>/<slug-of-file_slug>.md` (an OKF-lite
+    companion note: frontmatter + `## Summary` agent-owned + `##
+    Personal Notes` human-owned), replacing today's buried, unlinked
+    dated sub-entry (`summarize_attachment`) with a first-class,
+    backlink-discoverable note. Parameterized by `(subfolder, note_stem)`
+    exactly like `write_attachments` already is -- `subfolder` accepts
+    either a vault-relative string (`"Work/Threads"`) or an already
+    vault-absolute path (e.g. one Thread's own `thread_directory_paths(...)
+    ["directory"]`); pathlib's own `Path.joinpath` semantics make
+    `settings.vault_path / subfolder` resolve correctly either way (an
+    absolute right-hand operand wins), mirroring exactly how `write_
+    attachments`'s own `subfolder` join already behaves. `note_stem` is
+    accepted for interface parity with `write_attachments` (a future
+    caller may want it for its own subfolder-scoping); this convention's
+    own path shape does not incorporate it -- `file_slug` alone is the
+    complete identifier, since (unlike an email's own per-message
+    attachments) a Files/OKF companion is never nested per-message.
+    Built once, against the one real concrete need (Email/Thread
+    attachments) -- generic enough that a future Meeting/Customer/Person/
+    Opportunity need reuses it UNCHANGED."""
+    slug = _slugify(file_slug)
+    files_dir = settings.vault_path / subfolder / "files" / slug
+    files_dir.mkdir(parents=True, exist_ok=True)
+    file_path = files_dir / original_filename
+    file_path.write_bytes(content)
+    companion_path = files_dir / f"{slug}.md"
+    _write_frontmatter_note(
+        companion_path,
+        {
+            "type": "File",
+            "file_slug": file_slug,
+            "original_filename": original_filename,
+        },
+        f"## Summary\n\n{summary}\n\n## Personal Notes\n",
+    )
+    return {
+        "file_path": str(file_path),
+        "companion_path": str(companion_path),
+    }
 
 
 def move_note_and_attachments(note_path, target_dir) -> str:
@@ -436,27 +913,77 @@ def insert_body_line_if_missing(path, line: str) -> bool:
     return True
 
 
+def append_person_note_update_line(note_path, line: str) -> None:
+    """Unconditionally appends one line to a Person note's own body --
+    the real write primitive both the Supervised-approve direct-write
+    path (T02's own already_approved=True branch) and this module's
+    confirm_proposal (Manual/Autonomous's own explicit-confirm write)
+    share (ADR-038 point 7). Deliberately NOT insert_body_line_if_
+    missing's idempotent-if-already-present shape -- each proposed edit
+    is its own new fact to record, even if coincidentally identical
+    text to an existing line, so it must always append, never silently
+    no-op on a textual coincidence."""
+    path = Path(note_path)
+    text = path.read_text(encoding="utf-8")
+    separator = "" if text.endswith("\n") else "\n"
+    path.write_text(text + separator + line + "\n", encoding="utf-8")
+
+
 _PEOPLE_SUBFOLDER = f"{_WORK_ROOT}/People"
 _PERSON_NOTE_BASELINE_KEYS = ("type", "name", "email", "phone", "linkedin", "tags")
 
 
-def person_note_path(email: str):
+def person_note_dedup_key(name: str, email: str | None) -> str:
+    """Lowercased email when one exists (REQ-SB-10's own original,
+    unchanged convention) — or a slug of the display name when it does
+    not (REQ-SB-71-US-03-T03, ADR-048 Decision 6), closing meeting_
+    classification.py's own silent no-email-attendee `if not email:
+    continue` gap. A name-based key cannot structurally distinguish two
+    different real no-email people who share an exact display name — a
+    real, disclosed, narrow residual limitation, not resolved further by
+    this task."""
+    return email.lower() if email else _slugify(name.lower())
+
+
+def person_note_path(dedup_key: str, customer: str | None):
     """Resolves the vault-absolute path a Person note lives (or would
-    live) at — Work/People/<slug-of-lowercased-email>.md — without
-    checking whether it exists yet. The dedup key is the sender's email
-    address, lowercased before slugifying (never the display name, and
-    never the raw-cased address): two Outlook items can report the same
-    address with different casing, and lowercasing first prevents a
-    second, spurious Person note for what is really the same person
-    (REQ-SB-10, architecture.md). Uses the same _slugify() write_note()
-    applies internally to its own filename_stem when passed the
-    identical lowercased string, so this always points at exactly the
-    file create_person_note_baseline()/write_note() would create."""
-    return settings.vault_path / _PEOPLE_SUBFOLDER / f"{_slugify(email.lower())}.md"
+    live) at (REQ-SB-71-US-03-T03, ADR-048 Decision 6) — SIGNATURE CHANGE
+    from the prior person_note_path(email): Work/Customers/<slug-of-
+    customer>/People/<slug-of-dedup_key>.md when customer is a real,
+    non-empty, matched Customer name; the existing flat Work/People/
+    <slug-of-dedup_key>.md otherwise (operator-confirmed 2026-08-18
+    fallback for a Person with no derivable/matched Customer at all).
+    Does not check whether the file exists yet."""
+    if customer:
+        return (
+            settings.vault_path / _CUSTOMERS_SUBFOLDER / _slugify(customer)
+            / "People" / f"{_slugify(dedup_key)}.md"
+        )
+    return settings.vault_path / _PEOPLE_SUBFOLDER / f"{_slugify(dedup_key)}.md"
 
 
-def person_note_exists(email: str) -> bool:
-    return person_note_path(email).exists()
+def person_note_exists(dedup_key: str, customer: str | None) -> bool:
+    return person_note_path(dedup_key, customer).exists()
+
+
+def find_person_note_path(dedup_key: str) -> Path | None:
+    """Vault-wide lookup by dedup_key alone, regardless of which Customer
+    (if any) the note is nested under (REQ-SB-71-US-03-T03, ADR-048
+    Decision 6) — mirrors resolve_thread_note_path's own "no persisted
+    index, a live bounded scan" precedent for the identical class of
+    problem: a Person's home is no longer deterministic from dedup_key
+    alone once nesting depends on a per-caller Customer match that can
+    legitimately differ across callers/time. Scans Work/Customers/*/
+    People/<stem>.md first, then the flat Work/People/<stem>.md fallback.
+    Purely read-only; never creates, writes, or renames anything."""
+    stem = _slugify(dedup_key)
+    customers_root = settings.vault_path / _CUSTOMERS_SUBFOLDER
+    if customers_root.exists():
+        nested_matches = sorted(customers_root.glob(f"*/People/{stem}.md"))
+        if nested_matches:
+            return nested_matches[0]
+    flat_path = settings.vault_path / _PEOPLE_SUBFOLDER / f"{stem}.md"
+    return flat_path if flat_path.exists() else None
 
 
 def build_person_tags(company: str | None) -> list[str]:
@@ -474,49 +1001,55 @@ def build_person_tags(company: str | None) -> list[str]:
     return [f"company/{tag_slug(company)}", "kind/person"]
 
 
-def create_person_note_baseline(name: str, email: str, tags: list[str]) -> str:
-    """Creates a Person note for the first time: baseline frontmatter
-    (type/name/email/phone/linkedin/tags) with an empty body — the
-    REQ-SB-14 hub-note baseline pattern applied to People. The company
-    wikilink line (when applicable) is never written here — it is
-    inserted separately via insert_body_line_if_missing by the
+def create_person_note_baseline(note_path: Path, name: str, email: str | None, tags: list[str]) -> str:
+    """Creates a Person note for the first time, at the already-resolved
+    note_path (REQ-SB-71-US-03-T03, ADR-048 Decision 6 — SIGNATURE CHANGE
+    from the prior create_person_note_baseline(name, email, tags), which
+    derived its own flat path internally): baseline frontmatter (type/
+    name/email/phone/linkedin/tags, `email` written as "" when None —
+    the no-email-attendee case) with an empty body — the REQ-SB-14
+    hub-note baseline pattern applied to People, now usable for either
+    the flat Work/People/ location or a Work/Customers/<slug>/People/
+    nested one, since the caller (people_extraction.ensure_person_note)
+    already resolved note_path via the retargeted person_note_path. The
+    company wikilink line (when applicable) is never written here — it
+    is inserted separately via insert_body_line_if_missing by the
     orchestration layer, the same way customer_hub_linking.
-    link_note_to_customer_hub layers on top of ensure_customer_hub_note,
-    so a Person note with no matching customer at creation time still
-    gets the link retroactively once one exists (Scenario 8). Always
-    writes unconditionally, mirroring write_note()'s own contract —
-    callers must check person_note_exists() first (app/business/
-    people_extraction.py does)."""
-    return write_note(
-        subfolder=_PEOPLE_SUBFOLDER,
-        filename_stem=email.lower(),
-        frontmatter={
+    link_note_to_customer_hub layers on top of ensure_customer_hub_note.
+    Always writes unconditionally, mirroring write_note()'s own contract
+    — callers must resolve/check note_path's own existence first."""
+    _write_frontmatter_note(
+        note_path,
+        {
             "type": "Person",
             "name": name,
-            "email": email,
+            "email": email or "",
             "phone": "",
             "linkedin": "",
             "tags": tags,
         },
-        body="",
+        "",
     )
+    return str(note_path)
 
 
-def ensure_person_note_baseline_frontmatter(path, name: str, email: str, tags: list[str]) -> list[str]:
+def ensure_person_note_baseline_frontmatter(path, name: str, email: str | None, tags: list[str]) -> list[str]:
     """Tops up an already-existing Person note with any of the six
     baseline frontmatter keys it is missing (type/name/email/phone/
     linkedin/tags), inserting each surgically via
     insert_frontmatter_key_if_missing — never touches a key already
     present (so a user-filled phone/linkedin value, once set, is never
-    reset to ""), and never touches the body. Returns the list of keys
-    actually inserted (empty if the note already had all six) —
+    reset to ""), and never touches the body. `email` may now be
+    None/"" (REQ-SB-71-US-03-T03) for the no-email-attendee case, topped
+    up as "" like every other never-yet-set value. Returns the list of
+    keys actually inserted (empty if the note already had all six) —
     REQ-SB-10 Scenario 6's baseline-preservation mechanism, the same
     contract ensure_hub_note_baseline_frontmatter already established
     for Customer hub notes."""
     baseline_values = {
         "type": "Person",
         "name": name,
-        "email": email,
+        "email": email or "",
         "phone": "",
         "linkedin": "",
         "tags": tags,
@@ -529,14 +1062,32 @@ def ensure_person_note_baseline_frontmatter(path, name: str, email: str, tags: l
 
 
 _MEETINGS_SUBFOLDER = f"{_WORK_ROOT}/Meetings"
+# REQ-SB-71-US-03-T01 (ADR-048 Decision 5) reconciliation, logged in this
+# task's own Implementation Log: the story's own Scenario 1 text and this
+# task's own more precise End-State text ("drops subject/start/end/
+# location as persisted fields... adds teams_link/dial_in/recurrence/
+# calendar_event_id/calendar_series_id") disagree on whether this app's
+# own internal bookkeeping fields (type/customer/tags/thread) also drop --
+# reconciled by following the End-State text (Implementation/Learnings.md
+# SPRINT-049 precedent): only subject/start/end/location (the raw
+# calendar-logistics fields with no internal meaning of their own) are
+# dropped; type/customer/tags/thread (this app's own derived bookkeeping,
+# relied on by customer_hub_linking/meeting-thread-linking/list_known_
+# customers) are unaffected and continue to persist.
 _MEETING_NOTE_BASELINE_KEYS = (
-    "type", "customer", "subject", "start", "end", "location", "organizer", "tags",
+    "type", "customer", "tags", "thread", "teams_link", "dial_in",
+    "organizer", "recurrence", "attendees",
 )
 _PROCESSED_MEETINGS_FILE = "processed_meeting_ids.json"
 
 _ATTENDEES_LINE_PATTERN = re.compile(r"^\*\*Attendees:\*\* (.+)$", re.MULTILINE)
 _ATTENDEES_LINE_PREFIX = "**Attendees:** "
-_WIKILINK_PATTERN = re.compile(r"\[\[([^\]]+)\]\]")
+# Public (promoted from the former _WIKILINK_PATTERN -- BUGFIX-06-US-01,
+# BUG-027 -- so app/business/cockpit/people.py has one shared
+# wikilink-stripping regex instead of duplicating [[...]] extraction
+# outside data_access; pure rename, no behavior change. Mirrors the
+# tag_slug promotion precedent, REQ-SB-10-US-01-T01.)
+WIKILINK_PATTERN = re.compile(r"\[\[([^\]]+)\]\]")
 
 
 def meeting_note_filename_stem(subject: str, start: str) -> str:
@@ -578,6 +1129,24 @@ def meeting_note_path(subject: str, start: str):
 
 def meeting_note_exists(subject: str, start: str) -> bool:
     return meeting_note_path(subject, start).exists()
+
+
+def meeting_series_directory_paths(series_id: str) -> dict:
+    """Resolves the deterministic path set for a recurring Meeting
+    series' own ONE ongoing note (REQ-SB-71-US-03-T01, ADR-048 Decision
+    5) — Work/Meetings/<slug-of-series_id>/<slug-of-series_id>.md,
+    series_id keyed by Outlook's own GlobalAppointmentID (constant across
+    every occurrence of a series — ADR-013/ESC-012's own live-confirmed
+    fact, rejected once as a per-OCCURRENCE dedup key for the one-time
+    filename scheme, exactly right here for series identity instead).
+    Mirrors thread_directory_paths' own shape — a directory plus one
+    concept file inside it, no index/log/captures (ADR-042 point 1's own
+    Customer/Project-only 4-file scope-lock is not reopened by this
+    addition). Pure, deterministic, no I/O — does not check whether
+    either path exists yet."""
+    concept_slug = _slugify(series_id)
+    base = settings.vault_path / _MEETINGS_SUBFOLDER / concept_slug
+    return {"directory": base, "concept": base / f"{concept_slug}.md"}
 
 
 def _legacy_meeting_note_path_by_entry_id(subject: str, start: str, entry_id: str):
@@ -622,70 +1191,91 @@ def build_meeting_tags(customer: str | None) -> list[str]:
 
 
 def create_meeting_note_baseline(
-    subject: str,
+    note_path: Path,
     customer: str | None,
-    start: str,
-    end: str,
-    location: str,
     organizer: str,
+    teams_link: str,
+    dial_in: str,
+    is_recurring: bool,
+    calendar_id: str,
 ) -> str:
-    """Creates a Meeting note for the first time: baseline frontmatter
-    (type/customer/subject/start/end/location/organizer/tags) with an
-    empty body — the REQ-SB-14/REQ-SB-10 baseline pattern applied to
-    Meetings. The **Customer:**/**Attendees:** body lines are never
-    written here — they are inserted separately by the orchestration
-    layer (T03), the same way link_note_to_customer_hub layers on top of
-    ensure_customer_hub_note. Always writes unconditionally, mirroring
-    write_note()'s own contract — callers must check meeting_note_exists()
-    first (T03 does)."""
-    return write_note(
-        subfolder=_MEETINGS_SUBFOLDER,
-        filename_stem=meeting_note_filename_stem(subject, start),
-        frontmatter={
-            "type": "Meeting",
-            "customer": customer or "",
-            "subject": subject,
-            "start": start,
-            "end": end,
-            "location": location,
-            "organizer": organizer,
-            "tags": build_meeting_tags(customer),
-        },
-        body="",
+    """Creates a Meeting note for the first time, at the already-resolved
+    note_path (REQ-SB-71-US-03-T01, ADR-048 Decision 5) — one-time:
+    meeting_note_path(subject, start)'s own unchanged path; recurring:
+    meeting_series_directory_paths(series_id)["concept"]. Baseline
+    frontmatter is logistics-only: type/customer/tags/thread (this app's
+    own internal bookkeeping, unchanged) plus teams_link/dial_in/
+    organizer/recurrence and EXACTLY ONE of calendar_event_id (one-time)
+    or calendar_series_id (recurring) — subject/start/end/location and the
+    raw invite body are never persisted (the deliberate, operator-
+    authorized "raw calendar invite is noise, not data" exception to this
+    project's own archive-not-delete discipline). `attendees` starts as an
+    empty wikilink list, topped up by the SAME call classify_recent_
+    meetings already makes for the body's own **Attendees:** line (T03).
+    Body is the new shared shape for both one-time and recurring: `##
+    Summary` (agent-owned, regenerated) + `## History` (agent-owned,
+    growing, one dated entry per occurrence) + `## Personal Notes`/
+    `## Actions` (human-owned), all empty at creation. Always writes
+    unconditionally, mirroring every other create_*_baseline's own
+    contract — callers must resolve/check note_path's own existence
+    first."""
+    frontmatter: dict = {
+        "type": "Meeting",
+        "customer": customer or "",
+        "tags": build_meeting_tags(customer),
+        "thread": "",
+        "teams_link": teams_link,
+        "dial_in": dial_in,
+        "organizer": organizer,
+        "recurrence": is_recurring,
+        "attendees": [],
+    }
+    frontmatter["calendar_series_id" if is_recurring else "calendar_event_id"] = calendar_id
+    _write_frontmatter_note(
+        note_path, frontmatter,
+        "## Summary\n\n## History\n\n## Personal Notes\n\n## Actions\n",
     )
+    return str(note_path)
 
 
 def ensure_meeting_note_baseline_frontmatter(
     path,
-    subject: str,
     customer: str | None,
-    start: str,
-    end: str,
-    location: str,
     organizer: str,
+    teams_link: str,
+    dial_in: str,
+    is_recurring: bool,
+    calendar_id: str,
 ) -> list[str]:
-    """Tops up an already-existing Meeting note with any of the eight
-    baseline frontmatter keys it is missing, inserting each surgically via
-    insert_frontmatter_key_if_missing — never touches a key already
-    present, and never touches the body. Returns the list of keys actually
-    inserted (empty if the note already had all eight) — Scenario 2/6's
-    baseline-preservation mechanism, the same contract
-    ensure_person_note_baseline_frontmatter/ensure_hub_note_baseline_
-    frontmatter already established."""
+    """Tops up an already-existing Meeting note (one-time or recurring)
+    with any of the new baseline frontmatter keys it is missing —
+    REQ-SB-71-US-03-T01's own retarget of the prior nine-key baseline to
+    the new logistics-only shape — inserting each surgically via insert_
+    frontmatter_key_if_missing, never touching a key already present, and
+    never touching the body. `calendar_event_id`/`calendar_series_id` top
+    up whichever ONE applies to this note's own shape (one-time vs.
+    recurring), mirrored by is_recurring. Returns the list of keys
+    actually inserted (empty if the note already had all of them) — the
+    same baseline-preservation contract every other note kind's own
+    ensure_*_baseline_frontmatter already established."""
     baseline_values = {
         "type": "Meeting",
         "customer": customer or "",
-        "subject": subject,
-        "start": start,
-        "end": end,
-        "location": location,
-        "organizer": organizer,
         "tags": build_meeting_tags(customer),
+        "thread": "",
+        "teams_link": teams_link,
+        "dial_in": dial_in,
+        "organizer": organizer,
+        "recurrence": is_recurring,
+        "attendees": [],
     }
     inserted: list[str] = []
     for key in _MEETING_NOTE_BASELINE_KEYS:
         if insert_frontmatter_key_if_missing(path, key, baseline_values[key]):
             inserted.append(key)
+    calendar_key = "calendar_series_id" if is_recurring else "calendar_event_id"
+    if insert_frontmatter_key_if_missing(path, calendar_key, calendar_id):
+        inserted.append(calendar_key)
     return inserted
 
 
@@ -756,7 +1346,7 @@ def upsert_attendee_links(path, person_stems: list[str]) -> bool:
         path.write_text(new_text, encoding="utf-8")
         return True
 
-    existing_stems = _WIKILINK_PATTERN.findall(match.group(1))
+    existing_stems = WIKILINK_PATTERN.findall(match.group(1))
     merged_stems = list(existing_stems)
     changed = False
     for stem in person_stems:
@@ -771,8 +1361,499 @@ def upsert_attendee_links(path, person_stems: list[str]) -> bool:
     return True
 
 
+_THREADS_SUBFOLDER = f"{_WORK_ROOT}/Threads"
+_THREAD_NOTE_BASELINE_KEYS = ("type", "conversation_id", "tags", "thread_name")
+
+
+def thread_note_path(conversation_id: str):
+    """Resolves the vault-absolute path a Thread note lives (or would
+    live) at — Work/Threads/<slug-of-conversation_id>.md — without
+    checking whether it exists yet. Pure, deterministic function of
+    conversation_id alone (ADR-042 point 5), mirroring hub_note_path/
+    meeting_note_path's own "deterministic path from a stable key, no
+    separate lookup index" precedent — never conversation_index.json,
+    which stays owned by today's still-live email_classification.py until
+    REQ-SB-55 replaces it. Work/Threads/ needs no list_known_kinds()
+    change — it is discovered dynamically by directory name, same as
+    every other Work/<kind>/ folder."""
+    return settings.vault_path / _THREADS_SUBFOLDER / f"{_slugify(conversation_id)}.md"
+
+
+def thread_note_exists(conversation_id: str) -> bool:
+    return thread_note_path(conversation_id).exists()
+
+
+def thread_directory_paths(conversation_id: str) -> dict:
+    """Resolves the deterministic path set for the redesigned Thread
+    directory shape (`REQ-SB-71-US-02`, `ADR-048` Decision 3) —
+    `Work/Threads/<slug-of-conversation_id>/`, permanently deterministic
+    from `conversation_id` alone, reverting `ADR-042` point 5's ORIGINAL
+    scheme and superseding `ADR-046`'s own human-readable/renamable-
+    filename mechanism (no longer needed: the human-readable identity now
+    lives in the concept file's own `thread_name` frontmatter, not the
+    directory/file name). Mirrors `okf_directory_paths`'s own shape but
+    WITHOUT `index.md`/`log.md`/`captures.md` — a genuinely different,
+    simpler 2-part convention; `ADR-042` point 1's own "Customer and
+    Project are the ONLY two 4-file-OKF-shaped kinds" scope-lock is not
+    reopened by this addition. Pure, deterministic, no I/O — does not
+    check whether any of the three paths exist yet."""
+    concept_slug = _slugify(conversation_id)
+    base = settings.vault_path / _THREADS_SUBFOLDER / concept_slug
+    return {
+        "directory": base,
+        "concept": base / f"{concept_slug}.md",
+        "messages": base / "messages",
+    }
+
+
+def create_thread_note_baseline(
+    conversation_id: str, thread_name: str, tags: list[str] | None = None
+) -> str:
+    """Creates a Thread's distilled concept file for the first time, under
+    the redesigned 2-part directory shape (`REQ-SB-71-US-02`, `ADR-048`
+    Decision 3) — REWRITES this function's own prior single-file/
+    renamable-filename shape (`ADR-046` Decisions 6/7): baseline
+    frontmatter (type/conversation_id/tags/thread_name) with a body of
+    four sections, `## Summary` (agent-owned, regenerated) + `##
+    Personal Notes` (human-owned) + `## Actions` (human-owned, a literal
+    checklist) + `## Related` (agent-owned, regenerated) — `##
+    Transcript` is RETIRED, superseded by the `messages/` directory
+    itself, which now carries the full verbatim content `##
+    Transcript`'s own terse one-liners never did. `thread_name` (`ADR-046`
+    Decision 6's own "captured once, stable across the Thread's life"
+    property, preserved) is the FIRST message's own subject, captured
+    once here and never recomputed on a later message. `date` is no
+    longer a parameter — the new scheme needs no filename-date component,
+    since the concept file's own path is deterministic from
+    `conversation_id` alone via `thread_directory_paths`. Always writes
+    unconditionally, mirroring every other `create_*_baseline`'s own
+    contract — callers must resolve whether the Thread already exists
+    first (via `resolve_thread_note_path()`)."""
+    paths = thread_directory_paths(conversation_id)
+    _write_frontmatter_note(
+        paths["concept"],
+        {
+            "type": "Thread",
+            "conversation_id": conversation_id,
+            "tags": tags or [],
+            "thread_name": thread_name,
+        },
+        "## Summary\n\n## Personal Notes\n\n## Actions\n\n## Related\n",
+    )
+    return str(paths["concept"])
+
+
+def raw_message_note_path(conversation_id: str, message_id: str, received: str) -> Path:
+    """Resolves the vault-absolute path one raw message note lives (or
+    would live) at — `<thread's own current messages/ directory>/
+    "<received[:10]>-<hash8(message_id)>.md"` (`REQ-SB-71-US-02`, `ADR-048`
+    Decision 3; retargeted `REQ-SB-72-US-01-T01`, `ADR-049` Decision 1) —
+    without checking whether it exists yet. Mirrors `meeting_note_filename_
+    stem`'s own hash-suffix disambiguation shape: `message_id` is the
+    email's own `id`/EntryID field, already unique per message, hashed
+    (`sha256(message_id)[:8]`) so two messages received on the same day
+    never collide. Resolve-first, deterministic-fallback (mirrors `resolve_
+    meeting_note_path`'s own established two-tier shape): composes `resolve_
+    thread_directory` first — if the Thread's directory already exists
+    (possibly renamed), the note is written under THAT directory's own
+    `messages/`; only for a genuinely brand-new Thread (no directory yet)
+    does this fall back to the deterministic `thread_directory_paths(
+    conversation_id)["messages"]` path, the directory `create_thread_note_
+    baseline` is about to create it at."""
+    suffix = hashlib.sha256(message_id.encode("utf-8")).hexdigest()[:8]
+    filename = f"{received[:10]}-{suffix}.md"
+    directory = resolve_thread_directory(conversation_id)
+    messages_dir = (
+        directory / "messages" if directory is not None
+        else thread_directory_paths(conversation_id)["messages"]
+    )
+    return messages_dir / filename
+
+
+def raw_message_note_exists(conversation_id: str, message_id: str, received: str) -> bool:
+    """Existence check the caller (Stage 1) MUST call before ever calling
+    `create_raw_message_note` — mirrors `person_note_exists`'s own
+    "callers must check first" contract; enforces the write-once
+    guarantee by caller discipline, since `create_raw_message_note`
+    itself does not defensively re-check."""
+    return raw_message_note_path(conversation_id, message_id, received).exists()
+
+
+def create_raw_message_note(
+    conversation_id: str,
+    message_id: str,
+    received: str,
+    sender: str,
+    sender_email: str,
+    subject: str,
+    body: str,
+) -> str:
+    """Writes ONE immutable, verbatim raw message note (`REQ-SB-71-US-02`,
+    `ADR-048` Decision 3) — the operator's own root pain (losing real
+    email content across a stalled/imperfect re-synthesis) is what this
+    primitive structurally resolves: the message's own real body is
+    preserved byte-for-byte, forever, regardless of what any later Stage 2
+    re-synthesis does. Frontmatter carries `message_id`/`sender`/
+    `sender_email`/`subject`/`received`/`conversation_id`; body is the raw
+    message content verbatim, unmodified. Always writes unconditionally —
+    no existence-check inside (the caller already checked via `raw_
+    message_note_exists`), mirroring every other `create_*_baseline`'s own
+    "always writes unconditionally, caller checks first" contract. Never
+    edited again once written by any caller in this codebase — write-once
+    is a contract enforced by caller discipline, not a file-permission
+    mechanism."""
+    path = raw_message_note_path(conversation_id, message_id, received)
+    _write_frontmatter_note(
+        path,
+        {
+            "type": "RawMessage",
+            "conversation_id": conversation_id,
+            "message_id": message_id,
+            "sender": sender,
+            "sender_email": sender_email,
+            "subject": subject,
+            "received": received,
+        },
+        body,
+    )
+    return str(path)
+
+
+def ensure_thread_note_baseline_frontmatter(
+    path, conversation_id: str, thread_name: str, tags: list[str] | None = None
+) -> list[str]:
+    """Tops up an already-existing Thread note with any of the four
+    baseline frontmatter keys it is missing, inserting each surgically via
+    insert_frontmatter_key_if_missing — never touches a key already
+    present, and never touches the body. Returns the list of keys actually
+    inserted (empty if the note already had all four baseline keys) —
+    same baseline-preservation contract every other note kind's own
+    ensure_*_baseline_frontmatter already established. `thread_name`
+    mirrors the same top-up-only-if-missing contract as `type`/
+    `conversation_id`/`tags` — an already-present thread_name (the
+    original first-message subject) is never overwritten by a later
+    message's own subject, preserving ADR-046 Decision 6's "captured once,
+    stable across the Thread's life" property even for a pre-REQ-SB-69
+    note being topped up for the first time. Tag accumulation/union logic
+    across updates is explicitly out of this task's own scope (REQ-SB-55's
+    own job, per REQ-SB-54-US-01's Constraints) — this only tops up the
+    initial `tags` value if the key is missing entirely, it never merges
+    into an already-present one."""
+    baseline_values = {
+        "type": "Thread",
+        "conversation_id": conversation_id,
+        "tags": tags or [],
+        "thread_name": thread_name,
+    }
+    inserted: list[str] = []
+    for key in _THREAD_NOTE_BASELINE_KEYS:
+        if insert_frontmatter_key_if_missing(path, key, baseline_values[key]):
+            inserted.append(key)
+    return inserted
+
+
+def list_thread_notes() -> list[Path]:
+    """Every Thread's own distilled CONCEPT file under the redesigned
+    2-level directory shape (`REQ-SB-71-US-02`, `ADR-048` Decision 7) —
+    globs `Work/Threads/*/*.md`, filtered to `path.parent.name ==
+    path.stem` (matches only `<slug>/<slug>.md`; a raw message note's own
+    parent directory is literally named `messages`, never equal to its own
+    stem, so every raw message note is correctly excluded). Composed by
+    `list_threads_for_project`, Meeting's own fallback linker
+    (`meeting_classification.py`), and `resolve_thread_note_path` below —
+    never a second, independent Thread-enumeration mechanism. Returns []
+    if `Work/Threads/` doesn't exist yet — same not-yet-created-folder
+    contract this function always had."""
+    threads_root = settings.vault_path / _THREADS_SUBFOLDER
+    if not threads_root.exists():
+        return []
+    return sorted(
+        path for path in threads_root.glob("*/*.md")
+        if path.parent.name == path.stem
+    )
+
+
+def list_threads_for_project(customer: str, project: str) -> list[Path]:
+    """Every currently-linked Thread for one Project (`REQ-SB-57-US-01-T01`)
+    -- composes `list_thread_notes()` directly (never a new, second
+    `Work/Threads/` glob), filtering by reading each Thread's own current
+    `customer`/`project` frontmatter for an exact match. Returns `[]` if
+    none match -- never raises for a Project with no linked Threads yet,
+    mirroring every other "not-yet-linked" contract already established in
+    this module (e.g. `list_customer_projects`)."""
+    matches: list[Path] = []
+    for path in list_thread_notes():
+        frontmatter, _ = read_note(path)
+        if frontmatter.get("customer") == customer and frontmatter.get("project") == project:
+            matches.append(path)
+    return matches
+
+
+def thread_note_filename_stem(thread_name: str, date: str, conversation_id: str) -> str:
+    """<thread_name>-<date>-<hash8> — mirrors meeting_note_filename_stem's
+    own <subject>-<date>-<hash-suffix> shape exactly (ADR-046 Decision 6),
+    with one deliberate divergence from Meeting's own scheme: the hash
+    suffix here is derived from `conversation_id` ALONE
+    (`sha256(conversation_id)[:8]`), never `f"{thread_name}|{date}"` the
+    way Meeting hashes `f"{subject}|{start}"`. This is load-bearing, not a
+    style choice: a Thread's own `date` component is the mutable
+    last_message_at[:10], which changes on every later message in the same
+    conversation (Scenario 7) — if the hash suffix depended on `date` too,
+    every later message would also change the disambiguator, defeating the
+    whole point of a stable, renamable-in-place filename. Hashing
+    conversation_id alone keeps the suffix constant across the Thread's
+    entire life, so renaming (rename_thread_note, below) only ever changes
+    the date component, never the identity-bearing suffix."""
+    suffix = hashlib.sha256(conversation_id.encode("utf-8")).hexdigest()[:8]
+    return f"{thread_name}-{date}-{suffix}"
+
+
+def thread_note_path_for(thread_name: str, date: str, conversation_id: str):
+    """Resolves the vault-absolute path a Thread note with this
+    thread_name/date/conversation_id would live at —
+    Work/Threads/<slug-of-stem>.md — without checking whether it exists
+    yet. Mirrors meeting_note_path's own "resolves without checking
+    existence" shape, composing thread_note_filename_stem above the same
+    way meeting_note_path composes meeting_note_filename_stem. Uses the
+    same _slugify() write_note() applies to its own filename_stem, so this
+    always points at exactly the file a write under this stem would
+    create."""
+    stem = thread_note_filename_stem(thread_name, date, conversation_id)
+    return settings.vault_path / _THREADS_SUBFOLDER / f"{_slugify(stem)}.md"
+
+
+def migrate_flat_thread_to_directory(flat_path: Path) -> Path:
+    """One-time, idempotent, self-healing migration (BUGFIX-05-US-01,
+    ADR-052) of a legacy, pre-redesign FLAT Work/Threads/<name>.md
+    Thread note (zero intermediate directory segments) to the
+    standard 2-level directory shape thread_directory_paths(
+    conversation_id) already establishes for every Thread created
+    after ADR-048 -- the SAME deterministic location a brand-new
+    Thread is always first created at, reused unchanged, never a
+    second naming derivation. Mirrors rename_thread_directory's own
+    refuse-to-overwrite discipline one level up: raises
+    FileExistsError if the deterministic target directory already
+    exists (a structurally near-impossible conversation_id-slug
+    collision), never silently overwriting. Reads conversation_id
+    from flat_path's own frontmatter directly -- the caller
+    (resolve_thread_directory's own second scan tier) has already
+    matched on it, but this function re-derives it independently so
+    it stays a correct, callable-on-its-own primitive, not one that
+    silently trusts an unchecked caller-supplied id. Creates the
+    target directory, moves/renames the flat file to
+    <slug>/<slug>.md, creates an empty messages/ subdirectory
+    alongside it -- touches only filesystem SHAPE (one directory
+    creation, one file move/rename, one empty subdirectory
+    creation), never note body or frontmatter content -- EXCEPT for
+    one narrow, disclosed exception (BUGFIX-05-US-01, ADR-053):
+    BEFORE the rename, reads the flat note's own pre-migration
+    ## Summary via the existing read_body_section primitive (no new
+    reader) and, if non-empty, writes it VERBATIM to a new sidecar
+    file, <new-directory>/pre_migration_summary.md -- plain text, no
+    frontmatter, created AFTER the target directory but BEFORE the
+    flat file is renamed, living OUTSIDE messages/ so it is
+    structurally invisible to list_thread_notes() and to
+    synthesize_thread's own messages_dir glob. If the flat note's
+    own ## Summary is empty, no sidecar file is written -- a true
+    no-op. synthesize_thread folds this sidecar into its own next
+    real synthesis as prior-history grounding and archives it to
+    pre_migration_summary.consumed.md on success. Returns the new
+    concept file path."""
+    frontmatter, _ = read_note(flat_path)
+    conversation_id = frontmatter["conversation_id"]
+    paths = thread_directory_paths(conversation_id)
+    if paths["directory"].exists():
+        raise FileExistsError(
+            f"would overwrite existing Thread directory at {paths['directory']}"
+        )
+    paths["directory"].mkdir(parents=True, exist_ok=True)
+    pre_migration_summary = read_body_section(flat_path, "## Summary")
+    if pre_migration_summary:
+        (paths["directory"] / "pre_migration_summary.md").write_text(
+            pre_migration_summary, encoding="utf-8"
+        )
+    flat_path.rename(paths["concept"])
+    paths["messages"].mkdir(parents=True, exist_ok=True)
+    return paths["concept"]
+
+
+def resolve_thread_directory(conversation_id: str) -> Path | None:
+    """The ONE place "does a Thread for this conversation_id already
+    exist, and if so, where" is answered going forward (`REQ-SB-72-
+    US-01-T01`, `ADR-049` Decision 1) -- a frontmatter-based scan,
+    composing the existing `list_thread_notes()` (never a second,
+    independent Thread-enumeration mechanism), matching `frontmatter.
+    get("conversation_id") == conversation_id`. Returns the Thread's
+    own DIRECTORY (`path.parent`), or `None` if no directory-shaped
+    Thread matches.
+
+    On a miss, a SECOND scan tier (`BUGFIX-05-US-01`, `ADR-052`)
+    globs `Work/Threads/*.md` directly -- flat, pre-redesign notes
+    only, deliberately NOT folded into `list_thread_notes()` itself
+    (`ADR-052` Decision 4) -- for the SAME `conversation_id`
+    frontmatter match. On a match, immediately calls `migrate_flat_
+    thread_to_directory` and returns the NEW directory -- never a
+    flat file's own path or parent directly. This is the ONE
+    deliberate exception to this function's own otherwise
+    purely-read-only contract: a one-time, idempotent, self-healing
+    WRITE for this legacy flat-shape case only (`ADR-052` Decision
+    5, narrowing `ADR-049` Decision 1's "purely read-only" framing
+    for this one case).
+
+    Ordering is load-bearing: the directory-shaped scan always runs
+    FIRST, so a `conversation_id` that already has BOTH a flat note
+    and a directory-shaped duplicate correctly, silently no-ops on
+    the second tier -- the existing duplicate is returned, the
+    already-orphaned flat note is left alone (a deliberate,
+    disclosed non-goal, `ADR-052` Consequences / `ESC-055`)."""
+    for path in list_thread_notes():
+        frontmatter, _ = read_note(path)
+        if frontmatter.get("conversation_id") == conversation_id:
+            return path.parent
+
+    threads_root = settings.vault_path / _THREADS_SUBFOLDER
+    if threads_root.exists():
+        for flat_path in threads_root.glob("*.md"):
+            frontmatter, _ = read_note(flat_path)
+            if frontmatter.get("conversation_id") == conversation_id:
+                migrated_concept_path = migrate_flat_thread_to_directory(flat_path)
+                return migrated_concept_path.parent
+
+    return None
+
+
+def resolve_thread_note_path(conversation_id: str) -> Path | None:
+    """PUBLIC SIGNATURE UNCHANGED — retargeted a SECOND time (`REQ-SB-72-
+    US-01-T01`, `ADR-049` Decision 1, partially superseding `ADR-048`
+    Decision 3/7's own "permanent deterministic-path" sub-decision only)
+    to a thin wrapper over `resolve_thread_directory`:
+    `directory / f"{directory.name}.md"` if a match is found, else `None`.
+    This is what lets every real existing caller
+    (`_link_to_thread_by_conversation_id`, `_trigger_project_resynthesis`,
+    `synthesize_thread`'s own create-vs-update check,
+    `meeting_classification.py`'s linked-Thread lookups) keep working with
+    ZERO change to its own call site — it still calls `resolve_thread_note_
+    path(conversation_id)` and gets back a `Path | None`, exactly as
+    before. Reverts to composing `list_thread_notes()` (via `resolve_
+    thread_directory`) once again — a Thread's own directory name is no
+    longer guaranteed to match its `conversation_id` slug once it has been
+    renamed (`rename_thread_directory`, below), so a deterministic-path
+    existence check alone would silently miss any already-renamed Thread.
+    Purely read-only: never creates, writes, or renames anything."""
+    directory = resolve_thread_directory(conversation_id)
+    if directory is None:
+        return None
+    return directory / f"{directory.name}.md"
+
+
+def rename_thread_note(old_path, new_path) -> None:
+    """Physically renames a Thread note in place (old_path.rename(new_path)
+    after ensuring new_path's parent directory exists) — the mechanism
+    ADR-046 Decision 7 needs whenever thread_match_merge computes a freshly
+    -derived filename (the date component changed) for an already-existing
+    Thread. Mirrors move_note_and_attachments's own refuse-to-silently-
+    overwrite discipline: raises FileExistsError if new_path already
+    exists and is not old_path itself, rather than silently destroying an
+    unrelated Thread's content at a genuine filename collision (Scenario
+    6). A no-op (returns without touching the filesystem) when
+    old_path == new_path — a Thread whose freshly-derived filename didn't
+    actually change on this call, the common case for two updates landing
+    on the same calendar day. Unlike move_note_and_attachments, this never
+    moves a sibling attachments/<note_slug>/ folder — Thread notes don't
+    have their own attachments subfolder (Attachments are recorded inline
+    in the note's own body, per REQ-SB-55), so there is nothing sibling to
+    carry over."""
+    if old_path == new_path:
+        return
+    if new_path.exists():
+        raise FileExistsError(f"would overwrite existing note at {new_path}")
+    new_path.parent.mkdir(parents=True, exist_ok=True)
+    old_path.rename(new_path)
+
+
+def rename_thread_directory(old_directory: Path, new_directory: Path) -> Path:
+    """A real, atomic whole-directory move (`REQ-SB-72-US-01-T01`, `ADR-049`
+    Decision 2) — one level up from `rename_thread_note`'s own existing
+    single-file discipline, above. No-op if `old_directory == new_
+    directory` — returns the (unchanged) concept path directly, no
+    filesystem operation performed. Raises `FileExistsError` if `new_
+    directory` already exists (a genuine `<date> <subject>` collision —
+    surfaced, never silently overwritten, mirroring `rename_thread_note`'s
+    own refuse-to-overwrite discipline one level up). Otherwise `old_
+    directory.rename(new_directory)` moves the WHOLE tree — concept file,
+    `messages/`, any `files/` — in one atomic filesystem op, then the
+    concept file inside is itself renamed from `<old-slug>.md` to
+    `<new-slug>.md`, preserving the `<slug>/<slug>.md` invariant `list_
+    thread_notes()` depends on. Returns the new concept file path."""
+    if old_directory == new_directory:
+        return new_directory / f"{new_directory.name}.md"
+    if new_directory.exists():
+        raise FileExistsError(
+            f"would overwrite existing Thread directory at {new_directory}"
+        )
+    old_slug = old_directory.name
+    new_slug = new_directory.name
+    old_directory.rename(new_directory)
+    old_concept_path = new_directory / f"{old_slug}.md"
+    new_concept_path = new_directory / f"{new_slug}.md"
+    old_concept_path.rename(new_concept_path)
+    return new_concept_path
+
+
+def format_human_readable_datetime(raw: str) -> str:
+    """Renders a raw, COM-stringified timestamp (email["received"]'s own
+    real shape, e.g. "2026-08-16 13:02:57.246000+00:00") in a
+    human-readable form, e.g. "Aug 16, 2026, 1:02 PM" (ADR-046 Decision
+    10, REQ-SB-69-US-01-T07) -- a pure display-formatting helper, never a
+    replacement for the machine-parseable `last_message_at` field itself,
+    which stays byte-for-byte unchanged everywhere it's already written.
+    Parses via datetime.fromisoformat (handles the space-separated,
+    microsecond-precision, UTC-offset-suffixed shape list_recent_mail's
+    own `received` field already produces) and falls back to a bare
+    date-only strptime for the "YYYY-MM-DD"-only shape. Never raises and
+    never fabricates a guessed date -- a genuinely unparseable raw string
+    is returned unchanged, mirroring this codebase's own honest-
+    degradation posture (e.g. summarize_attachment's own "summary_error"
+    pattern) applied here to a display-only formatting concern."""
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except (ValueError, TypeError):
+        try:
+            parsed = datetime.strptime(raw[:10], "%Y-%m-%d")
+        except (ValueError, TypeError):
+            return raw
+    month_day_year = f"{parsed.strftime('%b')} {parsed.strftime('%d').lstrip('0') or '0'}, {parsed.year}"
+    time_of_day = parsed.strftime("%I:%M %p").lstrip("0") or "0"
+    return f"{month_day_year}, {time_of_day}"
+
+
+def _meeting_thread_link_config_path():
+    state_dir = settings.vault_path / _STATE_DIR
+    state_dir.mkdir(parents=True, exist_ok=True)
+    return state_dir / _MEETING_THREAD_LINK_CONFIG_FILE
+
+
+def load_meeting_thread_link_config() -> dict | None:
+    """Pure I/O — returns None if meeting_thread_link_config.json doesn't
+    exist yet (no default content is computed here, per ADR-003; the
+    self-healing attendee_overlap_floor/one_on_one_carve_out_enabled/
+    date_proximity_days defaults are a business-layer decision, owned by
+    app/business/meeting_thread_link_config.py, mirroring
+    working_mode_registry._load_state()'s own seeded-default shape — a
+    single flat record, not a per-id store)."""
+    path = _meeting_thread_link_config_path()
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def save_meeting_thread_link_config(config: dict) -> None:
+    path = _meeting_thread_link_config_path()
+    path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+
+
 _PARTNERS_SUBFOLDER = f"{_WORK_ROOT}/Partners"
-_PARTNER_HUB_NOTE_BASELINE_KEYS = ("type", "partner", "tags")
+_PARTNER_HUB_NOTE_BASELINE_KEYS = ("type", "partner", "tags", "affiliate_of")
 
 
 def partner_hub_note_path(partner: str):
@@ -795,13 +1876,13 @@ def build_partner_tags(partner: str) -> list[str]:
 
 def create_partner_hub_note_baseline(partner: str) -> str:
     """Creates a partner's hub note for the first time: baseline
-    frontmatter (type/partner/tags — deliberately no affiliate_of,
-    Partner has no Affiliate concept, ADR-009) plus the same
-    auto-generated body stub convention create_customer_hub_note_baseline
-    already uses. Always writes unconditionally, mirroring
-    write_note()'s own contract — callers must check
-    partner_hub_note_exists() first (app/business/partner_hub_linking.py
-    does)."""
+    frontmatter (type/partner/tags/affiliate_of — Partner now legitimately
+    carries affiliate_of, narrowly revising ADR-009 point 3, ADR-057
+    Decision 4/REQ-SB-76-US-01-T02) plus the same auto-generated body stub
+    convention create_customer_hub_note_baseline already uses. Always
+    writes unconditionally, mirroring write_note()'s own contract —
+    callers must check partner_hub_note_exists() first
+    (app/business/partner_hub_linking.py does)."""
     return write_note(
         subfolder=_PARTNERS_SUBFOLDER,
         filename_stem=partner,
@@ -809,6 +1890,7 @@ def create_partner_hub_note_baseline(partner: str) -> str:
             "type": "Partner",
             "partner": partner,
             "tags": build_partner_tags(partner),
+            "affiliate_of": "",
         },
         body=(
             f"# {partner}\n\n"
@@ -820,15 +1902,16 @@ def create_partner_hub_note_baseline(partner: str) -> str:
 
 
 def ensure_partner_hub_note_baseline_frontmatter(path, partner: str) -> list[str]:
-    """Tops up an already-existing partner hub note with any of the
-    three baseline frontmatter keys it is missing (type/partner/tags),
-    mirroring ensure_hub_note_baseline_frontmatter's exact contract for
-    Partner's shorter key set. Never touches a key already present or
+    """Tops up an already-existing partner hub note with any of the four
+    baseline frontmatter keys it is missing (type/partner/tags/
+    affiliate_of), mirroring ensure_hub_note_baseline_frontmatter's exact
+    contract for Partner's key set. Never touches a key already present or
     the body. Returns the list of keys actually inserted."""
     baseline_values = {
         "type": "Partner",
         "partner": partner,
         "tags": build_partner_tags(partner),
+        "affiliate_of": "",
     }
     inserted: list[str] = []
     for key in _PARTNER_HUB_NOTE_BASELINE_KEYS:
@@ -955,6 +2038,213 @@ def replace_body_line(path, old_line: str, new_line: str) -> bool:
         return False
     path.write_text(text.replace(old_line, new_line), encoding="utf-8")
     return True
+
+
+_BODY_SECTION_HEADER_PATTERN = re.compile(r"^## .+$", re.MULTILINE)
+
+
+def insert_body_section_if_missing(path, header: str) -> bool:
+    """Idempotent "top up only if absent" primitive for a whole `## `-level
+    header (`REQ-SB-72-US-01-T04`) — mirrors `insert_body_line_if_missing`'s
+    own idempotent shape, generalized from a single line to a section
+    header, so a header `replace_body_section` can later write into can be
+    created the first time without that function itself ever creating one
+    (it only ever regenerates the region between an ALREADY-present header
+    and the next, by design — see its own docstring). Presence is checked
+    via the SAME exact, literal line-match regex `replace_body_section`
+    itself uses, so this function and that one always agree on whether a
+    given header is "present." Appends `f"\\n\\n{header}\\n"` to the end of
+    the file's own body if `header` is not already present anywhere in the
+    file. Returns `True` if inserted, `False` if already present (no write
+    performed). Never touches an already-present header's own content —
+    this function only ever appends a bare header line at the very end;
+    populating its content is `replace_body_section`'s own job, called
+    separately afterward."""
+    text = path.read_text(encoding="utf-8")
+    header_line_pattern = re.compile(r"^" + re.escape(header) + r"$", re.MULTILINE)
+    if header_line_pattern.search(text) is not None:
+        return False
+    separator = "" if text.endswith("\n") else "\n"
+    path.write_text(text + separator + f"\n{header}\n", encoding="utf-8")
+    return True
+
+
+def replace_body_section(path, header: str, new_content: str, *, caller: str) -> bool:
+    """Header-scoped full-region regeneration primitive (ADR-042 point 2):
+    replaces everything strictly between `header`'s own line and the next
+    `##`-level header line (or end of file) with new_content, leaving
+    everything outside that bounded region — frontmatter, other sections,
+    and both header lines themselves — byte-for-byte untouched. Locates
+    `header` by an exact, literal line match on every call (never a cached
+    or computed byte offset), so it behaves identically no matter how many
+    times the note has already been regenerated — the general "regenerate,
+    don't patch" mechanism this story establishes to replace
+    insert_body_line_if_missing's fixed-frontmatter-offset fragility for
+    any section meant to reflect current state (MEMORY.md, BUG-003/
+    ESC-003), rather than being incrementally patched. A nested `###`
+    (or deeper) subheader inside the same section is NOT a boundary and
+    stays part of the replaced region — only another `## `-level header
+    ends it. No-op (returns False, no write performed, nothing raised) if
+    `header` is not found anywhere in the file — mirrors this module's own
+    insert_*_if_missing "no-op is a valid, expected outcome" contract; it
+    never creates the section itself.
+
+    `caller` (REQ-SB-71-US-01, ADR-048 Decision 2) is a REQUIRED keyword-only
+    parameter — a deliberate breaking-signature change, no default, so every
+    call site (present and future) must explicitly declare identity. Checked
+    against section_ownership.is_header_allowed(caller, header) BEFORE any
+    file I/O; raises section_ownership.SectionWriteNotAllowed when `caller`
+    may not write `header` — a real, observable, honest failure, distinct
+    from this function's own separate, unchanged "header not found in this
+    file" -> False contract below, which only fires once the caller check
+    has already passed."""
+    if not section_ownership.is_header_allowed(caller, header):
+        raise section_ownership.SectionWriteNotAllowed(
+            f"caller {caller!r} is not allowed to write header {header!r}"
+        )
+    text = path.read_text(encoding="utf-8")
+    header_line_pattern = re.compile(r"^" + re.escape(header) + r"$", re.MULTILINE)
+    header_match = header_line_pattern.search(text)
+    if header_match is None:
+        return False
+    region_start = header_match.end()
+    next_header_match = _BODY_SECTION_HEADER_PATTERN.search(text, region_start)
+    region_end = next_header_match.start() if next_header_match else len(text)
+    new_text = (
+        text[:region_start]
+        + "\n\n"
+        + new_content.strip("\n")
+        + "\n\n"
+        + text[region_end:]
+    )
+    path.write_text(new_text, encoding="utf-8")
+    return True
+
+
+def read_body_section(path, header: str) -> str:
+    """Header-scoped reader primitive (REQ-SB-63-US-01-T02), the read
+    counterpart to replace_body_section's own write -- reuses that
+    function's own exact header/next-header location regex (`header`
+    located by an exact, literal line match on every call; the region
+    ends at the next `## `-level header line or end of file, a nested
+    `###`-or-deeper subheader is NOT a boundary) so no second, divergent
+    header-finding mechanism is ever introduced. Returns the stripped
+    text strictly between `header`'s own line and that boundary, or ""
+    if `header` is not found anywhere in the file -- mirrors replace_
+    body_section's own "no-op/absent is a valid, expected outcome"
+    contract, adapted to a read. Never writes to the file."""
+    text = path.read_text(encoding="utf-8")
+    header_line_pattern = re.compile(r"^" + re.escape(header) + r"$", re.MULTILINE)
+    header_match = header_line_pattern.search(text)
+    if header_match is None:
+        return ""
+    region_start = header_match.end()
+    next_header_match = _BODY_SECTION_HEADER_PATTERN.search(text, region_start)
+    region_end = next_header_match.start() if next_header_match else len(text)
+    return text[region_start:region_end].strip("\n")
+
+
+def replace_body_opening_line(path, new_line: str) -> bool:
+    """Opening-region full regeneration primitive (`REQ-SB-67-US-01-T01`,
+    `REQ-SB-54` point 11's first real implementation) — the same
+    bounded-region-replace mechanism replace_body_section already
+    establishes, generalized to a DIFFERENT region-start rule: instead of
+    locating a GIVEN header's own line as the region start, this locates
+    the end of the frontmatter block (the file's own SECOND literal
+    `---` line, via the same `"\\n---\\n"` boundary convention
+    insert_body_line_if_missing/insert_tags_line already use — body
+    content starts 6 chars past the match, past the closing `---\\n`
+    itself plus the blank-line separator, per _write_frontmatter_note's
+    own `<frontmatter> + "\\n\\n" + <body>` layout). The region END is the
+    FIRST `## `-level header line found from there (reusing the same
+    shared _BODY_SECTION_HEADER_PATTERN replace_body_section/
+    read_body_section/append_body_section_line all already search with),
+    or end of file if the note has no `## ` header at all — the note's
+    own "opening region", ahead of its first real section.
+
+    Regenerates that region WHOLESALE on every call, exactly like
+    replace_body_section's own "regenerate, don't patch" contract
+    (`REQ-SB-54` point 8): a second call with a different new_line
+    completely replaces the first call's own text, never appends or
+    patches alongside it. `new_line` is defensively `strip("\\n")`-ed
+    before writing (mirrors replace_body_section's own `new_content.
+    strip("\\n")` handling), so the written region always has exactly one
+    blank line before and after it regardless of what the caller passes.
+
+    Unlike replace_body_section, this primitive does NOT no-op when the
+    target region is merely empty — a note's own opening region always
+    structurally exists (even blank) the instant its frontmatter is
+    well-formed, so an empty region is a normal, real state to overwrite,
+    not an absent-header case. Returns False (no write performed) only
+    when the file has no parseable `"\\n---\\n"` frontmatter-closing
+    boundary at all (a malformed note) — mirrors read_note's own same
+    guard. General-purpose: works for any note kind with a well-formed
+    frontmatter block, not hardcoded to Thread notes — this story's own
+    scope only ever calls it against Thread notes (thread_match_merge,
+    `T02`/`T03`), but the primitive itself makes no such assumption."""
+    text = path.read_text(encoding="utf-8")
+    end = text.find("\n---\n", 4)
+    if end == -1:
+        return False
+    region_start = end + 6
+    next_header_match = _BODY_SECTION_HEADER_PATTERN.search(text, region_start)
+    region_end = next_header_match.start() if next_header_match else len(text)
+    new_text = (
+        text[:region_start]
+        + new_line.strip("\n")
+        + "\n\n"
+        + text[region_end:]
+    )
+    path.write_text(new_text, encoding="utf-8")
+    return True
+
+
+def append_body_section_line(path, header: str, line: str) -> None:
+    """Header-SCOPED, growing body-section append primitive (REQ-SB-55-
+    US-01-T01, ADR-043 Consequences) — the generalization of
+    replace_body_section's own header/next-header location logic (the
+    identical literal, whole-line regex match, never a raw substring
+    search) from full-region REPLACE to insert-just-before-the-region's-
+    own-end. `## Transcript` (already present on a Thread's own baseline
+    body) and `## Attachments` (absent until a Thread's first attachment)
+    both go through this SAME function: only one of a note's sections can
+    be "physically last" for the older, EOF-blind
+    append_person_note_update_line to correctly target, which no longer
+    holds once a note can grow two independent sections.
+
+    If `header` is not found anywhere in the file, it is CREATED at the
+    end of the file, containing exactly `line` — deliberately the
+    OPPOSITE of replace_body_section's own documented no-op-if-absent
+    contract: a REGENERATED section always already has its header from
+    baseline, but a GROWING section may not exist yet on a note's first
+    entry. If `header` IS found, `line` is appended as the new last line
+    of that header's own bounded region (in call order), leaving every
+    other section — including one physically positioned after this
+    header — completely untouched. Mirrors append_person_note_update_
+    line's own unconditional-append discipline: never idempotent-if-
+    already-present, since each call is its own new fact even if
+    coincidentally identical text to an existing line."""
+    text = path.read_text(encoding="utf-8")
+    header_line_pattern = re.compile(r"^" + re.escape(header) + r"$", re.MULTILINE)
+    header_match = header_line_pattern.search(text)
+    if header_match is None:
+        base = text.rstrip("\n")
+        new_text = base + "\n\n" + header + "\n\n" + line + "\n"
+        path.write_text(new_text, encoding="utf-8")
+        return
+    region_start = header_match.end()
+    next_header_match = _BODY_SECTION_HEADER_PATTERN.search(text, region_start)
+    region_end = next_header_match.start() if next_header_match else len(text)
+    existing_region = text[region_start:region_end].strip("\n")
+    new_region = f"{existing_region}\n{line}" if existing_region else line
+    new_text = (
+        text[:region_start]
+        + "\n\n"
+        + new_region
+        + "\n\n"
+        + text[region_end:]
+    )
+    path.write_text(new_text, encoding="utf-8")
 
 
 def _agent_history_path():
@@ -1109,6 +2399,29 @@ def save_skills_state(state: dict) -> None:
     path.write_text(json.dumps(state, indent=2), encoding="utf-8")
 
 
+def _agents_registry_state_path():
+    state_dir = settings.vault_path / _STATE_DIR
+    state_dir.mkdir(parents=True, exist_ok=True)
+    return state_dir / _AGENTS_REGISTRY_FILE
+
+
+def load_agents_registry_state() -> dict | None:
+    """Pure I/O — returns None if agents_registry.json doesn't exist
+    yet (no default content is computed here, per ADR-003; the
+    {"created_agents": {}} seed shape and the seed-plus-persisted
+    merge with _SEED_AGENTS are business-layer decisions owned by
+    app/business/agent_registry.py, ADR-030)."""
+    path = _agents_registry_state_path()
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def save_agents_registry_state(state: dict) -> None:
+    path = _agents_registry_state_path()
+    path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
 def _agent_keywords_path():
     state_dir = settings.vault_path / _STATE_DIR
     state_dir.mkdir(parents=True, exist_ok=True)
@@ -1172,6 +2485,95 @@ def save_working_modes_state(state: dict) -> None:
     path.write_text(json.dumps(state, indent=2), encoding="utf-8")
 
 
+def _agent_visuals_state_path():
+    state_dir = settings.vault_path / _STATE_DIR
+    state_dir.mkdir(parents=True, exist_ok=True)
+    return state_dir / _AGENT_VISUALS_FILE
+
+
+def load_agent_visuals_state() -> dict | None:
+    """Pure I/O — returns None if agent_visuals.json doesn't exist yet
+    (no default content computed here, per ADR-003; the "no override yet"
+    default is a business-layer decision, owned by app/business/
+    agent_visual_registry.py)."""
+    path = _agent_visuals_state_path()
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def save_agent_visuals_state(state: dict) -> None:
+    path = _agent_visuals_state_path()
+    path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
+def _background_agent_flags_state_path():
+    state_dir = settings.vault_path / _STATE_DIR
+    state_dir.mkdir(parents=True, exist_ok=True)
+    return state_dir / _AGENT_BACKGROUND_FLAGS_FILE
+
+
+def load_background_agent_flags_state() -> dict | None:
+    """Pure I/O — returns None if agent_background_flags.json doesn't
+    exist yet (no default content is computed here, per ADR-003; the
+    self-healing default per agent is a business-layer decision, owned
+    by app/business/background_agent_registry.py)."""
+    path = _background_agent_flags_state_path()
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def save_background_agent_flags_state(state: dict) -> None:
+    path = _background_agent_flags_state_path()
+    path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
+def _agent_schedules_state_path():
+    state_dir = settings.vault_path / _STATE_DIR
+    state_dir.mkdir(parents=True, exist_ok=True)
+    return state_dir / _AGENT_SCHEDULES_FILE
+
+
+def load_agent_schedules_state() -> dict | None:
+    """Pure I/O — returns None if agent_schedules.json doesn't exist yet
+    (no default content is computed here, per ADR-003; the composite-key
+    shape and every CRUD/refusal decision is a business-layer concern,
+    owned by app/business/agent_schedule_registry.py, ADR-037 point 3)."""
+    path = _agent_schedules_state_path()
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def save_agent_schedules_state(state: dict) -> None:
+    path = _agent_schedules_state_path()
+    path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
+def _job_run_state_path():
+    state_dir = settings.vault_path / _STATE_DIR
+    state_dir.mkdir(parents=True, exist_ok=True)
+    return state_dir / _JOB_RUN_STATE_FILE
+
+
+def load_job_run_state() -> dict | None:
+    """Pure I/O -- returns None if job_run_state.json doesn't exist
+    yet (no default content computed here, per ADR-003; the composite-
+    key shape and every start/finish/read decision is a business-layer
+    concern, owned by app/business/agent_schedule_registry.py,
+    ADR-045 point 4)."""
+    path = _job_run_state_path()
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def save_job_run_state(state: dict) -> None:
+    path = _job_run_state_path()
+    path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
 def _pending_approvals_state_path():
     state_dir = settings.vault_path / _STATE_DIR
     state_dir.mkdir(parents=True, exist_ok=True)
@@ -1191,6 +2593,27 @@ def load_pending_approvals_state() -> dict | None:
 
 def save_pending_approvals_state(state: dict) -> None:
     path = _pending_approvals_state_path()
+    path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
+def _cockpit_threads_state_path():
+    state_dir = settings.vault_path / _STATE_DIR
+    state_dir.mkdir(parents=True, exist_ok=True)
+    return state_dir / _COCKPIT_THREADS_FILE
+
+
+def load_cockpit_threads_state() -> dict | None:
+    """Pure I/O -- returns None if cockpit_threads.json doesn't exist yet
+    (ADR-003; the empty-dict seed is app/business/cockpit/threads.py's own
+    concern, mirroring load_pending_approvals_state's precedent)."""
+    path = _cockpit_threads_state_path()
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def save_cockpit_threads_state(state: dict) -> None:
+    path = _cockpit_threads_state_path()
     path.write_text(json.dumps(state, indent=2), encoding="utf-8")
 
 
@@ -1384,3 +2807,127 @@ def record_task_note(entry_id: str, stem: str) -> None:
     index = load_task_note_index()
     index[entry_id] = stem
     path.write_text(json.dumps(index, indent=2), encoding="utf-8")
+
+
+def _agent_scopes_path():
+    state_dir = settings.vault_path / _STATE_DIR
+    state_dir.mkdir(parents=True, exist_ok=True)
+    return state_dir / _AGENT_SCOPES_FILE
+
+
+def _load_agent_scopes_index() -> dict[str, list[str]]:
+    path = _agent_scopes_path()
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_agent_scope(agent_id: str) -> list[str]:
+    """Pure I/O -- returns [] if agent_scopes.json doesn't exist yet, or
+    if agent_id has no entry in it. Mirrors load_agent_keywords's own
+    "no assignment yet is the ordinary starting state" reasoning
+    (ADR-017 point 2/4) -- an agent with no assigned scope has no bounded
+    vault query access (REQ-SB-29-US-01 Scenario 6), not a seeded
+    default."""
+    return _load_agent_scopes_index().get(agent_id, [])
+
+
+def save_agent_scope(agent_id: str, scope: list[str]) -> None:
+    """Whole-list replace for agent_id's own entry -- mirrors
+    save_agent_keywords's exact free-text kv-list editing UX; no
+    incremental add/remove-one-scope-entry primitive exists or is
+    needed."""
+    path = _agent_scopes_path()
+    index = _load_agent_scopes_index()
+    index[agent_id] = scope
+    path.write_text(json.dumps(index, indent=2), encoding="utf-8")
+
+
+def load_all_agent_scopes() -> dict[str, list[str]]:
+    """Whole-file read -- mirrors load_all_agent_keywords's own shape,
+    kept for parity/future consumers."""
+    return _load_agent_scopes_index()
+
+
+_DEFAULT_AGENT_PROMPT_RECORD = {"prompt": None, "guardrails": ""}
+
+
+def _agent_prompts_path():
+    state_dir = settings.vault_path / _STATE_DIR
+    state_dir.mkdir(parents=True, exist_ok=True)
+    return state_dir / _AGENT_PROMPTS_FILE
+
+
+def _load_agent_prompts_index() -> dict[str, dict]:
+    path = _agent_prompts_path()
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_agent_prompt_record(id: str) -> dict:
+    """Pure I/O -- returns {"prompt": None, "guardrails": ""} if
+    agent_prompts.json doesn't exist yet, or if id has no entry in it
+    (REQ-SB-66-US-01-T01, mirrors load_agent_keywords's own "no
+    assignment yet is the ordinary starting state" self-healing-default
+    shape). id covers both a real Agent id and a real Job id uniformly
+    -- one flat namespace, no special-casing between the two."""
+    return _load_agent_prompts_index().get(id, dict(_DEFAULT_AGENT_PROMPT_RECORD))
+
+
+def save_agent_prompt_record(id: str, record: dict) -> None:
+    """Whole-record replace for id's own entry -- mirrors
+    save_agent_keywords's exact whole-value-replace convention; no
+    incremental merge primitive exists or is needed. Never touches any
+    OTHER id's own stored entry (no cross-id bleed)."""
+    path = _agent_prompts_path()
+    index = _load_agent_prompts_index()
+    index[id] = record
+    path.write_text(json.dumps(index, indent=2), encoding="utf-8")
+
+
+def _knowledge_gaps_state_path():
+    state_dir = settings.vault_path / _STATE_DIR
+    state_dir.mkdir(parents=True, exist_ok=True)
+    return state_dir / _AGENT_KNOWLEDGE_GAPS_FILE
+
+
+def load_knowledge_gaps_state() -> dict | None:
+    """Pure I/O — returns None if agent_knowledge_gaps.json doesn't
+    exist yet (no default content is computed here, per ADR-003; the
+    {"gaps": []} default shape is a business-layer decision owned by
+    app/business/knowledge_gap_tracking.py, mirroring
+    skill_registry.py's own _load_state() pattern)."""
+    path = _knowledge_gaps_state_path()
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def save_knowledge_gaps_state(state: dict) -> None:
+    path = _knowledge_gaps_state_path()
+    path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
+def list_notes_matching_scope(scope: list[str]) -> list:
+    """Mirrors list_known_customers()'s/list_notes_in_kind_folder()'s
+    exact frontmatter-scan pattern (REQ-SB-29-US-01) -- a note matches
+    when its `tags` list intersects `scope` (tag-scoped, e.g.
+    "customer/masdar") OR its immediate Work/<kind>/ folder name is
+    itself named in `scope` (folder-scoped, e.g. "Pipeline"). Must NOT
+    compose vault_indexing.get_index()/vault_search.py (ADR-024/
+    ADR-026, REQ-SB-01/REQ-SB-02) -- this story's own Constraints reject
+    building against the general indexer or any embeddings/ranking; this
+    stays a narrow, independent frontmatter/folder scan, same shape as
+    the two precedent functions above. An empty `scope` returns [] --
+    never the whole vault, never a silent fallback."""
+    if not scope:
+        return []
+    matches = []
+    for path in list_all_note_paths():
+        frontmatter, _ = read_note(path)
+        tags = frontmatter.get("tags") or []
+        kind_folder = path.parent.name
+        if any(tag in scope for tag in tags) or kind_folder in scope:
+            matches.append(path)
+    return sorted(matches)

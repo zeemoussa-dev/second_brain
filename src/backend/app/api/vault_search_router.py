@@ -47,3 +47,20 @@ def get_tags() -> dict:
     """Feeds the frontend's tag-filter chip row (Scenario 2's own
     real-tag-discovery prerequisite)."""
     return vault_search.list_tags()
+
+
+@router.get("/scope-suggestions")
+def get_scope_suggestions() -> dict:
+    """REQ-SB-50-US-01-T01 -- feeds the Agent Settings Vault Scope field's
+    own typeahead (T02) with a real, vault-derived tag/folder snapshot."""
+    return vault_search.list_scope_suggestions()
+
+
+@router.get("/graph")
+def get_graph() -> dict:
+    """REQ-SB-75-US-01-T01 -- The Vault knowledge graph screen's own
+    {"nodes", "edges"} snapshot. No query parameters -- the frontend
+    fetches the full current graph once and filters/searches client-side
+    (the story's own "large-corpus performance work out of scope at
+    ~680 notes" Constraint)."""
+    return vault_search.get_graph()

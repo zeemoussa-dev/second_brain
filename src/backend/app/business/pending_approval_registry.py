@@ -39,14 +39,15 @@ def get_pending_approval(approval_id: str) -> dict | None:
 
 def create_pending_approval(
     agent_id: str, trigger: str, action_id: str | None, description: str,
-    payload: dict | None = None,
+    payload: dict | None = None, dedupe_key: str | None = None,
 ) -> dict:
     """Idempotency guard applies to trigger == "background" only
     (ADR-018 point 2): without it, every hourly tick for a still-
     unapproved Supervised background agent would pile up a new record
     on top of the last, unbounded. trigger in ("chat", "direct") is
-    never deduplicated — each is a distinct, deliberate user request, a
-    user asking twice on purpose is expected, ordinary behaviour.
+    never deduplicated by THIS check — each is a distinct, deliberate
+    user request, a user asking twice on purpose is expected, ordinary
+    behaviour.
 
     payload is additive (ADR-021 point 4) — carries whatever structured
     data a deferred action needs to actually execute once approved (e.g.
@@ -54,7 +55,20 @@ def create_pending_approval(
     top-level area). Defaults to None, so every pre-existing zero-payload
     caller (ADR-018's original chat/direct/background proposals, which
     re-dispatch via _execute_action/run_capture_for_agent instead) is
-    unaffected."""
+    unaffected.
+
+    dedupe_key is additive (ADR-056, BUGFIX-08-US-01) — an opaque,
+    caller-defined string identifying the real target/event this proposal
+    covers (registry performs no parsing/derivation of it, mirroring
+    payload's own opaque-to-the-registry shape). When supplied, a SECOND,
+    independent idempotency check runs alongside (never replacing) the
+    trigger == "background" guard above: matches an existing
+    status == "pending" record sharing the same agent_id AND dedupe_key,
+    regardless of trigger, and returns it unchanged instead of creating a
+    duplicate. Closes the gap the background-only guard deliberately left
+    open — two different non-background triggers (or the same trigger
+    repeated across ticks) both targeting the exact same real thing.
+    Defaults to None, so every caller that doesn't pass it is unaffected."""
     state = _load_state()
     if trigger == "background":
         existing = next(
@@ -62,6 +76,18 @@ def create_pending_approval(
                 r for r in state["pending"]
                 if r["agent_id"] == agent_id
                 and r["trigger"] == "background"
+                and r["status"] == "pending"
+            ),
+            None,
+        )
+        if existing is not None:
+            return existing
+    if dedupe_key is not None:
+        existing = next(
+            (
+                r for r in state["pending"]
+                if r["agent_id"] == agent_id
+                and r.get("dedupe_key") == dedupe_key
                 and r["status"] == "pending"
             ),
             None,
@@ -78,6 +104,7 @@ def create_pending_approval(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "resolved_at": None,
         "payload": payload,
+        "dedupe_key": dedupe_key,
     }
     state["pending"].append(record)
     vault_writer.save_pending_approvals_state(state)

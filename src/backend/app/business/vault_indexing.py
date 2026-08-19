@@ -14,13 +14,39 @@ _vault_index: dict[str, dict] = {}
 _last_rebuilt_at: str | None = None
 
 
+def _frontmatter_wikilink_targets(frontmatter: dict) -> list[str]:
+    """`REQ-SB-73-US-01-T01` (`ADR-054` Decision 5) -- generic scan of every
+    frontmatter STRING (and list-of-string) value for `[[...]]` targets, via
+    the SAME `vault_writer.extract_wikilink_targets` primitive the body scan
+    already uses (a pure regex match over any string, agnostic to origin) --
+    never a `thread:`-named special case, so any future frontmatter-wikilink
+    field is picked up for free. Strictly additive: a note with no
+    wikilink-shaped frontmatter value contributes zero targets, byte-
+    identical to today's body-only result."""
+    targets: list[str] = []
+    for value in frontmatter.values():
+        if isinstance(value, str):
+            targets.extend(vault_writer.extract_wikilink_targets(value))
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, str):
+                    targets.extend(vault_writer.extract_wikilink_targets(item))
+    return targets
+
+
 def _build_entry(path) -> dict:
     """One note -> one index entry, keyed later by path.stem (the same
     filename-stem identity write_note()/this project's own wikilinks
     already use). tags defaults to [] when the frontmatter has no tags
     field at all, or when T01's list-parsing fix still can't make it a
     list for some unexpected raw shape -- never a crash, never the raw
-    unparsed string leaking through (Scenario 6)."""
+    unparsed string leaking through (Scenario 6).
+
+    `outgoing_wikilinks` scans BOTH the body text and every frontmatter
+    string/string-list value (`REQ-SB-73-US-01-T01`, `ADR-054` Decision 5)
+    -- until this pass, only the body was scanned, which left a frontmatter-
+    only wikilink field (e.g. `thread:`) silently invisible to the
+    backlinks panel/graph view."""
     frontmatter, body = vault_writer.read_note(path)
     tags = frontmatter.get("tags")
     if not isinstance(tags, list):
@@ -30,7 +56,9 @@ def _build_entry(path) -> dict:
         "stem": path.stem,
         "frontmatter": frontmatter,
         "tags": tags,
-        "outgoing_wikilinks": vault_writer.extract_wikilink_targets(body),
+        "outgoing_wikilinks": (
+            vault_writer.extract_wikilink_targets(body) + _frontmatter_wikilink_targets(frontmatter)
+        ),
         "incoming_wikilinks": [],
     }
 

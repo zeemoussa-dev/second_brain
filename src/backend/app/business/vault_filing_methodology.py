@@ -75,7 +75,19 @@ _JSON_SCHEMA_INSTRUCTIONS = (
     "methodology and the vault's own current structure.\n"
     '- "uncertainty_note": string or null -- when confidence is "low", a '
     "short, honest explanation of what you are unsure about; null "
-    "otherwise. Never fabricate confidence you do not have."
+    "otherwise. Never fabricate confidence you do not have.\n"
+    '- "cross_cutting_implication": object or null -- set ONLY when this '
+    "content ALSO implies a KB update for a DIFFERENT customer or partner "
+    "than the one named by referenced_customer/referenced_partner above "
+    "(e.g. this content is primarily about one customer but also affects "
+    "another, already-known customer or partner elsewhere in the vault). "
+    'When set, an object with exactly these keys: {"customer": string or '
+    'null, "partner": string or null -- exactly one of these two non-null, '
+    "naming the OTHER, different customer or partner this content "
+    'affects; "reason": string -- a short, honest explanation of why this '
+    "content also implies a KB update for that other entity}. null "
+    "whenever no such different-entity implication genuinely exists -- "
+    "never fabricate one just to fill the field."
 )
 
 
@@ -85,7 +97,15 @@ def build_placement_prompt(
     known_kinds: list[str],
     known_customers: list[str],
     known_partners: list[str],
+    prompt_override: str | None = None,
 ) -> list:
+    """prompt_override (REQ-SB-66-US-01-T03/ADR-044, optional, additive) --
+    when set, REPLACES _METHODOLOGY_EXCERPT as the returned SystemMessage's
+    own content verbatim; the HumanMessage (known_lists_text/
+    source_description/content/_JSON_SCHEMA_INSTRUCTIONS) is never made
+    overridable and is built identically either way. None (the default)
+    reproduces today's byte-for-byte _METHODOLOGY_EXCERPT text -- the
+    Scenario 4/AC-04 regression bar."""
     known_lists_text = (
         f"Known kinds (existing Work/<kind>/ folders): {known_kinds}\n"
         f"Known customers: {known_customers}\n"
@@ -97,7 +117,8 @@ def build_placement_prompt(
         f"Content awaiting placement:\n{content}\n\n"
         f"{_JSON_SCHEMA_INSTRUCTIONS}"
     )
+    system_message_text = prompt_override if prompt_override is not None else _METHODOLOGY_EXCERPT
     return [
-        SystemMessage(content=_METHODOLOGY_EXCERPT),
+        SystemMessage(content=system_message_text),
         HumanMessage(content=human_content),
     ]

@@ -46,7 +46,10 @@ def revoke_skill(agent_id: str, skill_id: str) -> dict:
 def invoke_skill(agent_id: str, skill_id: str, body: InvokeSkillBody | None = None) -> dict:
     _require_known_agent(agent_id)
     args = body.model_dump(exclude_none=True) if body else None
-    result = skill_registry.invoke_skill(agent_id, skill_id, args)
+    # trigger="direct" is hardcoded server-side, never derived from the
+    # client-supplied body -- ADR-028 point 2, mirroring
+    # agents_router.py::trigger_action's own hardcoded trigger="direct".
+    result = skill_registry.invoke_skill(agent_id, skill_id, args, trigger="direct")
     if result.get("status") == "unknown_skill":
         raise HTTPException(status_code=404, detail="Unknown skill")
     if result.get("status") == "refused":

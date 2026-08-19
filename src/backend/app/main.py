@@ -4,7 +4,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.agent_activity_router import router as agent_activity_router
+from app.api.agent_schedules_router import router as agent_schedules_router
 from app.api.agents_router import router as agents_router
+from app.api.cockpit_router import router as cockpit_router
+from app.api.demo_taxonomy_router import router as demo_taxonomy_router
 from app.api.email_poc_router import router as email_poc_router
 from app.api.health_check_router import router as health_check_router
 from app.api.mcp_auth import require_hermes_shared_secret
@@ -17,6 +20,8 @@ from app.api.skills_router import router as skills_router
 from app.api.system_health_router import router as system_health_router
 from app.api.vault_index_router import router as vault_index_router
 from app.api.vault_search_router import router as vault_search_router
+from app.business.agent_schedule_registry import create_or_update_schedule
+from app.business.pipelines.librarian_housekeeping import ensure_librarian_agent_and_section
 from app.scheduling.capture_scheduler import lifespan as capture_scheduler_lifespan
 
 
@@ -33,6 +38,25 @@ async def lifespan(app: FastAPI):
     async with AsyncExitStack() as stack:
         await stack.enter_async_context(mcp_server.session_manager.run())
         await stack.enter_async_context(capture_scheduler_lifespan(app))
+        # REQ-SB-72-US-01-T08 (ADR-049 Decision 6) — one-time, idempotent
+        # "Librarian" Section + librarian-housekeeping Agent bootstrap,
+        # existence-checked so a repeat app start (--reload included)
+        # never creates a duplicate, disambiguated agent.
+        ensure_librarian_agent_and_section()
+        # REQ-SB-72-US-01-T09 (ADR-049 Decision 8) — seeds the real,
+        # persisted default 6-hour schedule for the Librarian's own
+        # orchestrating Job. Must run AFTER the agent/skill grant above
+        # exist (create_or_update_schedule refuses otherwise) and AFTER
+        # capture_scheduler_lifespan has published the live scheduler
+        # (above) — safe to call unconditionally on every app start, since
+        # it replaces the existing entry for this (agent_id, capability_id)
+        # pair in place rather than duplicating it.
+        create_or_update_schedule(
+            agent_id="librarian-housekeeping",
+            capability_id="run_housekeeping_pass",
+            interval_value=6,
+            interval_unit="hours",
+        )
         yield
 
 
@@ -69,5 +93,8 @@ app.include_router(pending_approvals_router)
 app.include_router(vault_index_router)
 app.include_router(vault_search_router)
 app.include_router(agent_activity_router)
+app.include_router(agent_schedules_router)
+app.include_router(cockpit_router)
+app.include_router(demo_taxonomy_router)
 
 app.mount("/mcp", require_hermes_shared_secret(mcp_server.streamable_http_app()))

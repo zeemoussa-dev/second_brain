@@ -15,6 +15,7 @@ import os
 import re
 import tempfile
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timedelta
 
 import pythoncom
@@ -87,6 +88,36 @@ _INLINE_IMAGE_KEYWORD = re.compile(
 )
 _IMAGE_EXTENSION = re.compile(r"\.(png|jpe?g|gif|bmp)$", re.IGNORECASE)
 
+# Transient teams_link/dial_in extraction (REQ-SB-71-US-03-T01, ADR-048
+# Decision 5) -- live-confirmed regex shapes against this real Outlook
+# installation's own Teams-meeting invite footer format: a "Join: <url>
+# <safelinks-wrapped-url>" line (the plain URL always precedes the
+# safelinks redirect, so capturing up to the first whitespace/`<` yields
+# the clean, real join link) and a "<tel:+<digits>,,<conference-id>#>"
+# machine-readable phone reference inside the "Dial in by phone" block.
+# Both are best-effort, honest-empty-string-on-no-match -- a non-Teams
+# invite (Zoom, in-person, no conferencing at all) simply yields "" for
+# one or both fields, never a crash or a fabricated value. The raw body
+# string these are extracted from is NEVER itself returned by
+# list_calendar_events -- see that function's own docstring.
+_TEAMS_JOIN_LINK_PATTERN = re.compile(r"Join:\s*(https?://\S+)")
+_TEAMS_LINK_FALLBACK_PATTERN = re.compile(r"(https://teams\.microsoft\.com/\S+)")
+_DIAL_IN_TEL_PATTERN = re.compile(r"<tel:([^>]+)>")
+
+
+def _extract_teams_link(raw_body: str) -> str:
+    match = _TEAMS_JOIN_LINK_PATTERN.search(raw_body)
+    if match:
+        return match.group(1)
+    match = _TEAMS_LINK_FALLBACK_PATTERN.search(raw_body)
+    return match.group(1) if match else ""
+
+
+def _extract_dial_in(raw_body: str) -> str:
+    match = _DIAL_IN_TEL_PATTERN.search(raw_body)
+    return match.group(1) if match else ""
+
+
 # Real meeting invites/responses land in the Inbox with this MessageClass
 # family — they aren't mail and are excluded here entirely (Meeting notes are
 # separate future scope; see Implementation/Plans/2026-08-10-vault-taxonomy-
@@ -144,11 +175,25 @@ def _resolve_sender(item) -> tuple[str, str]:
     return name, addr
 
 
-def _is_inline_attachment(att) -> bool:
+def _is_inline_attachment(att, html_body: str) -> bool:
+    """BUG-017 fix, 2026-08-17: a non-empty PR_ATTACH_CONTENT_ID alone is
+    NOT proof an attachment is genuinely inline -- some sending mail
+    systems stamp a Content-ID on ordinary, real, standalone attachments
+    too (confirmed live: a real 4.96MB PDF, legitimately attached, had
+    its own Content-ID and was silently dropped by the old "any
+    Content-ID means inline" logic before ever reaching the capture
+    pipeline). The correct signal is whether that Content-ID is actually
+    REFERENCED inline in the message's own HTML body via a `cid:` URL
+    (e.g. `<img src="cid:...">`) -- that's what "inline" means. A
+    Content-ID that exists but is never referenced falls through to the
+    filename-based heuristics below, same as an attachment with no
+    Content-ID at all."""
     try:
         content_id = att.PropertyAccessor.GetProperty(_PR_ATTACH_CONTENT_ID)
         if content_id:
-            return True
+            cid = content_id.strip("<>")
+            if cid and f"cid:{cid}" in (html_body or ""):
+                return True
     except Exception:
         pass
     filename = (att.FileName or "").strip()
@@ -171,10 +216,15 @@ def _extract_attachments(item) -> list[dict]:
         count = attachments.Count
     except Exception:
         return results
+    html_body = ""
+    try:
+        html_body = item.HTMLBody or ""
+    except Exception:
+        pass
     for i in range(1, count + 1):
         try:
             att = attachments.Item(i)
-            if _is_inline_attachment(att):
+            if _is_inline_attachment(att, html_body):
                 continue
             filename = att.FileName or f"attachment_{i}"
             tmp_path = os.path.join(tempfile.gettempdir(), f"second_brain_att_{uuid.uuid4().hex}_{filename}")
@@ -194,7 +244,22 @@ def _extract_attachments(item) -> list[dict]:
     return results
 
 
-def list_recent_mail(limit: int = 10, unread_only: bool = False) -> list[dict]:
+def list_recent_mail(
+    limit: int = 10,
+    unread_only: bool = False,
+    on_item_fetched: Callable[[dict], None] | None = None,
+) -> list[dict]:
+    """on_item_fetched (ADR-046 Decision 2, REQ-SB-69-US-01-T02) is an
+    optional, additive callback fired once per item, immediately after
+    that item's own dict is fully resolved (sender/attachments/
+    recipients) -- inside this loop, before continuing to the next item,
+    never buffered until the whole loop returns. This is what makes
+    email_pull.py::pull_and_stage_emails' own staging genuinely
+    live-updating/resumable: a stall/exception on a LATER item still
+    leaves every already-fetched item durably staged via the callback
+    that already fired for it. Every existing caller that passes nothing
+    (classify_recent_emails, email_poc_router.py's POC endpoint) sees
+    zero behavior change -- this parameter is purely additive."""
     pythoncom.CoInitialize()
     try:
         ns = _connect_namespace()
@@ -210,7 +275,7 @@ def list_recent_mail(limit: int = 10, unread_only: bool = False) -> list[dict]:
                 if message_class.startswith(_MEETING_MESSAGE_CLASS_PREFIX):
                     continue
                 name, addr = _resolve_sender(item)
-                results.append({
+                fetched_item = {
                     "id": item.EntryID,
                     "subject": item.Subject or "",
                     "sender_name": name,
@@ -219,7 +284,11 @@ def list_recent_mail(limit: int = 10, unread_only: bool = False) -> list[dict]:
                     "body": (item.Body or "").strip()[:_MAX_BODY_CHARS],
                     "attachments": _extract_attachments(item),
                     "conversation_id": getattr(item, "ConversationID", None) or "",
-                })
+                    "recipients": resolve_mail_recipients(item),
+                }
+                results.append(fetched_item)
+                if on_item_fetched is not None:
+                    on_item_fetched(fetched_item)
             except Exception:
                 continue  # skip malformed/non-mail items
             if len(results) >= limit:
@@ -268,6 +337,40 @@ def _resolve_attendees(item) -> list[dict]:
     return attendees
 
 
+def resolve_mail_recipients(item) -> list[dict]:
+    """Public generalization of _resolve_attendees (ADR-036 point 7) --
+    a MailItem exposes the identical .Recipients collection shape/type
+    values (olTo=1/olCC=2) a meeting AppointmentItem does, confirmed by
+    direct reading of _resolve_attendees above (it reads only
+    .Recipients/.Type/.Name/.Address/.AddressEntry -- nothing meeting-
+    specific). Merges To + CC into one flat list, same "no required/
+    optional distinction" precedent ADR-008 already established for
+    meetings. _resolve_attendees itself stays private and unmodified --
+    this is a new, additive public sibling, not a rename."""
+    return _resolve_attendees(item)
+
+
+def _resolve_conversation_id(item) -> str:
+    """Safely resolves an item's own ConversationID to a real string, or
+    "" for BOTH an absent property AND a present-but-COM-inaccessible/
+    non-string one -- e.g. an IncludeRecurrences-expanded recurring-
+    occurrence item, whose ConversationID attribute resolves to a
+    non-string bound-method object rather than raising on access itself
+    (ESC-040, live-confirmed 2026-08-17: 40.5% of a real sampled
+    calendar window, all recurring-occurrence items). Deliberately NOT
+    list_recent_mail's own `getattr(item, "ConversationID", None) or ""`
+    pattern -- that pattern's `or ""` only filters a falsy value, and a
+    bound-method object is truthy, so it would silently pass the broken
+    value through as if it were a real conversation id. The try/except
+    guards the attribute read itself; the isinstance check guards
+    against the known non-string-but-truthy failure mode."""
+    try:
+        value = item.ConversationID
+    except Exception:
+        return ""
+    return value if isinstance(value, str) else ""
+
+
 def list_calendar_events(days_back: int = 7, days_ahead: int = 14, limit: int = 50) -> list[dict]:
     """New calendar-read function (ADR-008) — ports agentic-map's
     list_upcoming_events/list_calendar_since COM mechanics
@@ -284,7 +387,28 @@ def list_calendar_events(days_back: int = 7, days_ahead: int = 14, limit: int = 
     were tried and live-confirmed non-unique across a real recurring
     series' expanded occurrences (ESC-002, ESC-012); `id` (EntryID) is
     still returned here for informational purposes and the legacy-path
-    lookup only — it is never itself the dedup key."""
+    lookup only — it is never itself the dedup key. `conversation_id`
+    (REQ-SB-56-US-01-T01) is the third per-item COM identity/relationship
+    property live-confirmed unreliable on the exact same recurring-
+    occurrence fraction of this installation's calendar (ESC-040) —
+    resolved via `_resolve_conversation_id`, never the naive
+    `getattr(...) or ""` pattern, so a broken value degrades to `""`
+    instead of a truthy garbage object.
+
+    `is_recurring`/`series_id` (REQ-SB-71-US-03-T01, ADR-048 Decision 5)
+    are the one-time-vs-recurring split's own new fields: `IsRecurring`
+    (a genuine, direct boolean COM property, unlike the three unreliable
+    identity fields above) and `GlobalAppointmentID` (ADR-013) — this
+    time used ONLY as a series key (constant across every occurrence of a
+    series, the exact property ADR-013/ESC-012 already live-confirmed and
+    rejected as a per-OCCURRENCE dedup key), never as a per-occurrence
+    identifier. `teams_link`/`dial_in` are extracted TRANSIENTLY from
+    `item.Body` via `_extract_teams_link`/`_extract_dial_in` — the raw
+    body string itself is read into a local variable only, never placed
+    into this function's own returned dict, never reaching any caller,
+    business-layer code, or disk (the deliberate, operator-authorized
+    "raw calendar invite content is dropped entirely, never archived"
+    exception to this project's own archive-not-delete discipline)."""
     pythoncom.CoInitialize()
     try:
         ns = _connect_namespace()
@@ -302,6 +426,7 @@ def list_calendar_events(days_back: int = 7, days_ahead: int = 14, limit: int = 
         results: list[dict] = []
         for item in restricted_items:
             try:
+                raw_body = getattr(item, "Body", "") or ""
                 results.append({
                     "id": item.EntryID,
                     "subject": item.Subject or "",
@@ -310,6 +435,11 @@ def list_calendar_events(days_back: int = 7, days_ahead: int = 14, limit: int = 
                     "location": getattr(item, "Location", "") or "",
                     "organizer": getattr(item, "Organizer", "") or "",
                     "attendees": _resolve_attendees(item),
+                    "conversation_id": _resolve_conversation_id(item),
+                    "is_recurring": bool(getattr(item, "IsRecurring", False)),
+                    "series_id": getattr(item, "GlobalAppointmentID", None) or "",
+                    "teams_link": _extract_teams_link(raw_body),
+                    "dial_in": _extract_dial_in(raw_body),
                 })
             except Exception:
                 continue  # skip malformed/non-appointment items

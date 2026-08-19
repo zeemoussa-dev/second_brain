@@ -16,17 +16,34 @@ _UNSORTED_CUSTOMER = "Unsorted"
 
 
 def ensure_customer_hub_note(customer: str) -> dict:
-    """Ensures customer's hub note exists: creates a baseline note if
-    missing, or tops up any missing baseline frontmatter keys if it
-    already exists (REQ-SB-14 Scenario 4) without touching a key already
-    present or the body. Returns {"hub_note_path": str, "created":
-    bool}."""
-    hub_path = vault_writer.hub_note_path(customer)
-    if vault_writer.hub_note_exists(customer):
-        vault_writer.ensure_hub_note_baseline_frontmatter(hub_path, customer)
-        return {"hub_note_path": str(hub_path), "created": False}
-    created_path = vault_writer.create_customer_hub_note_baseline(customer)
-    return {"hub_note_path": created_path, "created": True}
+    """Ensures customer's OKF-conformant directory (ADR-042 point 1,
+    REQ-SB-54) exists: creates the 4-file baseline
+    (index.md/<slug>.md/log.md/captures.md) if the concept file is
+    missing, or tops up any missing baseline concept-file frontmatter
+    keys if it already exists, without touching a key already present or
+    the body. Restructured from the old single-flat-file hub note onto
+    the new directory shape (ADR-042's own disclosed Consequence) — this
+    function's OWN external contract is unchanged: still returns
+    {"hub_note_path": str, "created": bool}, where hub_note_path now
+    points at the concept file (Work/Customers/<slug>/<slug>.md) rather
+    than the old flat Work/Customers/<slug>.md path. All 5 real call
+    sites of this function/ensure_hub_note_and_link need zero changes —
+    the concept file's filename stem is identical to the old flat file's
+    stem, so link_note_to_customer_hub's own wikilink still resolves
+    correctly regardless of which shape produced it. The old flat-file
+    primitives (vault_writer.hub_note_path/hub_note_exists/
+    create_customer_hub_note_baseline/ensure_hub_note_baseline_
+    frontmatter) are no longer called here, but remain unmodified for
+    app/business/partner_hub_linking.py's own separate, still-live use
+    (Customer->Partner migration, out of this story's scope)."""
+    if vault_writer.customer_concept_file_exists(customer):
+        vault_writer.ensure_customer_directory_baseline(customer)
+        created = False
+    else:
+        vault_writer.create_customer_directory_baseline(customer)
+        created = True
+    concept_path = vault_writer.customer_directory_paths(customer)["concept"]
+    return {"hub_note_path": str(concept_path), "created": created}
 
 
 def link_note_to_customer_hub(note_path, customer: str) -> bool:
