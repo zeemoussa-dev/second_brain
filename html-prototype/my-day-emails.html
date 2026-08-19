@@ -14,6 +14,18 @@
   Revision 2026-08-12 (REQ-SB-31 design pass): added the new System Health
     nav item to the shared sidebar (see system-health.html's own breadcrumb
     for the full nav-wiring list). No other change on this page.
+  Revision 2026-08-13 (REQ-SB-44 design pass — Inbox Cockpit). The three
+  email rows in the "Populated" state were a flat, non-clickable `.item-row`
+  list (REQ-SB-44-US-01's own confirmed gap, same shape as
+  my-day-calendar.html's) — all three now render as `a.item-row`
+  (styles.css's existing clickable-item-row primitive, reused verbatim, no
+  new CSS), opening the new inbox-cockpit.html. All three rows link to the
+  SAME cockpit instance (which represents the "Signed order form attached"
+  email — chosen because it already implies an attachment, the best
+  showcase for REQ-SB-44's attachment-review panel) rather than three
+  separate per-email cockpit fixtures — same deliberate simplification as
+  my-day-calendar.html's own rows, see that file's breadcrumb for the
+  precedent this follows.
 -->
 <!doctype html>
 <html lang="en">
@@ -60,28 +72,29 @@
       <section data-state-panel data-group="my-day-emails" data-state="populated" class="active">
         <div class="card">
           <div class="item-list">
-            <div class="item-row">
+            <a class="item-row" href="inbox-cockpit.html">
               <div class="item-row-main">
                 <span class="item-row-title">Q3 renewal terms — action needed</span>
                 <span class="item-row-meta">Acme Corp &middot; from A. Rivera</span>
               </div>
               <span class="badge badge-success">Filed 09:00</span>
-            </div>
-            <div class="item-row">
+            </a>
+            <a class="item-row" href="inbox-cockpit.html">
               <div class="item-row-main">
                 <span class="item-row-title">Re: Azure MACC review</span>
                 <span class="item-row-meta">Northwind &middot; from procurement@northwind</span>
               </div>
               <span class="badge badge-success">Filed 09:00</span>
-            </div>
-            <div class="item-row">
+            </a>
+            <a class="item-row" href="inbox-cockpit.html">
               <div class="item-row-main">
                 <span class="item-row-title">Signed order form attached</span>
                 <span class="item-row-meta">Unsorted &middot; low classification confidence</span>
               </div>
               <span class="badge badge-warning">Review customer</span>
-            </div>
+            </a>
           </div>
+          <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: var(--space-3);">Click an email to open its Inbox Cockpit (REQ-SB-44) — Experts you bring in, a unified chat with a reviewable draft-reply area, attachment review, and on-the-spot research, alongside the email's own info and people chips.</p>
         </div>
       </section>
     </main>

@@ -566,6 +566,84 @@ h2 { font-size: var(--font-size-lg); }
   z-index: 5;
 }
 
+/* ==========================================================================
+   Agent activity pulses (REQ-SB-42) — additive, data-driven layer on top of
+   the .agent-node/.hub-node primitives above. The KB's own always-on
+   decorative kb-pulse-dot spoke animation (kbPulse/.kb-pulse-dot, both
+   above) is UNCHANGED (Scenario 8) — this section touches only .agent-node
+   itself (full-size and --compact alike) plus one new small traveling-
+   pulse-dot primitive for the Hub-routed case. Three new visual states, per
+   the story's own Constraints (never more than one of these on the same
+   agent at once):
+     - "working" (running a capture/Skill, or generating a chat reply,
+       Scenarios 1/2) — .agent-node--activity-glow, an animated glow ring
+       keyed to the agent's own --node-color. Reuses the exact box-shadow-
+       pulse RECIPE .kb-node's own kbPulse keyframe below already
+       established (0% -> 50% -> 100%, shadow spread grows then settles)
+       rather than inventing a new motion language — just re-scaled down and
+       re-colored per-agent instead of the KB's fixed accent color.
+     - "Hub-routed cross-section request" (Scenario 3) — a traveling pulse
+       along a connecting line between the two specific agents involved, not
+       a glow on either one. Reuses two already-existing, already-unused-
+       until-now primitives instead of inventing new ones: .affinity-line
+       (defined below, "Agents Map layout exploration" section — a
+       Hub-routed relationship rendered as a stylized straight line between
+       the two agents, even though the real routing hops through both Hubs,
+       per REQ-SB-20's own "always via both Hubs" rule) for the line itself,
+       plus the identical SVG <animateMotion> traveling-dot technique
+       .kb-pulse-dot's own two synapse pulses already use, under a new class
+       name (.route-pulse-dot — visually identical fill/glow, kept separate
+       from .kb-pulse-dot only so a screen doesn't read as reusing a
+       KB-specific class name for a different concept).
+     - "open pending-approval record" (Scenario 4) — .agent-node--pending-
+       approval, a STEADY (non-animated) ring — deliberately NOT the glow/
+       pulse treatment (Constraint: never confused with an actively-working
+       agent). Reuses --color-warning, the same token this project's own
+       existing .chat-proposal "pending" card (below) already uses for
+       "this needs a human decision" — that color already carries this
+       meaning elsewhere in this design system, not a new color language.
+     - idle (Scenario 6) — no new class, no indicator: the plain
+       .agent-node/.agent-node--compact rules above already draw this.
+   See agents-map.html's own top-of-file breadcrumb for the new "Agent
+   activity pulses (REQ-SB-42 demo)" state that instantiates all three.
+   ========================================================================== */
+
+/* Renamed agentActivityGlow -> livepulse (REQ-SB-52 redo pass, 2026-08-14):
+   pure rename for traceability with the reference site's own extracted
+   keyframe name — this recipe (a color-mix()-driven box-shadow pulse keyed
+   to --node-color) was ALREADY functionally identical to the reference's
+   "livepulse" pattern before this pass; no behavior change. Now also reused
+   for the hovered/selected-node glow under .theme-skilltree (see that
+   section below) instead of inventing a second near-duplicate keyframe. */
+@keyframes livepulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--node-color, var(--hub-color, var(--color-accent))) 45%, transparent); }
+  50% { box-shadow: 0 0 14px 5px color-mix(in srgb, var(--node-color, var(--hub-color, var(--color-accent))) 45%, transparent); }
+}
+
+.agent-node--activity-glow {
+  animation: nodeFadeIn 0.4s ease backwards, livepulse 1.6s ease-in-out infinite;
+}
+
+/* Steady, non-animated — a paused/blocked state, never the animated glow
+   above, even on the same agent (see the story's own Constraint). */
+.agent-node--pending-approval {
+  border-color: var(--color-warning);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-warning) 30%, transparent);
+}
+
+.agent-node--pending-approval .agent-node-type {
+  color: var(--color-warning);
+}
+
+/* Traveling pulse dot for the Hub-routed cross-section case — same visual
+   recipe as .kb-pulse-dot (fill + drop-shadow), under its own class name
+   (see comment above). Positioned via SVG <animateMotion>, same technique
+   .kb-pulse-dot's own two synapse pulses already use. */
+.route-pulse-dot {
+  fill: var(--color-accent);
+  filter: drop-shadow(0 0 3px var(--color-accent));
+}
+
 /* Density-cluster marker (REQ-SB-38) — this primitive was defined above
    (round 4-ish, "Scale-to-~100-agents pattern" comment) but never actually
    instantiated by any screen until now: this is its first real use, on
@@ -986,6 +1064,97 @@ button.item-row:hover {
 }
 
 /* ==========================================================================
+   3-panel Cockpit workspace (REQ-SB-43 Meeting Cockpit, REQ-SB-44 Inbox
+   Cockpit) — the two screens share this one layout pattern so they read as
+   siblings, not unrelated designs. Composed almost entirely from existing
+   primitives (.card for each panel, .chat-thread/.chat-message for the
+   unified multi-agent chat, .chat-proposal for the quick-research
+   save-or-discard decision, .item-row/.item-row-actions for the Agents-to-
+   bring-in and attachment-review lists, .tag-chip for a linked person chip).
+   Three genuinely new, small, additive pieces:
+     - .cockpit-layout — the 3-column grid itself (left: Agents + research;
+       middle: chat; right: info + people chips, wider than a plain .card
+       column since it carries the most text).
+     - .tag-chip--static — a person chip with NO existing Person note: same
+       pill shape as .tag-chip so it reads as the same kind of thing, but
+       plain (not a <button>/<a>, not clickable, dashed border, muted color)
+       so it never looks like a broken or fabricated link (REQ-SB-43/44's
+       own honesty-posture Constraint).
+     - .chat-message-author — a small, per-Expert colored name label above a
+       chat-message--agent bubble, the exact same "small uppercase
+       type-colored label" micro-pattern .hub-node-type/.agent-node-type
+       already use elsewhere on this canvas, applied here to attribute a
+       unified thread's replies to the specific Expert that produced them.
+     - .draft-reply/.draft-reply-actions (Inbox Cockpit only) — a drafted
+       reply shown as reviewable text, never an auto-send action. Same
+       card recipe as .chat-proposal above (dashed border + tinted
+       background over a token), recolored to --color-accent instead of
+       --color-warning: this is not "awaiting your approve/decline" (there
+       is no send action in this pass at all), it is "here is some text you
+       can read and copy," a different meaning from .chat-proposal's own
+       pending-decision one, so it gets its own class rather than reusing
+       .chat-proposal under a misleading label.
+   ========================================================================== */
+
+.cockpit-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr 300px;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .cockpit-layout { grid-template-columns: 1fr; }
+}
+
+.cockpit-layout .chat-thread { max-height: 380px; }
+
+.tag-chip--static {
+  display: inline-block;
+  border-radius: 999px;
+  font-size: var(--font-size-sm);
+  padding: 2px var(--space-3);
+  border: 1px dashed var(--color-border);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: default;
+}
+
+.chat-message-author {
+  display: block;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 2px;
+  color: var(--author-color, var(--color-text-muted));
+}
+
+.draft-reply {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  border: 1px dashed var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface-raised));
+}
+
+.draft-reply p { margin: 0; }
+.draft-reply pre {
+  white-space: pre-wrap;
+  font-family: var(--font-sans);
+  margin: 0;
+  padding: var(--space-2);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.draft-reply-actions { display: flex; gap: var(--space-2); }
+
+/* ==========================================================================
    Agents Map layout exploration (BUG-002) — additive primitives, originally
    built only for html-prototype/agents-map-exploration.html's own Option D
    comparison. Two genuinely new patterns there, everything else in that
@@ -1116,3 +1285,1990 @@ button.item-row:hover {
   from { opacity: 0; transform: translate(-50%, -50%) scale(0.35); }
   to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
+
+/* ==========================================================================
+   Agents Map SkillTree-inspired dark theme (REQ-SB-52) — REDO pass,
+   2026-08-14, superseding the first pass immediately above/below this
+   comment's own prior text. Operator's own words rejecting pass 1 ("a light
+   reskin — 2 colors + a starfield layer + glass panels, keeping the existing
+   bounded canvas"): "No No I want to Copy everything The Layout the
+   Animation the Looks and Colors Forget what we have." Pass 1's token-swap
+   mechanism (body.theme-skilltree re-points --color-*, every component
+   cascades for free) is REUSED, not reinvented — but the values themselves,
+   the canvas's own layout model, and the animation set are substantially
+   rebuilt against a second, deeper extraction (the reference's own real CSS
+   source, 4 <style> tags read directly from its DOM — see PRD REQ-SB-52's
+   own "Update, 2026-08-14 — operator escalation" breadcrumb for the full
+   verbatim value list this section implements). Still scoped ENTIRELY to
+   agents-map.html via `body.theme-skilltree`; every other screen's :root
+   tokens remain untouched.
+
+   What changed structurally vs. pass 1 (not just recolored):
+     1. `.agents-map-stage` becomes a true fixed, edge-to-edge canvas
+        (position:fixed; inset:0) instead of living inside the bounded,
+        padded box pass 1 kept. See the layering note above
+        `.theme-skilltree .agents-map-stage` below for exactly how it still
+        paints BEHIND the page's own static chrome (h1/description/
+        state-switcher/legend/sidebar) without covering it, using only
+        stacking-context math — no HTML restructuring needed, so every
+        existing data-driven state/interaction keeps working unmodified.
+     2. `.agents-map-canvas` loses its own filled disc background/shadow —
+        nodes now float directly over the starfield/page background, like
+        the reference, instead of sitting on an opaque light-on-dark plate.
+        Its own square (aspect-ratio 1/1) sizing is DELIBERATELY KEPT (see
+        that rule's own comment) — this preserves every hand-computed
+        angle x radius trigonometry value from round 3-6 exactly as-is.
+     3. Real named keyframes added/reused verbatim from the extraction:
+        `nodepop` (staggered bounce entrance, reusing nodes' own existing
+        inline animation-delay), `hspin` (KB mesh slow spin+drift, folded
+        into one keyframe — see its own comment), `livepulse` (renamed from
+        the REQ-SB-42 pass's agentActivityGlow — already the same color-mix
+        recipe — now also reused for hover/focus), a self-drawing
+        `drawline` for connector lines, and `chevnudge` for the new
+        edge-navigation chevrons. `starTwinkle` is retuned to the exact
+        `.45 -> .1 -> .45`, 6s values (was an invented .12/.95 + scale
+        pulse).
+     4. Real glass blur: side panel 16px (was 14px), zoom toolbar 12px
+        (was 14px, and moved from absolute/left/bottom to fixed/right/
+        bottom, matching the reference's own toolbar position exactly).
+     5. New edge-navigation chevrons (`.map-edge-nav`) — fixed, vertically
+        centered, hidden until hover/focus — added once per top-level
+        state's drill-down group (mirrors where the zoom toolbar was scoped
+        in pass 1: top-level chrome, not duplicated into every individual
+        per-Section drill-down panel).
+     6. Real typography: h1 at 27px/.12em letter-spacing/400 weight,
+        Plus Jakarta Sans. Marcellus (the reference's second loaded font)
+        is adopted for the sidebar's own "Second Brain" wordmark only — see
+        that rule's own comment for why that's the one place it fit, and
+        why this is flagged, not a silent call.
+   Every component below the :root block in this stylesheet already reads
+   color exclusively through custom properties (--color-*, --agent-color-*,
+   --font-sans) or color-mix() built from them (re-confirmed by grep before
+   this rewrite), so simply re-pointing those properties still re-skins the
+   entire canvas/side-panel/legend/state-switcher/kv-list/badge/button set
+   with no other CSS edits required for color.
+   Verbatim-vs-derived, restated (unchanged policy from pass 1, now applied
+   to a much larger real value set): --bg/--ivory/--ivory-2/--ink-2/--ink-3/
+   --copper/--line/--glass below, the h1 typography values, the toolbar/
+   side-panel blur amounts, the 74px-equivalent node sizing math, and the
+   named keyframe timing values are the reference's OWN real extracted
+   values (see the PRD breadcrumb) — --color-surface/-surface-raised and
+   --color-success/-warning/-danger remain this designer's own derived
+   shades (same policy/reasoning as pass 1: same hue families, AA-contrast
+   judgment calls), flagged here and at sign-off, not silently assumed as
+   "the" values. */
+body.theme-skilltree {
+  /* Real extracted palette, kept under its own literal names too (matching
+     the reference's own :root variable names 1:1) so the verbatim-ness is
+     directly auditable against the PRD breadcrumb, not just asserted. The
+     --color-* aliases immediately below are what every existing component
+     actually consumes — same "one token swap, whole page recolors" model
+     pass 1 established, just re-pointed at the real values this time. */
+  --bg: #0E1118;
+  --ivory: #E9E4D6;
+  --ivory-2: #B9B4A6;
+  --ink-2: #8A8DA0;
+  --ink-3: #565A6E;
+  --copper: #C58B5F;
+  --line: rgba(233, 228, 214, 0.1);
+  --glass: rgba(14, 17, 24, 0.85);
+
+  --color-bg: var(--bg);
+  /* Derived surfaces (not in the extraction — see policy note above):
+     a touch lighter than --bg, for buttons/inputs/legend swatches, which
+     still need SOME differentiated surface now the map canvas itself is
+     transparent (point 2 above). */
+  --color-surface: #171A22;
+  --color-surface-raised: #1F2430;
+  --color-border: var(--line);
+  --color-text: var(--ivory);
+  --color-text-muted: var(--ivory-2);
+  /* Accent is now the reference's own real --copper (was pass 1's invented
+     emerald green) — "used on the central hub chip" per the extraction;
+     this cascades to the KB ring, every Hub/agent-node border accent
+     fallback, buttons, and badges the same way the green did in pass 1. */
+  --color-accent: var(--copper);
+  --color-accent-muted: rgba(197, 139, 95, 0.16);
+  --color-on-accent: #0E1118;
+  --color-success: #4ADE80;
+  --color-warning: #FBBF24;
+  --color-danger: #F87171;
+  /* Plus Jakarta Sans per the reference extraction; Marcellus loaded for
+     the one spot it's actually used (see .sidebar-header h2 below). Neither
+     is fetched over a network — SCREEN_INSTRUCTIONS.md's no-build-step/
+     no-CDN convention — named first for if either is ever locally
+     installed or later bundled, existing system-font stack kept after. */
+  --font-sans: "Plus Jakarta Sans", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: "Marcellus", Georgia, "Times New Roman", serif;
+}
+
+/* .agent-color-worker/-producer/-expert are intentionally UNCHANGED here —
+   already-saturated blue/purple/pink that read clearly on the new (also
+   dark) background without adjustment; this app's own Type-ring color
+   language is data-model-driven, not part of the reference's palette. */
+
+/* Typography (REQ-SB-52 redo) — exact values: 'Plus Jakarta Sans', 27px,
+   .12em letter-spacing, 400 (regular, not bold) weight — the reference's
+   own refined display-heading treatment. Scoped to this page's own single
+   <h1> ("Agents Map"). */
+.theme-skilltree .main h1 {
+  font-family: var(--font-sans);
+  font-size: 27px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: none;
+  margin: 0 0 var(--space-2);
+  color: var(--color-text);
+}
+
+/* Marcellus placement (GENUINELY OPEN, flagged — the extraction confirmed
+   the reference loads this serif but didn't pin down where it applies).
+   Judgment call: the sidebar's own "Second Brain" wordmark is the one
+   element on this page that reads as a literal brand/app name, the closest
+   analogue to a marketing site's own logotype (where a display serif most
+   commonly earns its place) — every other text element on this screen is
+   functional UI copy (nav items, node labels, kv-rows), where a serif would
+   fight legibility at small sizes, not read as "refined." Scoped to this
+   page only (`.theme-skilltree .sidebar-header h2`), so the sidebar reads
+   identically to every other screen when this theme isn't active — flagged
+   for the human to confirm/reject, not silently assumed to be correct. */
+.theme-skilltree .sidebar-header h2 {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+/* Starfield background — same fixed/CSS-only/no-canvas mechanism as pass 1,
+   retuned to the reference's own exact `twinkle` keyframe: opacity
+   .45 -> .1 -> .45, 6s ease-in-out infinite (was an invented .12/.95 +
+   scale pulse). `animation-duration` is forced via !important because each
+   <span class="star"> already carries its own inline animation-duration
+   (a pre-existing, still-useful per-star STAGGER via inline
+   animation-delay, same convention as this file's own .kb-neuron mesh) —
+   !important on the class rule overrides that one inline property to the
+   spec's exact 6s for every star while leaving the varied per-star delays
+   alone, so the reference's own timing is honored exactly without having
+   to hand-edit all 60 <span> elements' inline styles individually. */
+.starfield {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.theme-skilltree .app-shell {
+  position: relative;
+  z-index: 1;
+}
+
+.star {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--color-text);
+  opacity: 0.45;
+  animation-name: starTwinkle;
+  animation-duration: 6s !important;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+/* Real extracted value: the reference's own star color is a light
+   lavender-white (#CDC9E0), distinct from its body text color — not a
+   reused token. Scoped to `body.skillmap` only. */
+body.skillmap .star { background: #cdc9e0; }
+
+@keyframes starTwinkle {
+  0%, 100% { opacity: 0.45; }
+  50%      { opacity: 0.1; }
+}
+
+/* ==========================================================================
+   True full-viewport canvas (REQ-SB-52 redo, point 1) — the reference's own
+   `#viewport { position:fixed; inset:0; overflow:hidden; }`. Applied to
+   EVERY `.agents-map-stage` instance on this page (there are 11: 6
+   top-level states + 5 per-state drill-down groups) — safe because only one
+   is ever visible at a time (the active [data-state-panel]'s own, and
+   within that, at most one active .explore-drilldown sub-panel); a fixed
+   descendant inside a display:none ancestor still doesn't paint, so hidden
+   stages never collide with the visible one.
+
+   Layering (why this floats BEHIND the page's own static chrome — h1,
+   description, state-switcher, legend, replay button, sidebar — WITHOUT
+   covering it, using zero HTML changes): `.theme-skilltree .app-shell`
+   (above) is `position:relative; z-index:1`, which makes it establish its
+   OWN stacking context. Per the CSS stacking-order spec, within one
+   stacking context, elements paint bottom-to-top as: (1) the context's own
+   background, (2) its positioned descendants with NEGATIVE z-index, (3) its
+   plain in-flow/static descendants (h1, the description <p>, the
+   .state-switcher buttons, the legend/replay-button block, the .sidebar
+   itself — none of these have `position` set), then (4) positioned
+   descendants at z-index 0/auto or higher. Giving `.agents-map-stage` an
+   explicit NEGATIVE z-index places it at level (2) — above the app-shell's
+   own background, but BELOW every one of those static elements at level
+   (3), regardless of how deep in the DOM the stage sits (a stacking
+   context's levels compare across the WHOLE subtree, not just direct
+   children) — so the canvas renders full-bleed behind the page's chrome,
+   the chrome floats over it "for free," and nothing inside `.main`'s own
+   markup needed to move or gain new wrapper elements. (`position:fixed`
+   changes the stage's layout containing block to the viewport, not which
+   stacking context it participates in — the two are independent, which is
+   what makes this trick work without `.main` or its children needing any
+   position/z-index of their own.) */
+.theme-skilltree .agents-map-stage {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+/* .agents-map-canvas keeps its own square aspect-ratio (1/1) DELIBERATELY —
+   this is what keeps round 3-6's hand-computed angle x radius trigonometry
+   (every agent/Hub/ring/spoke/boundary/section-title position, all still
+   percentage-based against this box) geometrically correct: a non-square
+   canvas would skew top%/left% positioning into an ellipse, not a circle.
+   Sized against the SMALLER of viewport width/height (not a flat 700px cap)
+   so the circle always fits fully on screen edge-to-edge at any window
+   shape/size, genuinely using the newly-available full-viewport real
+   estate (was capped at 700px regardless of viewport). FLAGGED: this is a
+   deliberate interpretation, not a literal copy of the reference's own
+   canvas sizing (which uses real pixel-computed node positions over an
+   unbounded pannable/zoomable plane, not a percentage-locked circle) —
+   chosen specifically to satisfy this task's own "preserve every existing
+   DATA-DRIVEN structure" requirement; real pan/zoom is explicitly out of
+   this pass's scope (the toolbar below stays visual-only, same as pass 1).
+   Background/shadow removed entirely (was an opaque light-on-dark disc) —
+   nodes now float directly over the starfield/page background, matching
+   the reference's own transparent-canvas look. */
+.theme-skilltree .agents-map-canvas {
+  width: min(92vw, 92vh, 820px);
+  margin: 0 auto;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* ==========================================================================
+   Real node styling + entrance (REQ-SB-52 redo, point 3) — the reference's
+   own 74x74px circle math already closely matches this app's EXISTING
+   percentage-based sizing at the canvas's own real-world scale (.hub-node
+   at 11% width x ~820px canvas ~= 90px; .agent-node at 10% ~= 82px;
+   .agent-node--compact at 5% ~= 41px) — kept percentage-based rather than
+   hardcoded to a literal 74px, since this canvas is fluid/responsive
+   (min(92vw,92vh,820px)), not the reference's own fixed-size plane; a
+   literal fixed px would break responsiveness and the existing radial math
+   this pass is instructed to preserve. Centering is `transform:
+   translate(-50%,-50%)` (already the case pre-existing) — functionally
+   identical to the reference's own `margin:-37px 0 0 -37px` negative-margin
+   trick (both center the node on its own coordinate point), kept as the
+   modern equivalent rather than swapped to a literal negative margin that
+   would need to track a fixed 74px size this canvas doesn't have.
+   `nodepop`: exact bounce-overshoot easing/duration from the extraction,
+   reusing each node's OWN EXISTING inline `animation-delay` (already
+   present on every .agent-node instance, set by earlier rounds' own
+   staggered-fade-in convention) as the stagger — no HTML changes needed for
+   agent nodes. `.hub-node`/`.map-overflow-marker` don't carry an inline
+   delay; the `:nth-of-type` rule below gives them a small stagger too
+   (evaluated per-parent-canvas, so it naturally restarts for each state). */
+@keyframes nodepop {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.3); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+.theme-skilltree .hub-node,
+.theme-skilltree .agent-node,
+.theme-skilltree .map-overflow-marker {
+  animation: nodepop 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
+  /* Real value, verbatim: a near-zero-opacity background "orbit track" ring
+     layered behind each node via an extra box-shadow ring — additive to
+     this file's own existing colored box-shadow (unchanged), not a
+     replacement. Deliberately subtle by design in the source too. */
+  box-shadow: 0 0 0 10px rgba(32, 35, 43, 0.025);
+}
+
+.theme-skilltree .agents-map-canvas > .hub-node:nth-of-type(1) { animation-delay: 0.02s; }
+.theme-skilltree .agents-map-canvas > .hub-node:nth-of-type(2) { animation-delay: 0.06s; }
+.theme-skilltree .agents-map-canvas > .hub-node:nth-of-type(3) { animation-delay: 0.1s; }
+.theme-skilltree .agents-map-canvas > .hub-node:nth-of-type(4) { animation-delay: 0.14s; }
+.theme-skilltree .agents-map-canvas > .hub-node:nth-of-type(5) { animation-delay: 0.18s; }
+.theme-skilltree .agents-map-canvas > .hub-node:nth-of-type(n+6) { animation-delay: 0.22s; }
+
+/* Hovered/selected-node glow (REQ-SB-52 redo — "at minimum for a hovered/
+   selected node"): reuses `livepulse` (see its own renamed keyframe above
+   .agent-node--activity-glow) rather than a new near-duplicate — the same
+   color-mix()-driven ring, keyed off whichever of --node-color/--hub-color
+   is set, falling back to --copper for the KB/neutral case. Layers on top
+   of (doesn't replace) the existing static hover lift/shadow already
+   defined on .agent-node:hover. */
+.theme-skilltree .agent-node:hover,
+.theme-skilltree .agent-node:focus-visible,
+.theme-skilltree .hub-node:hover,
+.theme-skilltree .hub-node:focus-visible,
+.theme-skilltree .map-overflow-marker:hover,
+.theme-skilltree .map-overflow-marker:focus-visible {
+  animation: livepulse 1.4s ease-in-out infinite;
+}
+
+/* ==========================================================================
+   Knowledge Base spin/drift (REQ-SB-52 redo, hspin/hdrift) — applied to the
+   INNER `.kb-brain-svg` mesh, not the outer `.kb-node` itself: `.kb-node`'s
+   own `transform` is already driven by centering (translate(-50%,-50%)) AND
+   gets directly REWRITTEN inline by agents-map.js's playIntro()
+   (kbGrowIn + kbPulse) on every page load/state-switch — animating
+   `.kb-node`'s own transform here would get silently clobbered by that
+   inline style the moment the intro plays (i.e. almost immediately, and
+   every replay). The inner SVG has no transform of its own and JS never
+   touches it, so spin/drift lives there instead, with zero risk to the
+   existing intro/pulse behavior. CSS can't cleanly run two independent
+   animations that both touch `transform` on the same element (the later
+   one in the list simply wins each frame, they don't compose) — so the
+   reference's own two named keyframes (hspin = rotation, hdrift = organic
+   position wobble) are folded into ONE keyframe here, still named `hspin`,
+   that does both together: a full slow 360 deg rotation with a few-px
+   wobble riding along it every quarter-turn. Flagged as a folding decision,
+   not a silent drop of `hdrift`. */
+@keyframes hspin {
+  0%   { transform: rotate(0deg) translate(0, 0); }
+  25%  { transform: rotate(90deg) translate(2px, -2px); }
+  50%  { transform: rotate(180deg) translate(-1px, 2px); }
+  75%  { transform: rotate(270deg) translate(-2px, -1px); }
+  100% { transform: rotate(360deg) translate(0, 0); }
+}
+
+.theme-skilltree .kb-brain-svg {
+  animation: hspin 60s linear infinite;
+  transform-origin: center;
+}
+
+/* ==========================================================================
+   Connector lines draw themselves in (REQ-SB-52 redo, drawline) — real
+   mechanic from the extraction: SVG stroke-dashoffset animates to 0 instead
+   of the line just fading/sitting static. A single shared dasharray (90,
+   comfortably longer than every real spoke-line/cluster-line/affinity-line
+   span in this canvas's own 0-100 coordinate space) approximates a proper
+   per-line-length draw without needing per-line computed values (which
+   would require either hand-measuring ~40+ individual <line> coordinates
+   across every state/drill-down, or real JS getTotalLength() math — left
+   to `/plan-tasks` once these become real computed SVG paths, not a static
+   prototype fixture) — FLAGGED as a pragmatic approximation, not a silent
+   simplification: shorter connectors visually finish drawing earlier in
+   the shared timeline, longer ones take closer to the full duration, which
+   reads as a believable graduated "draw" even without per-line precision.
+   Timing (0.3s delay, 0.6s duration) is a reasonable general-purpose
+   compromise, not tightly gated to agents-map.js's own playIntro() timing
+   constants (INTRO_HOLD_MS=900ms) — FLAGGED: for the intro-animated states
+   (Populated/5 sections/Dense section/Density clustering), this draw-in
+   will typically already read as fully drawn by the time playIntro()'s own
+   900ms-delayed line-fade reveals it (opacity:0 doesn't pause a CSS
+   animation), so the two effects don't visibly overlap there — a known,
+   named limitation, left as a `/plan-tasks` follow-up rather than editing
+   agents-map.js's own JS timing in this design-only pass. For a drill-down
+   panel opened directly (no intro gating on its own lines), the draw-in
+   plays as intended, visibly, shortly after the panel appears. */
+.theme-skilltree .agents-map-lines .spoke-line,
+.theme-skilltree .agents-map-lines .cluster-line,
+.theme-skilltree .agents-map-lines .affinity-line {
+  stroke-dasharray: 90;
+  stroke-dashoffset: 90;
+  animation: drawline 0.6s ease-out 0.3s both;
+}
+
+@keyframes drawline {
+  to { stroke-dashoffset: 0; }
+}
+
+/* ==========================================================================
+   "Glass" detail panels (REQ-SB-52 redo) — translucent near-black card,
+   10px corners, deliberately flat (no box-shadow); blur bumped from pass
+   1's invented 14px to the reference's own REAL extracted value: 16px for
+   the detail-card-equivalent surfaces (.side-panel, .card), 12px for the
+   zoom toolbar (see below) — the extraction gives two different blur
+   amounts for these two surface kinds, not one shared value. Scoped to
+   this page only; applies to the two floating-panel shapes this prototype
+   actually has: the agent detail .side-panel (an edge drawer — rounded
+   only on its exposed left edge, since its right edge is flush with the
+   viewport; POSITION/slide-in mechanic deliberately UNCHANGED — see that
+   rule's own note) and .card (the intro/legend/callout blocks on this
+   page). FLAGGED: the reference's OWN detail card is a top:104px/left:28px/
+   width:364px LEFT-side fixed panel with its own internal scroll — a
+   different shape/interaction than this app's existing right-side sliding
+   drawer. Per this task's own "preserve every existing DATA-DRIVEN
+   interaction" instruction, the drawer mechanic (position, slide-in
+   transform, overlay) is kept as this app's own established pattern;
+   only the glass material itself (background/blur/border/radius/no-shadow)
+   is copied verbatim. */
+.theme-skilltree .side-panel {
+  background: var(--glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-left: 1px solid var(--line);
+  border-radius: 10px 0 0 10px;
+  box-shadow: none;
+}
+
+.theme-skilltree .card {
+  background: var(--glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+/* Warning badges pulse (REQ-SB-52 redo, bpulse — opacity .85 -> .2) — the
+   one existing badge usage on this page's own agent detail panel is the
+   Provider row's "Not yet available" badge-warning (REQ-SB-19 Scenario 7);
+   a pulsing "needs attention" treatment is a reasonable semantic fit,
+   scoped to this page only so .badge-warning elsewhere (e.g. settings.html)
+   is unaffected. */
+.theme-skilltree .badge-warning {
+  animation: bpulse 1.8s ease-in-out infinite;
+}
+
+@keyframes bpulse {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 0.2; }
+}
+
+/* Zoom toolbar (REQ-SB-52 redo) — real positioning from the extraction:
+   fixed (was absolute), bottom:16px; right:16px (was left, not right),
+   blur(12px) (was 14px), 3px padding (was --space-1 ~4px, kept close — see
+   flag below), 10px radius (unchanged, already matched). Still deliberately
+   NOT scoped to `.theme-skilltree` for its BASE shape/sizing rules (a
+   generic "floating HUD over a canvas" component any future map screen
+   could reuse, per this file's reuse-first convention, same as pass 1) —
+   only the position/blur/right-alignment overrides below are page-scoped,
+   since those are the reference's own real, page-specific values. Every
+   button stays `disabled` (unchanged) — visual/positional chrome only,
+   real zoom/pan logic is still out of this pass's scope. */
+.theme-skilltree .map-zoom-toolbar {
+  position: fixed;
+  left: auto;
+  right: 16px;
+  bottom: 16px;
+  padding: 3px var(--space-2);
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--line);
+}
+
+.map-zoom-toolbar {
+  position: absolute;
+  left: var(--space-4);
+  bottom: var(--space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: rgba(14, 17, 24, 0.85);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(233, 228, 214, 0.12);
+  border-radius: 10px;
+  box-shadow: none;
+  z-index: 6;
+}
+
+.map-zoom-btn {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  line-height: 1;
+}
+
+.map-zoom-btn:disabled { opacity: 0.85; }
+
+.map-zoom-btn--wide {
+  width: auto;
+  padding: 0 var(--space-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.map-zoom-level {
+  min-width: 38px;
+  text-align: center;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.map-zoom-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--color-border);
+  margin: 0 2px;
+}
+
+/* ==========================================================================
+   Edge-navigation reveal (REQ-SB-52 redo, chevnudge) — NET-NEW chrome, the
+   one genuinely new element this pass adds (not just a restyle of
+   something pass 1 already had). Real positioning from the extraction:
+   `position:fixed` (stays put regardless of scroll/state), vertically
+   centered (`top:50%; transform:translateY(-50%)`), `z-index:9`, hidden by
+   default (`opacity:0; pointer-events:none`) until revealed. The
+   reference's own version pages between Departments one at a time; this
+   app's closest real analogue is a Section's own drill-down "Agents Tree"
+   (also a one-thing-at-a-time view, unlike the overview which shows every
+   Section at once) — so these chevrons live inside each state's
+   `[data-agents-drilldown]` group (see agents-map.html), revealed on
+   hover/focus of that group, disabled/inert (same established convention
+   as the zoom toolbar's own buttons — real prev/next-Section paging logic
+   is a `/plan-tasks` concern, not built here). Scoped to top-level chrome
+   only (one pair per state, not duplicated into every individual per-
+   Section drill-down sub-panel) — the same scoping-down precedent pass 1
+   already set for the zoom toolbar, flagged there and restated here. */
+.theme-skilltree .map-edge-nav {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 9;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.theme-skilltree .map-edge-nav--prev { left: 16px; }
+.theme-skilltree .map-edge-nav--next { right: 16px; }
+
+[data-agents-drilldown]:hover .map-edge-nav,
+[data-agents-drilldown]:focus-within .map-edge-nav {
+  opacity: 1;
+}
+
+.theme-skilltree .map-edge-nav-btn {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--color-text);
+  font-size: 1rem;
+  line-height: 1;
+  animation: chevnudge 1.8s ease-in-out infinite;
+}
+
+.map-edge-nav--prev .map-edge-nav-btn { animation-direction: reverse; }
+
+.theme-skilltree .map-edge-nav-btn:disabled { opacity: 0.85; }
+
+@keyframes chevnudge {
+  0%, 100% { transform: translateX(0); }
+  50%      { transform: translateX(3px); }
+}
+
+/* ==========================================================================
+   Agents Map — radial workspace exploration (REQ-SB-52 REBUILD pass,
+   2026-08-14) — see agents-map-skilltree-exploration.html's own top-of-file
+   breadcrumb for full rationale. Every value below is an ORIGINAL choice
+   (dark slate background, warm amber accent, original animation timings) —
+   NOT extracted from the reference site, unlike the .theme-skilltree section
+   above (that pass used real extracted values under the operator's
+   since-superseded "copy everything" instruction; this section deliberately
+   does not repeat that, per the operator's own confirmation that this
+   rebuild should be original code). Fully scoped under `body.skillmap` so
+   it cannot affect any other screen, including the canonical agents-map.html
+   (which uses `body.theme-skilltree`, a different class entirely).
+   ========================================================================== */
+
+/* Palette/fonts UPDATED 2026-08-14 (operator: "Copy the Fonts and The
+   Agents Style (There is no Copy Rights here)") — the operator confirmed
+   plain CSS values (colors) and font-family NAMES are not a copyright
+   concern (typefaces in common/open use aren't the reference's exclusive
+   IP the way source code or marketing copy would be), so this section now
+   reuses the SAME real extracted values as the canonical agents-map.html's
+   own `.theme-skilltree` section (verified live from the reference's own
+   :root custom properties) rather than an invented palette. What stays
+   original: the actual CSS rules/selectors/structure below are still this
+   file's own independent implementation, not copy-pasted source text, and
+   no copy/marketing text is reused (see this file's own top-of-file
+   breadcrumb). */
+/* Real font files, bundled locally (operator, 2026-08-14: "bundle the
+   actual font file locally... wire up a real @font-face" — both are
+   open-license Google Fonts, SIL Open Font License, legitimately
+   redistributable; downloaded from fonts.gstatic.com and saved to
+   html-prototype/fonts/). Before this, "Plus Jakarta Sans"/"Marcellus"
+   were only ever NAMED in the font-family stack, matching this project's
+   own no-CDN/no-network-fetch convention for the prototype's HTML/CSS
+   itself — but that meant the actual glyphs silently fell back to
+   whatever system font happened to be installed, with zero visible
+   effect from any font-family CSS at all. These `@font-face` rules make
+   the real fonts genuinely render, with no runtime network dependency
+   (served from this same local file server). Plus Jakarta Sans is a
+   variable font (one file covering a weight range) — `font-weight: 200
+   800` lets the browser pick any weight in that range from the single
+   file, matching how Google's own multi-weight @font-face rules all
+   point at the same file. */
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("fonts/PlusJakartaSans-Variable.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Marcellus";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/Marcellus-Regular.woff2") format("woff2");
+}
+
+body.skillmap {
+  --sm-bg: #0e1118;
+  --sm-surface: #171a22;
+  --sm-surface-2: #1f2430;
+  --sm-line: rgba(233, 228, 214, 0.1);
+  --sm-text: #e9e4d6;
+  --sm-text-muted: #b9b4a6;
+  --sm-accent: #c58b5f;
+  --sm-accent-soft: rgba(197, 139, 95, 0.16);
+  --sm-glass: rgba(14, 17, 24, 0.85);
+  --sm-font-serif: "Marcellus", Georgia, "Times New Roman", serif;
+  margin: 0;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: var(--sm-bg);
+  color: var(--sm-text);
+  font-family: "Plus Jakarta Sans", var(--font-sans);
+  position: relative;
+}
+
+/* Browsers don't inherit `font-family` into form controls by default
+   (button/input/textarea/select fall back to the OS UI font, e.g. Arial,
+   regardless of the body's own font) — this was leaving every button and
+   the search input on Arial instead of "Plus Jakarta Sans" (operator,
+   2026-08-14: "do the fonts of this view to match the other site"). */
+body.skillmap button,
+body.skillmap input,
+body.skillmap textarea,
+body.skillmap select {
+  font-family: inherit;
+}
+
+body.skillmap .starfield { z-index: 0; }
+
+/* ==========================================================================
+   Intro splash (own copy, no email field) — dismiss reveals the workspace.
+   ========================================================================== */
+.skillmap-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.skillmap-intro-scrim {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 40%, rgba(232, 163, 61, 0.08), transparent 60%), var(--sm-bg);
+}
+
+.skillmap-intro-card {
+  position: relative;
+  width: min(440px, 88vw);
+  padding: 40px 32px;
+  text-align: center;
+  background: var(--sm-glass);
+  border: 1px solid var(--sm-line);
+  border-radius: 16px;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  animation: smCardIn 0.5s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+.skillmap-intro-brand {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: var(--sm-accent);
+  margin-bottom: var(--space-4);
+}
+
+.skillmap-intro-h {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0 0 var(--space-3);
+  color: var(--sm-text);
+}
+
+.skillmap-intro-sub {
+  color: var(--sm-text-muted);
+  font-size: var(--font-size-base);
+  line-height: 1.6;
+  margin: 0 0 var(--space-6);
+}
+
+.skillmap-intro-btn {
+  padding: var(--space-3) var(--space-6);
+  border-radius: 999px;
+  border: none;
+  background: var(--sm-accent);
+  color: #1a1206;
+  font-weight: 700;
+  font-size: var(--font-size-base);
+  cursor: pointer;
+}
+
+.skillmap-intro-btn:hover { filter: brightness(1.08); }
+
+.skillmap-intro-hint {
+  margin: var(--space-4) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--sm-text-muted);
+}
+
+.skillmap-intro[hidden] { display: none; }
+
+@keyframes smCardIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ==========================================================================
+   Doctrine / outro panel — right-docked sliding panel, reusing this app's
+   own existing drawer mechanic (same pattern as .side-panel elsewhere in
+   this design system), not the reference's own layout.
+   ========================================================================== */
+.skillmap-about {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+}
+
+.skillmap-about[hidden] { display: none; }
+
+.skillmap-about-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 7, 11, 0.55);
+}
+
+.skillmap-about-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: min(420px, 92vw);
+  background: var(--sm-glass);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-left: 1px solid var(--sm-line);
+  padding: var(--space-6);
+  overflow-y: auto;
+  animation: smSlideIn 0.3s ease both;
+}
+
+@keyframes smSlideIn {
+  from { transform: translateX(24px); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+
+.skillmap-about-panel h2 {
+  font-family: var(--sm-font-serif);
+  font-weight: 400;
+  font-size: 1.125rem;
+  letter-spacing: 0.06em;
+  margin: 0 0 var(--space-2);
+  color: var(--sm-text);
+}
+
+.skillmap-about-tag {
+  color: var(--sm-text-muted);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--space-6);
+}
+
+.skillmap-about-sec {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--sm-accent);
+  margin: var(--space-6) 0 var(--space-2);
+}
+
+.skillmap-about-sec:first-of-type { margin-top: 0; }
+
+.skillmap-about-panel p {
+  color: var(--sm-text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.65;
+  margin: 0;
+}
+
+.skillmap-about-panel p b { color: var(--sm-text); }
+
+.skillmap-about-close {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--sm-line);
+  background: transparent;
+  color: var(--sm-text-muted);
+  cursor: pointer;
+}
+
+.skillmap-about-close:hover { color: var(--sm-text); }
+
+/* ==========================================================================
+   Search palette — generic Ctrl/Cmd+K command-palette pattern (not a
+   proprietary layout), functional filter over the real 5-agent fixture.
+   ========================================================================== */
+.skillmap-search {
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+}
+
+.skillmap-search[hidden] { display: none; }
+
+.skillmap-search-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 7, 11, 0.6);
+}
+
+.skillmap-search-panel {
+  position: relative;
+  width: min(520px, 90vw);
+  max-height: 60vh;
+  margin: 12vh auto 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--sm-glass);
+  border: 1px solid var(--sm-line);
+  border-radius: 14px;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  overflow: hidden;
+  animation: smCardIn 0.2s ease both;
+}
+
+.skillmap-search-input {
+  border: none;
+  background: transparent;
+  color: var(--sm-text);
+  font-size: var(--font-size-lg);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--sm-line);
+  outline: none;
+}
+
+.skillmap-search-input::placeholder { color: var(--sm-text-muted); }
+
+.skillmap-search-results {
+  overflow-y: auto;
+  padding: var(--space-2);
+}
+
+.skillmap-search-result {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--sm-text);
+  padding: var(--space-3) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.skillmap-search-result:hover,
+.skillmap-search-result:focus-visible {
+  background: var(--sm-surface-2);
+}
+
+.skillmap-search-result-meta {
+  color: var(--sm-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.skillmap-search-empty {
+  padding: var(--space-4) var(--space-5);
+  color: var(--sm-text-muted);
+  margin: 0;
+}
+
+.skillmap-search-empty[hidden] { display: none; }
+
+/* ==========================================================================
+   Shell / topbar — no persistent left sidebar (structural fix for the
+   overlap bug found in the .theme-skilltree redo pass: a fixed full-
+   viewport canvas and in-flow page chrome sharing one screen collide by
+   construction). This screen owns the whole viewport.
+   ========================================================================== */
+.skillmap-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+}
+
+.skillmap-topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-4);
+  background: var(--sm-glass);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--sm-line);
+}
+
+.skillmap-topbar-left { display: flex; align-items: center; gap: var(--space-2); }
+
+.skillmap-icon-btn {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--sm-line);
+  background: transparent;
+  color: var(--sm-text-muted);
+  cursor: pointer;
+}
+
+.skillmap-icon-btn:hover { color: var(--sm-text); border-color: var(--sm-text-muted); }
+
+.skillmap-search-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px var(--space-3);
+  border-radius: 999px;
+  border: 1px solid var(--sm-line);
+  background: var(--sm-surface);
+  color: var(--sm-text-muted);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.skillmap-search-trigger:hover { color: var(--sm-text); border-color: var(--sm-text-muted); }
+
+.skillmap-search-kbd {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--sm-surface-2);
+  font-size: 0.6875rem;
+  color: var(--sm-text-muted);
+}
+
+.skillmap-wordmark {
+  font-family: var(--sm-font-serif);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  font-size: 0.9375rem;
+  color: var(--sm-text);
+  text-decoration: none;
+}
+
+.skillmap-wordmark:hover { color: var(--sm-accent); }
+
+.skillmap-counts {
+  color: var(--sm-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.skillmap-back {
+  position: fixed;
+  top: 68px;
+  left: var(--space-4);
+  z-index: 15;
+  padding: 6px var(--space-3);
+  border-radius: 999px;
+  border: 1px solid var(--sm-line);
+  background: var(--sm-glass);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: var(--sm-text-muted);
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.skillmap-back[hidden] { display: none; }
+.skillmap-back:hover { color: var(--sm-text); }
+
+/* ==========================================================================
+   Radial viewport — the map itself.
+   ========================================================================== */
+.skillmap-viewport {
+  position: absolute;
+  inset: 56px 0 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* Operator (2026-08-14): "Kind of making everything smaller in the default
+   view" — overall stage shrunk (760px cap -> 620px), paired with the hub
+   radius reduction below (32% -> 24%, "bring the Hubs Closer to the KB")
+   and the title ring tightened proportionally (44% -> 34%) so it still
+   clears every agent node at the new smaller agent-offset scale. */
+.skillmap-world {
+  position: relative;
+  width: min(65vw, 65vh, 620px);
+  aspect-ratio: 1 / 1;
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Section-rotation layer (operator, 2026-08-14: "Section Rotation... Arrows
+   at the bottom so I can Rotate which section is at the top") — separate
+   from `.skillmap-world`'s own focus-recenter transform (see HTML's own
+   comment above `#skillmapRotor` for why these are two different elements
+   rather than one combined transform). `--wrot` is set inline on this
+   element by the arrow buttons' own JS handler, in 60deg steps. */
+.skillmap-rotor {
+  position: absolute;
+  inset: 0;
+  transform: rotate(var(--wrot, 0deg));
+  transition: transform 0.5s ease;
+}
+
+/* The old per-Section "recenter the whole world" translate rules are GONE
+   (operator, 2026-08-14: "No That didn't work, The Map will be Hidden, and
+   now this is a new view with a new layout we call it Sections Views" —
+   the previous approach kept the Default map's OTHER Sections dimly
+   visible around the recentered focus point; that's no longer the model
+   at all). `.skillmap-world` itself no longer transforms on focus — instead
+   every Section but the focused one is hidden outright (see
+   `.skillmap-tree`/`.skillmap-title`/`.skillmap-kb` rules below), and the
+   ONE visible tree+title jump straight to a fixed stage anchor via their
+   own `left`/`top` overrides, same mechanism, no recentering math needed
+   since nothing else on screen has to stay spatially consistent with it
+   anymore. */
+
+/* Ring treatment updated to match the reference's own real #hub .ring
+   values more closely: a thin, mostly-transparent ring (not a solid
+   saturated stroke) with a soft OUTER halo built from a wide, low-opacity
+   box-shadow ring (their own "0 0 0 10px rgba(...,.025)" technique) rather
+   than a loud drop-shadow bloom — a calmer, more "instrument panel" read. */
+/* Operator (2026-08-14): "The Dots are Covering everything it should be
+   inside only and remove the KB Border make it Transpart so The Dots will
+   be contained inside a transparent Circle." No visible ring/background
+   chrome anymore — this is now purely a transparent, CLIPPED circular
+   container (`overflow: hidden`, was `visible`) so the constellation dots
+   (and the existing neuron mesh) read as one contained cluster, not loose
+   chrome floating around them. */
+/* Operator (2026-08-14): "Now we need to Manage it to look the same, even
+   with the icon" — the Main Hub (KB) now gets the SAME real `.rootb`
+   treatment already applied to every Section Hub (border/background/halo
+   at the accent color), plus its own icon, instead of the fully bare/
+   invisible circle from the previous pass — that pass's actual goal (no
+   opaque filled disc, dots clipped/contained, not "no chrome at all") is
+   preserved via `overflow:hidden`/`clip-path` below, unchanged. */
+/* Operator (2026-08-14): "we gave a Border in the KB Not needed" — no
+   visible chrome at all now (no border, no halo shadow), just the dot
+   constellation itself; `overflow:hidden`/`clip-path` stay (that's
+   containment, not chrome — still needed so dots can't escape the circle). */
+.skillmap-kb {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 22%;
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  overflow: hidden;
+  clip-path: circle(50%);
+  border: none;
+  /* Faded fill shows ONLY on hover now (operator, 2026-08-14), transparent
+     otherwise — see the `:hover` rule below for the 1% tint. */
+  background: transparent;
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: smKbPulse 4s ease-in-out infinite;
+  /* Zoom on hover — a plain `transition`, not a `:hover`-gated `animation`,
+     so zooming back out on mouseleave is just the transition easing back;
+     nothing to "reset" here (unlike the rotation below, scale has no
+     accumulated state to lose). */
+  transition: transform 0.25s ease, background 0.25s ease;
+  z-index: 3;
+}
+
+.skillmap-kb:hover {
+  transform: translate(-50%, -50%) scale(1.01);
+  background: color-mix(in srgb, var(--sm-accent) 1%, transparent);
+}
+
+.skillmap-kb .kb-brain-svg { width: 100%; height: 100%; overflow: visible; }
+
+/* Hub-to-KB links (operator, 2026-08-14: "small line with 1px width with
+   small circles going to kB in and out like its filling and reading out
+   of KB same circle sizes in the KB"). Sits behind the KB/hubs/agents
+   (z-index unset, painted first in DOM order) — purely ambient background
+   wiring, not interactive. */
+.skillmap-kb-links {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Sections View (operator, 2026-08-14: "The Map will be Hidden") — the KB
+   itself and its filling/reading connector lines are part of the Default
+   map, not this Section's own dedicated screen, so both disappear
+   entirely while a Section is focused. */
+.skillmap-world[data-focused] .skillmap-kb,
+.skillmap-world[data-focused] .skillmap-kb-links {
+  display: none;
+}
+
+/* Ghost-name watermark (real value checked live on the reference's own
+   focused-department screen: huge Marcellus serif text at FULL ivory
+   color/opacity, sitting BEHIND the tree — see the HTML's own comment
+   above `#skillmapGhostName` for why it reads as "faded" despite opacity
+   1). One reusable element; JS sets its text per focused Section. */
+.skillmap-ghost-name {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  transform: translate(-50%, -50%);
+  font-family: var(--sm-font-serif);
+  font-size: clamp(2.5rem, 9vw, 6rem);
+  letter-spacing: 0.2em;
+  color: var(--sm-text);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+/* Staggered reveal — the hub/tree itself starts scaling up immediately
+   (see `.skillmap-tree`'s own 0.45s transition, no delay), the ghost-name
+   watermark fades in slightly after so it reads as materializing BEHIND
+   the tree rather than both snapping in simultaneously. */
+.skillmap-world[data-focused] .skillmap-ghost-name {
+  opacity: 1;
+  transition-delay: 0.1s;
+}
+
+.skillmap-kb-link {
+  stroke: var(--sm-accent);
+  stroke-width: 1px;
+  opacity: 0.25;
+}
+
+/* r=0.3 in this SVG's own 0-100 viewBox ~= the KB constellation's own real
+   rendered dot size at the world's typical scale (see
+   renderKbConstellation's own r=0.35-1.35 range in the KB's SEPARATE,
+   much-smaller-viewport viewBox — this value is picked to visually match,
+   not numerically identical, since the two SVGs live at different scales). */
+.skillmap-kb-link-dot {
+  fill: var(--sm-accent);
+  opacity: 0.7;
+}
+
+/* Rotation is JS-driven (see agents-map-skilltree-exploration.js) rather
+   than a `:hover`-gated CSS animation: the operator wants it to STOP in
+   place on mouseleave, not snap back to its starting angle — a CSS
+   animation tied directly to :hover has no way to do that (removing it
+   just reverts to the base style). JS instead toggles this class (adds the
+   spin) and, on mouseleave, reads the current computed rotation and
+   freezes it as an inline `transform` before removing the class — this
+   keyframe has no explicit 0%, so per spec it starts from whatever
+   `transform` already is (that frozen inline value), continuing smoothly
+   rather than jumping. */
+.skillmap-kb.is-spinning .kb-brain-svg {
+  animation: smKbSpin 18s linear infinite;
+}
+
+@keyframes smKbPulse {
+  0%, 100% { filter: drop-shadow(0 0 10px color-mix(in srgb, var(--sm-accent) 25%, transparent)); }
+  50%      { filter: drop-shadow(0 0 20px color-mix(in srgb, var(--sm-accent) 40%, transparent)); }
+}
+
+/* Hover-rotate (operator, 2026-08-14: "when you hover on it the invisible
+   Circle Rotates") — superseded by the JS-driven `.is-spinning` class
+   above (this plain `:hover` version couldn't stop-in-place; see that
+   rule's own comment). */
+@keyframes smKbSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Each .skillmap-tree is a zero-size anchor positioned at its own
+   hand-computed (left%, top%) point (set inline in the HTML); every child
+   below centers/offsets itself from that single origin via `transform`, so
+   scaling the tree (focus/satellite) grows or shrinks everything around
+   that fixed anchor symmetrically. */
+/* Timing matches the reference's own real `#hub` focus transition (checked
+   live: `transition: opacity .35s ease, transform .45s cubic-bezier(.2,.8,
+   .25,1);`) — operator, 2026-08-14: "Zoom in with a fade effect... Check
+   the Animations you collected from the other side." */
+.skillmap-tree {
+  position: absolute;
+  width: 0;
+  height: 0;
+  --tree-scale: 0.55;
+  transform: scale(var(--tree-scale));
+  transform-origin: center;
+  transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.25, 1), opacity 0.35s ease;
+  z-index: 2;
+}
+
+/* Sections View (operator, 2026-08-14: "The Map will be Hidden, and now
+   this is a new view with a new layout") — every OTHER Section's tree is
+   hidden outright, not dimmed (supersedes the previous `opacity:.18`
+   pass). The focused tree jumps to a fixed stage anchor (bottom-half
+   center, matching the reference's own real focused-hub position) and
+   scales up big now that it owns the whole screen alone — `!important`
+   needed since the base position is each tree's own inline `left`/`top`
+   (same justified pattern as the title override below). */
+.skillmap-world[data-focused] .skillmap-tree:not(.is-focused) { display: none; }
+.skillmap-world[data-focused] .skillmap-tree.is-focused {
+  left: 50% !important;
+  top: 74% !important;
+  --tree-scale: 2;
+  opacity: 1;
+  z-index: 6;
+}
+
+/* Real extracted values from the reference's own department-root button
+   (`.rootb`, live computed style): background rgba(ivory,.05) — barely
+   there — a 1.33px solid border and a soft 6px halo box-shadow, BOTH at the
+   department's own accent color (their real `--lc` custom property; here,
+   `--sm-accent`) at low alpha (.65 border / .07 shadow) — not our previous
+   pass's solid-fill dashed-border treatment. */
+/* Large circular click/hover target spanning the whole Section's
+   agent-scatter area (real extracted size concept: the reference's own
+   `.hit` region is 500x470px, far bigger than its icon button) — operator,
+   2026-08-14: "Section is the Full Area not the Hub." Inserted as the
+   FIRST child of `.skillmap-tree` (see HTML) so, with no z-index set on
+   anything in this local stack, it paints/hit-tests BELOW the hub icon and
+   agent nodes (later DOM = on top for equal stacking level) — clicking
+   precisely on the hub or a node still hits that element directly; only
+   the surrounding empty area falls through to this. */
+/* Expanded to span from the Hub out to the Section title (operator,
+   2026-08-14: "expand it to the title") — an ellipse whose long axis
+   points along the section's own angle (same convention as everything
+   else in this file: angle = idx/6*360-90), from just inside the Hub out
+   past the title's own position. `--hx`/`--hy` (local px offset from the
+   Hub's own origin) and `--hrot` are set inline per section in the HTML. */
+.skillmap-tree-hit {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 140px;
+  height: 480px;
+  border-radius: 50%;
+  transform: translate(calc(-50% + var(--hx, 0px)), calc(-50% + var(--hy, 0px))) rotate(var(--hrot, 0deg));
+  cursor: pointer;
+}
+
+/* Hub-group counter-scale wrapper (operator, 2026-08-15: "I want the Hub
+   to be smaller a bit in the Map, in the Section View I want the Same
+   Visual and Size when I click on it it zoom in and now the Visual Will
+   be Same") — wraps the Hub button + its Visual-customize gear (see
+   HTML). Without this, the Hub was just another child of `.skillmap-tree`
+   and scaled right along with it (`--tree-scale`: 0.55 mini -> 2 focused,
+   a real ~3.6x size jump the operator didn't want) — same zero-size-
+   anchor pattern as `.skillmap-tree` itself, but its own `scale()`
+   cancels out the PARENT tree's own `--tree-scale` exactly
+   (`1 / var(--tree-scale)`), so the Hub renders at the SAME true pixel
+   size in the Default map AND the focused Section View — only the
+   agent nodes/connector lines (positioned via their own un-countered
+   `--nx`/`--ny` offsets) actually spread out further when the tree
+   zooms in, not the Hub itself. */
+.skillmap-hub-group {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  transform: scale(calc(1 / var(--tree-scale, 1)));
+}
+
+/* Icon-only circle now (operator, 2026-08-14: "the Sections They Should
+   have the name and SubText outside" — matches the reference's own real
+   structure too: `.rootb`/icon and `.wname`/name+subtitle are SEPARATE
+   sibling elements, name never rendered inside the icon circle). Size
+   reduced 52px -> 42px (operator, 2026-08-15: "I want the Hub to be
+   smaller a bit in the Map" — now this IS the Hub's one true rendered
+   size everywhere, per the counter-scale wrapper above, not just its
+   mini-view size). */
+.skillmap-tree-hub {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -50%);
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--sm-accent) 65%, transparent);
+  background: color-mix(in srgb, var(--sm-text) 5%, transparent);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--sm-accent) 7%, transparent);
+  color: var(--sm-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  /* No `smPop` scale-based entrance here anymore (moved to a plain
+     opacity fade) — an animation's own keyframe `transform` value wins
+     over this rule's base `transform` for as long as the animation
+     occupies the property (`fill-mode: both` keeps its OWN final value
+     applied indefinitely, even after it finishes), which would silently
+     block the counter-scale above from ever taking effect. */
+  animation: smFadeIn 0.4s ease both;
+}
+
+/* Hub Visual-customize gear (operator, 2026-08-15: "The Visual Elements
+   (all of the Hubs and Agents will have this) a new Visual Tab to Select
+   an Icon and Color") — a small, low-key affordance at the Hub's own
+   edge (top-right), hidden until the Hub is hovered/focused so it never
+   competes with the Hub's own icon at rest. Opens the shared Visual
+   picker in the floating card (`.skillmap-card-visual`), same card
+   Agents already use — see agents-map-skilltree-exploration.js's own
+   `openVisualForHub`. */
+.skillmap-hub-visual-btn {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(calc(-50% + 20px), calc(-50% - 20px));
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--sm-line);
+  background: var(--sm-glass);
+  color: var(--sm-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  z-index: 4;
+}
+
+.skillmap-hub-visual-btn svg { width: 11px; height: 11px; }
+
+.skillmap-tree:hover .skillmap-hub-visual-btn,
+.skillmap-tree-hub:focus-visible ~ .skillmap-hub-visual-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.skillmap-hub-visual-btn:hover {
+  color: var(--sm-accent);
+  border-color: var(--sm-accent);
+}
+
+/* Section title — DECOUPLED from `.skillmap-tree` (operator, 2026-08-14:
+   "you are linking the Section title to the Hub, those are 2 different
+   things — they match the angle where the hub is"). A direct child of
+   `.skillmap-world` (see HTML), positioned via its OWN world-space
+   left/top percentage at the SAME angle its hub sits at (angle =
+   idx/6*360-90) but a larger radius — NOT nested inside `.skillmap-tree`,
+   so it never inherits that element's `scale(var(--tree-scale))` on
+   focus/satellite: the title stays a fixed size and only pans when the
+   world recenters, instead of zooming with the hub. Name: bold/uppercase/
+   letter-spaced (matches the reference's own real treatment, "Default Home
+   Screen.png"); subtitle: smaller, muted, dot-separated thematic phrase. */
+/* Rotated to lean along its own spoke angle (operator, 2026-08-14: "the
+   titles need to rotated based on the section place for the section") —
+   `--rot` set inline per title, computed from that same angle
+   (idx/6*360-90) as `angle + 90`, normalized into (-90, 90] (subtracting
+   180 whenever it would exceed that range) so no title ever renders
+   upside-down: top (Capture) and bottom (Products) both land at 0deg
+   (fully upright), the four side titles tilt toward their own spoke. */
+/* Per-slot tilt REMOVED (operator, 2026-08-14: "remove the text Flipping
+   for the Section title now it looks bad" — supersedes the earlier
+   "Upsidedown is fine" pass). Titles now counter-rotate against the
+   ROTOR's own rotation instead (`--wrot`, inherited from the parent
+   `#skillmapRotor`) so they stay perfectly upright/horizontal always —
+   both in the default layout AND while the "Section Rotation" arrows are
+   spinning the wheel — rather than re-tilting per slot. */
+.skillmap-title {
+  position: absolute;
+  transform: translate(-50%, -50%) rotate(calc(-1 * var(--wrot, 0deg))) scale(1);
+  text-align: center;
+  white-space: nowrap;
+  font-family: "Plus Jakarta Sans", var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--sm-text);
+  pointer-events: none;
+  z-index: 2;
+  /* `transform` matches the rotor's own `transition: transform 0.5s ease`
+     exactly (operator, 2026-08-14: "when they are rotating do a weird move
+     of changing their angle" — the title's counter-rotation was on a
+     shorter duration than the wheel's own 0.5s spin, so mid-spin the two
+     transitions fell out of sync and the title visibly wobbled instead of
+     staying perfectly upright; with both at the same duration/easing,
+     `wrot` and its cancellation move in lockstep at every frame). A single
+     merged `transition` list (previously two separate declarations in this
+     same rule — only the LAST one in source order actually takes effect
+     for any property both list, which silently dropped the `left`/`top`
+     transition entirely; merging avoids that trap). */
+  transition: left 0.45s cubic-bezier(0.2, 0.8, 0.25, 1), top 0.45s cubic-bezier(0.2, 0.8, 0.25, 1),
+    color 0.2s ease, transform 0.5s ease, opacity 0.2s ease;
+}
+
+/* Hover state (operator, 2026-08-14: "when I hover a Section Other
+   Sections go Dimmed the title of that Section goes to a Yellow Color and
+   Zoomed in to 1.04x") — JS toggles `.is-hovered` on the hovered Section's
+   own title (see agents-map-skilltree-exploration.js) and `.dimmed` on
+   every OTHER Section's tree + title. */
+.skillmap-title.is-hovered {
+  color: #fbbf24;
+  text-shadow: 0 0 8px rgba(251, 191, 36, 0.6);
+  transform: translate(-50%, -50%) rotate(calc(-1 * var(--wrot, 0deg))) scale(1.07);
+}
+
+.skillmap-tree.dimmed,
+.skillmap-title.dimmed {
+  opacity: 0.35;
+}
+
+.skillmap-title span {
+  display: block;
+  font-weight: 400;
+  font-size: 0.625rem;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--sm-text-muted);
+  margin-top: 3px;
+}
+
+.skillmap-title--empty { color: var(--sm-text-muted); }
+.skillmap-title--empty span { opacity: 0.75; }
+
+/* Sections View (operator, 2026-08-14: "The Map will be Hidden... new
+   layout") — every OTHER Section's title is hidden outright (its tree is
+   already gone via the rule above; supersedes the old per-Section
+   hardcoded position overrides, one for each of the 6 Sections, now
+   collapsed into ONE generic rule since only one title is ever visible at
+   a time). The focused title sits just below the tree's own new fixed
+   stage anchor (74% + 10 units) — `!important` needed since the base
+   position is an inline `left`/`top` (highest specificity short of
+   `!important`), same justified pattern as `.star`'s own existing
+   `animation-duration: 6s !important`. JS toggles `.is-focused-title` on
+   the matching title alongside `.is-focused` on its tree (see
+   agents-map-skilltree-exploration.js's own focusSection). */
+.skillmap-title[data-section-id] { z-index: 2; }
+
+.skillmap-world[data-focused] .skillmap-title:not(.is-focused-title) { display: none; }
+.skillmap-world[data-focused] .skillmap-title.is-focused-title {
+  left: 50% !important;
+  top: 84% !important;
+  z-index: 7;
+}
+
+/* Shared minimal stroke-icon language (24x24 viewBox, stroke currentColor,
+   round caps/joins) — same style family as `.skillmap-kb-icon` above, one
+   per Hub, thematically matched to its own Section name. */
+.skillmap-hub-icon {
+  width: 20px;
+  height: 20px;
+  color: color-mix(in srgb, var(--sm-accent) 85%, var(--sm-text));
+}
+
+.skillmap-tree-hub--empty .skillmap-hub-icon { color: var(--sm-text-muted); }
+
+.skillmap-tree-hub:hover,
+.skillmap-tree-hub:focus-visible {
+  animation: smPop 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.3) both, smGlow 1.4s ease-in-out infinite;
+}
+
+/* Genuinely-empty Section (Scenario 7, same convention the canonical
+   screen's own "5 sections" state already established for Sales/Products)
+   — a real, buildable state, not a placeholder: muted, no cluster lines,
+   nothing inside to click, but still a focusable Hub. */
+.skillmap-tree-hub--empty {
+  border-color: color-mix(in srgb, var(--sm-text-muted) 55%, transparent);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--sm-text-muted) 6%, transparent);
+  color: var(--sm-text-muted);
+}
+
+.skillmap-tree-agents {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Hub-to-agent connectors — real extracted stroke (reference's own leaf
+   connector path: solid ivory, 2px, opacity 1) adapted down to opacity .35
+   since our Hub-to-node spans are much shorter/denser than their fanned-out
+   job trees, where a full-opacity line reads as calm background chrome
+   rather than a bold connecting line — everything else (color, width,
+   solid stroke) matches the real value. Zero-size box (like `.skillmap-tree`
+   itself), `overflow: visible` so lines drawn from (0,0) in local px
+   coordinates render correctly regardless of direction. */
+/* Real bug found live (operator, 2026-08-14: "Still missing the lines
+   (links between Agents and then Hubs To make it a Tree)") — this was
+   never a color/opacity/animation problem in the end (those were real
+   secondary issues, already fixed above, but not the root cause): this
+   SVG's `width:0;height:0` box was being clipped to that literal 0x0
+   viewport by this rendering engine DESPITE `overflow:visible` —
+   confirmed directly (even a blunt `stroke:red;stroke-width:10px;
+   opacity:1` override on a live connector line was still completely
+   invisible, with a real non-zero, correctly-positioned
+   `getBoundingClientRect`). Unlike the zero-size-anchor pattern used
+   throughout this file for plain HTML elements (which DOES reliably let
+   overflowing absolutely-positioned children paint outside a 0x0 parent
+   in every browser), an SVG root's own internal content is clipped to
+   its OWN viewport as a stricter, separate rule — CSS `overflow` on the
+   svg element doesn't reliably override that here. Fixed by giving the
+   SVG genuine 400x400 pixel dimensions, positioned so its center still
+   lands exactly on the tree's own (0,0) anchor (`left/top: -200px`) —
+   paired with `viewBox="-200 -200 400 400"` on each `<svg>` (HTML) so the
+   internal coordinate system's (0,0) still means "hub center" exactly as
+   before, with ZERO changes needed to any of the real `<line>` x1/y1/x2/y2
+   coordinate values already authored. */
+.skillmap-tree-lines {
+  position: absolute;
+  left: -200px;
+  top: -200px;
+  width: 400px;
+  height: 400px;
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* Real root cause found live (operator, 2026-08-14: "Still missing the
+   lines (links between Agents and then Hubs To make it a Tree)"), in two
+   parts: (1) these lines were `var(--sm-text)` — the SAME near-white
+   ivory as the Sections View's own big ghost-name letters they visually
+   cross through, so a thin line over a thick white letter just blended
+   into it — switched to the accent copper, which reads clearly against
+   both the dark background AND the ivory text. (2) The real, bigger bug:
+   a `skillmapDrawLine` `stroke-dashoffset` entrance ANIMATION (removed —
+   see git history) on the focused tree's connectors was NEVER actually
+   completing in this environment's rendering surface, the same frozen-
+   timeline artifact already documented elsewhere in this file for the KB
+   hover-spin (confirmed directly: even a blunt `stroke:red;stroke-
+   width:6px;opacity:1` override on the live element was still completely
+   invisible — not a color/opacity problem, the dash geometry itself was
+   stuck at its "0% drawn" starting frame forever). Lines are now plainly
+   always-fully-drawn (`stroke-dasharray`/`stroke-dashoffset` removed
+   entirely, no `animation`) — no entrance-animation risk, matching every
+   OTHER already-working effect in this file, which all use `transition`
+   (state changes that progress correctly here), never `animation`
+   (`@keyframes`, confirmed to get stuck at its starting frame and never
+   advance on this surface). */
+/* Operator (2026-08-15, Default map view): "Lines should be thinner with
+   alpha around .7 colored white, connected not the Center to the edge of
+   Circles" — thinner + lower alpha than the previous debugging pass, back
+   to white/ivory (the color-blend risk that motivated the earlier copper
+   switch was in the Sections View specifically, against its own
+   ghost-name text; revisit there separately if it recurs). Endpoints
+   moved from hub-CENTER/node-CENTER (passing invisibly UNDER both
+   circles) to hub-EDGE/node-EDGE (real x1/y1/x2/y2 values, hand-computed
+   per line: unit vector toward the node, offset by the hub's own real
+   26px radius at the start and pulled back by the node dot's own real
+   8.5px radius at the end — see each line's own coordinates in the
+   HTML). */
+.skillmap-connector {
+  stroke: var(--sm-text);
+  stroke-width: 1px;
+  opacity: 0.7;
+}
+
+/* Operator (2026-08-15): "No Lines are not connected to the Agents
+   Circle" — real root cause: this was a `display:flex;flex-direction:
+   column` button (dot ABOVE label, `gap:4px`), and its OWN
+   `translate(-50%,-50%)` centered the WHOLE dot+label STACK on
+   `(--nx,--ny)` — the connector lines (which target `--nx,--ny` exactly,
+   confirmed correct via direct `getScreenCTM()` measurement) land
+   precisely on that stack's center, which sits BELOW the dot itself
+   (label + gap push the stack's center down from the dot's own visual
+   center). Fixed at the source: `.skillmap-node` is now sized to exactly
+   the dot's own 17x17 box (no flex layout), so its `translate(-50%,-50%)`
+   centers the DOT ITSELF on `(--nx,--ny)` — the same point every
+   connector line already targets. The label moves to its own absolute
+   position below the dot (see `.skillmap-node-label` below) instead of
+   participating in this centering. */
+.skillmap-node {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 17px;
+  height: 17px;
+  transform: translate(calc(-50% + var(--nx)), calc(-50% + var(--ny)));
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+  animation: smPop 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
+}
+
+/* 20x20px — matches the reference's own real .leaf node size exactly. */
+/* Real extracted treatment (reference's own `.leaf`/`.leaf::before`, live
+   computed style): the OUTER circle is invisible (no fill/border/shadow —
+   it's really just a 20px hit-area), a SEPARATE inner dot (here,
+   `::before`, inset 3.5px, so ~13px visible) carries all the actual color
+   at 60% opacity; hover scales that inner dot 1.3x and raises opacity to
+   .95 — not our previous pass's bordered/filled outer circle with a glow
+   ring. */
+.skillmap-node-dot {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+
+.skillmap-node-dot::before {
+  content: "";
+  position: absolute;
+  inset: 3.5px;
+  border-radius: 50%;
+  background: var(--node-color, var(--sm-accent));
+  opacity: 0.6;
+  transition: transform 0.18s ease, opacity 0.18s ease;
+}
+
+.skillmap-node:hover .skillmap-node-dot::before,
+.skillmap-node:focus-visible .skillmap-node-dot::before {
+  transform: scale(1.3);
+  opacity: 0.95;
+}
+
+.skillmap-node--worker   { --node-color: var(--agent-color-worker); }
+.skillmap-node--producer { --node-color: var(--agent-color-producer); }
+.skillmap-node--expert   { --node-color: var(--agent-color-expert); }
+
+/* Real extracted treatment (reference's own `.nlabel`, live computed
+   style): plain, bare text — no background chip, no border, no padding —
+   semi-bold, muted (--ivory-2-equivalent) color. Previous pass gave this a
+   glass pill/chip background, which the reference doesn't actually have. */
+.skillmap-node-label {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 4px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--sm-text-muted);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.skillmap-node-label i {
+  display: block;
+  font-style: normal;
+  font-weight: 400;
+  font-size: 0.5625rem;
+  color: var(--node-color, var(--sm-text-muted));
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.skillmap-node:hover .skillmap-node-label,
+.skillmap-node:focus-visible .skillmap-node-label {
+  opacity: 1;
+}
+
+/* Sections View (operator, 2026-08-14) — labels stay hover-only even here
+   (reverts an earlier "show every label while focused" rule): this
+   Section's own real agent offsets sit close together (hand-tuned for a
+   small mini-map scatter, not a wide branching tree), so forcing every
+   label on at once at the Sections View's bigger scale just piled them on
+   top of each other and the ghost-name watermark. Hover-to-reveal, one at
+   a time, sidesteps that entirely and still surfaces every agent's name. */
+
+@keyframes smPop {
+  from { opacity: 0; transform: translate(calc(-50% + var(--nx, 0px)), calc(-50% + var(--ny, 0px))) scale(0.4); }
+  to   { opacity: 1; transform: translate(calc(-50% + var(--nx, 0px)), calc(-50% + var(--ny, 0px))) scale(1); }
+}
+
+@keyframes smGlow {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--node-color, var(--sm-accent)) 45%, transparent); }
+  50%      { box-shadow: 0 0 12px 4px color-mix(in srgb, var(--node-color, var(--sm-accent)) 45%, transparent); }
+}
+
+/* ==========================================================================
+   Edge-department navigation — pages directly to the previous/next Section
+   while one is focused, matching the reference's own real interaction
+   (not the canonical screen's inert/disabled chevron chrome).
+   ========================================================================== */
+.skillmap-edge-nav {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.skillmap-edge-nav--left  { left: var(--space-4); }
+.skillmap-edge-nav--right { right: var(--space-4); }
+.skillmap-edge-nav[hidden] { display: none; }
+
+.skillmap-chev {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--sm-line);
+  background: var(--sm-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--sm-text);
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.skillmap-chev:hover { border-color: var(--sm-accent); color: var(--sm-accent); }
+
+/* Real extracted values from the reference's own edge-department label
+   (checked live: `writing-mode: vertical-rl`, 13px, letter-spacing
+   2.86px, uppercase, weight 400, `--ivory-2` muted color) — the LEFT
+   label additionally gets a 180deg flip (their own real `matrix(-1,0,0,-1,
+   0,0)`) so it reads bottom-to-top toward the viewport center, while the
+   RIGHT label reads top-to-bottom with no extra transform; both read
+   "inward" toward the map either way. */
+.skillmap-edge-label {
+  writing-mode: vertical-rl;
+  font-size: 13px;
+  letter-spacing: 0.22em;
+  font-weight: 400;
+  text-transform: uppercase;
+  color: var(--sm-text-muted);
+  white-space: nowrap;
+}
+
+.skillmap-edge-nav--left .skillmap-edge-label {
+  transform: rotate(180deg);
+}
+
+/* ==========================================================================
+   Controls + progress — fixed HUD chrome, bottom corners.
+   ========================================================================== */
+.skillmap-controls {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px var(--space-2);
+  background: var(--sm-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--sm-line);
+  border-radius: 999px;
+}
+
+/* Section-rotation arrows — bottom center, own small pill, separate from
+   the zoom controls (bottom-right) and progress (bottom-left). */
+.skillmap-rotate-controls {
+  position: fixed;
+  left: 50%;
+  bottom: var(--space-4);
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  padding: 4px var(--space-4);
+  background: var(--sm-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--sm-line);
+  border-radius: 999px;
+}
+
+.skillmap-rotate-controls[hidden] { display: none; }
+
+.skillmap-rotate-label {
+  font-size: var(--font-size-sm);
+  color: var(--sm-text-muted);
+}
+
+.skillmap-ctrl-btn {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--sm-line);
+  background: transparent;
+  color: var(--sm-text);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.skillmap-ctrl-btn:not(:disabled):hover { border-color: var(--sm-accent); color: var(--sm-accent); }
+.skillmap-ctrl-btn:disabled { opacity: 0.55; cursor: default; }
+
+.skillmap-ctrl-btn--wide { width: auto; padding: 0 var(--space-2); font-size: 0.75rem; font-weight: 600; border-radius: var(--radius-sm); }
+
+.skillmap-ctrl-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--sm-line);
+  margin: 0 2px;
+}
+
+.skillmap-zoom-pct {
+  min-width: 36px;
+  text-align: center;
+  font-size: var(--font-size-sm);
+  color: var(--sm-text-muted);
+}
+
+.skillmap-progress {
+  position: fixed;
+  left: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px var(--space-3);
+  background: var(--sm-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--sm-line);
+  border-radius: 999px;
+  font-size: var(--font-size-sm);
+}
+
+.skillmap-progress-num { font-weight: 700; color: var(--sm-accent); }
+.skillmap-progress-num span { color: var(--sm-text-muted); font-weight: 400; }
+.skillmap-progress-lbl { color: var(--sm-text-muted); }
+
+.skillmap-progress-bar {
+  width: 48px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--sm-surface-2);
+  overflow: hidden;
+}
+
+.skillmap-progress-bar i {
+  display: block;
+  height: 100%;
+  background: var(--sm-accent);
+}
+
+/* ==========================================================================
+   Floating detail card — bottom-right, matching the reference's own
+   floating-card mechanic (not this app's existing full-height edge drawer).
+   ========================================================================== */
+.skillmap-card-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 24;
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.skillmap-card-overlay.open { pointer-events: auto; }
+
+/* Real extracted values: border-radius 14px, backdrop-filter blur(16px),
+   padding 16px 16px 18px (asymmetric — a touch more bottom breathing room)
+   — matches the reference's own #card computed style exactly. */
+.skillmap-card {
+  position: fixed;
+  right: var(--space-4);
+  bottom: 76px;
+  z-index: 25;
+  width: min(380px, 92vw);
+  max-height: min(70vh, 640px);
+  display: flex;
+  flex-direction: column;
+  background: var(--sm-glass);
+  border: 1px solid var(--sm-line);
+  border-radius: 14px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transform: translateY(12px);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.22s ease, opacity 0.22s ease;
+}
+
+.skillmap-card.open {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.skillmap-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--sm-line);
+}
+
+.skillmap-card-title { font-weight: 700; color: var(--sm-text); }
+
+.skillmap-card-close {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--sm-line);
+  background: transparent;
+  color: var(--sm-text-muted);
+  cursor: pointer;
+}
+
+.skillmap-card-close:hover { color: var(--sm-text); }
+
+.skillmap-card-body {
+  padding: 16px 16px 18px;
+  overflow-y: auto;
+}
+
+.skillmap-card-agent[hidden] { display: none; }
+
+/* This card reuses .side-panel-section/.kv-list/.kv-row/.kv-key/.action-list/
+   .chat-thread/.chat-message/.chat-input-row/.btn/.badge as-is (all
+   pre-existing, already token-driven) — only re-pointing their color tokens
+   here so they read correctly on the dark card instead of duplicating each
+   rule. */
+.skillmap-card-agent .kv-row { border-bottom-color: var(--sm-line); }
+.skillmap-card-agent .kv-key,
+.skillmap-card-agent .text-muted { color: var(--sm-text-muted); }
+.skillmap-card-agent h3 { color: var(--sm-text); }
+.skillmap-card-agent .chat-thread { background: var(--sm-surface); border-color: var(--sm-line); }
+.skillmap-card-agent .chat-message--agent { background: var(--sm-surface-2); color: var(--sm-text); }
+.skillmap-card-agent .input { background: var(--sm-surface); border-color: var(--sm-line); color: var(--sm-text); }

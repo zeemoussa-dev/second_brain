@@ -1,0 +1,1006 @@
+<!--
+  Screen: Agents Map — radial workspace exploration (REQ-SB-52 REBUILD pass,
+  2026-08-14). NOT the canonical agents-map.html, NOT a locked design —
+  exploratory, flagged for human browser sign-off same as every /design pass.
+
+  Why this file exists: the REQ-SB-52 "redo" pass applied to the canonical
+  screen (a pure re-skin — new colors/keyframes layered onto the EXISTING
+  markup/layout) was found live-broken (the page's own intro/legend text
+  block overlaps the enlarged canvas and blocks clicks on hub nodes — see
+  REVIEW-QUEUE.md) and, independently, the operator rejected the re-skin
+  approach itself as too shallow: "The Design is still Far off from the site
+  I Showed you, Build the same exact layout understand the Intro outro and
+  then we will see how can we move what we have there in a Sprint." This file
+  is that structural rebuild: a genuinely different container/layout model
+  (full-viewport takeover, no persistent left sidebar competing for the same
+  screen space — the actual root cause of the overlap bug), not another layer
+  on top of the old one.
+
+  Scope boundary (confirmed with the operator before writing this file): the
+  reference (skilltree.altari.ai/explore) is a live paid commercial product
+  with its own copyrighted markup/CSS/copy (email-gated intro, a "Founding
+  Cohort $49/mo" pricing dialog, an agency upsell dialog, real analytics
+  hooks). This file matches its STRUCTURE, LAYOUT MECHANICS, and ANIMATION
+  LANGUAGE (topbar + search palette, radial hub/tree map, edge-department
+  navigation with chevrons, a floating detail card, zoom/fit controls, an
+  intro splash, a doctrine/outro panel) — every class, CSS value, and word of
+  copy below is an ORIGINAL implementation, not copied from the reference's
+  own source or text. The commercial-only elements (email capture, pricing,
+  "book a call") are dropped entirely — they don't map to anything in this
+  product.
+
+  Data: reuses the SAME real 3-Section/5-agent "Populated" dataset the
+  canonical agents-map.html already established (Capture: Email/Meeting/
+  To-Do Capture, Worker ring; People: People Notes, Producer ring; Knowledge
+  Q&A: Vault Q&A, Expert ring) — grounded in the existing data model, no new
+  agents invented. Per-agent Settings values (Section/Provider/Working mode/
+  Keywords) match the canonical screen's own already-established values
+  (REQ-SB-18/19/20/21 passes).
+
+  What's structurally different from the canonical screen (this IS the
+  layout rebuild, not a restyle):
+    - No .app-shell/.sidebar — this screen is its own full-viewport takeover,
+      matching the reference's own "no persistent side nav, topbar only"
+      structure. A small wordmark in the topbar links back to the rest of
+      the app. This is also the structural fix for the overlap bug: a fixed,
+      full-viewport canvas and in-flow page chrome can't coexist on the same
+      screen without collision — so here there IS no separate in-flow chrome
+      to collide with.
+    - One overview shows all 3 Sections as small "mini" trees (hub + its own
+      agents) arranged around the central Knowledge Base, matching the
+      reference's own always-visible-but-small non-focused department trees.
+      Clicking a Section's hub "focuses" it — it scales up to full size with
+      labeled agent nodes, the other two Sections shrink to dim satellite
+      trees, and edge-navigation chevrons appear to page directly to the
+      previous/next Section without returning to the overview first (the
+      reference's own real interaction model). A single hand-computed
+      angle x radius layout for the 3 Section positions (angle = idx/n * 360
+      - 90, radius 32, same trigonometry convention as agents-map.js's own
+      renderSectionTree()) — not eyeballed.
+    - The agent detail panel is a floating, closable card (matching the
+      reference's own #card, not this app's existing full-height right-edge
+      drawer) — positioned bottom-right so it never covers the topbar or the
+      Section currently in focus.
+    - New: a real intro splash (dismissible, shown once per page load, no
+      email field) and a doctrine/outro panel (opened via the controls '?'
+      button) explaining this app's own actual rules — Producer/Worker/
+      Expert rings and the Knowledge Base as the shared center every Section
+      reads from and writes back to — grounded in this project's own real
+      architecture, not the reference's copy.
+    - New: a functional agent search palette (Ctrl/Cmd+K or the topbar
+      trigger) — filters the same 5 real agents by name/section/keywords and
+      opens the matching detail card on selection.
+    - Zoom/Fit controls stay disabled/visual-only, same established
+      convention as the canonical screen's own .map-zoom-toolbar (real pan/
+      zoom logic is a /plan-tasks concern either way).
+
+  GENUINELY OPEN, flagged for the human at sign-off, not silently decided:
+    - Whether this full-viewport takeover model should replace the canonical
+      agents-map.html in place, or stay a separate "focused workspace" mode
+      reachable from it, is NOT decided here — this file is the comparison
+      artifact for that decision, same role agents-map-exploration.html
+      played for BUG-002.
+    - Wiring this screen to the REAL agent/Section data model (today it's
+      static HTML matching the existing 5-agent fixture, same as every other
+      state on the canonical screen) is explicitly deferred to a future
+      Sprint, per the operator's own framing ("then we will see how can we
+      move what we have there in a Sprint") — not attempted here.
+    - The exact palette/animation timing values below are this designer's
+      own original choices (dark slate background, warm amber accent, node
+      pop/hover-glow/line-draw motion), inspired by the reference's general
+      feel but NOT extracted or copied values — flagged so that distinction
+      stays explicit, not blurred with the canonical screen's own REQ-SB-52
+      pass (which did use real extracted values from the reference, under
+      the operator's now-superseded "copy everything" instruction — this
+      file intentionally does not repeat that).
+
+  Update, 2026-08-14 (same day, operator follow-up): "One note I like the
+  Style of the KB they have in the Tree Site Use it Better than that one we
+  have Same for the Agents and how he structure the Agents in the map (not
+  all the same size or in the same line). and DO the Design with 6 Sections
+  and Copy the the Fonts and The Agents Style (There is no Copy Rights here)
+  same as for the Panels that Open for the Agent." Three changes:
+    (1) The operator's own correction is right about fonts — a font-family
+    NAME (Plus Jakarta Sans, Marcellus, both open-license/Google Fonts) is
+    not the reference's exclusive IP the way source code or marketing copy
+    is, so the earlier "invented palette, no real values" stance above was
+    overcautious specifically for plain declarative values (colors, font
+    names, sizing). This pass re-points the palette/fonts/card panel/KB ring
+    treatment to the SAME real extracted values already verified live from
+    the reference's own :root custom properties and #card/.leaf computed
+    styles (identical values the canonical agents-map.html's own
+    `.theme-skilltree` section already uses) — the CSS rules/selectors
+    themselves are still this file's own independent implementation, not
+    copy-pasted source text, and no copy/marketing text is reused (still
+    the one real boundary that stands).
+    (2) Investigated the reference's real node positioning directly (its own
+    `.jdot`/`.leaf` elements, DOM + computed CSS): both are FIXED-size
+    circles (15px mini / 20px full) — size does not vary per node. What
+    actually varies is POSITION: real per-node coordinates are JS-computed
+    tree-layout offsets (checked several `.jdot` elements' own inline
+    `style="left:...px; top:...px"` — irregular, no discernible uniform
+    angle/radius pattern), not a hand-symmetric fan. Applied that: Capture's
+    3 agent nodes now sit at deliberately uneven radius (~74-84px) and angle
+    from their Hub (was an exact symmetric 3-way fan) — organic-reading
+    scatter, not hand-picked size variance the reference doesn't actually
+    have either (flagged so this stays an honest match, not an invented
+    embellishment).
+    (3) Expanded from 3 to 6 Sections — Capture/People/Knowledge Q&A
+    (unchanged, still the real 5-agent fixture) plus Sales/Products/
+    Technical, genuinely empty (Scenario 7, same convention the canonical
+    screen's own "5 sections" state already established for these same
+    names) — hexagonal layout, hand-computed angle = idx/6*360-90, radius 32
+    (same trigonometry convention as every other pass in this project),
+    which happens to place the 3 real Sections at the EXACT same angles the
+    3-Section layout already used (-90/30/150), so their own positions and
+    focus-recenter math needed no change — only the 3 new empty Hubs and
+    their own focus-recenter rules are additions.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Agents Map — Radial Workspace Exploration — Second Brain</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="skillmap">
+  <div class="starfield" aria-hidden="true">
+    <span class="star" style="top:4%; left:12%; width:1px; height:1px; animation-duration:4.4s; animation-delay:0s;"></span>
+    <span class="star" style="top:18%; left:82%; width:2px; height:2px; animation-duration:5.1s; animation-delay:0.7s;"></span>
+    <span class="star" style="top:62%; left:6%; width:1px; height:1px; animation-duration:3.8s; animation-delay:1.4s;"></span>
+    <span class="star" style="top:88%; left:70%; width:1px; height:1px; animation-duration:4.6s; animation-delay:2.1s;"></span>
+    <span class="star" style="top:35%; left:44%; width:2px; height:2px; animation-duration:5.4s; animation-delay:2.8s;"></span>
+    <span class="star" style="top:9%; left:58%; width:1px; height:1px; animation-duration:3.6s; animation-delay:3.5s;"></span>
+    <span class="star" style="top:73%; left:29%; width:1px; height:1px; animation-duration:4.9s; animation-delay:4.2s;"></span>
+    <span class="star" style="top:52%; left:91%; width:2px; height:2px; animation-duration:4.1s; animation-delay:4.9s;"></span>
+    <span class="star" style="top:95%; left:38%; width:1px; height:1px; animation-duration:5.6s; animation-delay:0.35s;"></span>
+    <span class="star" style="top:27%; left:2%; width:1px; height:1px; animation-duration:3.9s; animation-delay:1.05s;"></span>
+    <span class="star" style="top:44%; left:66%; width:2px; height:2px; animation-duration:4.7s; animation-delay:1.75s;"></span>
+    <span class="star" style="top:81%; left:95%; width:1px; height:1px; animation-duration:5.2s; animation-delay:2.45s;"></span>
+    <span class="star" style="top:15%; left:33%; width:1px; height:1px; animation-duration:3.7s; animation-delay:3.15s;"></span>
+    <span class="star" style="top:66%; left:52%; width:2px; height:2px; animation-duration:4.3s; animation-delay:3.85s;"></span>
+    <span class="star" style="top:2%; left:76%; width:1px; height:1px; animation-duration:5.0s; animation-delay:4.55s;"></span>
+    <span class="star" style="top:58%; left:17%; width:1px; height:1px; animation-duration:3.5s; animation-delay:5.25s;"></span>
+    <span class="star" style="top:92%; left:48%; width:2px; height:2px; animation-duration:4.8s; animation-delay:0.15s;"></span>
+    <span class="star" style="top:39%; left:8%; width:1px; height:1px; animation-duration:5.5s; animation-delay:0.85s;"></span>
+    <span class="star" style="top:12%; left:63%; width:1px; height:1px; animation-duration:3.4s; animation-delay:1.55s;"></span>
+    <span class="star" style="top:77%; left:85%; width:2px; height:2px; animation-duration:4.5s; animation-delay:2.25s;"></span>
+    <span class="star" style="top:48%; left:22%; width:1px; height:1px; animation-duration:5.3s; animation-delay:2.95s;"></span>
+    <span class="star" style="top:6%; left:41%; width:1px; height:1px; animation-duration:3.7s; animation-delay:3.65s;"></span>
+    <span class="star" style="top:69%; left:73%; width:2px; height:2px; animation-duration:4.2s; animation-delay:4.35s;"></span>
+    <span class="star" style="top:97%; left:11%; width:1px; height:1px; animation-duration:5.7s; animation-delay:5.05s;"></span>
+    <span class="star" style="top:31%; left:97%; width:1px; height:1px; animation-duration:4.0s; animation-delay:0.5s;"></span>
+    <span class="star" style="top:55%; left:35%; width:2px; height:2px; animation-duration:4.6s; animation-delay:1.2s;"></span>
+    <span class="star" style="top:84%; left:60%; width:1px; height:1px; animation-duration:5.4s; animation-delay:1.9s;"></span>
+    <span class="star" style="top:23%; left:19%; width:1px; height:1px; animation-duration:3.6s; animation-delay:2.6s;"></span>
+    <span class="star" style="top:64%; left:88%; width:2px; height:2px; animation-duration:4.9s; animation-delay:3.3s;"></span>
+    <span class="star" style="top:1%; left:50%; width:1px; height:1px; animation-duration:5.1s; animation-delay:4.0s;"></span>
+    <span class="star" style="top:41%; left:79%; width:1px; height:1px; animation-duration:3.9s; animation-delay:4.7s;"></span>
+    <span class="star" style="top:75%; left:4%; width:2px; height:2px; animation-duration:4.4s; animation-delay:5.4s;"></span>
+    <span class="star" style="top:19%; left:56%; width:1px; height:1px; animation-duration:5.6s; animation-delay:0.25s;"></span>
+    <span class="star" style="top:60%; left:25%; width:1px; height:1px; animation-duration:3.8s; animation-delay:0.95s;"></span>
+    <span class="star" style="top:87%; left:43%; width:2px; height:2px; animation-duration:4.3s; animation-delay:1.65s;"></span>
+    <span class="star" style="top:34%; left:14%; width:1px; height:1px; animation-duration:5.0s; animation-delay:2.35s;"></span>
+    <span class="star" style="top:8%; left:90%; width:1px; height:1px; animation-duration:3.5s; animation-delay:3.05s;"></span>
+    <span class="star" style="top:71%; left:61%; width:2px; height:2px; animation-duration:4.7s; animation-delay:3.75s;"></span>
+    <span class="star" style="top:96%; left:27%; width:1px; height:1px; animation-duration:5.2s; animation-delay:4.45s;"></span>
+    <span class="star" style="top:46%; left:5%; width:1px; height:1px; animation-duration:3.7s; animation-delay:5.15s;"></span>
+    <span class="star" style="top:13%; left:69%; width:2px; height:2px; animation-duration:4.5s; animation-delay:0.1s;"></span>
+  </div>
+
+  <!-- Intro splash (reference: #mapgate). Own copy, no email field, no
+       tracking — dismiss reveals the workspace underneath. -->
+  <!-- Intro gate REMOVED (operator, 2026-08-14: "Remove the First Screen
+       before the map I need to Refresh to the map straight don't need
+       click enter") — goes straight to the map on load/refresh now, no
+       click required. Markup kept (in case it's wanted back later) but
+       `hidden` by default instead of JS-toggled on click. -->
+  <div class="skillmap-intro" id="skillmapIntro" hidden role="dialog" aria-modal="true" aria-labelledby="skillmapIntroH">
+    <div class="skillmap-intro-scrim" aria-hidden="true"></div>
+    <div class="skillmap-intro-card">
+      <div class="skillmap-intro-brand">SECOND BRAIN</div>
+      <h1 class="skillmap-intro-h" id="skillmapIntroH">This is your Agents Map.</h1>
+      <p class="skillmap-intro-sub">
+        Every agent working your vault, arranged around the Knowledge Base at
+        the center. Producers write to it, Workers capture into it, Experts
+        answer from it — and every Section starts there.
+      </p>
+      <button type="button" class="skillmap-intro-btn" id="skillmapIntroEnter">Enter the map →</button>
+      <p class="skillmap-intro-hint">6 sections · 14 agents mapped</p>
+    </div>
+  </div>
+
+  <!-- Doctrine / outro panel (reference: #about). Own content — this
+       project's own real Producer/Worker/Expert + Knowledge Base rules. -->
+  <div class="skillmap-about" id="skillmapAbout" hidden role="dialog" aria-modal="true" aria-labelledby="skillmapAboutH">
+    <div class="skillmap-about-scrim" aria-hidden="true"></div>
+    <div class="skillmap-about-panel">
+      <button type="button" class="skillmap-about-close" id="skillmapAboutClose" aria-label="Close">✕</button>
+      <h2 id="skillmapAboutH">HOW TO READ THIS MAP</h2>
+      <div class="skillmap-about-tag">6 sections · 14 agents mapped · 1 Knowledge Base</div>
+
+      <div class="skillmap-about-sec">THE RULE</div>
+      <p>Every agent belongs to exactly one Section (a domain — Capture, People, Knowledge Q&amp;A today) and exactly one Type, which sets its ring: <b>Worker</b> (outermost — runs a recurring capture job), <b>Expert</b> (middle — answers questions over the vault), or <b>Producer</b> (innermost — maintains a living document). The Knowledge Base sits at the center of every Section's wheel; agents read from it and Producers write back to it.</p>
+
+      <div class="skillmap-about-sec">HUBS</div>
+      <p>Each Section has one Hub. Cross-Section requests always route Hub → Hub, never agent-to-agent directly — keyword-matched to the Hub best suited to answer, per each agent's own configured keywords.</p>
+
+      <div class="skillmap-about-sec">READING A NODE</div>
+      <p>Click any agent to open its detail card — settings, actions, a live chat, and its communication history. Click a Section's Hub to focus that Section full-size; the chevrons at the screen edges page directly to the next Section without returning to the overview first.</p>
+    </div>
+  </div>
+
+  <!-- Search palette. Functional filter over the real 14-agent fixture
+       (operator, 2026-08-14: "Add some Agents with Connectors to Some
+       Sections... the 3 types Expert, Producer and Worker" grew this from
+       5 to 14). -->
+  <div class="skillmap-search" id="skillmapSearch" hidden role="dialog" aria-modal="true" aria-label="Search agents">
+    <div class="skillmap-search-scrim" aria-hidden="true"></div>
+    <div class="skillmap-search-panel">
+      <input type="text" id="skillmapSearchInput" class="skillmap-search-input" placeholder="search 14 agents · capture, sales, people…" autocomplete="off" spellcheck="false" />
+      <div class="skillmap-search-results" id="skillmapSearchResults">
+        <button type="button" class="skillmap-search-result" data-agent-id="email-capture" data-search="email capture worker capture inbox customer correspondence message classification">
+          <span class="skillmap-search-result-name">Email Capture</span>
+          <span class="skillmap-search-result-meta">Capture · Worker</span>
+        </button>
+        <button type="button" class="skillmap-search-result" data-agent-id="meeting-capture" data-search="meeting capture worker capture meetings calendar scheduling attendees">
+          <span class="skillmap-search-result-name">Meeting Capture</span>
+          <span class="skillmap-search-result-meta">Capture · Worker</span>
+        </button>
+        <button type="button" class="skillmap-search-result" data-agent-id="todo-capture" data-search="to-do capture worker capture todo tasks">
+          <span class="skillmap-search-result-name">To-Do Capture</span>
+          <span class="skillmap-search-result-meta">Capture · Worker</span>
+        </button>
+        <button type="button" class="skillmap-search-result" data-agent-id="deal-capture" data-search="deal capture worker sales deals pipeline leads">
+          <span class="skillmap-search-result-name">Deal Capture</span>
+          <span class="skillmap-search-result-meta">Sales · Worker</span>
+        </button>
+        <button type="button" class="skillmap-search-result" data-agent-id="pipeline-expert" data-search="pipeline expert sales deals pipeline health forecasting">
+          <span class="skillmap-search-result-name">Pipeline Expert</span>
+          <span class="skillmap-search-result-meta">Sales · Expert</span>
+        </button>
+        <button type="button" class="skillmap-search-result" data-agent-id="proposal-drafts" data-search="proposal drafts producer sales proposals quotes">
+          <span class="skillmap-search-result-name">Proposal Drafts</span>
+          <span class="skillmap-search-result-meta">Sales · Producer</span>
+        </button>
+        <button type="button" class="skillmap-search-result" data-agent-id="people-notes" data-search="people notes producer people contacts person notes attendee bios">
+          <span class="skillmap-search-result-name">People Notes</span>
+          <span class="skillmap-search-result-meta">People · Producer</span>
+        </button>
+        <button type="button" class="skillmap-search-result" data-agent-id="feedback-capture" data-search="feedback capture worker products customer feedback">
+          <span class="skillmap-search-result-name">Feedback Capture</span>
+          <span class="skillmap-search-result-meta">Products · Worker</span>
+        </button>
+        <button type="button" class="skillmap-search-result" data-agent-id="roadmap-expert" data-search="roadmap expert products roadmap planning prioritization">
+          <span class="skillmap-search-result-name">Roadmap Expert</span>
+          <span class="skillmap-search-result-meta">Products · Expert</span>
+        </button>
+        <button type="button" class="skillmap-search-result" data-agent-id="changelog-drafts" data-search="changelog drafts producer products release notes changelog">
+          <span class="skillmap-search-result-name">Changelog Drafts</span>
+          <span class="skillmap-search-result-meta">Products · Producer</span>
+        </button>
+        <button type="button" class="skillmap-search-result" data-agent-id="vault-qa" data-search="vault q&amp;a expert knowledge q&amp;a vault search question answering knowledge lookup">
+          <span class="skillmap-search-result-name">Vault Q&amp;A</span>
+          <span class="skillmap-search-result-meta">Knowledge Q&amp;A · Expert</span>
+        </button>
+        <button type="button" class="skillmap-search-result" data-agent-id="incident-capture" data-search="incident capture worker technical incidents outages">
+          <span class="skillmap-search-result-name">Incident Capture</span>
+          <span class="skillmap-search-result-meta">Technical · Worker</span>
+        </button>
+        <button type="button" class="skillmap-search-result" data-agent-id="systems-expert" data-search="systems expert technical infrastructure architecture">
+          <span class="skillmap-search-result-name">Systems Expert</span>
+          <span class="skillmap-search-result-meta">Technical · Expert</span>
+        </button>
+        <button type="button" class="skillmap-search-result" data-agent-id="runbook-drafts" data-search="runbook drafts producer technical runbooks documentation">
+          <span class="skillmap-search-result-name">Runbook Drafts</span>
+          <span class="skillmap-search-result-meta">Technical · Producer</span>
+        </button>
+      </div>
+      <p class="skillmap-search-empty" id="skillmapSearchEmpty" hidden>No agents match.</p>
+    </div>
+  </div>
+
+  <div class="skillmap-shell">
+    <div class="skillmap-topbar">
+      <div class="skillmap-topbar-left">
+        <button type="button" class="skillmap-icon-btn" id="skillmapFullscreen" title="Full screen" aria-label="Toggle full screen">⛶</button>
+        <button type="button" class="skillmap-search-trigger" id="skillmapSearchOpen" aria-label="Search agents">
+          <span class="skillmap-search-ic">⌕</span>
+          <span>Search agents</span>
+          <span class="skillmap-search-kbd">Ctrl K</span>
+        </button>
+      </div>
+      <a class="skillmap-wordmark" href="agents-map.html">Second Brain</a>
+      <div class="skillmap-topbar-right">
+        <span class="skillmap-counts" id="skillmapCounts">6 sections · 14 agents mapped</span>
+      </div>
+    </div>
+
+    <button type="button" class="skillmap-back" id="skillmapBack" hidden>← ALL SECTIONS</button>
+
+    <div class="skillmap-viewport">
+      <div class="skillmap-world" id="skillmapWorld">
+        <!-- Rotor (operator, 2026-08-14: "Section Rotation... Arrows at the
+             bottom so I can Rotate which section is at the top") — a
+             SEPARATE element from `.skillmap-world` itself, deliberately:
+             `.skillmap-world`'s own `transform` already handles the
+             focus-recenter translate (`[data-focused="..."]`, existing,
+             unchanged); combining a rotate INTO that same transform
+             property would make transform-composition order a real risk
+             to the already-verified recenter behavior. This inner wrapper
+             owns ONLY the section-rotation (`--wrot`, set by the arrow
+             buttons below), applied as a clean, independent rotate. Since
+             titles/hubs/lines all live inside this ONE rotating element,
+             the whole wheel turns as one rigid unit — each title's own
+             existing `--rot` (angle+90) still correctly aligns with its
+             slot's outward direction after the turn, no per-element
+             counter-rotation needed. GENUINELY OPEN, not silently
+             resolved: rotating the wheel and then focusing a Section in
+             the same session were not both re-verified together — the
+             focus-recenter's own translate values assume the wheel's
+             "home" (0deg) orientation, so the two interactions may not
+             compose perfectly if used back to back. -->
+        <div class="skillmap-rotor" id="skillmapRotor">
+        <!-- Hub-to-KB links (operator, 2026-08-14: "Add a small line with
+             1px width with small circles going to kB in and out like its
+             filling and reading out of KB same circle sizes in the KB") —
+             a thin line per Hub straight to the KB center (50,50 in this
+             SVG's own world-percentage viewBox), each with TWO traveling
+             dots looping along it: one Hub->KB ("filling in"), one
+             KB->Hub ("reading out"), sized to match the KB's own
+             constellation dots. `vector-effect="non-scaling-stroke"` keeps
+             the line a true 1px regardless of the viewBox's own scale. -->
+        <!-- Start points now pulled in to the HUB's own outer edge too
+             (operator, 2026-08-14: "The Lines should be at the edge of the
+             hubs as well") — same angle as each hub, offset in ~2.5 units
+             (the hub's own real rendered radius at its default mini scale,
+             expressed in this SVG's 0-100 viewBox space) back toward
+             center from the hub's declared position. End points stay at
+             the KB's own edge (previous pass). -->
+        <svg class="skillmap-kb-links" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <line class="skillmap-kb-link" x1="50" y1="34.5" x2="50" y2="39" vector-effect="non-scaling-stroke"></line>
+          <circle class="skillmap-kb-link-dot" r="0.3"><animateMotion dur="2.3s" begin="0s" repeatCount="indefinite" path="M 50 34.5 L 50 39"></animateMotion></circle>
+          <circle class="skillmap-kb-link-dot" r="0.3"><animateMotion dur="2.9s" begin="0.6s" repeatCount="indefinite" path="M 50 39 L 50 34.5"></animateMotion></circle>
+
+          <line class="skillmap-kb-link" x1="63.43" y1="42.25" x2="59.53" y2="44.5" vector-effect="non-scaling-stroke"></line>
+          <circle class="skillmap-kb-link-dot" r="0.3"><animateMotion dur="2.6s" begin="0.2s" repeatCount="indefinite" path="M 63.43 42.25 L 59.53 44.5"></animateMotion></circle>
+          <circle class="skillmap-kb-link-dot" r="0.3"><animateMotion dur="3.1s" begin="1.1s" repeatCount="indefinite" path="M 59.53 44.5 L 63.43 42.25"></animateMotion></circle>
+
+          <line class="skillmap-kb-link" x1="63.43" y1="57.75" x2="59.53" y2="55.5" vector-effect="non-scaling-stroke"></line>
+          <circle class="skillmap-kb-link-dot" r="0.3"><animateMotion dur="2.4s" begin="0.8s" repeatCount="indefinite" path="M 63.43 57.75 L 59.53 55.5"></animateMotion></circle>
+          <circle class="skillmap-kb-link-dot" r="0.3"><animateMotion dur="2.8s" begin="0.1s" repeatCount="indefinite" path="M 59.53 55.5 L 63.43 57.75"></animateMotion></circle>
+
+          <line class="skillmap-kb-link" x1="50" y1="65.5" x2="50" y2="61" vector-effect="non-scaling-stroke"></line>
+          <circle class="skillmap-kb-link-dot" r="0.3"><animateMotion dur="3.0s" begin="0.4s" repeatCount="indefinite" path="M 50 65.5 L 50 61"></animateMotion></circle>
+          <circle class="skillmap-kb-link-dot" r="0.3"><animateMotion dur="2.5s" begin="1.3s" repeatCount="indefinite" path="M 50 61 L 50 65.5"></animateMotion></circle>
+
+          <line class="skillmap-kb-link" x1="36.58" y1="57.75" x2="40.47" y2="55.5" vector-effect="non-scaling-stroke"></line>
+          <circle class="skillmap-kb-link-dot" r="0.3"><animateMotion dur="2.7s" begin="0.9s" repeatCount="indefinite" path="M 36.58 57.75 L 40.47 55.5"></animateMotion></circle>
+          <circle class="skillmap-kb-link-dot" r="0.3"><animateMotion dur="2.2s" begin="0.5s" repeatCount="indefinite" path="M 40.47 55.5 L 36.58 57.75"></animateMotion></circle>
+
+          <line class="skillmap-kb-link" x1="36.58" y1="42.25" x2="40.47" y2="44.5" vector-effect="non-scaling-stroke"></line>
+          <circle class="skillmap-kb-link-dot" r="0.3"><animateMotion dur="2.9s" begin="0.15s" repeatCount="indefinite" path="M 36.58 42.25 L 40.47 44.5"></animateMotion></circle>
+          <circle class="skillmap-kb-link-dot" r="0.3"><animateMotion dur="2.4s" begin="1.0s" repeatCount="indefinite" path="M 40.47 44.5 L 36.58 42.25"></animateMotion></circle>
+        </svg>
+
+        <!-- Knowledge Base — reused verbatim from this app's own existing
+             KB primitive (kb-brain-svg/.kb-neuron mesh), not new. -->
+        <!-- Old hand-placed 7-neuron/connector-line mesh REMOVED (operator,
+             2026-08-14: "remove the Hold [old] Neuron ones") — this is now
+             purely the programmatically-generated dot constellation (see
+             agents-map-skilltree-exploration.js's own renderKbConstellation,
+             which populates this now-empty <svg>). -->
+        <div class="skillmap-kb" id="skillmapKb">
+          <!-- KB icon REMOVED (operator, 2026-08-14: "a Cross in the Center
+               That is not needed" — the center-node+4-satellite glyph read
+               as a plus/cross shape, not a KB emblem). The dot
+               constellation alone is the KB's visual now, no separate
+               icon overlay. -->
+          <svg class="kb-brain-svg" viewBox="0 0 100 100"></svg>
+        </div>
+        <!-- "Knowledge Base / vault indexed" label REMOVED (operator,
+             2026-08-14: "No need for the Knowledge Base and Indexed that is
+             written"). -->
+        <!-- Hover-rotate now added below via CSS: hovering the (invisible,
+             no border/bg) KB circle spins its dot field. -->
+
+
+        <!-- Capture (Worker ring, 3 agents) — angle -90 (top), radius 18
+             (operator, 2026-08-14: "Hubs even Closer to the KB" — was
+             radius 24, originally 32). -->
+        <div class="skillmap-tree" data-section-id="capture" style="left:50%; top:32%;">
+          <div class="skillmap-tree-hit" data-focus-target="capture" style="--hx:0px; --hy:-210px; --hrot:0deg;"></div>
+          <div class="skillmap-hub-group">
+          <button type="button" class="skillmap-tree-hub" data-section-id="capture" data-focus-target="capture">
+            <svg class="skillmap-hub-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"></path><path d="M7 10l5 5 5-5"></path><path d="M4 19h16"></path></svg>
+          </button>
+          <button type="button" class="skillmap-hub-visual-btn" data-hub-visual="capture" aria-label="Customize Capture Hub's icon and color">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.6"></circle><path d="M12 4v2.4M12 17.6V20M4 12h2.4M17.6 12H20M6.5 6.5l1.7 1.7M15.8 15.8l1.7 1.7M17.5 6.5l-1.7 1.7M8.2 15.8l-1.7 1.7"></path></svg>
+          </button>
+          </div>
+          <!-- Hub-to-agent connectors (reference: real straight `M x1 y1 L
+               x2 y2` paths from each leaf's own parent node). Local
+               unscaled px coordinates, same space --nx/--ny already use, so
+               these scale correctly for free with the tree's own
+               scale(var(--tree-scale)) transform. -->
+          <svg class="skillmap-tree-lines" viewBox="-200 -200 400 400" aria-hidden="true">
+            <line class="skillmap-connector" x1="-17.4" y1="-19.4" x2="-38.3" y2="-42.7"></line>
+            <line class="skillmap-connector" x1="2.5" y1="-25.9" x2="5.9" y2="-62.2"></line>
+            <line class="skillmap-connector" x1="23.1" y1="-11.9" x2="48.4" y2="-24.9"></line>
+          </svg>
+          <!-- Organic, hand-varied radius/angle per node (reference: real
+               .jdot/.leaf positions are JS-computed tree-layout offsets,
+               never a symmetric fan) — radius/angle deliberately irregular
+               rather than evenly spaced, per the operator's own "not all
+               the same size or in the same line" note. Scaled to 0.8x of
+               the original hand-picked offsets (operator, 2026-08-14:
+               "making everything smaller"). -->
+          <div class="skillmap-tree-agents">
+            <button type="button" class="skillmap-node skillmap-node--worker" data-agent-id="email-capture" style="--nx:-41.6px; --ny:-46.4px;">
+              <span class="skillmap-node-dot"></span>
+              <span class="skillmap-node-label">Email Capture<i>Worker</i></span>
+            </button>
+            <button type="button" class="skillmap-node skillmap-node--worker" data-agent-id="meeting-capture" style="--nx:6.4px; --ny:-67.2px;">
+              <span class="skillmap-node-dot"></span>
+              <span class="skillmap-node-label">Meeting Capture<i>Worker</i></span>
+            </button>
+            <button type="button" class="skillmap-node skillmap-node--worker" data-agent-id="todo-capture" style="--nx:52.8px; --ny:-27.2px;">
+              <span class="skillmap-node-dot"></span>
+              <span class="skillmap-node-label">To-Do Capture<i>Worker</i></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Sales — angle -30, radius 18. Test fixture (operator,
+             2026-08-14: "Add some Agents with Connectors to Some Sections
+             Agents should be the 3 types Expert, Producer and Worker" —
+             filling in this section for richer visual test coverage, one
+             of each type). Offsets are Capture's own 3-node offset SET
+             rotated 60deg (Sales's own angle -30 minus Capture's -90) —
+             same rotation applied to a hub's OWN world position elsewhere
+             in this file, reused here so the local fan stays "outward from
+             the KB" consistently regardless of which section it's in. -->
+        <div class="skillmap-tree" data-section-id="sales" style="left:65.59%; top:41%;">
+          <div class="skillmap-tree-hit" data-focus-target="sales" style="--hx:181.9px; --hy:-105px; --hrot:60deg;"></div>
+          <div class="skillmap-hub-group">
+          <button type="button" class="skillmap-tree-hub" data-section-id="sales" data-focus-target="sales">
+            <svg class="skillmap-hub-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-7"></path><path d="M14 8h6v6"></path></svg>
+          </button>
+          <button type="button" class="skillmap-hub-visual-btn" data-hub-visual="sales" aria-label="Customize Sales Hub's icon and color">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.6"></circle><path d="M12 4v2.4M12 17.6V20M4 12h2.4M17.6 12H20M6.5 6.5l1.7 1.7M15.8 15.8l1.7 1.7M17.5 6.5l-1.7 1.7M8.2 15.8l-1.7 1.7"></path></svg>
+          </button>
+          </div>
+          <svg class="skillmap-tree-lines" viewBox="-200 -200 400 400" aria-hidden="true">
+            <line class="skillmap-connector" x1="8.1" y1="-24.7" x2="17.8" y2="-54.4"></line>
+            <line class="skillmap-connector" x1="23.6" y1="-10.8" x2="56.9" y2="-26.0"></line>
+            <line class="skillmap-connector" x1="21.9" y1="14.0" x2="45.8" y2="29.4"></line>
+          </svg>
+          <div class="skillmap-tree-agents">
+            <button type="button" class="skillmap-node skillmap-node--worker" data-agent-id="deal-capture" style="--nx:19.4px; --ny:-59.2px;">
+              <span class="skillmap-node-dot"></span>
+              <span class="skillmap-node-label">Deal Capture<i>Worker</i></span>
+            </button>
+            <button type="button" class="skillmap-node skillmap-node--expert" data-agent-id="pipeline-expert" style="--nx:61.4px; --ny:-28.1px;">
+              <span class="skillmap-node-dot"></span>
+              <span class="skillmap-node-label">Pipeline Expert<i>Expert</i></span>
+            </button>
+            <button type="button" class="skillmap-node skillmap-node--producer" data-agent-id="proposal-drafts" style="--nx:50.0px; --ny:32.1px;">
+              <span class="skillmap-node-dot"></span>
+              <span class="skillmap-node-label">Proposal Drafts<i>Producer</i></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- People (Producer ring, 1 agent) — angle 30, radius 18 -->
+        <div class="skillmap-tree" data-section-id="people" style="left:65.59%; top:59%;">
+          <div class="skillmap-tree-hit" data-focus-target="people" style="--hx:181.9px; --hy:105px; --hrot:120deg;"></div>
+          <div class="skillmap-hub-group">
+          <button type="button" class="skillmap-tree-hub" data-section-id="people" data-focus-target="people">
+            <svg class="skillmap-hub-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.2"></circle><path d="M5.5 20c0-3.6 3-6 6.5-6s6.5 2.4 6.5 6"></path></svg>
+          </button>
+          <button type="button" class="skillmap-hub-visual-btn" data-hub-visual="people" aria-label="Customize People Hub's icon and color">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.6"></circle><path d="M12 4v2.4M12 17.6V20M4 12h2.4M17.6 12H20M6.5 6.5l1.7 1.7M15.8 15.8l1.7 1.7M17.5 6.5l-1.7 1.7M8.2 15.8l-1.7 1.7"></path></svg>
+          </button>
+          </div>
+          <svg class="skillmap-tree-lines" viewBox="-200 -200 400 400" aria-hidden="true">
+            <line class="skillmap-connector" x1="22.8" y1="12.6" x2="42.0" y2="23.2"></line>
+          </svg>
+          <div class="skillmap-tree-agents">
+            <button type="button" class="skillmap-node skillmap-node--producer" data-agent-id="people-notes" style="--nx:46.4px; --ny:25.6px;">
+              <span class="skillmap-node-dot"></span>
+              <span class="skillmap-node-label">People Notes<i>Producer</i></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Products — angle 90 (bottom), radius 18. Test fixture (operator,
+             2026-08-14, same rationale as Sales above) — Capture's own
+             offset SET rotated 180deg. -->
+        <div class="skillmap-tree" data-section-id="products" style="left:50%; top:68%;">
+          <div class="skillmap-tree-hit" data-focus-target="products" style="--hx:0px; --hy:210px; --hrot:180deg;"></div>
+          <div class="skillmap-hub-group">
+          <button type="button" class="skillmap-tree-hub" data-section-id="products" data-focus-target="products">
+            <svg class="skillmap-hub-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8l8.5-4.5L20.5 8l-8.5 4.5z"></path><path d="M3.5 8v8l8.5 4.5 8.5-4.5V8"></path><path d="M12 12.5v8"></path></svg>
+          </button>
+          <button type="button" class="skillmap-hub-visual-btn" data-hub-visual="products" aria-label="Customize Products Hub's icon and color">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.6"></circle><path d="M12 4v2.4M12 17.6V20M4 12h2.4M17.6 12H20M6.5 6.5l1.7 1.7M15.8 15.8l1.7 1.7M17.5 6.5l-1.7 1.7M8.2 15.8l-1.7 1.7"></path></svg>
+          </button>
+          </div>
+          <svg class="skillmap-tree-lines" viewBox="-200 -200 400 400" aria-hidden="true">
+            <line class="skillmap-connector" x1="17.4" y1="19.4" x2="38.3" y2="42.7"></line>
+            <line class="skillmap-connector" x1="-2.5" y1="25.9" x2="-5.9" y2="62.2"></line>
+            <line class="skillmap-connector" x1="-23.1" y1="11.9" x2="-48.4" y2="24.9"></line>
+          </svg>
+          <div class="skillmap-tree-agents">
+            <button type="button" class="skillmap-node skillmap-node--worker" data-agent-id="feedback-capture" style="--nx:41.6px; --ny:46.4px;">
+              <span class="skillmap-node-dot"></span>
+              <span class="skillmap-node-label">Feedback Capture<i>Worker</i></span>
+            </button>
+            <button type="button" class="skillmap-node skillmap-node--expert" data-agent-id="roadmap-expert" style="--nx:-6.4px; --ny:67.2px;">
+              <span class="skillmap-node-dot"></span>
+              <span class="skillmap-node-label">Roadmap Expert<i>Expert</i></span>
+            </button>
+            <button type="button" class="skillmap-node skillmap-node--producer" data-agent-id="changelog-drafts" style="--nx:-52.8px; --ny:27.2px;">
+              <span class="skillmap-node-dot"></span>
+              <span class="skillmap-node-label">Changelog Drafts<i>Producer</i></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Knowledge Q&A (Expert ring, 1 agent) — angle 150, radius 18 -->
+        <div class="skillmap-tree" data-section-id="qa" style="left:34.41%; top:59%;">
+          <div class="skillmap-tree-hit" data-focus-target="qa" style="--hx:-181.9px; --hy:105px; --hrot:240deg;"></div>
+          <div class="skillmap-hub-group">
+          <button type="button" class="skillmap-tree-hub" data-section-id="qa" data-focus-target="qa">
+            <svg class="skillmap-hub-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16v10H9l-4 4z"></path><path d="M9.5 10a2.3 2.3 0 1 1 3 2.2c-.7.3-1 .7-1 1.4"></path></svg>
+          </button>
+          <button type="button" class="skillmap-hub-visual-btn" data-hub-visual="qa" aria-label="Customize Q&amp;A Hub's icon and color">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.6"></circle><path d="M12 4v2.4M12 17.6V20M4 12h2.4M17.6 12H20M6.5 6.5l1.7 1.7M15.8 15.8l1.7 1.7M17.5 6.5l-1.7 1.7M8.2 15.8l-1.7 1.7"></path></svg>
+          </button>
+          </div>
+          <svg class="skillmap-tree-lines" viewBox="-200 -200 400 400" aria-hidden="true">
+            <line class="skillmap-connector" x1="-24.8" y1="7.8" x2="-46.4" y2="14.5"></line>
+          </svg>
+          <div class="skillmap-tree-agents">
+            <button type="button" class="skillmap-node skillmap-node--expert" data-agent-id="vault-qa" style="--nx:-51.2px; --ny:16px;">
+              <span class="skillmap-node-dot"></span>
+              <span class="skillmap-node-label">Vault Q&amp;A<i>Expert</i></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Technical — angle 210, radius 18. Test fixture (operator,
+             2026-08-14, same rationale as Sales above) — Capture's own
+             offset SET rotated 300deg. -->
+        <div class="skillmap-tree" data-section-id="technical" style="left:34.41%; top:41%;">
+          <div class="skillmap-tree-hit" data-focus-target="technical" style="--hx:-181.9px; --hy:-105px; --hrot:300deg;"></div>
+          <div class="skillmap-hub-group">
+          <button type="button" class="skillmap-tree-hub" data-section-id="technical" data-focus-target="technical">
+            <svg class="skillmap-hub-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 6.5l-5 5.5 5 5.5"></path><path d="M15.5 6.5l5 5.5-5 5.5"></path></svg>
+          </button>
+          <button type="button" class="skillmap-hub-visual-btn" data-hub-visual="technical" aria-label="Customize Technical Hub's icon and color">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.6"></circle><path d="M12 4v2.4M12 17.6V20M4 12h2.4M17.6 12H20M6.5 6.5l1.7 1.7M15.8 15.8l1.7 1.7M17.5 6.5l-1.7 1.7M8.2 15.8l-1.7 1.7"></path></svg>
+          </button>
+          </div>
+          <svg class="skillmap-tree-lines" viewBox="-200 -200 400 400" aria-hidden="true">
+            <line class="skillmap-connector" x1="-25.4" y1="5.3" x2="-56.1" y2="11.8"></line>
+            <line class="skillmap-connector" x1="-21.2" y1="-15.1" x2="-50.9" y2="-36.2"></line>
+            <line class="skillmap-connector" x1="1.3" y1="-26.0" x2="2.7" y2="-54.3"></line>
+          </svg>
+          <div class="skillmap-tree-agents">
+            <button type="button" class="skillmap-node skillmap-node--worker" data-agent-id="incident-capture" style="--nx:-61.0px; --ny:12.8px;">
+              <span class="skillmap-node-dot"></span>
+              <span class="skillmap-node-label">Incident Capture<i>Worker</i></span>
+            </button>
+            <button type="button" class="skillmap-node skillmap-node--expert" data-agent-id="systems-expert" style="--nx:-55.0px; --ny:-39.1px;">
+              <span class="skillmap-node-dot"></span>
+              <span class="skillmap-node-label">Systems Expert<i>Expert</i></span>
+            </button>
+            <button type="button" class="skillmap-node skillmap-node--producer" data-agent-id="runbook-drafts" style="--nx:2.9px; --ny:-59.3px;">
+              <span class="skillmap-node-dot"></span>
+              <span class="skillmap-node-label">Runbook Drafts<i>Producer</i></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Section title labels — DECOUPLED from `.skillmap-tree` (operator,
+             2026-08-14: "you are linking the Section title to the Hub,
+             those are 2 different things — they match the angle where the
+             hub is"): siblings of the trees, direct children of
+             `.skillmap-world`, positioned independently via world-space
+             left/top percentages at the SAME angle each hub already sits
+             at (angle = idx/6*360-90) but a larger radius (44%, clearing
+             every agent node's own real reach) — NOT nested inside the
+             tree that scales on focus, so titles stay a fixed size and
+             don't warp/zoom when a Section focuses. -->
+        <!-- Radius pushed back OUT to 44% (operator, 2026-08-14: "still The
+             Labels are on top of the agents they should be more outside" —
+             the previous 34% only cleared agent CENTER points by ~20px,
+             not accounting for the title's own text width or the node's
+             own footprint; hubs/agents stay at the smaller/closer-in scale
+             from the previous pass, only the title ring moved back out). -->
+        <!-- Full (non-normalized) angle+90 rotation now (operator,
+             2026-08-14: "Upsidedown is fine" — the previous pass corrected
+             each title to avoid ever rendering upside-down; the operator
+             wants the true spoke-aligned angle instead, upside-down or
+             not). -->
+        <!-- Radius pushed further out again (48% -> 56%, operator,
+             2026-08-14: "push the titles even further away so have more
+             space for agents"). -->
+        <div class="skillmap-title" data-section-id="capture" style="left:50%; top:-6%; --rot:0deg;">Capture<span>email · meetings · to-dos</span></div>
+        <div class="skillmap-title" data-section-id="sales" style="left:98.5%; top:22%; --rot:60deg;">Sales<span>deals · pipeline · proposals</span></div>
+        <div class="skillmap-title" data-section-id="people" style="left:98.5%; top:78%; --rot:120deg;">People<span>contacts · notes · bios</span></div>
+        <div class="skillmap-title" data-section-id="products" style="left:50%; top:106%; --rot:180deg;">Products<span>feedback · roadmap · changelog</span></div>
+        <div class="skillmap-title" data-section-id="qa" style="left:1.5%; top:78%; --rot:240deg;">Q&amp;A<span>vault search · answers</span></div>
+        <div class="skillmap-title" data-section-id="technical" style="left:1.5%; top:22%; --rot:300deg;">Technical<span>incidents · systems · runbooks</span></div>
+
+        <!-- Sections View ghost-name watermark (operator, 2026-08-14: "No
+             That didn't work, The Map will be Hidden, and now this is a new
+             view with a new layout we call it Sections Views" — a genuinely
+             separate screen, not the old in-place dim/scale. Real value
+             checked live on the reference's own focused-department screen:
+             a huge serif name sitting BEHIND the tree at FULL color/opacity
+             (not literally faded — it just READS as a watermark because
+             it's low z-index under the connector lines/nodes and its
+             letter-spacing is wide enough to fragment the shape). One
+             reusable element (not one per Section) — JS sets its text and
+             reveals it only while a Section is focused. -->
+        <div class="skillmap-ghost-name" id="skillmapGhostName" aria-hidden="true"></div>
+        </div>
+      </div>
+
+      <div class="skillmap-edge-nav skillmap-edge-nav--left" id="skillmapEdgeL" hidden>
+        <button type="button" class="skillmap-chev" id="skillmapChevL" aria-label="Previous section">‹</button>
+        <span class="skillmap-edge-label" id="skillmapEdgeLLabel"></span>
+      </div>
+      <div class="skillmap-edge-nav skillmap-edge-nav--right" id="skillmapEdgeR" hidden>
+        <span class="skillmap-edge-label" id="skillmapEdgeRLabel"></span>
+        <button type="button" class="skillmap-chev" id="skillmapChevR" aria-label="Next section">›</button>
+      </div>
+    </div>
+
+    <!-- Section-rotation arrows (operator, 2026-08-14: "Arrows at the
+         bottom so I can Rotate which section is at the top") — bottom
+         center, turns the whole wheel (`#skillmapRotor`) 60deg per click.
+         Hidden while a Section is focused (operator, 2026-08-14: "The Map
+         will be Hidden" — the wheel itself isn't visible/relevant once
+         you're inside a Section's own dedicated view). -->
+    <div class="skillmap-rotate-controls" id="skillmapRotateControls">
+      <button type="button" class="skillmap-ctrl-btn" id="skillmapRotateLeft" aria-label="Rotate sections left">◂</button>
+      <span class="skillmap-rotate-label">Rotate</span>
+      <button type="button" class="skillmap-ctrl-btn" id="skillmapRotateRight" aria-label="Rotate sections right">▸</button>
+    </div>
+
+    <div class="skillmap-controls">
+      <button type="button" class="skillmap-ctrl-btn" id="skillmapAboutOpen" title="How to read this map" aria-label="How to read this map">?</button>
+      <span class="skillmap-ctrl-divider"></span>
+      <button type="button" class="skillmap-ctrl-btn" disabled aria-label="Zoom out">−</button>
+      <div class="skillmap-zoom-pct">100%</div>
+      <button type="button" class="skillmap-ctrl-btn" disabled aria-label="Zoom in">+</button>
+      <button type="button" class="skillmap-ctrl-btn skillmap-ctrl-btn--wide" disabled>Fit</button>
+    </div>
+
+    <div class="skillmap-progress">
+      <div class="skillmap-progress-num">14<span>/14</span></div>
+      <div class="skillmap-progress-lbl">seeded agents configured</div>
+      <div class="skillmap-progress-bar"><i style="width:100%;"></i></div>
+    </div>
+  </div>
+
+  <!-- Floating detail card (reference: #card). Real content per agent,
+       matching the canonical screen's own already-established Settings
+       values (REQ-SB-18/19/20/21). -->
+  <div class="skillmap-card-overlay" id="skillmapCardOverlay"></div>
+  <div class="skillmap-card" id="skillmapCard">
+    <div class="skillmap-card-head">
+      <div class="skillmap-card-title" id="skillmapCardTitle">Agent</div>
+      <button type="button" class="skillmap-card-close" id="skillmapCardClose" aria-label="Close">✕</button>
+    </div>
+    <div class="skillmap-card-body">
+
+      <div class="skillmap-card-agent" data-agent-detail="email-capture">
+        <div class="side-panel-section">
+          <h3>Settings</h3>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Section</span><span>Capture</span></div>
+            <div class="kv-row"><span class="kv-key">Type</span><span>Worker</span></div>
+            <div class="kv-row"><span class="kv-key">Provider</span><span>Compass (default)</span></div>
+            <div class="kv-row"><span class="kv-key">Working mode</span><span>Autonomous</span></div>
+            <div class="kv-row"><span class="kv-key">Keywords</span><span>email, inbox, customer correspondence, message classification</span></div>
+          </div>
+        </div>
+        <div class="side-panel-section">
+          <h3>Actions</h3>
+          <div class="action-list">
+            <button type="button" class="btn" disabled>Run now</button>
+            <button type="button" class="btn" disabled>Pause</button>
+          </div>
+        </div>
+        <div class="side-panel-section">
+          <h3>Chat</h3>
+          <div class="chat-thread"><div class="chat-message chat-message--agent">Hourly capture is running on schedule — nothing needs your attention right now.</div></div>
+        </div>
+      </div>
+
+      <div class="skillmap-card-agent" data-agent-detail="meeting-capture" hidden>
+        <div class="side-panel-section">
+          <h3>Settings</h3>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Section</span><span>Capture</span></div>
+            <div class="kv-row"><span class="kv-key">Type</span><span>Worker</span></div>
+            <div class="kv-row"><span class="kv-key">Provider</span><span>Compass (default)</span></div>
+            <div class="kv-row"><span class="kv-key">Working mode</span><span>Supervised</span></div>
+            <div class="kv-row"><span class="kv-key">Keywords</span><span>meetings, calendar, scheduling, attendees</span></div>
+          </div>
+        </div>
+        <div class="side-panel-section">
+          <h3>Actions</h3>
+          <div class="action-list">
+            <button type="button" class="btn" disabled>Run now</button>
+            <button type="button" class="btn" disabled>Pause</button>
+          </div>
+        </div>
+        <div class="side-panel-section">
+          <h3>Chat</h3>
+          <div class="chat-thread"><div class="chat-message chat-message--agent">Captured today's 10:00 sync — a summary note is ready for your approval.</div></div>
+        </div>
+      </div>
+
+      <div class="skillmap-card-agent" data-agent-detail="todo-capture" hidden>
+        <div class="side-panel-section">
+          <h3>Settings</h3>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Section</span><span>Capture</span></div>
+            <div class="kv-row"><span class="kv-key">Type</span><span>Worker</span></div>
+            <div class="kv-row"><span class="kv-key">Provider</span><span>Compass (default)</span></div>
+            <div class="kv-row"><span class="kv-key">Working mode</span><span>Manual</span></div>
+            <div class="kv-row"><span class="kv-key">Keywords</span><span class="text-muted">— none assigned —</span></div>
+          </div>
+        </div>
+        <div class="side-panel-section">
+          <h3>Actions</h3>
+          <div class="action-list">
+            <button type="button" class="btn" disabled>Run now</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="skillmap-card-agent" data-agent-detail="people-notes" hidden>
+        <div class="side-panel-section">
+          <h3>Settings</h3>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Section</span><span>People</span></div>
+            <div class="kv-row"><span class="kv-key">Type</span><span>Producer</span></div>
+            <div class="kv-row"><span class="kv-key">Provider</span><span>Anthropic Claude <span class="badge badge-warning">Not yet available</span></span></div>
+            <div class="kv-row"><span class="kv-key">Working mode</span><span>Supervised</span></div>
+            <div class="kv-row"><span class="kv-key">Keywords</span><span>people, contacts, person notes, attendee bios</span></div>
+          </div>
+          <p class="text-muted">Anthropic Claude isn't wired up yet — this agent honestly reports it's unavailable rather than silently falling back to Compass.</p>
+        </div>
+        <div class="side-panel-section">
+          <h3>Chat</h3>
+          <div class="chat-thread"><div class="chat-message chat-message--agent">One pending update — a note edit from a Capture Hub request is waiting on your approval.</div></div>
+        </div>
+      </div>
+
+      <div class="skillmap-card-agent" data-agent-detail="vault-qa" hidden>
+        <div class="side-panel-section">
+          <h3>Settings</h3>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Section</span><span>Knowledge Q&amp;A</span></div>
+            <div class="kv-row"><span class="kv-key">Type</span><span>Expert</span></div>
+            <div class="kv-row"><span class="kv-key">Provider</span><span>Compass (default)</span></div>
+            <div class="kv-row"><span class="kv-key">Working mode</span><span>Autonomous</span></div>
+            <div class="kv-row"><span class="kv-key">Keywords</span><span>vault search, question answering, knowledge lookup</span></div>
+          </div>
+        </div>
+        <div class="side-panel-section">
+          <h3>Chat</h3>
+          <div class="chat-thread"><div class="chat-message chat-message--agent">Ask me anything about your vault — I answer directly from indexed notes.</div></div>
+          <div class="chat-input-row"><input type="text" class="input" placeholder="Ask Vault Q&amp;A…" disabled /><button type="button" class="btn btn-primary" disabled>Send</button></div>
+        </div>
+      </div>
+
+      <!-- Sales/Products/Technical fixture agents (operator, 2026-08-14:
+           "Add some Agents with Connectors to Some Sections... the 3
+           types Expert, Producer and Worker") — same 3 panel shapes
+           already established above (Worker: Settings+Actions; Expert:
+           Settings+Chat-with-input; Producer: Settings+Chat), reused
+           per-type, not a 4th new shape. -->
+      <div class="skillmap-card-agent" data-agent-detail="deal-capture" hidden>
+        <div class="side-panel-section">
+          <h3>Settings</h3>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Section</span><span>Sales</span></div>
+            <div class="kv-row"><span class="kv-key">Type</span><span>Worker</span></div>
+            <div class="kv-row"><span class="kv-key">Provider</span><span>Compass (default)</span></div>
+            <div class="kv-row"><span class="kv-key">Working mode</span><span>Supervised</span></div>
+            <div class="kv-row"><span class="kv-key">Keywords</span><span>deals, opportunities, CRM, pipeline stage</span></div>
+          </div>
+        </div>
+        <div class="side-panel-section">
+          <h3>Actions</h3>
+          <div class="action-list">
+            <button type="button" class="btn" disabled>Run now</button>
+            <button type="button" class="btn" disabled>Pause</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="skillmap-card-agent" data-agent-detail="pipeline-expert" hidden>
+        <div class="side-panel-section">
+          <h3>Settings</h3>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Section</span><span>Sales</span></div>
+            <div class="kv-row"><span class="kv-key">Type</span><span>Expert</span></div>
+            <div class="kv-row"><span class="kv-key">Provider</span><span>Compass (default)</span></div>
+            <div class="kv-row"><span class="kv-key">Working mode</span><span>Autonomous</span></div>
+            <div class="kv-row"><span class="kv-key">Keywords</span><span>pipeline health, deal forecasting, stage velocity</span></div>
+          </div>
+        </div>
+        <div class="side-panel-section">
+          <h3>Chat</h3>
+          <div class="chat-thread"><div class="chat-message chat-message--agent">Ask me about pipeline health, stuck deals, or forecast confidence.</div></div>
+          <div class="chat-input-row"><input type="text" class="input" placeholder="Ask Pipeline Expert…" disabled /><button type="button" class="btn btn-primary" disabled>Send</button></div>
+        </div>
+      </div>
+
+      <div class="skillmap-card-agent" data-agent-detail="proposal-drafts" hidden>
+        <div class="side-panel-section">
+          <h3>Settings</h3>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Section</span><span>Sales</span></div>
+            <div class="kv-row"><span class="kv-key">Type</span><span>Producer</span></div>
+            <div class="kv-row"><span class="kv-key">Provider</span><span>Anthropic Claude <span class="badge badge-warning">Not yet available</span></span></div>
+            <div class="kv-row"><span class="kv-key">Working mode</span><span>Supervised</span></div>
+            <div class="kv-row"><span class="kv-key">Keywords</span><span>proposals, quotes, pricing sheets</span></div>
+          </div>
+          <p class="text-muted">Anthropic Claude isn't wired up yet — this agent honestly reports it's unavailable rather than silently falling back to Compass.</p>
+        </div>
+        <div class="side-panel-section">
+          <h3>Chat</h3>
+          <div class="chat-thread"><div class="chat-message chat-message--agent">One draft proposal is waiting on your review before it's saved.</div></div>
+        </div>
+      </div>
+
+      <div class="skillmap-card-agent" data-agent-detail="feedback-capture" hidden>
+        <div class="side-panel-section">
+          <h3>Settings</h3>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Section</span><span>Products</span></div>
+            <div class="kv-row"><span class="kv-key">Type</span><span>Worker</span></div>
+            <div class="kv-row"><span class="kv-key">Provider</span><span>Compass (default)</span></div>
+            <div class="kv-row"><span class="kv-key">Working mode</span><span>Manual</span></div>
+            <div class="kv-row"><span class="kv-key">Keywords</span><span class="text-muted">— none assigned —</span></div>
+          </div>
+        </div>
+        <div class="side-panel-section">
+          <h3>Actions</h3>
+          <div class="action-list">
+            <button type="button" class="btn" disabled>Run now</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="skillmap-card-agent" data-agent-detail="roadmap-expert" hidden>
+        <div class="side-panel-section">
+          <h3>Settings</h3>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Section</span><span>Products</span></div>
+            <div class="kv-row"><span class="kv-key">Type</span><span>Expert</span></div>
+            <div class="kv-row"><span class="kv-key">Provider</span><span>Compass (default)</span></div>
+            <div class="kv-row"><span class="kv-key">Working mode</span><span>Supervised</span></div>
+            <div class="kv-row"><span class="kv-key">Keywords</span><span>roadmap, prioritization, feature requests</span></div>
+          </div>
+        </div>
+        <div class="side-panel-section">
+          <h3>Chat</h3>
+          <div class="chat-thread"><div class="chat-message chat-message--agent">Ask me what's shipping next quarter or why a feature was prioritized.</div></div>
+          <div class="chat-input-row"><input type="text" class="input" placeholder="Ask Roadmap Expert…" disabled /><button type="button" class="btn btn-primary" disabled>Send</button></div>
+        </div>
+      </div>
+
+      <div class="skillmap-card-agent" data-agent-detail="changelog-drafts" hidden>
+        <div class="side-panel-section">
+          <h3>Settings</h3>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Section</span><span>Products</span></div>
+            <div class="kv-row"><span class="kv-key">Type</span><span>Producer</span></div>
+            <div class="kv-row"><span class="kv-key">Provider</span><span>Compass (default)</span></div>
+            <div class="kv-row"><span class="kv-key">Working mode</span><span>Autonomous</span></div>
+            <div class="kv-row"><span class="kv-key">Keywords</span><span>release notes, changelog, version summaries</span></div>
+          </div>
+        </div>
+        <div class="side-panel-section">
+          <h3>Chat</h3>
+          <div class="chat-thread"><div class="chat-message chat-message--agent">Drafted this week's release notes from the closed tickets — filed automatically.</div></div>
+        </div>
+      </div>
+
+      <div class="skillmap-card-agent" data-agent-detail="incident-capture" hidden>
+        <div class="side-panel-section">
+          <h3>Settings</h3>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Section</span><span>Technical</span></div>
+            <div class="kv-row"><span class="kv-key">Type</span><span>Worker</span></div>
+            <div class="kv-row"><span class="kv-key">Provider</span><span>Compass (default)</span></div>
+            <div class="kv-row"><span class="kv-key">Working mode</span><span>Autonomous</span></div>
+            <div class="kv-row"><span class="kv-key">Keywords</span><span>incidents, outages, on-call alerts</span></div>
+          </div>
+        </div>
+        <div class="side-panel-section">
+          <h3>Actions</h3>
+          <div class="action-list">
+            <button type="button" class="btn" disabled>Run now</button>
+            <button type="button" class="btn" disabled>Pause</button>
+          </div>
+        </div>
+        <div class="side-panel-section">
+          <h3>Chat</h3>
+          <div class="chat-thread"><div class="chat-message chat-message--agent">No open incidents — last capture run found nothing new.</div></div>
+        </div>
+      </div>
+
+      <div class="skillmap-card-agent" data-agent-detail="systems-expert" hidden>
+        <div class="side-panel-section">
+          <h3>Settings</h3>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Section</span><span>Technical</span></div>
+            <div class="kv-row"><span class="kv-key">Type</span><span>Expert</span></div>
+            <div class="kv-row"><span class="kv-key">Provider</span><span>Compass (default)</span></div>
+            <div class="kv-row"><span class="kv-key">Working mode</span><span>Autonomous</span></div>
+            <div class="kv-row"><span class="kv-key">Keywords</span><span>infrastructure, architecture, systems design</span></div>
+          </div>
+        </div>
+        <div class="side-panel-section">
+          <h3>Chat</h3>
+          <div class="chat-thread"><div class="chat-message chat-message--agent">Ask me about system architecture, dependencies, or infra ownership.</div></div>
+          <div class="chat-input-row"><input type="text" class="input" placeholder="Ask Systems Expert…" disabled /><button type="button" class="btn btn-primary" disabled>Send</button></div>
+        </div>
+      </div>
+
+      <div class="skillmap-card-agent" data-agent-detail="runbook-drafts" hidden>
+        <div class="side-panel-section">
+          <h3>Settings</h3>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Section</span><span>Technical</span></div>
+            <div class="kv-row"><span class="kv-key">Type</span><span>Producer</span></div>
+            <div class="kv-row"><span class="kv-key">Provider</span><span>Anthropic Claude <span class="badge badge-warning">Not yet available</span></span></div>
+            <div class="kv-row"><span class="kv-key">Working mode</span><span>Supervised</span></div>
+            <div class="kv-row"><span class="kv-key">Keywords</span><span>runbooks, documentation, post-mortems</span></div>
+          </div>
+          <p class="text-muted">Anthropic Claude isn't wired up yet — this agent honestly reports it's unavailable rather than silently falling back to Compass.</p>
+        </div>
+        <div class="side-panel-section">
+          <h3>Chat</h3>
+          <div class="chat-thread"><div class="chat-message chat-message--agent">One draft runbook is waiting on your review before it's saved.</div></div>
+        </div>
+      </div>
+
+      <!-- Visual tab (operator, 2026-08-15: "The Visual Elements (all of
+           the Hubs and Agents will have this) a new Visual Tab to Select
+           an Icon and Color") — ONE shared section, not duplicated per
+           agent/hub: whichever target is currently open (an agent, via
+           its own node click, or a Hub, via its new gear button) is
+           tracked in JS (`currentVisualTarget`), and this section always
+           reflects/edits THAT target's own choice. Icon grid + color row
+           are rendered once by JS from a small original icon set (no
+           icon-library dependency) and a fixed color-swatch list built
+           from this app's own real tokens plus a few original additions. -->
+      <div class="skillmap-card-visual" id="skillmapCardVisual">
+        <div class="side-panel-section">
+          <h3>Visual</h3>
+          <p class="skillmap-visual-hint">Icon</p>
+          <div class="skillmap-icon-grid" id="skillmapIconGrid"></div>
+          <p class="skillmap-visual-hint">Color</p>
+          <div class="skillmap-color-row" id="skillmapColorRow"></div>
+          <button type="button" class="skillmap-visual-reset" id="skillmapVisualReset">Reset to default</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="agents-map-skilltree-exploration.js"></script>
+</body>
+</html>

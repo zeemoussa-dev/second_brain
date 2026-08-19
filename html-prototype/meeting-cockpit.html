@@ -1,0 +1,304 @@
+<!--
+  Screen: Meeting Cockpit (REQ-SB-43) — NEW screen, reached by clicking a
+  meeting row on my-day-calendar.html (that file's own breadcrumb has the
+  clickable-row change). Entirely net-new; no prior `html-prototype/` screen
+  covered any part of this workspace (confirmed by REQ-SB-43-US-01's own
+  Context — see Implementation/UserStories/REQ-SB-43-US-01-*.md).
+
+  One workspace, no separate prep-mode/live-mode (operator-resolved,
+  REQ-SB-43-US-01 Scenario 1) — the same 3-panel layout serves before and
+  during the meeting.
+
+  Layout — 3 panels, left-to-right in the browser (content assignment per
+  the PRD's own Acceptance text, not the reading order it was described in):
+    - LEFT: the user's available Agents (to bring into the chat) plus this
+      meeting's own scoped quick-research results (Scenario 4, 7).
+    - MIDDLE: one unified multi-agent chat thread — every Expert brought in
+      responds in the SAME thread, each reply visibly attributed to the
+      specific Expert that produced it (Scenario 5, 6).
+    - RIGHT: the meeting's own info (title/time/customer) plus every
+      attendee as a clickable chip linking to their Person note, except a
+      plain non-clickable indicator when no Person note exists yet
+      (Scenario 2, 3) — this project's standing never-fabricate-a-link
+      honesty posture (REQ-SB-33-US-01/ADR-011), the same precedent
+      REQ-SB-43-US-01's own Context cites. The right panel is CONSTANT
+      across all three demo states below (a meeting's own info doesn't
+      change as the chat/research progresses) — only the left+middle panels
+      are wrapped in the state-switcher.
+
+  Reused, not invented: .app-shell/.sidebar/.main shell; .card for each of
+    the 3 panels; .chat-thread/.chat-message[--user/--agent] (REQ-SB-13's
+    existing embedded-chat pattern, this file's own precedent for "chat-like
+    UI"); .chat-proposal (REQ-SB-21's existing pending-decision card
+    pattern, this file's own precedent for "a result awaiting an explicit
+    human decision" — reused here for the quick-research save-or-discard
+    choice, recolored via the SAME dashed-warning/solid-success/
+    solid-danger convention, not a new visual language) plus its own nested
+    state-switcher trick (agents-map.html's Meeting Capture Chat block
+    already established "a small state-switcher nested inside a card
+    demonstrates pending -> approved/declined outcomes without 3 separate
+    top-level pages" — reused here verbatim for pending -> saved/discarded);
+    .action-list/.item-row/.item-row-actions (Settings/Pending-Approvals'
+    own precedent for "a list of things with an action button per row",
+    reused for the Available Agents list and the attachment-free research
+    list); .btn/.btn-primary/.btn-danger/.badge/.badge-success/
+    .badge-warning/.input/.empty-state/.state-switcher/[data-state-panel].
+  New (added to styles.css first, "3-panel Cockpit workspace" section,
+    shared with inbox-cockpit.html so the two screens read as siblings):
+    .cockpit-layout (the 3-column grid), .tag-chip--static (the plain,
+    non-clickable no-Person-note chip fallback — same pill shape as the
+    existing clickable .tag-chip, deliberately NOT a button/link), and
+    .chat-message-author (a small per-Expert colored name label above a
+    chat-message--agent bubble, the exact same "small uppercase type-
+    colored label" micro-pattern .hub-node-type/.agent-node-type already
+    use on the Agents Map, applied here to satisfy Scenario 6's
+    attribution requirement — the exact visual mechanism the story's own
+    Context explicitly left to /design).
+
+  Person-note link target: attendee chips point at note-detail.html
+  (REQ-SB-02's existing generic note-viewer screen) as an illustrative
+  stand-in — that file's own fixture data is a closed 3-note Masdar demo
+  graph, not a real Person note for these specific people, since building
+  dedicated Person-note fixtures is out of this design pass's scope. The
+  point being designed here is the CLICKABLE-vs-PLAIN visual distinction
+  (Scenario 2 vs 3), not the real routing target, which /plan-tasks decides
+  when this story is built against real vault data.
+
+  Attendees/people used here (Alex Rivera has a Person note, Jordan Lee
+  does not) are deliberately reused by inbox-cockpit.html too, so both
+  cockpits visibly share the same underlying vault/graph rather than
+  reading as two unrelated fixture sets.
+
+  Experts brought in for the "in-progress"/"research-pending" states reuse
+  two of the 5 real agents already established on agents-map.html (Vault
+  Q&A — Expert type; People Notes — Producer type) rather than inventing
+  new fixture agents — chosen so their existing per-Type accent colors
+  (pink/purple) give the chat-message-author labels real, already-
+  established color meaning, not new ad hoc colors.
+
+  States drawn (data-group="meeting-cockpit", left+middle panels only —
+  right panel is constant, see above):
+    1. "empty" — first open: no Expert brought in yet, chat shows only a
+       neutral opening prompt, no quick-research yet (Scenario 1).
+    2. "in-progress" — 2 Experts (Vault Q&A, People Notes) already brought
+       in, chat thread has 2+ attributed replies (Scenario 5, 6), left
+       panel's research list already has one saved result (Scenario 9's
+       "appears in the list" outcome, shown without a 4th top-level state).
+    3. "research-pending" — the chat shows the user triggering on-the-spot
+       research; the left panel's own research card is mid-decision, with
+       a nested pending/saved/discarded switcher (Scenario 8, 9, 10)
+       mirroring the reused .chat-proposal precedent's own nested-switcher
+       convention exactly.
+  Interactive affordances that are visual-only in this prototype ("Bring
+  in", "Save"/"Discard" on the OUTER state, the chat send form) are inert
+  demo buttons/links, NOT wired to live logic — same established convention
+  as agents-map.html's own Approve/Decline buttons on its pending-approval
+  card (that file's own breadcrumb: "themselves inert demo buttons ... not
+  real logic"); the ONE exception is the nested pending/saved/discarded
+  state-switcher inside "research-pending", which IS real in-page state-swap
+  navigation, reusing app.js's existing generic state-switcher wiring
+  verbatim — zero new JS anywhere on this page.
+
+  This entire pass is flagged for human browser sign-off per this
+  project's standard /design contract (see REVIEW-QUEUE.md).
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Meeting Cockpit — Second Brain</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <button class="burger-btn" id="sidebarToggle" aria-label="Toggle navigation" aria-expanded="true">&#9776;</button>
+        <h2>Second Brain</h2>
+      </div>
+      <a class="nav-item" href="agents-map.html"><span class="nav-icon">&#9678;</span><span class="nav-label">Agents Map</span></a>
+      <a class="nav-item active" href="my-day.html"><span class="nav-icon">&#9728;</span><span class="nav-label">My Day</span></a>
+      <a class="nav-item" href="settings.html"><span class="nav-icon">&#9881;</span><span class="nav-label">Settings</span></a>
+      <a class="nav-item" href="system-health.html"><span class="nav-icon">&#9877;</span><span class="nav-label">System Health</span></a>
+      <a class="nav-item" href="agent-activity.html"><span class="nav-icon">&#128203;</span><span class="nav-label">Agent Activity</span></a>
+      <a class="nav-item" href="vault-browser.html"><span class="nav-icon">&#128269;</span><span class="nav-label">Browse &amp; Search</span></a>
+      <a class="nav-item" href="index.html"><span class="nav-icon">&#9638;</span><span class="nav-label">Screens (catalog)</span></a>
+    </nav>
+    <main class="main">
+      <p class="text-muted"><a href="my-day-calendar.html" class="text-muted">&larr; Calendar</a></p>
+      <h1>Meeting Cockpit</h1>
+      <p class="text-muted">One workspace for prep and live use — no separate mode. Bring in whichever Experts you need help from into one shared chat, and do quick on-the-spot research you explicitly choose to save or discard.</p>
+
+      <div class="state-switcher" data-group="meeting-cockpit">
+        <button type="button" class="btn" data-state-target="empty">Empty / first open</button>
+        <button type="button" class="btn btn-primary" data-state-target="in-progress">In-progress (2+ Experts)</button>
+        <button type="button" class="btn" data-state-target="research-pending">Quick research pending</button>
+      </div>
+
+      <div class="cockpit-layout">
+        <!-- LEFT panel: available Agents + this meeting's own scoped quick-research list. Varies per state. -->
+        <div>
+          <div class="card" data-state-panel data-group="meeting-cockpit" data-state="empty">
+            <h3>Available Agents</h3>
+            <div class="item-list">
+              <div class="item-row">
+                <div class="item-row-main"><span class="item-row-title">Vault Q&amp;A</span><span class="item-row-meta">Expert</span></div>
+                <div class="item-row-actions"><button type="button" class="btn">+ Bring in</button></div>
+              </div>
+              <div class="item-row">
+                <div class="item-row-main"><span class="item-row-title">People Notes</span><span class="item-row-meta">Producer</span></div>
+                <div class="item-row-actions"><button type="button" class="btn">+ Bring in</button></div>
+              </div>
+              <div class="item-row">
+                <div class="item-row-main"><span class="item-row-title">Email Capture</span><span class="item-row-meta">Worker</span></div>
+                <div class="item-row-actions"><button type="button" class="btn">+ Bring in</button></div>
+              </div>
+            </div>
+            <h3 style="margin-top: var(--space-6);">Quick research (this meeting)</h3>
+            <div class="empty-state">
+              <p class="text-muted">Nothing yet — trigger on-the-spot research from the chat once you've brought in an Expert.</p>
+            </div>
+          </div>
+
+          <div class="card active" data-state-panel data-group="meeting-cockpit" data-state="in-progress">
+            <h3>Available Agents</h3>
+            <div class="item-list">
+              <div class="item-row">
+                <div class="item-row-main"><span class="item-row-title">Vault Q&amp;A</span><span class="item-row-meta">Expert</span></div>
+                <div class="item-row-actions"><span class="badge badge-success">In this chat</span></div>
+              </div>
+              <div class="item-row">
+                <div class="item-row-main"><span class="item-row-title">People Notes</span><span class="item-row-meta">Producer</span></div>
+                <div class="item-row-actions"><span class="badge badge-success">In this chat</span></div>
+              </div>
+              <div class="item-row">
+                <div class="item-row-main"><span class="item-row-title">Email Capture</span><span class="item-row-meta">Worker</span></div>
+                <div class="item-row-actions"><button type="button" class="btn">+ Bring in</button></div>
+              </div>
+            </div>
+            <h3 style="margin-top: var(--space-6);">Quick research (this meeting)</h3>
+            <div class="item-list">
+              <a class="item-row" href="note-detail.html">
+                <div class="item-row-main">
+                  <span class="item-row-title">Acme Corp — renewal history summary</span>
+                  <span class="item-row-meta">Saved &middot; wikilinked to this Meeting note</span>
+                </div>
+                <span class="badge badge-success">Saved</span>
+              </a>
+            </div>
+          </div>
+
+          <div class="card" data-state-panel data-group="meeting-cockpit" data-state="research-pending">
+            <h3>Available Agents</h3>
+            <div class="item-list">
+              <div class="item-row">
+                <div class="item-row-main"><span class="item-row-title">Vault Q&amp;A</span><span class="item-row-meta">Expert</span></div>
+                <div class="item-row-actions"><span class="badge badge-success">In this chat</span></div>
+              </div>
+              <div class="item-row">
+                <div class="item-row-main"><span class="item-row-title">People Notes</span><span class="item-row-meta">Producer</span></div>
+                <div class="item-row-actions"><button type="button" class="btn">+ Bring in</button></div>
+              </div>
+            </div>
+            <h3 style="margin-top: var(--space-6);">Quick research (this meeting)</h3>
+            <div class="state-switcher" data-group="meeting-research-r1-outcome" style="margin-bottom: var(--space-3);">
+              <button type="button" class="btn btn-primary" data-state-target="pending">Pending</button>
+              <button type="button" class="btn" data-state-target="saved">Saved</button>
+              <button type="button" class="btn" data-state-target="discarded">Discarded</button>
+            </div>
+            <div data-state-panel data-group="meeting-research-r1-outcome" data-state="pending" class="active">
+              <div class="chat-proposal">
+                <span class="badge badge-warning">Awaiting your decision</span>
+                <p><strong>Acme Corp — Q3 earnings snapshot.</strong> Revenue up 6% QoQ; renewal budget confirmed for Q4. Source: public filing summary.</p>
+                <div class="chat-proposal-actions">
+                  <button type="button" class="btn btn-primary">Save to vault</button>
+                  <button type="button" class="btn btn-danger">Discard</button>
+                </div>
+              </div>
+            </div>
+            <div data-state-panel data-group="meeting-research-r1-outcome" data-state="saved">
+              <div class="chat-proposal chat-proposal--approved">
+                <span class="badge badge-success">Saved</span>
+                <p>New standalone note created, wikilinked to this Meeting note — now listed above once you switch back to "In-progress".</p>
+              </div>
+            </div>
+            <div data-state-panel data-group="meeting-research-r1-outcome" data-state="discarded">
+              <div class="chat-proposal chat-proposal--declined">
+                <span class="badge badge-danger">Discarded</span>
+                <p>Nothing was written to the vault. This result no longer appears in the research list.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MIDDLE panel: one unified multi-agent chat thread. Varies per state. -->
+        <div>
+          <div class="card" data-state-panel data-group="meeting-cockpit" data-state="empty">
+            <h3>Chat</h3>
+            <div class="empty-state">
+              <div class="empty-state-icon">&#128172;</div>
+              <p><strong>No Experts brought in yet.</strong></p>
+              <p class="text-muted">Use "+ Bring in" on the left to add an Expert to this meeting's shared chat.</p>
+            </div>
+            <div class="chat-input-row">
+              <input type="text" class="input" placeholder="Bring in an Expert to start chatting…" disabled />
+              <button type="button" class="btn btn-primary" disabled>Send</button>
+            </div>
+          </div>
+
+          <div class="card active" data-state-panel data-group="meeting-cockpit" data-state="in-progress">
+            <h3>Chat <span class="text-muted" style="font-weight: 400; font-size: var(--font-size-sm);">— one shared thread, every Expert replies here</span></h3>
+            <div class="chat-thread" style="max-height: none;">
+              <div class="chat-message chat-message--user">What's Acme's renewal history look like?</div>
+              <div class="chat-message chat-message--agent">
+                <span class="chat-message-author" style="--author-color: var(--agent-color-expert);">Vault Q&amp;A</span>
+                Acme Corp has renewed twice before, both on time. Full history is in Work/Customers/Acme Corp.md.
+              </div>
+              <div class="chat-message chat-message--user">Anything about Jordan Lee I should know before this call?</div>
+              <div class="chat-message chat-message--agent">
+                <span class="chat-message-author" style="--author-color: var(--agent-color-producer);">People Notes</span>
+                No Person note exists yet for Jordan Lee — this looks like their first meeting with us.
+              </div>
+            </div>
+            <div class="chat-input-row">
+              <input type="text" class="input" placeholder="Message Vault Q&amp;A, People Notes…" />
+              <button type="button" class="btn btn-primary">Send</button>
+            </div>
+          </div>
+
+          <div class="card" data-state-panel data-group="meeting-cockpit" data-state="research-pending">
+            <h3>Chat</h3>
+            <div class="chat-thread" style="max-height: none;">
+              <div class="chat-message chat-message--user">Quick research: Acme Corp's Q3 earnings</div>
+              <div class="chat-message chat-message--agent">
+                <span class="chat-message-author" style="--author-color: var(--agent-color-expert);">Vault Q&amp;A</span>
+                Found a result — check the left panel to save it into the vault or discard it.
+              </div>
+            </div>
+            <div class="chat-input-row">
+              <input type="text" class="input" placeholder="Message the chat…" />
+              <button type="button" class="btn btn-primary">Send</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT panel: meeting info + attendee chips. CONSTANT across every state above (no data-state-panel wrapper). -->
+        <div class="card">
+          <h3>Acme Corp — Q3 renewal check-in</h3>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Time</span><span>10:00 &ndash; 10:30</span></div>
+            <div class="kv-row"><span class="kv-key">Customer</span><span>Acme Corp</span></div>
+          </div>
+          <h3 style="margin-top: var(--space-6);">Attendees</h3>
+          <div class="action-list">
+            <a class="btn tag-chip" href="note-detail.html">Alex Rivera</a>
+            <span class="tag-chip--static">Jordan Lee <span class="text-muted">(no note yet)</span></span>
+          </div>
+          <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: var(--space-3);">Alex Rivera has an existing Person note — click to open it. Jordan Lee doesn't have one yet, so their chip is a plain, non-clickable indicator rather than a broken or fabricated link.</p>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -505,6 +505,250 @@
   project's standard /design contract (see REVIEW-QUEUE.md) — nothing
   here is approved, and the threshold/open-question decisions above are
   explicitly the designer's own proposal, not settled product decisions.
+
+  Revision 2026-08-13 (REQ-SB-42 design pass — Real-Time Agent Activity
+  Pulses, run retroactively per REQ-SB-42-US-01's own `/design`-requested
+  flag: no prototype screen showed any live/animated per-agent activity
+  state, only the always-on decorative kb-pulse-dot). A NEW 6th
+  state-switcher option, "Agent activity pulses (REQ-SB-42 demo)",
+  demonstrates all three new visual elements the story asks for, on BOTH
+  the overview and a drill-down; every existing state above (Populated/
+  First run/5 sections/Dense section/Density clustering) is UNTOUCHED, and
+  the existing decorative kb-pulse-dot KB<->Hub spoke animation (Scenario 8)
+  is unaffected — this pass only ever ADDS classes/elements next to it.
+  Built on the SAME 5-agent/3-section scaffold ("Populated" state's own
+  hand-computed coordinates, copied verbatim, not recomputed) so no new
+  trigonometry was needed — this pass is scoped entirely to which CSS
+  classes/elements decorate already-known node positions, per its own
+  Non-Goal (real-time transport / "in progress" backend concept are
+  explicitly not a prototype concern).
+    Three new CSS primitives, defined in styles.css ("Agent activity
+    pulses (REQ-SB-42)" section) and reused identically on both the
+    overview and every drill-down below: `.agent-node--activity-glow`
+    (animated glow, Scenarios 1/2 — running a capture/Skill or generating a
+    chat reply), `.agent-node--pending-approval` (steady, NON-animated ring,
+    Scenario 4 — an open pending-approval record; deliberately reuses
+    --color-warning, the same token this file's own Meeting-Capture
+    .chat-proposal "pending" card already uses for "needs a human
+    decision"), and `.route-pulse-dot` + the existing-but-previously-unused
+    `.affinity-line`/`.active` (Scenario 3 — a traveling pulse along a
+    connecting line between exactly the two agents involved in a Hub-routed
+    cross-Section request, reusing the identical SVG animateMotion
+    technique the KB's own two synapse pulses already use, under its own
+    class name so it doesn't read as reusing a KB-specific class for a
+    different concept).
+    Roles assigned across the SAME 5 real agents (no new fixture agents
+    invented), chosen so all four triggers plus the idle baseline
+    (Scenario 6) are all demonstrated at once, with no agent double-cast
+    into two states (Constraint: never simultaneously two treatments on one
+    agent): Email Capture = working (glow); Meeting Capture <-> Vault Q&A =
+    the one Hub-routed traveling pulse (Meeting Capture already has this
+    file's only demonstrated Supervised chat-proposal elsewhere, kept
+    distinct from this pulse pairing so neither state's demo reads as
+    double-booked); People Notes = open pending-approval (steady ring);
+    To-Do Capture = idle, deliberately left with no indicator, directly
+    demonstrating Scenario 6 as a real state next to the other three, not
+    just asserted in prose. A `.card` callout beneath the overview canvas
+    spells out which agent shows which state in plain text, since the
+    overview's own agent dots are always-compact/hover-to-reveal (BUG-002)
+    and a reviewer shouldn't have to guess.
+    Drill-down treatment (Scenario 1-4 apply "on both the Agents Map
+    overview and a Section's drill-down Agents Tree" — a hard requirement,
+    not optional): the Capture drill-down shows all three of its own
+    agents at once (Email Capture glowing, Meeting Capture as one traveling-
+    pulse endpoint, To-Do Capture idle) — a real, in-browser demonstration
+    of Scenario 5 (independently-active agents shown correctly at the same
+    time) that the overview's own always-compact dots can't show as
+    legibly. The People and Q&A drill-downs each show their own single
+    agent's own state (steady pending-approval; the pulse's other
+    endpoint).
+    GENUINELY OPEN, not silently resolved (per REQ-SB-42-US-01's own Notes
+    — "whether the Section drill-down's own Agents Tree needs its own
+    connection-line geometry for the Hub-routed traveling-pulse case or can
+    reuse the overview's" is explicitly left to `/design`/`/plan-tasks`):
+    this pass's own PROPOSAL, flagged for the human to confirm/adjust at
+    sign-off, not a hidden assumption — since a Hub-routed request is
+    inherently cross-Section, a single-Section drill-down structurally
+    cannot show both endpoints on one canvas the way the overview can. This
+    pass's proposal: render the traveling pulse along that Section's own
+    existing Hub<->agent .cluster-line (the only connecting line already
+    present in a drill-down), with a one-line text caption naming the other
+    Section/agent it continues to/from off-canvas. This is NOT the same
+    connection-line geometry as the overview (which draws one straight
+    .affinity-line directly between the two agents) — it is a smaller,
+    self-contained approximation scoped to what one Section's own drill-
+    down can actually draw. A real cross-drill-down animation (the pulse
+    visibly leaving one Section's drill-down and arriving in another's) is
+    explicitly NOT built here — left open, same as the story's own Notes.
+  Reused: .agents-map-stage/.agents-map-canvas/.kb-node (KB brain markup
+    copied verbatim from "Populated")/.hub-node/.agent-node[--type/
+    --compact]/.section-title/.ring-circle/.radar-spoke/.section-boundary/
+    .spoke-line/.cluster-line/.explore-drilldown/.state-switcher/
+    [data-state-panel]/.card/.text-muted/.btn/[data-agents-stage-root]/
+    [data-agents-overview-stage]/[data-agents-replay-intro] (all pre-
+    existing — agents-map.js's fully generic wiring, queried by attribute
+    not by state name, needed ZERO changes for this new state). New (added
+    to styles.css, see above): `.agent-node--activity-glow`,
+    `.agent-node--pending-approval`, `.route-pulse-dot`; `.affinity-line`
+    itself is pre-existing (defined for the BUG-002 exploration) but this
+    is its first real use in the canonical agents-map.html.
+  This entire pass is flagged for human browser sign-off, same as every
+  `/design` pass (see REVIEW-QUEUE.md) — the drill-down connection-line
+  proposal above especially is the designer's own proposal, not a settled
+  product decision.
+
+  Revision 2026-08-14 (REQ-SB-52 design pass — Agents Map Visual Redesign,
+  SkillTree-inspired theme). A pure re-skin, run per the PRD's own explicit
+  instruction to `/design` first: every interaction below this line —
+  Section-Hub drill-down (BUG-002 Option D), cluster markers (REQ-SB-38),
+  the agent detail side panel and its tabs/chat/history, the entrance
+  animation, the state-switcher demo states — is UNTOUCHED; nothing in this
+  file's markup structure, data-agent-id/data-section-id wiring, or
+  agents-map.js/app.js was rewritten, only new decorative markup/classes
+  were ADDED. Values (dark charcoal-navy bg `#20242D`, warm cream text
+  `#E9E4D6`, "Plus Jakarta Sans", glass panel `rgba(14,17,24,.85)`/10px
+  radius/flat, zoom toolbar `-/%/+/Fit/help`) are the concrete elements
+  extracted live from the reference site this session — see this
+  requirement's own PRD breadcrumb. Full rationale for every derived value
+  (surface/border/muted/accent/success/warning/danger shades, the font
+  fallback-stack decision, why `.side-panel`/`.card` got the glass
+  treatment but `.sidebar` did not) is in styles.css's own new "Agents Map
+  SkillTree-inspired dark theme (REQ-SB-52)" section — not restated here.
+    (1) `<body>` gained a single new class, `theme-skilltree` — scopes
+    every color/font override to this page ONLY (no other screen's :root
+    tokens changed), via the same "component reads --color-* tokens, tokens
+    swap on a scoped selector, zero other CSS edits needed" mechanism this
+    file's own :root comment already documents from the earlier project-
+    wide light/green swap — confirmed by grep that no rule in this
+    stylesheet outside :root hardcodes a color, so the whole canvas/panel/
+    legend/state-switcher/kv-list/badge/button set re-skins for free.
+    (2) A new `.starfield` layer (60 hand-placed `<span class="star">`
+    dots, pseudo-random position/size/animation-duration/animation-delay
+    via inline `style`, same convention as this file's own `.kb-neuron`
+    mesh) was added as the first child of `<body>`, fixed behind the whole
+    page, CSS-only (`@keyframes starTwinkle`, no canvas/WebGL/library) —
+    reused pattern, not a new mechanic.
+    (3) `.side-panel` (REQ-SB-13's existing agent detail drawer, UNCHANGED
+    mechanically — same slide-in/overlay/close behavior) and `.card` (the
+    legend/callout blocks already on this page) get the glass treatment
+    via new `.theme-skilltree`-scoped rules — translucent near-black,
+    backdrop-blur, 10px corners, explicitly no shadow, per the reference's
+    extracted values.
+    (4) A new `.map-zoom-toolbar` component (net-new pattern, added to
+    styles.css, NOT scoped to the dark theme since it is a generic
+    floating-HUD-over-a-canvas primitive any future map screen could
+    reuse) was added to the overview `.agents-map-stage` of every top-level
+    state (Populated/First run/5 sections/Dense section/Density clustering/
+    Agent activity pulses) — bottom-left, `−`/level/`+`/divider/Fit/`?`,
+    every button `disabled` (this prototype's own established convention
+    for inert demo chrome — see the Settings blocked-delete demo and the
+    Meeting Capture chat-proposal Approve/Decline buttons) since real
+    zoom/pan logic is explicitly out of this pass's scope, visual/
+    positional chrome only, for `/plan-tasks` to wire up later. NOT added
+    inside individual Section drill-downs (would have meant touching ~20
+    more near-identical insertion points across every drill-down/state
+    combination for the same static chrome) — flagged below, not silently
+    scoped down.
+    Reused: every existing class/primitive named above (.side-panel,
+    .card, .kb-neuron's inline-style-per-element convention, this
+    prototype's disabled-inert-button convention, the :root-token-swap
+    mechanism). New: `.starfield`/`.star`/`@keyframes starTwinkle`,
+    `.theme-skilltree` token block, `.theme-skilltree .side-panel`/`.card`
+    glass overrides, `.map-zoom-toolbar`/`.map-zoom-btn`/`.map-zoom-level`/
+    `.map-zoom-divider` (all in styles.css, see its own comment above these
+    rules for full rationale) — no JS changes; app.js/agents-map.js need
+    none of this to keep working, since every existing interactive element
+    (hub-node, agent-node, map-overflow-marker, side-panel triggers,
+    state-switcher) is unmodified.
+  GENUINELY OPEN, flagged for the human at sign-off, not silently decided:
+    - The zoom toolbar's own numbers/values above (accent green shade,
+      surface/border/muted shades, warning/success/danger tints, and
+      whether the toolbar should also appear inside Section drill-downs)
+      are this designer's own derived proposal, not extracted from the
+      reference site — only bg/text/font/glass-rgba/toolbar-labels were
+      real extracted values; everything else needed a same-family,
+      AA-contrast-driven judgment call, named explicitly here and in
+      styles.css, not hidden.
+    - Whether the rest of the app (My Day, Settings, System Health, etc.)
+      should ever adopt this dark theme is explicitly NOT decided or
+      implied by this pass — REQ-SB-52's own acceptance scopes this to the
+      Agents Map overview and its agent detail surfaces only.
+  This entire pass is flagged for human browser sign-off per this
+  project's standard `/design` contract (see REVIEW-QUEUE.md).
+
+  Revision 2026-08-14 (REQ-SB-52 REDO pass — same day, operator rejected the
+  pass above as too conservative: "No No I want to Copy everything The
+  Layout the Animation the Looks and Colors Forget what we have."). This is
+  a genuine rebuild of the visual/animation system, not another accent
+  layer — see the PRD's own "Update, 2026-08-14 — operator escalation"
+  breadcrumb for the full real-value extraction (a second, deeper pass over
+  the reference's own real CSS source, 4 <style> tags read directly from
+  its DOM) this redo implements verbatim, and styles.css's own rewritten
+  "Agents Map SkillTree-inspired dark theme (REQ-SB-52)" section for the
+  complete rationale per rule. Every interaction/data structure below this
+  comment (Section-Hub drill-down, cluster markers, the side panel and its
+  tabs/chat/history, the entrance animation, the state-switcher demo
+  states, every data-agent-id/data-section-id wiring, agents-map.js) is
+  STILL UNTOUCHED — this pass is CSS-only plus one small, generic, additive
+  markup block (the new edge-navigation chevrons, added once per state's
+  own drill-down group, see below).
+    (1) `.agents-map-stage` is now `position:fixed; inset:0` — a true
+    full-viewport canvas, not the previous pass's bounded/padded box —
+    applied uniformly via styles.css's own `.theme-skilltree` scope; no
+    HTML change needed here beyond what already existed.
+    (2) Full real palette (--bg/--ivory/--ivory-2/--ink-2/--ink-3/--copper/
+    --line/--glass) replaces the first pass's 2-token minimal swap — accent
+    is now the reference's own real copper (#C58B5F), not the invented
+    emerald green.
+    (3) Real node entrance (`nodepop`, bounce easing, reusing each agent
+    node's own pre-existing inline animation-delay — no HTML edit needed
+    there), a hover/selected glow reusing the renamed `livepulse` keyframe
+    (was `agentActivityGlow`, same recipe, REQ-SB-42), a self-drawing
+    `drawline` for connector lines, and a slow spin+drift (`hspin`, applied
+    to the KB's own inner mesh, not the outer node JS already animates) —
+    see styles.css for exactly why each is scoped where it is.
+    (4) Real glass blur: side panel/card bumped 14px -> 16px; zoom toolbar
+    14px -> 12px, repositioned from absolute/left/bottom to fixed/right/
+    bottom (the reference's own real toolbar position).
+    (5) New: `.map-edge-nav` (fixed, vertically centered, hover/focus-
+    revealed, `chevnudge`-animated chevrons) — the one genuinely NEW
+    element this pass adds, not a restyle of something the first pass
+    already had. Added once per state's `[data-agents-drilldown]` group
+    (5 insertion points: Populated/5 sections/Dense section/Density
+    clustering/Agent activity pulses — First run has no drill-down group to
+    attach to), disabled/inert, same convention as the zoom toolbar's own
+    buttons.
+    (6) Typography: h1 now real 27px/.12em-letter-spacing/400-weight Plus
+    Jakarta Sans (was unstyled default). Marcellus (the reference's second
+    loaded font) is adopted for the sidebar's own "Second Brain" wordmark
+    only — a designer's own judgment call on the one clear "brand name"
+    element on this screen, flagged for confirmation at sign-off, not
+    settled.
+  GENUINELY OPEN, flagged for the human at sign-off (in addition to the
+  still-open items from the pass above, which stand as originally written):
+    - The connector-line `drawline` self-draw uses one shared dasharray
+      (not per-line computed length) and isn't tightly synced to
+      agents-map.js's own playIntro() timing — see styles.css's own comment
+      above `.spoke-line`/`.cluster-line` for the full explanation of what
+      this looks like in practice and why it was left as a `/plan-tasks`
+      follow-up rather than a JS edit in this design-only pass.
+    - `hspin`/`hdrift` are folded into one combined keyframe (CSS can't
+      cleanly run two independent animations on the same `transform`
+      property) — see styles.css's own comment above `.kb-brain-svg`.
+    - The circular canvas is now sized against `min(92vw, 92vh, 820px)`
+      (fills the viewport edge-to-edge while staying a true circle) rather
+      than literally matching the reference's own unbounded/pannable plane
+      — a deliberate interpretation chosen to preserve every existing
+      hand-computed polar-grid position exactly, not a literal copy of the
+      reference's own canvas mechanics (real pan/zoom stays out of scope).
+    - The Marcellus wordmark placement (point 6 above) is this designer's
+      own proposal, not extracted/confirmed from the reference.
+  This entire pass is flagged for human browser sign-off per this
+  project's standard `/design` contract (see REVIEW-QUEUE.md) — it
+  SUPERSEDES the pass above's own "GENUINELY OPEN" zoom-toolbar-derived-
+  values note only insofar as the toolbar's position/blur are now real
+  extracted values; the remaining derived surface/warning/success/danger
+  shades from that note still apply unchanged.
 -->
 <!doctype html>
 <html lang="en">
@@ -513,7 +757,73 @@
   <title>Agents Map — Second Brain</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
+<body class="theme-skilltree">
+  <!-- Starfield background (REQ-SB-52) — fixed, CSS-only, pointer-events:
+       none. 60 hand-placed dots; position/size/duration/delay vary per
+       star via inline style, same convention as this file's own .kb-neuron
+       mesh below. Purely decorative — see styles.css's own comment. -->
+  <div class="starfield" aria-hidden="true">
+    <span class="star" style="top:0%; left:17%; width:1px; height:1px; animation-duration:2.4s; animation-delay:0s;"></span>
+    <span class="star" style="top:37%; left:70%; width:2px; height:2px; animation-duration:3.6s; animation-delay:0.83s;"></span>
+    <span class="star" style="top:6%; left:23%; width:1px; height:1px; animation-duration:4.8s; animation-delay:1.66s;"></span>
+    <span class="star" style="top:11%; left:76%; width:3px; height:3px; animation-duration:3.0s; animation-delay:2.49s;"></span>
+    <span class="star" style="top:48%; left:29%; width:1px; height:1px; animation-duration:5.4s; animation-delay:3.32s;"></span>
+    <span class="star" style="top:85%; left:82%; width:2px; height:2px; animation-duration:2.7s; animation-delay:4.15s;"></span>
+    <span class="star" style="top:22%; left:35%; width:1px; height:1px; animation-duration:4.2s; animation-delay:4.98s;"></span>
+    <span class="star" style="top:59%; left:88%; width:1px; height:1px; animation-duration:3.9s; animation-delay:5.81s;"></span>
+    <span class="star" style="top:96%; left:41%; width:2px; height:2px; animation-duration:2.4s; animation-delay:0.64s;"></span>
+    <span class="star" style="top:33%; left:94%; width:1px; height:1px; animation-duration:3.6s; animation-delay:1.47s;"></span>
+    <span class="star" style="top:70%; left:47%; width:3px; height:3px; animation-duration:4.8s; animation-delay:2.3s;"></span>
+    <span class="star" style="top:7%; left:0%; width:1px; height:1px; animation-duration:3.0s; animation-delay:3.13s;"></span>
+    <span class="star" style="top:44%; left:53%; width:2px; height:2px; animation-duration:5.4s; animation-delay:3.96s;"></span>
+    <span class="star" style="top:81%; left:6%; width:1px; height:1px; animation-duration:2.7s; animation-delay:4.79s;"></span>
+    <span class="star" style="top:18%; left:59%; width:1px; height:1px; animation-duration:4.2s; animation-delay:5.62s;"></span>
+    <span class="star" style="top:55%; left:12%; width:3px; height:3px; animation-duration:3.9s; animation-delay:0.45s;"></span>
+    <span class="star" style="top:92%; left:65%; width:1px; height:1px; animation-duration:2.4s; animation-delay:1.28s;"></span>
+    <span class="star" style="top:29%; left:18%; width:2px; height:2px; animation-duration:3.6s; animation-delay:2.11s;"></span>
+    <span class="star" style="top:66%; left:71%; width:1px; height:1px; animation-duration:4.8s; animation-delay:2.94s;"></span>
+    <span class="star" style="top:3%; left:24%; width:1px; height:1px; animation-duration:3.0s; animation-delay:3.77s;"></span>
+    <span class="star" style="top:40%; left:77%; width:2px; height:2px; animation-duration:5.4s; animation-delay:4.6s;"></span>
+    <span class="star" style="top:77%; left:30%; width:1px; height:1px; animation-duration:2.7s; animation-delay:5.43s;"></span>
+    <span class="star" style="top:14%; left:83%; width:1px; height:1px; animation-duration:4.2s; animation-delay:0.26s;"></span>
+    <span class="star" style="top:51%; left:36%; width:3px; height:3px; animation-duration:3.9s; animation-delay:1.09s;"></span>
+    <span class="star" style="top:88%; left:89%; width:1px; height:1px; animation-duration:2.4s; animation-delay:1.92s;"></span>
+    <span class="star" style="top:25%; left:42%; width:2px; height:2px; animation-duration:3.6s; animation-delay:2.75s;"></span>
+    <span class="star" style="top:62%; left:95%; width:1px; height:1px; animation-duration:4.8s; animation-delay:3.58s;"></span>
+    <span class="star" style="top:99%; left:48%; width:1px; height:1px; animation-duration:3.0s; animation-delay:4.41s;"></span>
+    <span class="star" style="top:36%; left:1%; width:2px; height:2px; animation-duration:5.4s; animation-delay:5.24s;"></span>
+    <span class="star" style="top:73%; left:54%; width:3px; height:3px; animation-duration:2.7s; animation-delay:0.07s;"></span>
+    <span class="star" style="top:10%; left:7%; width:1px; height:1px; animation-duration:4.2s; animation-delay:0.9s;"></span>
+    <span class="star" style="top:47%; left:60%; width:1px; height:1px; animation-duration:3.9s; animation-delay:1.73s;"></span>
+    <span class="star" style="top:84%; left:13%; width:2px; height:2px; animation-duration:2.4s; animation-delay:2.56s;"></span>
+    <span class="star" style="top:21%; left:66%; width:1px; height:1px; animation-duration:3.6s; animation-delay:3.39s;"></span>
+    <span class="star" style="top:58%; left:19%; width:1px; height:1px; animation-duration:4.8s; animation-delay:4.22s;"></span>
+    <span class="star" style="top:95%; left:72%; width:3px; height:3px; animation-duration:3.0s; animation-delay:5.05s;"></span>
+    <span class="star" style="top:32%; left:25%; width:1px; height:1px; animation-duration:5.4s; animation-delay:5.88s;"></span>
+    <span class="star" style="top:69%; left:78%; width:2px; height:2px; animation-duration:2.7s; animation-delay:0.71s;"></span>
+    <span class="star" style="top:6%; left:31%; width:1px; height:1px; animation-duration:4.2s; animation-delay:1.54s;"></span>
+    <span class="star" style="top:43%; left:84%; width:1px; height:1px; animation-duration:3.9s; animation-delay:2.37s;"></span>
+    <span class="star" style="top:80%; left:37%; width:2px; height:2px; animation-duration:2.4s; animation-delay:3.2s;"></span>
+    <span class="star" style="top:17%; left:90%; width:1px; height:1px; animation-duration:3.6s; animation-delay:4.03s;"></span>
+    <span class="star" style="top:54%; left:43%; width:3px; height:3px; animation-duration:4.8s; animation-delay:4.86s;"></span>
+    <span class="star" style="top:91%; left:96%; width:1px; height:1px; animation-duration:3.0s; animation-delay:5.69s;"></span>
+    <span class="star" style="top:28%; left:49%; width:1px; height:1px; animation-duration:5.4s; animation-delay:0.52s;"></span>
+    <span class="star" style="top:65%; left:2%; width:2px; height:2px; animation-duration:2.7s; animation-delay:1.35s;"></span>
+    <span class="star" style="top:2%; left:55%; width:1px; height:1px; animation-duration:4.2s; animation-delay:2.18s;"></span>
+    <span class="star" style="top:39%; left:8%; width:1px; height:1px; animation-duration:3.9s; animation-delay:3.01s;"></span>
+    <span class="star" style="top:76%; left:61%; width:3px; height:3px; animation-duration:2.4s; animation-delay:3.84s;"></span>
+    <span class="star" style="top:13%; left:14%; width:1px; height:1px; animation-duration:3.6s; animation-delay:4.67s;"></span>
+    <span class="star" style="top:50%; left:67%; width:2px; height:2px; animation-duration:4.8s; animation-delay:5.5s;"></span>
+    <span class="star" style="top:87%; left:20%; width:1px; height:1px; animation-duration:3.0s; animation-delay:0.33s;"></span>
+    <span class="star" style="top:24%; left:73%; width:1px; height:1px; animation-duration:5.4s; animation-delay:1.16s;"></span>
+    <span class="star" style="top:61%; left:26%; width:2px; height:2px; animation-duration:2.7s; animation-delay:1.99s;"></span>
+    <span class="star" style="top:98%; left:79%; width:1px; height:1px; animation-duration:4.2s; animation-delay:2.82s;"></span>
+    <span class="star" style="top:35%; left:32%; width:1px; height:1px; animation-duration:3.9s; animation-delay:3.65s;"></span>
+    <span class="star" style="top:72%; left:85%; width:3px; height:3px; animation-duration:2.4s; animation-delay:4.48s;"></span>
+    <span class="star" style="top:9%; left:38%; width:1px; height:1px; animation-duration:3.6s; animation-delay:5.31s;"></span>
+    <span class="star" style="top:46%; left:91%; width:2px; height:2px; animation-duration:4.8s; animation-delay:0.14s;"></span>
+    <span class="star" style="top:83%; left:44%; width:1px; height:1px; animation-duration:3.0s; animation-delay:0.97s;"></span>
+  </div>
   <div class="app-shell">
     <nav class="sidebar" id="sidebar">
       <div class="sidebar-header">
@@ -547,6 +857,7 @@
         <button type="button" class="btn" data-state-target="five-section">5 sections (REQ-SB-18 N-section reference)</button>
         <button type="button" class="btn" data-state-target="dense-section">Dense section (BUG-002 fix demo)</button>
         <button type="button" class="btn" data-state-target="density-clustering">Density clustering (REQ-SB-38 demo)</button>
+        <button type="button" class="btn" data-state-target="activity-demo">Agent activity pulses (REQ-SB-42 demo)</button>
       </div>
 
       <!-- First-run state: vault indexed (brain active) and the ambient
@@ -555,6 +866,16 @@
            make compact or drill into. -->
       <section data-state-panel data-group="agents-map" data-state="first-run">
         <div class="agents-map-stage">
+          <!-- Zoom toolbar (REQ-SB-52) — visual/positional chrome only, see
+               top-of-file breadcrumb and styles.css's own comment. -->
+          <div class="map-zoom-toolbar" aria-label="Map zoom controls (visual only)">
+            <button type="button" class="map-zoom-btn" disabled aria-label="Zoom out">&minus;</button>
+            <span class="map-zoom-level">100%</span>
+            <button type="button" class="map-zoom-btn" disabled aria-label="Zoom in">+</button>
+            <span class="map-zoom-divider"></span>
+            <button type="button" class="map-zoom-btn map-zoom-btn--wide" disabled>Fit</button>
+            <button type="button" class="map-zoom-btn" disabled aria-label="Help">?</button>
+          </div>
           <div class="agents-map-canvas">
             <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
               <line class="radar-spoke" x1="50" y1="50" x2="108" y2="50" />
@@ -673,6 +994,16 @@
         <div data-agents-stage-root>
         <div data-agents-overview-stage>
         <div class="agents-map-stage">
+          <!-- Zoom toolbar (REQ-SB-52) — visual/positional chrome only, see
+               top-of-file breadcrumb and styles.css's own comment. -->
+          <div class="map-zoom-toolbar" aria-label="Map zoom controls (visual only)">
+            <button type="button" class="map-zoom-btn" disabled aria-label="Zoom out">&minus;</button>
+            <span class="map-zoom-level">100%</span>
+            <button type="button" class="map-zoom-btn" disabled aria-label="Zoom in">+</button>
+            <span class="map-zoom-divider"></span>
+            <button type="button" class="map-zoom-btn map-zoom-btn--wide" disabled>Fit</button>
+            <button type="button" class="map-zoom-btn" disabled aria-label="Help">?</button>
+          </div>
           <div class="agents-map-canvas explore-zoom-overview">
             <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
               <!-- Radar background: 12 faint generic spokes every 30°, center to rim (r=58) -->
@@ -880,6 +1211,21 @@
         </div>
 
         <div class="explore-drilldown" data-agents-drilldown>
+          <!-- Edge-navigation reveal (REQ-SB-52 redo pass) — fixed,
+               vertically centered, hidden until hover/focus of this
+               drill-down group; visual/positional chrome only (disabled,
+               inert), same established convention as the zoom toolbar's
+               own buttons — see styles.css's own comment above
+               .map-edge-nav. Scoped once per state (not duplicated into
+               every individual per-Section drill-down sub-panel below),
+               mirroring where the zoom toolbar was scoped in the prior
+               pass. -->
+          <div class="map-edge-nav map-edge-nav--prev">
+            <button type="button" class="map-edge-nav-btn" disabled aria-label="Previous section">&larr;</button>
+          </div>
+          <div class="map-edge-nav map-edge-nav--next">
+            <button type="button" class="map-edge-nav-btn" disabled aria-label="Next section">&rarr;</button>
+          </div>
           <div data-state-panel data-group="drilldown-populated" data-state="capture" class="active">
             <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
             <div class="agents-map-stage">
@@ -939,6 +1285,317 @@
         </div>
       </section>
 
+      <!-- Agent activity pulses (REQ-SB-42 demo) — SAME 5-agent/3-section
+           scaffold as "Populated" above (every coordinate copied verbatim,
+           not recomputed); only the activity classes/elements are new. See
+           the top-of-file breadcrumb for the full rationale, role
+           assignment, and the flagged drill-down connection-line proposal. -->
+      <section data-state-panel data-group="agents-map" data-state="activity-demo">
+        <div data-agents-stage-root>
+        <div data-agents-overview-stage>
+        <div class="agents-map-stage">
+          <!-- Zoom toolbar (REQ-SB-52) — visual/positional chrome only, see
+               top-of-file breadcrumb and styles.css's own comment. -->
+          <div class="map-zoom-toolbar" aria-label="Map zoom controls (visual only)">
+            <button type="button" class="map-zoom-btn" disabled aria-label="Zoom out">&minus;</button>
+            <span class="map-zoom-level">100%</span>
+            <button type="button" class="map-zoom-btn" disabled aria-label="Zoom in">+</button>
+            <span class="map-zoom-divider"></span>
+            <button type="button" class="map-zoom-btn map-zoom-btn--wide" disabled>Fit</button>
+            <button type="button" class="map-zoom-btn" disabled aria-label="Help">?</button>
+          </div>
+          <div class="agents-map-canvas explore-zoom-overview">
+            <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+              <line class="radar-spoke" x1="50" y1="50" x2="108" y2="50" />
+              <line class="radar-spoke" x1="50" y1="50" x2="100.23" y2="79" />
+              <line class="radar-spoke" x1="50" y1="50" x2="79" y2="100.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="50" y2="108" />
+              <line class="radar-spoke" x1="50" y1="50" x2="21" y2="100.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="-0.23" y2="79" />
+              <line class="radar-spoke" x1="50" y1="50" x2="-8" y2="50" />
+              <line class="radar-spoke" x1="50" y1="50" x2="-0.23" y2="21" />
+              <line class="radar-spoke" x1="50" y1="50" x2="21" y2="-0.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="50" y2="-8" />
+              <line class="radar-spoke" x1="50" y1="50" x2="79" y2="-0.23" />
+              <line class="radar-spoke" x1="50" y1="50" x2="100.23" y2="21" />
+
+              <circle class="ring-circle" cx="50" cy="50" r="30" />
+              <circle class="ring-circle" cx="50" cy="50" r="45" />
+              <circle class="ring-circle" cx="50" cy="50" r="50" />
+              <circle class="boundary-circle" cx="50" cy="50" r="58" />
+
+              <line class="section-boundary" x1="50" y1="32" x2="50" y2="-8" />
+              <line class="section-boundary" x1="64.72" y1="58.5" x2="100.23" y2="79" />
+              <line class="section-boundary" x1="35.28" y1="58.5" x2="-0.23" y2="79" />
+
+              <line class="spoke-line" x1="50" y1="50" x2="77.71" y2="34" stroke="var(--color-accent)" />
+              <line class="spoke-line" x1="50" y1="50" x2="72.63" y2="72.63" stroke="var(--color-accent)" />
+              <line class="spoke-line" x1="50" y1="50" x2="22.29" y2="34" stroke="var(--color-accent)" />
+
+              <line class="cluster-line" x1="77.71" y1="34" x2="67.1" y2="3.01" stroke="var(--agent-color-worker)" />
+              <line class="cluster-line" x1="77.71" y1="34" x2="93.3" y2="25" stroke="var(--agent-color-worker)" />
+              <line class="cluster-line" x1="77.71" y1="34" x2="99.24" y2="58.68" stroke="var(--agent-color-worker)" />
+              <line class="cluster-line" x1="67.1" y1="3.01" x2="93.3" y2="25" stroke="var(--agent-color-worker)" />
+              <line class="cluster-line" x1="93.3" y1="25" x2="99.24" y2="58.68" stroke="var(--agent-color-worker)" />
+              <line class="cluster-line" x1="67.1" y1="3.01" x2="99.24" y2="58.68" stroke="var(--agent-color-worker)" />
+
+              <line class="cluster-line" x1="72.63" y1="72.63" x2="50" y2="80" stroke="var(--agent-color-producer)" />
+
+              <line class="cluster-line" x1="22.29" y1="34" x2="11.03" y2="27.5" stroke="var(--agent-color-expert)" />
+
+              <!-- REQ-SB-42 Scenario 3: Hub-routed cross-Section traveling
+                   pulse — Meeting Capture (Capture section) <-> Vault Q&A
+                   (Q&A section). Reuses .affinity-line (pre-existing, first
+                   real use here) for the connecting line, plus a
+                   .route-pulse-dot traveling along the identical path via
+                   SVG animateMotion — same technique as the KB's own two
+                   synapse pulses above. -->
+              <line class="affinity-line active" x1="93.3" y1="25" x2="11.03" y2="27.5" />
+              <circle class="route-pulse-dot" r="1.6">
+                <animateMotion dur="2s" repeatCount="indefinite" path="M93.3,25 L11.03,27.5" />
+              </circle>
+
+              <text class="ring-label" x="80" y="51" font-size="2.6" letter-spacing="0.3">PRODUCER</text>
+              <text class="ring-label" x="27.5" y="89.97" font-size="2.6" letter-spacing="0.3">EXPERT</text>
+              <text class="ring-label" x="25" y="8.2" font-size="2.6" letter-spacing="0.3">WORKER</text>
+            </svg>
+
+            <div class="kb-node">
+              <svg class="kb-brain-svg" viewBox="0 0 100 100">
+                <line x1="50" y1="10" x2="65.3" y2="13" />
+                <line x1="65.3" y1="13" x2="78.3" y2="21.7" />
+                <line x1="78.3" y1="21.7" x2="87" y2="34.7" />
+                <line x1="87" y1="34.7" x2="90" y2="50" />
+                <line x1="90" y1="50" x2="87" y2="65.3" />
+                <line x1="87" y1="65.3" x2="78.3" y2="78.3" />
+                <line x1="78.3" y1="78.3" x2="65.3" y2="87" />
+                <line x1="65.3" y1="87" x2="50" y2="90" />
+                <line x1="50" y1="90" x2="34.7" y2="87" />
+                <line x1="34.7" y1="87" x2="21.7" y2="78.3" />
+                <line x1="21.7" y1="78.3" x2="13" y2="65.3" />
+                <line x1="13" y1="65.3" x2="10" y2="50" />
+                <line x1="10" y1="50" x2="13" y2="34.7" />
+                <line x1="13" y1="34.7" x2="21.7" y2="21.7" />
+                <line x1="21.7" y1="21.7" x2="34.7" y2="13" />
+                <line x1="34.7" y1="13" x2="50" y2="10" />
+                <line x1="61" y1="30.95" x2="72" y2="50" />
+                <line x1="72" y1="50" x2="61" y2="69.05" />
+                <line x1="61" y1="69.05" x2="39" y2="69.05" />
+                <line x1="39" y1="69.05" x2="28" y2="50" />
+                <line x1="28" y1="50" x2="39" y2="30.95" />
+                <line x1="39" y1="30.95" x2="61" y2="30.95" />
+                <line x1="61" y1="30.95" x2="50" y2="50" />
+                <line x1="72" y1="50" x2="50" y2="50" />
+                <line x1="61" y1="69.05" x2="50" y2="50" />
+                <line x1="39" y1="69.05" x2="50" y2="50" />
+                <line x1="28" y1="50" x2="50" y2="50" />
+                <line x1="39" y1="30.95" x2="50" y2="50" />
+                <line x1="61" y1="30.95" x2="65.3" y2="13" />
+                <line x1="61" y1="30.95" x2="78.3" y2="21.7" />
+                <line x1="72" y1="50" x2="87" y2="34.7" />
+                <line x1="72" y1="50" x2="87" y2="65.3" />
+                <line x1="61" y1="69.05" x2="78.3" y2="78.3" />
+                <line x1="61" y1="69.05" x2="65.3" y2="87" />
+                <line x1="39" y1="69.05" x2="34.7" y2="87" />
+                <line x1="39" y1="69.05" x2="21.7" y2="78.3" />
+                <line x1="28" y1="50" x2="13" y2="65.3" />
+                <line x1="28" y1="50" x2="13" y2="34.7" />
+                <line x1="39" y1="30.95" x2="21.7" y2="21.7" />
+                <line x1="39" y1="30.95" x2="34.7" y2="13" />
+                <line x1="65.3" y1="13" x2="34.7" y2="87" />
+                <line x1="87" y1="65.3" x2="13" y2="34.7" />
+                <circle class="kb-neuron" cx="50" cy="10" r="3.4" fill-opacity="0.9" style="animation-delay:0s;" />
+                <circle class="kb-neuron" cx="65.3" cy="13" r="2.8" fill-opacity="0.7" style="animation-delay:0.1s;" />
+                <circle class="kb-neuron" cx="78.3" cy="21.7" r="3.1" fill-opacity="0.85" style="animation-delay:0.2s;" />
+                <circle class="kb-neuron" cx="87" cy="34.7" r="2.6" fill-opacity="0.6" style="animation-delay:0.3s;" />
+                <circle class="kb-neuron" cx="90" cy="50" r="3.4" fill-opacity="0.9" style="animation-delay:0.4s;" />
+                <circle class="kb-neuron" cx="87" cy="65.3" r="2.8" fill-opacity="0.7" style="animation-delay:0.5s;" />
+                <circle class="kb-neuron" cx="78.3" cy="78.3" r="3.1" fill-opacity="0.85" style="animation-delay:0.6s;" />
+                <circle class="kb-neuron" cx="65.3" cy="87" r="2.6" fill-opacity="0.6" style="animation-delay:0.7s;" />
+                <circle class="kb-neuron" cx="50" cy="90" r="3.4" fill-opacity="0.9" style="animation-delay:0.8s;" />
+                <circle class="kb-neuron" cx="34.7" cy="87" r="2.8" fill-opacity="0.7" style="animation-delay:0.9s;" />
+                <circle class="kb-neuron" cx="21.7" cy="78.3" r="3.1" fill-opacity="0.85" style="animation-delay:1.0s;" />
+                <circle class="kb-neuron" cx="13" cy="65.3" r="2.6" fill-opacity="0.6" style="animation-delay:1.1s;" />
+                <circle class="kb-neuron" cx="10" cy="50" r="3.4" fill-opacity="0.9" style="animation-delay:1.2s;" />
+                <circle class="kb-neuron" cx="13" cy="34.7" r="2.8" fill-opacity="0.7" style="animation-delay:1.3s;" />
+                <circle class="kb-neuron" cx="21.7" cy="21.7" r="3.1" fill-opacity="0.85" style="animation-delay:1.4s;" />
+                <circle class="kb-neuron" cx="34.7" cy="13" r="2.6" fill-opacity="0.6" style="animation-delay:1.5s;" />
+                <circle class="kb-neuron" cx="61" cy="30.95" r="2.4" fill-opacity="0.65" style="animation-delay:1.6s;" />
+                <circle class="kb-neuron" cx="72" cy="50" r="2.2" fill-opacity="0.55" style="animation-delay:1.75s;" />
+                <circle class="kb-neuron" cx="61" cy="69.05" r="2.4" fill-opacity="0.65" style="animation-delay:1.9s;" />
+                <circle class="kb-neuron" cx="39" cy="69.05" r="2.2" fill-opacity="0.55" style="animation-delay:2.05s;" />
+                <circle class="kb-neuron" cx="28" cy="50" r="2.4" fill-opacity="0.65" style="animation-delay:2.2s;" />
+                <circle class="kb-neuron" cx="39" cy="30.95" r="2.2" fill-opacity="0.55" style="animation-delay:2.35s;" />
+                <circle class="kb-neuron" cx="50" cy="50" r="5" fill-opacity="1" style="animation-delay:0s;" />
+                <circle class="kb-pulse-dot" r="1.8">
+                  <animateMotion dur="2.4s" repeatCount="indefinite" path="M65.3,13 L34.7,87" />
+                </circle>
+                <circle class="kb-pulse-dot" r="1.8">
+                  <animateMotion dur="2.8s" begin="0.7s" repeatCount="indefinite" path="M87,65.3 L13,34.7" />
+                </circle>
+              </svg>
+              <span class="kb-node-label">Knowledge Base<span class="kb-node-sub">Vault indexed</span></span>
+            </div>
+
+            <button type="button" class="hub-node" style="top:34%; left:77.71%;" data-section-id="capture">
+              Capture Hub
+              <span class="hub-node-type">3 agents &middot; click to zoom in</span>
+            </button>
+            <button type="button" class="hub-node" style="top:72.63%; left:72.63%;" data-section-id="people">
+              People Hub
+              <span class="hub-node-type">1 agent &middot; click to zoom in</span>
+            </button>
+            <button type="button" class="hub-node" style="top:34%; left:22.29%;" data-section-id="qa">
+              Q&amp;A Hub
+              <span class="hub-node-type">1 agent &middot; click to zoom in</span>
+            </button>
+
+            <!-- Email Capture: REQ-SB-42 Scenario 1 (running a capture/Skill) — animated glow -->
+            <button type="button" class="agent-node agent-node--worker agent-node--compact agent-node--activity-glow" style="top:3.01%; left:67.1%; animation-delay:0.1s;" data-agent-id="email-capture">
+              <span class="agent-node-label">Email Capture</span>
+              <span class="agent-node-type">Worker &middot; running now</span>
+            </button>
+            <!-- Meeting Capture: REQ-SB-42 Scenario 3 — one endpoint of the traveling pulse above (line/dot, not a class on the node itself) -->
+            <button type="button" class="agent-node agent-node--worker agent-node--compact" style="top:25%; left:93.3%; animation-delay:0.2s;" data-agent-id="meeting-capture">
+              <span class="agent-node-label">Meeting Capture</span>
+              <span class="agent-node-type">Worker &middot; Hub-routed request &rarr; Vault Q&amp;A</span>
+            </button>
+            <!-- To-Do Capture: REQ-SB-42 Scenario 6 — idle, deliberately no indicator -->
+            <button type="button" class="agent-node agent-node--worker agent-node--compact" style="top:58.68%; left:99.24%; animation-delay:0.3s;" data-agent-id="todo-capture">
+              <span class="agent-node-label">To-Do Capture</span>
+              <span class="agent-node-type">Worker &middot; idle</span>
+            </button>
+
+            <!-- People Notes: REQ-SB-42 Scenario 4 — steady, non-animated pending-approval highlight -->
+            <button type="button" class="agent-node agent-node--producer agent-node--compact agent-node--pending-approval" style="top:80%; left:50%; animation-delay:0.4s;" data-agent-id="people-producer">
+              <span class="agent-node-label">People Notes</span>
+              <span class="agent-node-type">Producer &middot; pending approval</span>
+            </button>
+
+            <!-- Vault Q&A: REQ-SB-42 Scenario 3 — the other endpoint of the traveling pulse -->
+            <button type="button" class="agent-node agent-node--expert agent-node--compact" style="top:27.5%; left:11.03%; animation-delay:0.5s;" data-agent-id="vault-qa">
+              <span class="agent-node-label">Vault Q&amp;A</span>
+              <span class="agent-node-type">Expert &middot; Hub-routed request &larr; Meeting Capture</span>
+            </button>
+
+            <div class="section-title" style="top:17%; left:107.16%;">
+              Capture
+              <span class="section-title-accent" style="background: var(--color-accent);"></span>
+            </div>
+            <div class="section-title" style="top:116%; left:50%;">
+              People
+              <span class="section-title-accent" style="background: var(--color-accent);"></span>
+            </div>
+            <div class="section-title" style="top:17%; left:-7.16%;">
+              Knowledge Q&amp;A
+              <span class="section-title-accent" style="background: var(--color-accent);"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: var(--space-4);">
+          <strong>What this demo state shows (REQ-SB-42)</strong>
+          <ul class="text-muted" style="margin: var(--space-2) 0 0; padding-left: var(--space-4);">
+            <li><strong style="color: var(--color-text);">Email Capture</strong> — animated glow/pulse: running a capture (Scenario 1). Hover/focus its dot to see the label above confirm it.</li>
+            <li><strong style="color: var(--color-text);">Meeting Capture &harr; Vault Q&amp;A</strong> — a traveling pulse dot along the dashed line connecting them: a Hub-routed cross-Section request in flight (Scenario 3), never a glow on either agent alone.</li>
+            <li><strong style="color: var(--color-text);">People Notes</strong> — a steady, non-animated warning-colored ring: an open pending-approval record (Scenario 4) — visually distinct from the glow above, on purpose, so a blocked/waiting agent is never confused with a working one.</li>
+            <li><strong style="color: var(--color-text);">To-Do Capture</strong> — no indicator at all: idle (Scenario 6), shown here directly next to the other three for comparison.</li>
+          </ul>
+          <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: var(--space-3);">In the real app these four states update live over a push channel as each condition starts/clears (Scenario 7) — this static prototype instead fixes them "on" so every state is reviewable at once. Click a Hub below to see the identical treatment in that Section's own drill-down Agents Tree.</p>
+        </div>
+        <button type="button" class="btn" data-agents-replay-intro style="margin-top: var(--space-3);">&#8635; Replay intro</button>
+        </div>
+
+        <div class="explore-drilldown" data-agents-drilldown>
+          <!-- Edge-navigation reveal (REQ-SB-52 redo pass) — fixed,
+               vertically centered, hidden until hover/focus of this
+               drill-down group; visual/positional chrome only (disabled,
+               inert), same established convention as the zoom toolbar's
+               own buttons — see styles.css's own comment above
+               .map-edge-nav. Scoped once per state (not duplicated into
+               every individual per-Section drill-down sub-panel below),
+               mirroring where the zoom toolbar was scoped in the prior
+               pass. -->
+          <div class="map-edge-nav map-edge-nav--prev">
+            <button type="button" class="map-edge-nav-btn" disabled aria-label="Previous section">&larr;</button>
+          </div>
+          <div class="map-edge-nav map-edge-nav--next">
+            <button type="button" class="map-edge-nav-btn" disabled aria-label="Next section">&rarr;</button>
+          </div>
+          <div data-state-panel data-group="drilldown-activity-demo" data-state="capture" class="active">
+            <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
+            <div class="agents-map-stage">
+              <div class="agents-map-canvas">
+                <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+                  <line class="cluster-line" x1="50" y1="50" x2="50" y2="10" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="84.64" y2="70" stroke="var(--color-accent)" />
+                  <line class="cluster-line" x1="50" y1="50" x2="15.36" y2="70" stroke="var(--color-accent)" />
+                  <!-- REQ-SB-42 drill-down proposal (flagged, see top-of-file
+                       breadcrumb): the traveling pulse rendered along this
+                       Section's own Hub -> Meeting Capture cluster-line,
+                       since the pulse's other endpoint (Vault Q&A) lives in
+                       a different Section's own drill-down, not on this
+                       canvas. -->
+                  <circle class="route-pulse-dot" r="2.2">
+                    <animateMotion dur="1.6s" repeatCount="indefinite" path="M50,50 L84.64,70" />
+                  </circle>
+                </svg>
+                <div class="hub-node" style="top:50%; left:50%;">Capture Hub<span class="hub-node-type">3 agents</span></div>
+                <button type="button" class="agent-node agent-node--worker agent-node--activity-glow" style="top:10%; left:50%;" data-agent-id="email-capture">
+                  <span class="agent-node-label">Email Capture</span>
+                  <span class="agent-node-type">Worker &middot; running now</span>
+                </button>
+                <button type="button" class="agent-node agent-node--worker" style="top:70%; left:84.64%;" data-agent-id="meeting-capture">
+                  <span class="agent-node-label">Meeting Capture</span>
+                  <span class="agent-node-type">Worker &middot; Hub-routed request</span>
+                </button>
+                <button type="button" class="agent-node agent-node--worker" style="top:70%; left:15.36%;" data-agent-id="todo-capture">
+                  <span class="agent-node-label">To-Do Capture</span>
+                  <span class="agent-node-type">Worker &middot; idle</span>
+                </button>
+              </div>
+            </div>
+            <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: var(--space-3);">Meeting Capture's traveling pulse continues, via this Section's Hub, to Vault Q&amp;A in the Q&amp;A drill-down (see that Hub) — this drill-down's own connecting-line geometry is this pass's own proposal, not the overview's straight line between the two agents; genuinely open, see the top-of-file breadcrumb.</p>
+          </div>
+          <div data-state-panel data-group="drilldown-activity-demo" data-state="people">
+            <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
+            <div class="agents-map-stage">
+              <div class="agents-map-canvas">
+                <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+                  <line class="cluster-line" x1="50" y1="50" x2="50" y2="10" stroke="var(--color-accent)" />
+                </svg>
+                <div class="hub-node" style="top:50%; left:50%;">People Hub<span class="hub-node-type">1 agent</span></div>
+                <button type="button" class="agent-node agent-node--producer agent-node--pending-approval" style="top:10%; left:50%;" data-agent-id="people-producer">
+                  <span class="agent-node-label">People Notes</span>
+                  <span class="agent-node-type">Producer &middot; pending approval</span>
+                </button>
+              </div>
+            </div>
+            <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: var(--space-3);">Same steady, non-animated ring as the overview — an open pending-approval record (Scenario 4), never the animated glow.</p>
+          </div>
+          <div data-state-panel data-group="drilldown-activity-demo" data-state="qa">
+            <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
+            <div class="agents-map-stage">
+              <div class="agents-map-canvas">
+                <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+                  <line class="cluster-line" x1="50" y1="50" x2="50" y2="10" stroke="var(--color-accent)" />
+                  <circle class="route-pulse-dot" r="2.2">
+                    <animateMotion dur="1.6s" repeatCount="indefinite" path="M50,50 L50,10" />
+                  </circle>
+                </svg>
+                <div class="hub-node" style="top:50%; left:50%;">Q&amp;A Hub<span class="hub-node-type">1 agent</span></div>
+                <button type="button" class="agent-node agent-node--expert" style="top:10%; left:50%;" data-agent-id="vault-qa">
+                  <span class="agent-node-label">Vault Q&amp;A</span>
+                  <span class="agent-node-type">Expert &middot; Hub-routed request</span>
+                </button>
+              </div>
+            </div>
+            <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: var(--space-3);">This drill-down's own end of the same traveling pulse shown in the Capture drill-down's Meeting Capture — continues via this Section's own Hub, off-canvas, to Meeting Capture in the Capture drill-down.</p>
+          </div>
+        </div>
+        </div>
+      </section>
+
       <!-- REQ-SB-18 reference state: same polar-grid mechanism (ring=Type,
            angle=Section, Hub on the inner band, radar/ring background all
            UNCHANGED), demonstrated with 5 user-created Sections instead of
@@ -969,6 +1626,16 @@
         <div data-agents-stage-root>
         <div data-agents-overview-stage>
         <div class="agents-map-stage">
+          <!-- Zoom toolbar (REQ-SB-52) — visual/positional chrome only, see
+               top-of-file breadcrumb and styles.css's own comment. -->
+          <div class="map-zoom-toolbar" aria-label="Map zoom controls (visual only)">
+            <button type="button" class="map-zoom-btn" disabled aria-label="Zoom out">&minus;</button>
+            <span class="map-zoom-level">100%</span>
+            <button type="button" class="map-zoom-btn" disabled aria-label="Zoom in">+</button>
+            <span class="map-zoom-divider"></span>
+            <button type="button" class="map-zoom-btn map-zoom-btn--wide" disabled>Fit</button>
+            <button type="button" class="map-zoom-btn" disabled aria-label="Help">?</button>
+          </div>
           <div class="agents-map-canvas explore-zoom-overview">
             <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
               <!-- Radar background: unchanged, ambient chrome -->
@@ -1195,6 +1862,21 @@
         </div>
 
         <div class="explore-drilldown" data-agents-drilldown>
+          <!-- Edge-navigation reveal (REQ-SB-52 redo pass) — fixed,
+               vertically centered, hidden until hover/focus of this
+               drill-down group; visual/positional chrome only (disabled,
+               inert), same established convention as the zoom toolbar's
+               own buttons — see styles.css's own comment above
+               .map-edge-nav. Scoped once per state (not duplicated into
+               every individual per-Section drill-down sub-panel below),
+               mirroring where the zoom toolbar was scoped in the prior
+               pass. -->
+          <div class="map-edge-nav map-edge-nav--prev">
+            <button type="button" class="map-edge-nav-btn" disabled aria-label="Previous section">&larr;</button>
+          </div>
+          <div class="map-edge-nav map-edge-nav--next">
+            <button type="button" class="map-edge-nav-btn" disabled aria-label="Next section">&rarr;</button>
+          </div>
           <div data-state-panel data-group="drilldown-five-section" data-state="technical" class="active">
             <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
             <div class="agents-map-stage">
@@ -1295,6 +1977,16 @@
         <div data-agents-stage-root>
         <div data-agents-overview-stage>
         <div class="agents-map-stage">
+          <!-- Zoom toolbar (REQ-SB-52) — visual/positional chrome only, see
+               top-of-file breadcrumb and styles.css's own comment. -->
+          <div class="map-zoom-toolbar" aria-label="Map zoom controls (visual only)">
+            <button type="button" class="map-zoom-btn" disabled aria-label="Zoom out">&minus;</button>
+            <span class="map-zoom-level">100%</span>
+            <button type="button" class="map-zoom-btn" disabled aria-label="Zoom in">+</button>
+            <span class="map-zoom-divider"></span>
+            <button type="button" class="map-zoom-btn map-zoom-btn--wide" disabled>Fit</button>
+            <button type="button" class="map-zoom-btn" disabled aria-label="Help">?</button>
+          </div>
           <div class="agents-map-canvas explore-zoom-overview">
             <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
               <line class="radar-spoke" x1="50" y1="50" x2="108" y2="50" />
@@ -1499,6 +2191,21 @@
         </div>
 
         <div class="explore-drilldown" data-agents-drilldown>
+          <!-- Edge-navigation reveal (REQ-SB-52 redo pass) — fixed,
+               vertically centered, hidden until hover/focus of this
+               drill-down group; visual/positional chrome only (disabled,
+               inert), same established convention as the zoom toolbar's
+               own buttons — see styles.css's own comment above
+               .map-edge-nav. Scoped once per state (not duplicated into
+               every individual per-Section drill-down sub-panel below),
+               mirroring where the zoom toolbar was scoped in the prior
+               pass. -->
+          <div class="map-edge-nav map-edge-nav--prev">
+            <button type="button" class="map-edge-nav-btn" disabled aria-label="Previous section">&larr;</button>
+          </div>
+          <div class="map-edge-nav map-edge-nav--next">
+            <button type="button" class="map-edge-nav-btn" disabled aria-label="Next section">&rarr;</button>
+          </div>
           <div data-state-panel data-group="drilldown-dense-section" data-state="technical" class="active">
             <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
             <div class="agents-map-stage">
@@ -1596,6 +2303,16 @@
         <div data-agents-stage-root>
         <div data-agents-overview-stage>
         <div class="agents-map-stage">
+          <!-- Zoom toolbar (REQ-SB-52) — visual/positional chrome only, see
+               top-of-file breadcrumb and styles.css's own comment. -->
+          <div class="map-zoom-toolbar" aria-label="Map zoom controls (visual only)">
+            <button type="button" class="map-zoom-btn" disabled aria-label="Zoom out">&minus;</button>
+            <span class="map-zoom-level">100%</span>
+            <button type="button" class="map-zoom-btn" disabled aria-label="Zoom in">+</button>
+            <span class="map-zoom-divider"></span>
+            <button type="button" class="map-zoom-btn map-zoom-btn--wide" disabled>Fit</button>
+            <button type="button" class="map-zoom-btn" disabled aria-label="Help">?</button>
+          </div>
           <div class="agents-map-canvas explore-zoom-overview">
             <svg class="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
               <line class="radar-spoke" x1="50" y1="50" x2="108" y2="50" />
@@ -1813,6 +2530,21 @@
         </div>
 
         <div class="explore-drilldown" data-agents-drilldown>
+          <!-- Edge-navigation reveal (REQ-SB-52 redo pass) — fixed,
+               vertically centered, hidden until hover/focus of this
+               drill-down group; visual/positional chrome only (disabled,
+               inert), same established convention as the zoom toolbar's
+               own buttons — see styles.css's own comment above
+               .map-edge-nav. Scoped once per state (not duplicated into
+               every individual per-Section drill-down sub-panel below),
+               mirroring where the zoom toolbar was scoped in the prior
+               pass. -->
+          <div class="map-edge-nav map-edge-nav--prev">
+            <button type="button" class="map-edge-nav-btn" disabled aria-label="Previous section">&larr;</button>
+          </div>
+          <div class="map-edge-nav map-edge-nav--next">
+            <button type="button" class="map-edge-nav-btn" disabled aria-label="Next section">&rarr;</button>
+          </div>
           <div data-state-panel data-group="drilldown-density-clustering" data-state="technical" class="active">
             <button type="button" class="btn" data-role="agents-drilldown-back">&larr; Back to Agents Map</button>
             <p class="card" style="border-color: var(--color-warning); margin-bottom: var(--space-4);">

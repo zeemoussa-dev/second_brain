@@ -12,6 +12,19 @@
   Revision 2026-08-12 (REQ-SB-31 design pass): added the new System Health
     nav item to the shared sidebar (see system-health.html's own breadcrumb
     for the full nav-wiring list). No other change on this page.
+  Revision 2026-08-13 (REQ-SB-43 design pass — Meeting Cockpit). The two
+  meeting rows in the "Populated" state were a flat, non-clickable
+  `.item-row` list (REQ-SB-43-US-01's own confirmed gap) — both now render
+  as `a.item-row` (styles.css's existing clickable-item-row primitive, first
+  used by vault-browser.html/REQ-SB-02, reused here verbatim — no new CSS),
+  opening the new meeting-cockpit.html. Both rows link to the SAME cockpit
+  instance (which represents the "Acme Corp — Q3 renewal check-in" meeting)
+  rather than two separate per-meeting cockpit fixtures — a deliberate
+  simplification for this static prototype, consistent with this project's
+  own established precedent of one representative fixture instead of N
+  near-duplicate ones (e.g. agents-map.html's shared "illustrative-worker"
+  side panel). In the real app each row deep-links to its own meeting's own
+  cockpit instance — left to /plan-tasks, not a prototype-routing concern.
 -->
 <!doctype html>
 <html lang="en">
@@ -58,21 +71,22 @@
       <section data-state-panel data-group="my-day-calendar" data-state="populated" class="active">
         <div class="card">
           <div class="item-list">
-            <div class="item-row">
+            <a class="item-row" href="meeting-cockpit.html">
               <div class="item-row-main">
                 <span class="item-row-title">Acme Corp — Q3 renewal check-in</span>
                 <span class="item-row-meta">10:00 &ndash; 10:30 &middot; Acme Corp</span>
               </div>
               <span class="badge badge-success">Filed</span>
-            </div>
-            <div class="item-row">
+            </a>
+            <a class="item-row" href="meeting-cockpit.html">
               <div class="item-row-main">
                 <span class="item-row-title">Internal — weekly sync</span>
                 <span class="item-row-meta">14:00 &ndash; 14:30 &middot; No customer</span>
               </div>
               <span class="badge badge-success">Filed</span>
-            </div>
+            </a>
           </div>
+          <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: var(--space-3);">Click a meeting to open its Meeting Cockpit (REQ-SB-43) — Experts you bring in, a unified chat, and on-the-spot research, alongside the meeting's own info and attendee chips.</p>
         </div>
       </section>
     </main>

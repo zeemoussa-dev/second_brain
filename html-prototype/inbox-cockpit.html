@@ -1,0 +1,337 @@
+<!--
+  Screen: Inbox Cockpit (REQ-SB-44) — NEW screen, reached by clicking an
+  email row on my-day-emails.html (that file's own breadcrumb has the
+  clickable-row change). Entirely net-new; no prior `html-prototype/` screen
+  covered any part of this workspace. Adapts meeting-cockpit.html's own
+  3-panel pattern for email — see that file's breadcrumb for the shared
+  layout rationale; this comment only documents what's DIFFERENT for email
+  (REQ-SB-44-US-01's own Context: reuses REQ-SB-43's already-settled
+  decisions verbatim — unified thread, scoped research list, explicit
+  save-or-discard, plain-non-clickable-chip fallback, per-Expert
+  attribution — and adds three genuine differences: people chips cover
+  sender AND CC'd/thread participants (not one attendee list), an
+  attachment-review section, and a draft-reply area that is reviewable text
+  only, NEVER a send action).
+
+  Layout — same .cockpit-layout 3-column grid as meeting-cockpit.html:
+    - LEFT: available Agents to bring in + this email's own scoped
+      quick-research results (identical pattern to the Meeting Cockpit).
+    - MIDDLE: the same unified multi-agent chat pattern, PLUS a distinct
+      draft-reply area — reviewable text, never auto-sent. There is NO send
+      action anywhere on this page, by design (Scenario 7 — sending is
+      explicitly out of scope this pass).
+    - RIGHT: the email's info (subject, sender, received, customer), every
+      person on it (sender + CC'd/thread participants) as a clickable chip
+      linking to their Person note, or a plain non-clickable indicator when
+      none exists (same honesty-posture rule as the Meeting Cockpit), PLUS
+      an attachment-review section (Scenario 4) with its own small,
+      independent state-switcher demonstrating "has an attachment" vs "no
+      attachments" (Scenario 4b) — a real buildable state, not asserted in
+      prose. The attachment-surfacing mechanism itself reuses REQ-SB-28's
+      own Compass-summarize/handoff mechanism directly (operator-resolved,
+      2026-08-13 — see REQ-SB-44-US-01's own trailing Update note); this
+      pass draws the UI only, REQ-SB-28-US-01 is not yet Done.
+
+  Reused, not invented: everything meeting-cockpit.html already reuses
+    (.app-shell, .card, .chat-thread/.chat-message, .chat-proposal + its
+    nested-state-switcher trick, .action-list/.item-row/.item-row-actions,
+    .cockpit-layout/.tag-chip--static/.chat-message-author — all defined in
+    styles.css's shared "3-panel Cockpit workspace" section).
+  New (added to styles.css, same shared section, Inbox-only): .draft-reply/
+    .draft-reply-actions — same dashed-border-over-tinted-token card recipe
+    as .chat-proposal, recolored to --color-accent instead of
+    --color-warning because this is not a pending approve/decline decision
+    (there is no send action to approve at all this pass) — it is
+    "reviewable text you can read and copy," a different meaning, so it
+    gets its own class rather than reusing .chat-proposal under a
+    misleading "awaiting your decision" label.
+
+  People used here (Alex Rivera has a Person note, Jordan Lee does not) are
+  the SAME two people meeting-cockpit.html uses, deliberately, so both
+  cockpits read as sharing one underlying vault/graph rather than two
+  unrelated fixture sets. Email/attachment content reuses my-day-emails.html's
+  own "Signed order form attached" row (Unsorted, low classification
+  confidence) — chosen as the representative fixture specifically because
+  it already implies a real attachment to review.
+
+  States drawn (data-group="inbox-cockpit", left+middle panels; right panel
+  is constant except its own small nested attachment-state-switcher):
+    1. "empty" — first open: no Expert brought in, chat shows only a
+       neutral opening prompt, no quick-research yet, no draft reply yet.
+    2. "in-progress" — 2 Experts (Vault Q&A, People Notes) brought in, chat
+       thread has 2+ attributed replies, left panel's research list already
+       has one saved result.
+    3. "draft-reply" — the chat shows a drafted reply as reviewable text
+       (Scenario 7) — a .draft-reply card with a "Copy to clipboard"
+       affordance only, no send button anywhere, plus explanatory text that
+       this pass never sends anything.
+    4. "research-pending" — mirrors the Meeting Cockpit's own third state:
+       the left panel's research card is mid-decision via the identical
+       nested pending/saved/discarded switcher.
+  Every interactive-looking affordance ("Bring in", the chat send row,
+  "Hand off to Expert", "Copy to clipboard") is an inert demo button in this
+  prototype, same established convention as meeting-cockpit.html and
+  agents-map.html's own pending-approval card — the ONE exception is the two
+  real nested state-switchers (research outcome, attachment presence),
+  reusing app.js's existing generic wiring verbatim. Zero new JS.
+
+  This entire pass is flagged for human browser sign-off per this
+  project's standard /design contract (see REVIEW-QUEUE.md).
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Inbox Cockpit — Second Brain</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <button class="burger-btn" id="sidebarToggle" aria-label="Toggle navigation" aria-expanded="true">&#9776;</button>
+        <h2>Second Brain</h2>
+      </div>
+      <a class="nav-item" href="agents-map.html"><span class="nav-icon">&#9678;</span><span class="nav-label">Agents Map</span></a>
+      <a class="nav-item active" href="my-day.html"><span class="nav-icon">&#9728;</span><span class="nav-label">My Day</span></a>
+      <a class="nav-item" href="settings.html"><span class="nav-icon">&#9881;</span><span class="nav-label">Settings</span></a>
+      <a class="nav-item" href="system-health.html"><span class="nav-icon">&#9877;</span><span class="nav-label">System Health</span></a>
+      <a class="nav-item" href="agent-activity.html"><span class="nav-icon">&#128203;</span><span class="nav-label">Agent Activity</span></a>
+      <a class="nav-item" href="vault-browser.html"><span class="nav-icon">&#128269;</span><span class="nav-label">Browse &amp; Search</span></a>
+      <a class="nav-item" href="index.html"><span class="nav-icon">&#9638;</span><span class="nav-label">Screens (catalog)</span></a>
+    </nav>
+    <main class="main">
+      <p class="text-muted"><a href="my-day-emails.html" class="text-muted">&larr; Emails</a></p>
+      <h1>Inbox Cockpit</h1>
+      <p class="text-muted">Bring in whichever Experts you need help from into one shared chat that can help you understand this email and draft a reply as text — this pass never sends anything on your behalf.</p>
+
+      <div class="state-switcher" data-group="inbox-cockpit">
+        <button type="button" class="btn" data-state-target="empty">Empty / first open</button>
+        <button type="button" class="btn btn-primary" data-state-target="in-progress">In-progress (2+ Experts)</button>
+        <button type="button" class="btn" data-state-target="draft-reply">Draft reply</button>
+        <button type="button" class="btn" data-state-target="research-pending">Quick research pending</button>
+      </div>
+
+      <div class="cockpit-layout">
+        <!-- LEFT panel: available Agents + this email's own scoped quick-research list. Varies per state. -->
+        <div>
+          <div class="card" data-state-panel data-group="inbox-cockpit" data-state="empty">
+            <h3>Available Agents</h3>
+            <div class="item-list">
+              <div class="item-row">
+                <div class="item-row-main"><span class="item-row-title">Vault Q&amp;A</span><span class="item-row-meta">Expert</span></div>
+                <div class="item-row-actions"><button type="button" class="btn">+ Bring in</button></div>
+              </div>
+              <div class="item-row">
+                <div class="item-row-main"><span class="item-row-title">People Notes</span><span class="item-row-meta">Producer</span></div>
+                <div class="item-row-actions"><button type="button" class="btn">+ Bring in</button></div>
+              </div>
+            </div>
+            <h3 style="margin-top: var(--space-6);">Quick research (this email)</h3>
+            <div class="empty-state">
+              <p class="text-muted">Nothing yet — trigger on-the-spot research from the chat once you've brought in an Expert.</p>
+            </div>
+          </div>
+
+          <div class="card active" data-state-panel data-group="inbox-cockpit" data-state="in-progress">
+            <h3>Available Agents</h3>
+            <div class="item-list">
+              <div class="item-row">
+                <div class="item-row-main"><span class="item-row-title">Vault Q&amp;A</span><span class="item-row-meta">Expert</span></div>
+                <div class="item-row-actions"><span class="badge badge-success">In this chat</span></div>
+              </div>
+              <div class="item-row">
+                <div class="item-row-main"><span class="item-row-title">People Notes</span><span class="item-row-meta">Producer</span></div>
+                <div class="item-row-actions"><span class="badge badge-success">In this chat</span></div>
+              </div>
+            </div>
+            <h3 style="margin-top: var(--space-6);">Quick research (this email)</h3>
+            <div class="item-list">
+              <a class="item-row" href="note-detail.html">
+                <div class="item-row-main">
+                  <span class="item-row-title">Acme Corp — MACC renewal precedent</span>
+                  <span class="item-row-meta">Saved &middot; wikilinked to this Email note</span>
+                </div>
+                <span class="badge badge-success">Saved</span>
+              </a>
+            </div>
+          </div>
+
+          <div class="card" data-state-panel data-group="inbox-cockpit" data-state="draft-reply">
+            <h3>Available Agents</h3>
+            <div class="item-list">
+              <div class="item-row">
+                <div class="item-row-main"><span class="item-row-title">Vault Q&amp;A</span><span class="item-row-meta">Expert</span></div>
+                <div class="item-row-actions"><span class="badge badge-success">In this chat</span></div>
+              </div>
+            </div>
+            <h3 style="margin-top: var(--space-6);">Quick research (this email)</h3>
+            <div class="empty-state">
+              <p class="text-muted">None yet this email.</p>
+            </div>
+          </div>
+
+          <div class="card" data-state-panel data-group="inbox-cockpit" data-state="research-pending">
+            <h3>Available Agents</h3>
+            <div class="item-list">
+              <div class="item-row">
+                <div class="item-row-main"><span class="item-row-title">Vault Q&amp;A</span><span class="item-row-meta">Expert</span></div>
+                <div class="item-row-actions"><span class="badge badge-success">In this chat</span></div>
+              </div>
+            </div>
+            <h3 style="margin-top: var(--space-6);">Quick research (this email)</h3>
+            <div class="state-switcher" data-group="inbox-research-r1-outcome" style="margin-bottom: var(--space-3);">
+              <button type="button" class="btn btn-primary" data-state-target="pending">Pending</button>
+              <button type="button" class="btn" data-state-target="saved">Saved</button>
+              <button type="button" class="btn" data-state-target="discarded">Discarded</button>
+            </div>
+            <div data-state-panel data-group="inbox-research-r1-outcome" data-state="pending" class="active">
+              <div class="chat-proposal">
+                <span class="badge badge-warning">Awaiting your decision</span>
+                <p><strong>Acme Corp — prior MACC renewal terms.</strong> Found a precedent from an earlier Azure MACC renewal with similar terms.</p>
+                <div class="chat-proposal-actions">
+                  <button type="button" class="btn btn-primary">Save to vault</button>
+                  <button type="button" class="btn btn-danger">Discard</button>
+                </div>
+              </div>
+            </div>
+            <div data-state-panel data-group="inbox-research-r1-outcome" data-state="saved">
+              <div class="chat-proposal chat-proposal--approved">
+                <span class="badge badge-success">Saved</span>
+                <p>New standalone note created, wikilinked to this Email note — now listed above once you switch back to "In-progress".</p>
+              </div>
+            </div>
+            <div data-state-panel data-group="inbox-research-r1-outcome" data-state="discarded">
+              <div class="chat-proposal chat-proposal--declined">
+                <span class="badge badge-danger">Discarded</span>
+                <p>Nothing was written to the vault. This result no longer appears in the research list.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MIDDLE panel: unified multi-agent chat + draft-reply area. Varies per state. -->
+        <div>
+          <div class="card" data-state-panel data-group="inbox-cockpit" data-state="empty">
+            <h3>Chat</h3>
+            <div class="empty-state">
+              <div class="empty-state-icon">&#128172;</div>
+              <p><strong>No Experts brought in yet.</strong></p>
+              <p class="text-muted">Use "+ Bring in" on the left to add an Expert to this email's shared chat.</p>
+            </div>
+            <div class="chat-input-row">
+              <input type="text" class="input" placeholder="Bring in an Expert to start chatting…" disabled />
+              <button type="button" class="btn btn-primary" disabled>Send</button>
+            </div>
+          </div>
+
+          <div class="card active" data-state-panel data-group="inbox-cockpit" data-state="in-progress">
+            <h3>Chat <span class="text-muted" style="font-weight: 400; font-size: var(--font-size-sm);">— one shared thread, every Expert replies here</span></h3>
+            <div class="chat-thread" style="max-height: none;">
+              <div class="chat-message chat-message--user">What's Acme's history on MACC renewal terms?</div>
+              <div class="chat-message chat-message--agent">
+                <span class="chat-message-author" style="--author-color: var(--agent-color-expert);">Vault Q&amp;A</span>
+                Acme's last MACC renewal held flat pricing with a 10% capacity increase. Full note is in Work/Customers/Acme Corp.md.
+              </div>
+              <div class="chat-message chat-message--user">Is A. Rivera the usual contact for this?</div>
+              <div class="chat-message chat-message--agent">
+                <span class="chat-message-author" style="--author-color: var(--agent-color-producer);">People Notes</span>
+                Yes — Alex Rivera has been the primary contact on Acme's last two renewals.
+              </div>
+            </div>
+            <div class="chat-input-row">
+              <input type="text" class="input" placeholder="Message Vault Q&amp;A, People Notes…" />
+              <button type="button" class="btn btn-primary">Send</button>
+            </div>
+          </div>
+
+          <div class="card" data-state-panel data-group="inbox-cockpit" data-state="draft-reply">
+            <h3>Chat</h3>
+            <div class="chat-thread" style="max-height: none;">
+              <div class="chat-message chat-message--user">Draft a reply confirming we're reviewing the renewal terms.</div>
+              <div class="chat-message chat-message--agent">
+                <span class="chat-message-author" style="--author-color: var(--agent-color-expert);">Vault Q&amp;A</span>
+                Here's a draft — review it below. I have not sent anything.
+              </div>
+              <div class="draft-reply">
+                <span class="badge badge-success">Draft — reviewable only, never sent automatically</span>
+                <pre>Hi Alex,
+
+Thanks for sending the Q3 renewal terms — we're reviewing them now
+against last cycle's MACC agreement and will follow up this week
+with any questions.
+
+Best,
+[Your name]</pre>
+                <div class="draft-reply-actions">
+                  <button type="button" class="btn">Copy to clipboard</button>
+                </div>
+              </div>
+            </div>
+            <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: var(--space-3);">There is no send action anywhere on this page. Sending is explicitly out of scope this pass — copy this text out if you want to use it. This draft is ephemeral: it lives only in this chat session and is lost if you leave without copying it out (operator-resolved, 2026-08-13).</p>
+            <div class="chat-input-row">
+              <input type="text" class="input" placeholder="Message the chat…" />
+              <button type="button" class="btn btn-primary">Send</button>
+            </div>
+          </div>
+
+          <div class="card" data-state-panel data-group="inbox-cockpit" data-state="research-pending">
+            <h3>Chat</h3>
+            <div class="chat-thread" style="max-height: none;">
+              <div class="chat-message chat-message--user">Quick research: Acme's prior MACC renewal terms</div>
+              <div class="chat-message chat-message--agent">
+                <span class="chat-message-author" style="--author-color: var(--agent-color-expert);">Vault Q&amp;A</span>
+                Found a result — check the left panel to save it into the vault or discard it.
+              </div>
+            </div>
+            <div class="chat-input-row">
+              <input type="text" class="input" placeholder="Message the chat…" />
+              <button type="button" class="btn btn-primary">Send</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT panel: email info + people chips + attachment review. CONSTANT across the 4 states above (no data-state-panel wrapper) except its own small independent attachment-presence switcher. -->
+        <div class="card">
+          <h3>Signed order form attached</h3>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Sender</span><span>A. Rivera</span></div>
+            <div class="kv-row"><span class="kv-key">Received</span><span>09:00 today</span></div>
+            <div class="kv-row"><span class="kv-key">Customer</span><span>Unsorted &middot; low classification confidence</span></div>
+          </div>
+          <h3 style="margin-top: var(--space-6);">People on this email</h3>
+          <div class="action-list">
+            <a class="btn tag-chip" href="note-detail.html">Alex Rivera <span class="text-muted">(sender)</span></a>
+            <span class="tag-chip--static">Jordan Lee <span class="text-muted">(CC &middot; no note yet)</span></span>
+          </div>
+          <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: var(--space-3);">Alex Rivera has an existing Person note — click to open it. Jordan Lee, CC'd on the thread, doesn't have one yet, so their chip is a plain, non-clickable indicator rather than a broken or fabricated link.</p>
+
+          <h3 style="margin-top: var(--space-6);">Attachments</h3>
+          <div class="state-switcher" data-group="inbox-attachments" style="margin-bottom: var(--space-3);">
+            <button type="button" class="btn btn-primary" data-state-target="has-attachment">Has an attachment</button>
+            <button type="button" class="btn" data-state-target="none">No attachments</button>
+          </div>
+          <div data-state-panel data-group="inbox-attachments" data-state="has-attachment" class="active">
+            <div class="item-list">
+              <div class="item-row">
+                <div class="item-row-main">
+                  <span class="item-row-title">&#128206; Signed_Order_Form.pdf</span>
+                  <span class="item-row-meta">248 KB &middot; PDF</span>
+                </div>
+                <div class="item-row-actions">
+                  <button type="button" class="btn">Hand off to Expert</button>
+                </div>
+              </div>
+            </div>
+            <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: var(--space-3);">Reuses REQ-SB-28's own Compass-summarize/attach-and-handoff mechanism directly (operator-resolved) — this pass draws the review UI only; REQ-SB-28-US-01 is Ready, not yet Done, so this half cannot build until that story ships.</p>
+          </div>
+          <div data-state-panel data-group="inbox-attachments" data-state="none">
+            <p class="text-muted">No attachments on this email — nothing is listed, and no attachment-review affordance implies one exists.</p>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

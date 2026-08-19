@@ -30,6 +30,12 @@
   see vault-browser.html's own breadcrumb); added a catalog card below
   pointing at the two new pages (vault-browser.html, note-detail.html). No
   other markup change.
+  Revision 2026-08-13 (REQ-SB-42/REQ-SB-43/REQ-SB-44 design pass): added a
+  catalog card below pointing at agents-map.html's new "Agent activity
+  pulses (REQ-SB-42 demo)" state and the two new Cockpit screens
+  (meeting-cockpit.html, inbox-cockpit.html). No nav-item change — neither
+  Cockpit is a top-level nav destination, both are reached by clicking a
+  My Day row (my-day-calendar.html/my-day-emails.html).
 -->
 <!doctype html>
 <html lang="en">
@@ -205,6 +211,43 @@
           not a decorative mockup — see both files' own top-of-file
           breadcrumbs for the full design rationale.
         </p>
+      </div>
+
+      <div class="card" style="margin-top: var(--space-4);">
+        <strong>REQ-SB-42 / REQ-SB-43 / REQ-SB-44 — Agent activity pulses, Meeting Cockpit, Inbox Cockpit — pending browser sign-off</strong>
+        <p class="text-muted">
+          Three requirements this batch's stories flagged as having no
+          prototype coverage at all — designed together as one pass:
+        </p>
+        <ul>
+          <li><a href="agents-map.html">agents-map.html</a> — new "Agent
+            activity pulses (REQ-SB-42 demo)" state-switcher option: a
+            per-agent animated glow/pulse (running a capture/Skill or
+            generating a chat reply), a traveling pulse along the
+            connecting line between two specific agents (a Hub-routed
+            cross-Section request), and a distinct steady, non-animated
+            highlight (an open pending-approval record) — demonstrated on
+            both the overview and a Section's drill-down Agents Tree. The
+            existing decorative kb-pulse-dot KB&harr;Hub spoke animation is
+            unaffected.</li>
+          <li><a href="meeting-cockpit.html">meeting-cockpit.html</a> — new
+            screen (REQ-SB-43): clicking a meeting on
+            <a href="my-day-calendar.html">my-day-calendar.html</a> (now
+            clickable) opens a 3-panel workspace — meeting info + attendee
+            chips (right), one unified multi-agent Expert chat with
+            per-Expert attribution (middle), available Agents to bring in +
+            this meeting's own scoped quick-research list with an explicit
+            save-or-discard decision (left).</li>
+          <li><a href="inbox-cockpit.html">inbox-cockpit.html</a> — new
+            screen (REQ-SB-44): the same 3-panel pattern adapted for email —
+            clicking an email on
+            <a href="my-day-emails.html">my-day-emails.html</a> (now
+            clickable) opens sender/CC/thread-participant chips and
+            attachment review (right), the same unified chat plus a
+            reviewable-only draft-reply area with no send action anywhere
+            on the page (middle), and the same Agents/research pattern
+            (left).</li>
+        </ul>
       </div>
     </main>
   </div>
