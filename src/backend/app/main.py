@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI
@@ -21,7 +22,6 @@ from app.api.system_health_router import router as system_health_router
 from app.api.vault_index_router import router as vault_index_router
 from app.api.vault_search_router import router as vault_search_router
 from app.business import agent_registry, agent_schedule_registry
-from app.business.agent_schedule_registry import create_or_update_schedule
 from app.business.pipelines.librarian_housekeeping import ensure_librarian_agents_and_section
 from app.scheduling.capture_scheduler import lifespan as capture_scheduler_lifespan
 
@@ -51,27 +51,56 @@ async def lifespan(app: FastAPI):
         ensure_librarian_agents_and_section()
         agent_registry.retire_agent("librarian-housekeeping")
         agent_schedule_registry.remove_schedule("librarian-housekeeping", "run_housekeeping_pass")
-        # REQ-SB-79-US-01 (ADR-058 Decision 5) — seeds the real, persisted
-        # default 6-hour schedule for each of the two new, independently-
-        # adjustable orchestrating Jobs (replaces the former single shared
-        # librarian-housekeeping schedule). Must run AFTER the agent/skill
-        # grants above exist (create_or_update_schedule refuses otherwise)
-        # and AFTER capture_scheduler_lifespan has published the live
-        # scheduler (above) — safe to call unconditionally on every app
-        # start, since it replaces the existing entry for each (agent_id,
-        # capability_id) pair in place rather than duplicating it.
-        create_or_update_schedule(
-            agent_id="threads-cleaning",
-            capability_id="run_threads_cleaning_pass",
-            interval_value=6,
-            interval_unit="hours",
-        )
-        create_or_update_schedule(
-            agent_id="company-and-partner-building",
-            capability_id="run_company_partner_building_pass",
-            interval_value=6,
-            interval_unit="hours",
-        )
+        # 2026-08-20 (operator-directed): run_threads_cleaning_pass retired
+        # as a Skill — Threads Cleaning's own 3 real Jobs (rename_threads,
+        # link_thread_messages, backfill_thread_summaries) are now granted
+        # to their own real Sub-Agents instead of one monolithic scheduled
+        # pass on threads-cleaning itself. Idempotently removes any stale
+        # schedule entry left over from before this change, self-healing,
+        # mirroring librarian-housekeeping's own retirement above — never a
+        # one-off migration script.
+        agent_schedule_registry.remove_schedule("threads-cleaning", "run_threads_cleaning_pass")
+        # 2026-08-20 (operator-directed, "we are building a framework this
+        # is not acceptable" -- re: hand-writing a new create_or_update_
+        # schedule call + comment block here for every new default
+        # schedule): every default/bootstrap schedule this app ships with
+        # (company-and-partner-building's 6-hour pass, rename-threads' and
+        # link-thread-messages' 2-hour passes, today) lives in ONE
+        # declarative file, app/scheduling/default_schedules.json — never
+        # hand-written here. apply_default_schedules() idempotently
+        # creates/replaces every one of them (safe on every app start,
+        # --reload included) and returns only the entries marked
+        # "run_on_app_start": true, in file order.
+        #
+        # Those are then dispatched once, SEQUENTIALLY in that same file
+        # order (an IntervalTrigger schedule does not fire on
+        # registration, only at its first real interval boundary — a
+        # plain create_or_update_schedule call alone would never satisfy
+        # "and when the App Start[s]"; confirmed by direct reading of
+        # agent_schedule_registry._register_live_job). Sequential, not
+        # independent asyncio.create_task calls per entry, because a
+        # later entry may have a real depends_on edge onto an earlier one
+        # (link-thread-messages -> rename-threads, agent_registry.py) and
+        # must see that earlier Job's own already-finished output —
+        # firing them independently would let them race for the shared
+        # dispatch lock, and whichever lost would silently skip its
+        # app-start run every single restart, not just occasionally.
+        # Scheduled as ONE background task, never awaited here — mirrors
+        # capture_scheduler.py's own lifespan's identical "never awaited,
+        # or FastAPI's own 'application startup complete' (and therefore
+        # all HTTP traffic) blocks on this finishing first" reasoning.
+        # dispatch_with_shared_lock's own lock-skip logic still protects
+        # this sequence against colliding with a real, in-progress
+        # Outlook capture run.
+        on_start_entries = agent_schedule_registry.apply_default_schedules()
+
+        async def _run_on_app_start_schedules() -> None:
+            for entry in on_start_entries:
+                await agent_schedule_registry.dispatch_with_shared_lock(
+                    entry["agent_id"], entry["capability_id"], trigger="scheduled",
+                )
+
+        asyncio.create_task(_run_on_app_start_schedules())
         yield
 
 

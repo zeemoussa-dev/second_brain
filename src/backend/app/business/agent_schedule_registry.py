@@ -25,13 +25,23 @@ guarantee, per ADR-037 points 1-4. The single canonical home for:
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Literal
 
 from apscheduler.triggers.interval import IntervalTrigger
 
 from app.business import skill_registry, skill_tools
 from app.data_access import vault_writer
+
+# 2026-08-20 (operator-directed, "we are building a framework this is not
+# acceptable" -- re: hand-writing a new create_or_update_schedule call +
+# comment block in main.py for every new default schedule): every
+# default/bootstrap schedule this app ships with lives in ONE declarative
+# file, never Python source. Adding a future default schedule means
+# adding one JSON entry to that file -- never a main.py edit.
+_DEFAULT_SCHEDULES_PATH = Path(__file__).resolve().parents[1] / "scheduling" / "default_schedules.json"
 
 _dispatch_lock = asyncio.Lock()
 # REQ-SB-69-US-01-T04 (ADR-046 Decision 4) -- a SECOND, dedicated
@@ -274,6 +284,36 @@ def create_or_update_schedule(
     vault_writer.save_agent_schedules_state(state)
     _register_live_job(record)
     return record
+
+
+def load_default_schedules() -> list[dict]:
+    """Reads default_schedules.json fresh on every call -- the single,
+    declarative, checked-in source of every default/bootstrap schedule
+    this app ships with. Each entry: {"agent_id", "capability_id",
+    "interval_value", "interval_unit", "run_on_app_start"}. File order is
+    meaningful -- see apply_default_schedules's own docstring."""
+    return json.loads(_DEFAULT_SCHEDULES_PATH.read_text(encoding="utf-8"))
+
+
+def apply_default_schedules() -> list[dict]:
+    """Idempotently creates/replaces every real, persisted schedule named
+    in default_schedules.json (safe to call on every app start, mirrors
+    create_or_update_schedule's own "replaces in place" contract for
+    each entry). Returns only the entries marked "run_on_app_start":
+    true, in the SAME file order they were declared -- main.py's own
+    lifespan dispatches these once, sequentially (never concurrently),
+    since a later entry may have a real depends_on edge onto an earlier
+    one (e.g. link-thread-messages -> rename-threads) and must see that
+    earlier Job's own already-finished output. This function itself
+    stays a plain, synchronous registration step -- it never dispatches
+    anything, so it carries no async/await and cannot itself race
+    against a real in-progress capture run."""
+    entries = load_default_schedules()
+    for entry in entries:
+        create_or_update_schedule(
+            entry["agent_id"], entry["capability_id"], entry["interval_value"], entry["interval_unit"],
+        )
+    return [entry for entry in entries if entry.get("run_on_app_start")]
 
 
 def remove_schedule(agent_id: str, capability_id: str) -> bool:
