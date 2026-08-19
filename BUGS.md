@@ -59,7 +59,7 @@ is a thin status mirror of the index table below.
 | BUG-028 | `create_okf_directory_baseline`/`ensure_okf_directory_baseline` create `log.md`/`captures.md` completely empty — no header naming the owning Customer/Project, unlike `index.md`'s own `# {name}` convention | Logic | Minor | In Sprint | 2026-08-19 | BUGFIX-07-US-01 |
 | BUG-029 | `meeting-capture`'s `run_capture_now` fired via both a scheduled tick and a direct dispatch 6ms apart, creating two real Pending Approval records for the same real action, neither ever resolved | Logic | Major | Closed | 2026-08-19 | BUGFIX-08-US-01 |
 | BUG-030 | A staged email that generates a Compass-classification-failure or Route-to-Project Pending Approval is never marked/removed from the staging queue, so the next capture tick reprocesses it and creates ANOTHER duplicate Pending Approval — same root cause pattern seen in `librarian-housekeeping`'s repeated Customer-backfill proposals | Logic | Major | Closed | 2026-08-19 | BUGFIX-08-US-01 |
-| BUG-031 | Company Review "Customer" approval creates the Customer note but does not tag the source Threads with it (real example: Masdar) | Logic | Major | Open | 2026-08-19 | — |
+| BUG-031 | Company Review "Customer" approval creates the Customer note but does not tag the source Threads with it (real example: Masdar) | Logic | Major | Closed | 2026-08-19 | Direct fix, 2026-08-19 |
 | BUG-032 | Company Review proposes companies that already exist as real Partner notes (Core42, G42) as NEW "Customer" candidates, and clicking Approve on them silently does nothing | Logic | Blocker | Open | 2026-08-19 | — |
 | BUG-033 | Agents Map / Job Tree still render `threads-cleaning` and `company-and-partner-building` as one collapsed agent node each, not their individual internal jobs | UI | Major | Open | 2026-08-19 | — |
 
@@ -1421,7 +1421,19 @@ is a thin status mirror of the index table below.
 
 - **Area:** Logic
 - **Severity:** Major
-- **Status:** Open
+- **Status:** Closed — Direct fix, 2026-08-19. Root cause confirmed by
+  direct reading (not assumed): `_apply_company_to_threads`'s
+  `primary_unset` check required BOTH `customer` AND `partner` unset
+  before writing the primary field it was actually asked to write —
+  an already-set `partner:` (e.g. Core42, set by an earlier, unrelated
+  approval) silently blocked writing a genuinely-unset `customer:` on
+  the same Thread. Fixed to check only the field matching `target_kind`.
+  A real, API-reachable backfill (`POST /poc/librarian-backfill-
+  company-review-primary-fields`) corrected every already-approved
+  batch affected before the fix, resilient to Threads renamed since
+  their batch was proposed (skips a stale path rather than raising).
+  Live-verified against the real vault: Masdar and 35 other companies'
+  Threads all received the correct primary field.
 - **Found:** 2026-08-19 (operator's own manual testing, real vault,
   post-`SPRINT-072`/`REQ-SB-76-US-01`)
 - **Screen \ route:** My Day → Pending Approvals → a `propose_company_
