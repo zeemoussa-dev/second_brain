@@ -59,6 +59,9 @@ is a thin status mirror of the index table below.
 | BUG-028 | `create_okf_directory_baseline`/`ensure_okf_directory_baseline` create `log.md`/`captures.md` completely empty — no header naming the owning Customer/Project, unlike `index.md`'s own `# {name}` convention | Logic | Minor | In Sprint | 2026-08-19 | BUGFIX-07-US-01 |
 | BUG-029 | `meeting-capture`'s `run_capture_now` fired via both a scheduled tick and a direct dispatch 6ms apart, creating two real Pending Approval records for the same real action, neither ever resolved | Logic | Major | Closed | 2026-08-19 | BUGFIX-08-US-01 |
 | BUG-030 | A staged email that generates a Compass-classification-failure or Route-to-Project Pending Approval is never marked/removed from the staging queue, so the next capture tick reprocesses it and creates ANOTHER duplicate Pending Approval — same root cause pattern seen in `librarian-housekeeping`'s repeated Customer-backfill proposals | Logic | Major | Closed | 2026-08-19 | BUGFIX-08-US-01 |
+| BUG-031 | Company Review "Customer" approval creates the Customer note but does not tag the source Threads with it (real example: Masdar) | Logic | Major | Open | 2026-08-19 | — |
+| BUG-032 | Company Review proposes companies that already exist as real Partner notes (Core42, G42) as NEW "Customer" candidates, and clicking Approve on them silently does nothing | Logic | Blocker | Open | 2026-08-19 | — |
+| BUG-033 | Agents Map / Job Tree still render `threads-cleaning` and `company-and-partner-building` as one collapsed agent node each, not their individual internal jobs | UI | Major | Open | 2026-08-19 | — |
 
 ---
 
@@ -1412,4 +1415,124 @@ is a thin status mirror of the index table below.
   on `create_pending_approval`, checked regardless of `trigger`).
   `→ src/backend/app/business/pending_approval_registry.py`,
   `→ src/backend/app/business/email_classification.py`,
+  `→ src/backend/app/business/pipelines/librarian_housekeeping.py`
+
+### BUG-031 — Company Review "Customer" approval creates the Customer note but does not tag the source Threads with it (real example: Masdar)
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-08-19 (operator's own manual testing, real vault,
+  post-`SPRINT-072`/`REQ-SB-76-US-01`)
+- **Screen \ route:** My Day → Pending Approvals → a `propose_company_
+  review` proposal → `CompanyReviewDecisionControl`, "Customer" outcome.
+- **Repro steps:**
+  1. Open Pending Approvals, find the real "Masdar" company-review
+     proposal.
+  2. Pick the "Customer" outcome and approve.
+  3. Confirm in the vault: a Customer note/folder for Masdar now exists
+     (`Work/Customers/Masdar/`, per `ADR-057`'s `finalize_company_review`
+     Customer-outcome path).
+  4. Open the source Thread(s) that this proposal was extracted from
+     (the Thread(s) `propose_company_review` originally cited as
+     mentioning Masdar).
+- **Expected:** Every source Thread for this proposal is tagged with the
+  new Customer — `customer:` frontmatter set and/or `## Related`
+  wikilink written, per `_apply_company_to_threads`'s own contract
+  (`ADR-057`, `REQ-SB-76-US-01-T05`).
+- **Actual:** The Customer note is created, but the source Thread(s)
+  remain untagged — `customer:` still whatever it was before approval
+  (e.g. `"Unsorted"`), no `## Related` link added.
+- **Screenshot:** N/A
+- **Note:** Likely in `finalize_company_review`'s Customer-outcome branch
+  (now `_finalize_company_review_outcome` after `SPRINT-074`'s rename) —
+  either the call to `_apply_company_to_threads` isn't reached, is
+  reached with the wrong Thread list, or silently no-ops. Needs direct
+  code reading against this specific real proposal's payload before
+  assuming the root cause.
+  `→ src/backend/app/business/pipelines/librarian_housekeeping.py`
+
+### BUG-032 — Company Review proposes companies that already exist as real Partner notes (Core42, G42) as NEW "Customer" candidates, and clicking Approve on them silently does nothing
+
+- **Area:** Logic
+- **Severity:** Blocker
+- **Status:** Open
+- **Found:** 2026-08-19 (operator's own manual testing, real vault)
+- **Screen \ route:** My Day → Pending Approvals → `propose_company_
+  review` proposals for "Core42" and "G42".
+- **Repro steps:**
+  1. Confirm Core42 and G42 already exist as real Partner hub notes in
+     the vault (`Work/Partners/Core42.md`, `Work/Partners/G42.md` —
+     both already carry `affiliate_of` support since `REQ-SB-76`/
+     `ADR-057`).
+  2. Open Pending Approvals. Confirm both still appear as fresh, unresolved
+     `propose_company_review` proposals under the "Approve Customer"
+     grouping — i.e. re-proposed as Customer candidates despite already
+     being known Partners.
+  3. Click the "Customer" (or any) approve action on either proposal.
+- **Expected:** Either (a) `extract_thread_companies_for_review` should
+  cross-check already-known Partners the same way it's expected to
+  cross-check already-known Customers, so Core42/G42 are never proposed
+  again in the first place; or (b) if a proposal like this does surface,
+  clicking an outcome should always produce a visible result — success,
+  or a clear error toast — never a silent no-op.
+- **Actual:** Both problems are present: the proposals exist for
+  already-known Partners, AND clicking Approve produces no visible
+  effect at all — no toast, no state change, no error surfaced. The
+  proposal stays pending, indistinguishable from a click that never
+  registered.
+- **Screenshot:** N/A
+- **Note:** Two candidate root causes to check by direct reading before
+  assuming: (1) `extract_thread_companies_for_review`'s own known-company
+  cross-check may only query `list_customer_folders()`/known Customers,
+  not `Work/Partners/`, so it never rules Core42/G42 out; (2) the
+  Approve click may be reaching the backend and raising an error (e.g. a
+  name collision against an existing Partner note) that the frontend
+  `CompanyReviewDecisionControl` doesn't surface — check
+  `read_network_requests` for the actual HTTP response on click before
+  guessing. May share a root cause with `BUG-031` (both are
+  `finalize_company_review`/`_apply_company_to_threads` outcome-path
+  issues) or may be fully independent — needs investigation, not
+  assumption.
+  `→ src/backend/app/business/pipelines/librarian_housekeeping.py`,
+  `→ src/backend/app/data_access/compass_client.py`,
+  `→ src/frontend/src/pages/MyDayApprovalsPage.tsx`
+
+### BUG-033 — Agents Map / Job Tree still render `threads-cleaning` and `company-and-partner-building` as one collapsed agent node each, not their individual internal jobs
+
+- **Area:** UI
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-08-19 (operator's own manual testing, post-`SPRINT-073`/
+  `REQ-SB-79-US-01`)
+- **Screen \ route:** Agents Map (radial overview) AND the Job Tree panel
+  inside an agent's detail view — confirmed on both.
+- **Repro steps:**
+  1. Open the Agents Map. Locate the `threads-cleaning` and
+     `company-and-partner-building` agents (the two real, independently-
+     scheduled Agents `SPRINT-073` split `librarian-housekeeping` into).
+  2. Observe each renders as a single agent node, same visual shape as
+     any other single-job agent.
+  3. Open either agent's detail panel → Job Tree tab.
+  4. Observe the Job Tree does not break the pipeline down into its real
+     internal jobs (multiple distinct steps inside
+     `run_threads_cleaning_pass()`/`run_company_partner_building_pass()`).
+- **Expected:** Each pipeline's individual internal jobs render as
+  multiple distinct nodes in the Job Tree (and/or the Agents Map), making
+  the real internal structure of each pipeline visible — this was the
+  operator's own explicitly stated reason for wanting the two-pipeline
+  split.
+- **Actual:** Both screens still show one collapsed node per pipeline,
+  visually indistinguishable from before the split.
+- **Screenshot:** N/A
+- **Note:** This is a REAL, disclosed, pre-existing gap, not a
+  regression — `REQ-SB-79-US-01`'s own story explicitly named "Extending
+  `REQ-SB-65`'s Job Tree visualization to either new sub-agent" as a
+  Non-Goal/Out-of-Scope item, and `SPRINT-073`'s own sprint file lists
+  the same exclusion. `REQ-SB-65`'s Job Tree visualization
+  (`pipelineJobTreeAdapter.ts`) was built against the OLD single
+  `librarian-housekeeping` pipeline shape and was never extended to
+  understand the new two-agent split — needs real work, not a quick
+  wiring fix.
+  `→ src/frontend/src/features/agents-map/pipelineJobTreeAdapter.ts`,
   `→ src/backend/app/business/pipelines/librarian_housekeeping.py`

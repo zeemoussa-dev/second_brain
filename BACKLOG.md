@@ -230,3 +230,6 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 | BUG-028 | Customer/Project `log.md`/`captures.md` created with zero identifying content (no header, unlike `index.md`) | Logic | Closed | BUGFIX-07-US-01 |
 | BUG-029 | `meeting-capture`'s `run_capture_now` fires via both a scheduled tick and a direct dispatch 6ms apart, creating a permanent duplicate Pending Approval | Logic | Closed | BUGFIX-08-US-01 |
 | BUG-030 | A staged email/Thread that already generated a classification/routing Pending Approval gets reprocessed on the next capture tick, creating a fresh duplicate each time (same root cause also hit librarian-housekeeping) | Logic | Closed | BUGFIX-08-US-01 |
+| BUG-031 | Company Review "Customer" approval creates the Customer note but does not tag the source Threads with it (real example: Masdar) | Logic | Open | — |
+| BUG-032 | Company Review proposes companies that already exist as real Partner notes (Core42, G42) as NEW "Customer" candidates, and clicking Approve on them silently does nothing | Logic | Open | — |
+| BUG-033 | Agents Map / Job Tree still render `threads-cleaning` and `company-and-partner-building` as one collapsed agent node each, not their individual internal jobs | UI | Open | — |
