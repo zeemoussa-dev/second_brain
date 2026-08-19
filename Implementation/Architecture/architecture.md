@@ -3,7 +3,878 @@
 Living description of Second Brain's system as it is today. Update this file as
 the architecture evolves — it describes what IS, not what MIGHT BE.
 
-**Last reviewed:** 2026-08-13 (REQ-SB-09-US-01 To-Do Task Capture Pipeline
+**Last reviewed:** 2026-08-19 (architect pass, `/plan-tasks` step 1,
+batched — `REQ-SB-77-US-01`/`REQ-SB-78-US-01`/`REQ-SB-79-US-01`): one new
+ADR, [ADR-058](ADR.md), for `REQ-SB-79-US-01` only — the Librarian's single
+shared `librarian-housekeeping` identity splits into two real,
+independently-schedulable Agent identities, "Threads Cleaning" and
+"Company and Partner Building," under the SAME already-existing Librarian
+Section; `agent_registry.py` gains its first "retire without delete"
+primitive (`retired` flag, `retire_agent`, `list_agents(include_retired=
+False)`) so `librarian-housekeeping` can be idempotently retired at every
+app start without ever rewriting or orphaning its own already-existing
+Pending Approval/Agent History records; `run_housekeeping_pass()` splits
+into `run_threads_cleaning_pass()` (the same 4-job fixed order, minus
+`backfill_company_folders`) and `run_company_partner_building_pass()`
+(wraps `backfill_company_folders()` plus, composing with `REQ-SB-77-US-01`
+below, the already-existing `people_extraction.retrofit_people_from_
+emails()` self-heal). `REQ-SB-77-US-01` (People Notes retroactively linked
+to their real Company/Partner note) and `REQ-SB-78-US-01` (Pending
+Approvals grouped/color-coded, with scoped bulk-approve) needed **no new
+ADR** — both are pure composition of already-`Accepted` patterns; see
+their own "Why no new ADR" notes below. A real, disclosed cross-story task
+dependency was found: `REQ-SB-77-US-01`'s own scheduled-self-heal wiring
+(Scenario 6b) cannot be built before `REQ-SB-79-US-01`'s new `run_company_
+partner_building_pass()` exists — see "People Notes Retroactively Linked
+to Company/Partner" below for the full finding. See "The Librarian — Two
+Sub-Pipelines," "People Notes Retroactively Linked to Company/Partner,"
+and "Pending Approvals — Grouped, Color-Coded Review" below for the full
+additions.
+
+**Previously:** 2026-08-19 (`REQ-SB-76-US-01` architect pass,
+`/plan-tasks` step 1 — "Company Review — Extract, Classify (Customer/
+Partner/Affiliate/Merge), and Batch-Apply"): one new ADR, [ADR-057](ADR.md),
+narrowly, additively revising `ADR-009` point 3 only (Partner gains a real
+`affiliate_of` field — points 1/2/4/5 unaffected). A new boilerplate-aware
+extraction call (`compass_client.extract_thread_companies_for_review`, a
+new sibling, never an edit to the frozen, `Done` `detect_customer_for_
+thread`) feeds a new `propose_company_review()`/`finalize_company_review()`
+Job pair added alongside (not replacing in place) `propose_customer_
+backfill`'s own now-superseded-in-practice live usage; ONE `action_id=
+"propose_company_review"` Pending Approval carries all five real outcomes
+(Customer/Partner/Affiliate/Merge/Decline), resolved via a new additive,
+optional decision body on the EXISTING `POST /pending-approvals/{id}/
+approve` endpoint (merged into the stored payload before dispatch — zero
+signature change to any of the other 8 registered handlers); `migrate_
+customer_to_partner`'s real OKF-directory-shape gap is fixed by extending
+its own Step 1 (reusing `move_okf_directory` verbatim) while its Step 2 scan
+is generalized into a new, parameterized `_retag_company_references` helper
+both it AND the new Merge outcome reuse — no third move/retag primitive.
+See "The Librarian — Company Review" below for the full addition.
+
+**Previously:** 2026-08-19 (`BUGFIX-08-US-01` architect pass,
+`/plan-tasks` step 1, batched — `BUG-029`/`BUG-030`, "Pending Approvals
+gain a target-aware dedup check"): one new ADR, [ADR-056](ADR.md).
+`pending_approval_registry.create_pending_approval` gains an additive,
+optional `dedupe_key: str | None` parameter — a second idempotency check,
+alongside (never replacing) `ADR-018` point 2's existing
+`trigger == "background"` guard, matching an existing `status ==
+"pending"` record on the same `agent_id` + `dedupe_key` regardless of
+`trigger`. Closes `BUG-029` (two trigger sources racing for the same
+Supervised mutating Skill's decision point — fixed centrally inside
+`skill_registry.py::invoke_skill`, zero caller changes needed) and
+`BUG-030` (staged-email/Thread routing & classification-failure proposals,
+plus `librarian-housekeeping`'s Customer-backfill/archival proposals,
+re-proposed as duplicates across repeated ticks — the same gap `ADR-055`'s
+own Consequences already disclosed without fixing). See "Agent Working
+Modes & Pending Approvals" below for the full addition.
+
+**Previously:** 2026-08-19 (`BUGFIX-07-US-01` architect pass,
+`/plan-tasks` step 1 — "Customer/Project `log.md`/`captures.md` carry an
+identifying header," `BUG-028`): **no new ADR.** `create_okf_directory_
+baseline`/`ensure_okf_directory_baseline` (`ADR-042` point 1's shared
+Customer/Project primitive) gain an `identifying_name` parameter and one
+shared header-write-or-backfill helper — content-only additions to
+`log.md`/`captures.md`'s own creation/top-up logic, reusing the
+already-`Accepted` `# {name}` header convention verbatim, touching neither
+the 4-file directory shape nor `<slug>.md`'s Glimpse/Background
+regeneration isolation guarantee. See "Vault Knowledge Model Redesign"
+below for the full addition.
+
+**Previously:** 2026-08-19 (`REQ-SB-75-US-01` architect pass,
+`/plan-tasks` step 1 — "The Vault — Real-Data Knowledge Graph Screen"):
+**no new ADR.** A new additive `GET /vault-search/graph` endpoint
+(`vault_search.get_graph()`, reshaping the SAME `vault_indexing.get_index()`
+snapshot `Browse & Search` already reads into `{nodes, edges}`, reusing
+`_summary()`/`_kind_for()` verbatim, zero kind-mapping table, zero
+pagination/filter params — kind-filter counts/name-search are a
+client-side-only concern over the one fetched snapshot); a new
+`pages/VaultGraphPage.tsx` at route `/vault`, nav label "The Vault" (direct
+reading of the real `Sidebar.tsx` confirms the existing `/browse` item's
+own on-screen label is "Browse & Search," never "Vault Browser," so the
+PRD's disclosed naming-overlap concern has no real on-screen collision
+today; the new screen's own component/feature names are still chosen
+distinct from `VaultBrowserPage`/`vault-browser` at the code level); and a
+new, zero-new-dependency `<canvas>`+`requestAnimationFrame` hand-rolled
+force-directed renderer (`VaultGraphCanvas.tsx`/`forceLayout.ts`),
+confirmed against the real `package.json` that no graph/visualization
+library exists today and none is added. Every decision is a pure
+composition of already-`Accepted` `ADR-003` (layering) and `ADR-010`
+(frontend routing/styling/data-fetching/no-speculative-dependency
+conventions) — neither is reopened. See "The Vault — Knowledge Graph
+Screen" below, appended directly after the "Tag/Folder Scope Suggestions"
+subsection of "Browse & Search."
+
+**Previously:** 2026-08-19 (`REQ-SB-73-US-01`/`REQ-SB-74-US-01` architect
+pass, `/plan-tasks` step 1, batched — Bidirectional Thread ↔ Message Linking
+and Customer Backfill): two new ADRs. `ADR-054` (`REQ-SB-73`) — a new
+`link_thread_messages()` Librarian Job (`## Messages` + `thread:` backlink,
+regenerated/self-healed via already-shipped `insert_body_section_if_missing`/
+`replace_body_section`/`upsert_frontmatter_key`, zero new `vault_writer.py`
+primitives), a bounded `rename_threads()` fan-out extension for a
+zero-staleness-window guarantee (extends `ADR-049` Decision 2), and — found
+independently, not named by the story — a `vault_indexing.py` extension so
+`outgoing_wikilinks` also scans frontmatter string values, not body text
+alone, closing a real gap that would otherwise have made the story's own
+"already-shipped backlinks panel/graph view surfaces this automatically"
+premise false. `ADR-055` (`REQ-SB-74`) — confirms, by direct reading, that
+the batched-per-Customer multi-target Pending Approval shape needs ZERO
+change to `pending_approval_registry.py`/`pending_approvals_router.py` (an
+opaque `payload` dict was already fully generic); a new `compass_client.
+detect_customer_for_thread` (narrower sibling of `classify_task`); a new
+`vault_writer.list_customer_folders()` enumeration; and a new generic
+`vault_writer.move_okf_directory()` cross-parent archival-move primitive
+(`Work/Archive/Customers/` already provisioned, `REQ-SB-70-US-01`). See "The
+Librarian — Bidirectional Thread ↔ Message Linking" and "The Librarian —
+Customer Backfill" below, both appended directly after "`process_staged_
+email` Retargeted onto Stage 1/Stage 2 Composition."
+
+**Previously:** 2026-08-19 (`BUGFIX-06-US-01` architect pass, `/plan-tasks`
+step 1 — "Meeting Cockpit resolves plain wikilink-string attendees to real
+Person info instead of 500ing (`BUG-027` fix)": no new ADR — the fix
+composes two already-`Accepted`, already-live primitives at a second call
+site (`vault_writer.py`'s existing wikilink-stripping regex, promoted from
+private `_WIKILINK_PATTERN` to public `WIKILINK_PATTERN` per this project's
+own "promote a private `data_access` helper to public the moment a second
+layer needs it" pattern, `MEMORY.md`; and `vault_indexing.get_index()`'s
+existing stem-keyed lookup, the same one `resolve_people_chips` already
+performs for the subject note itself) — no new tool, framework, or
+layering boundary. Also corrects a stale architectural claim: Meeting
+`attendees` was documented (REQ-SB-54 section, below) as sharing Email
+`recipients`'s JSON-encoded `list[dict]` string shape; direct reading of
+`meeting_classification.py`'s real, current write path confirms Meeting
+`attendees` has always actually been written as a plain `list[str]` of
+wikilinks — that claim never matched Meeting's real, shipped behaviour.
+See "Meeting & Inbox Cockpits" → `people.py` extended bullet, and the
+correction bullet appended after the REQ-SB-54 "OKF nested actor-
+provenance" bullet, both below.
+
+**Previously:** 2026-08-19 (`BUGFIX-05-US-01` architect pass, `/plan-tasks`
+step 1, re-opened AGAIN to resolve `ESC-056` — `T04`'s own live
+verification of `AC-01` found that `ADR-052`'s migration mechanism, though
+a correct, lossless shape migration on its own, does not survive being
+composed with `synthesize_thread` in the SAME pipeline tick: a
+freshly-migrated flat Thread's `messages/` starts empty, so the very next
+`synthesize_thread` call regenerates `## Summary` by full reconstruction
+from just the one new message, silently overwriting the flat note's own
+real, substantive pre-migration Summary. One new `ADR-053`: a one-time,
+self-consuming `pre_migration_summary.md` sidecar file —
+`migrate_flat_thread_to_directory` writes the flat note's pre-migration
+`## Summary` to it (verbatim, outside `messages/`, so it never pollutes
+classification/participants/message-count); `synthesize_thread` folds it
+into its SAME existing Compass call as prior-history grounding, then
+renames it in place to `pre_migration_summary.consumed.md` on success
+(archive-not-delete, never fed twice). Confirmed by direct reading that
+`## Summary` is the only at-risk section; does not reopen `ADR-048`'s own
+"full reconstruction, never a rolling/incremental delta" design — this is
+a narrow, one-time exception for genuine pre-migration history, not a
+standing rolling-context mechanism. See "Migration content-preservation —
+the `pre_migration_summary.md` sidecar" below, appended directly after
+"Legacy flat-shape Thread recognition — self-healing migration on first
+touch."
+
+**Previously:** 2026-08-19 (`BUGFIX-05-US-01` architect pass, `/plan-tasks`
+step 1, re-opened to resolve `ESC-055` — the decomposer's own same-day
+finding that `ADR-051`'s composed-function rewire alone does NOT close
+`AC-01`, `BUG-026`'s duplication facet: one new `ADR-052`, narrowing
+`ADR-049` Decision 1's own "purely read-only" framing for one case only —
+`resolve_thread_directory()` gains a second scan tier recognizing a
+legacy, pre-redesign FLAT `Work/Threads/<name>.md` Thread note (which
+`list_thread_notes()`'s own directory-shaped-only glob structurally cannot
+see) and migrates it, self-healing and one-time, to the standard directory
+shape via a new `migrate_flat_thread_to_directory` primitive before
+returning it — confirmed necessary, not just sufficient, by direct reading
+of `synthesize_thread`'s own update-branch code, which would otherwise
+silently share ONE `messages/`/`files/` folder across every unmigrated flat
+Thread. Does NOT retroactively fix the one already-diverged, already-live
+duplicate found (`conversation_id ED0954959F6F4A4C88F9E2ACA3D7113A`) — by
+design; that is a separate, deferred data-remediation decision, recommended
+for the Librarian's own future housekeeping scope, not this story (see
+`ESC-055`'s resolution note). See "Legacy flat-shape Thread recognition —
+self-healing migration on first touch" below, appended directly after
+"Thread lookup — frontmatter-based, again."
+
+**Previously:** 2026-08-19 (`BUGFIX-05-US-01` architect pass, `/plan-tasks`
+step 1 — "`process_staged_email` retires legacy `thread_match_merge` so
+Threads no longer duplicate or orphan on new messages (`BUG-026` fix)": one
+new `ADR-051`, partially superseding `ADR-043` points 1 and 3 (the
+live-execution/topology halves only) — `process_staged_email`'s own
+underlying implementation (`email_capture_pipeline.run_email_capture_
+pipeline`, same name/module/zero-arg call shape, `skill_tools.py`
+untouched) is retargeted from invoking the module's compiled `StateGraph`
+(and, through it, the still-buggy `thread_match_merge`) onto a plain,
+sequential composition of Stage 1 (`capture_raw_thread_messages`) + Stage 2
+(`synthesize_thread`) — both already-shipped, already-correct (`REQ-SB-71-
+US-02`) — with the old graph's three OTHER real branch effects that have no
+equivalent anywhere in the `REQ-SB-71`/`REQ-SB-72` redesign
+(`detect_recurring_pattern`, `consult_librarian`, `project_customer_
+synthesizer.resync_project_from_thread`) explicitly re-composed as direct
+calls in that same new function, never re-implemented; `summarize_
+attachment`'s own old role needs no equivalent — it is already superseded
+by the Files/OKF companion mechanism. `email_capture_pipeline.py`'s
+`StateGraph`/`get_job_tree()`/`thread_match_merge` are DEPRECATED, not
+deleted — kept only for `get_job_tree()`'s own read-only Pipeline Job Tree
+introspection (`REQ-SB-65-US-01`), a real, disclosed, now-known-stale
+visualization surface (out of this bugfix's own scope to rebuild). Closes
+`ESC-048`/`ESC-050`/`BUG-026`; `email-capture-pipeline`'s working mode
+flips `supervised → autonomous` once verified live (`T02`). See
+"`process_staged_email` Retargeted onto Stage 1/Stage 2 Composition"
+below, appended directly after "The Librarian Section — First Housekeeping
+Pipeline."
+
+**Previously:** 2026-08-19 (`BUGFIX-04-US-01` architect pass, `/plan-tasks`
+step 1 — "Cockpit chat correctly addresses agents, sends on Enter, updates
+live, and renders rich text (BUG-022/023/024/025 fix)": one new `ADR-050`
+(`react-markdown`, a shared `ChatMessageText.tsx` component, and a
+default-safe, no-raw-HTML sanitization posture — the first real delivery of
+`REQ-SB-32`, never actually spec'd/built before this pass, per this same
+story's own `ESC-053` finding); three further fixes composing already-
+`Accepted` mechanisms with no new ADR — `threads.py::send_user_message`
+gains an optional `addressed_agent_ids` parameter/request-body field so an
+`@mention`ed message dispatches only to the mentioned agent(s) (reusing
+`REQ-SB-49-US-01`'s existing frontend mention resolution as the addressing
+signal, never a second parser), `Cockpit.tsx`'s chat input becomes a real
+`<form onSubmit>` mirroring `AgentDetailPanel.tsx`'s own working precedent,
+and a `sending`/typing-dot pending-state UI plus reuse of the send
+response's own already-returned thread data replace the previous silent
+post-send `reload()` (no SSE/polling/websocket introduced or needed — the
+existing synchronous per-request Cockpit dispatch already returns full
+post-turn state). See "Cockpit Chat — Addressed-Reply Dispatch,
+Send-on-Enter, and Pending-State Live Update" and "Chat Rich-Text
+Rendering — `react-markdown`" below, both appended directly after "Cockpit
+Person-Directed Instruction."
+
+**Previously:** 2026-08-18 (`REQ-SB-72-US-01` architect pass, `/plan-tasks`
+step 1 — "The Librarian Section — First Housekeeping Pipeline": new `ADR-049`,
+partially superseding `ADR-048` Decision 3's own "resolve_thread_note_path
+stays a deterministic existence check, permanently" sub-decision only (every
+other part of Decision 3 — Thread stays directory-shaped, permanently keyed by
+`conversation_id`, Stage 1/Stage 2 split, write-once raw messages — is
+unaffected) — a new "Librarian" Section/`librarian-housekeeping` Agent (via
+the EXISTING, unmodified `section_registry.create_section`/`set_agent_section`
+mechanism, `REQ-SB-18`/`ADR-014`) housing this project's first autonomous,
+SCHEDULED housekeeping pipeline (a real, disclosed, deliberate reversal of
+`REQ-SB-70`/`REQ-SB-71`'s own standing no-scheduler constraint), reusing the
+EXISTING `app/api/email_poc_router.py` for five new operator-triggerable
+endpoints; a new shared `resolve_thread_directory()` primitive retargets
+`resolve_thread_note_path`/`raw_message_note_path` back to a frontmatter-based
+scan over `list_thread_notes()` (the THIRD swing of this project's own Thread-
+matching mechanism: `ADR-046` frontmatter-scan → `ADR-048` deterministic-path
+→ now back to frontmatter-scan, justified by real steady-state capture volume,
+~10 emails/hour, cheap enough to scan; bulk/retrofit operations may still
+compose the deterministic path directly), letting a new whole-directory
+`rename_thread_directory` primitive rename a Thread to a human-readable
+`<date> <subject>` name with `messages/`/`files/` moving atomically, byte-for-
+byte unchanged, and the `<slug>/<slug>.md` invariant preserved; a new Files/
+OKF backfill Job (reusing `write_file_companion` unchanged) plus a new,
+structured `## Files` body section; `## Related` ownership transfers wholesale
+from `email_classification.synthesize_thread` (its own allow-list entry
+narrowed to `## Summary` alone, in the SAME change that registers the
+Librarian's own new entry — never both simultaneously) to a new Librarian Job
+populating real Person/Company wikilinks; a new company-mention-detection
+Compass call (technique-only reuse of `compass_client.summarize_content`,
+never `determine_placement_and_file` itself — a different-shaped problem),
+re-checked in Python against live `known_customers`/`known_partners` before
+ever auto-creating (`ensure_customer_hub_note`, unchanged) or proposing a new
+Pending Approval (`propose_librarian_company_link`, mirroring `REQ-SB-63`'s
+own `_create_cross_cutting_proposal`/`finalize_cross_cutting_update` shape).
+A real, newly-discovered, ESCALATED consequence against the still-live,
+`supervised`-only `thread_match_merge` pipeline (`ESC-048`) is disclosed, not
+fixed, by this pass — see `ADR-049` Consequences and `ESCALATIONS.md` →
+`ESC-050`. See "The Librarian Section — First Housekeeping Pipeline" below,
+appended directly after "Vault Base Provisioning + Redesigned Email/Meeting
+Capture."
+
+**Previously reviewed:** 2026-08-18 (`REQ-SB-70-US-01`/`REQ-SB-71-US-01/-02/-03`
+architect pass, `/plan-tasks` step 1 — "Vault Base Provisioning +
+Redesigned Email/Meeting Capture": new `ADR-048`, covering all four stories
+in this batch as one coherent redesign — a new idempotent `app/business/
+vault_provisioning.py` (mirrors `vault_migration.py`'s own module shape,
+NOT a migration — no archive, no wipe); a new, composed-alongside `app/
+data_access/section_ownership.py` giving `vault_writer.replace_body_
+section` a real, code-enforced, required `caller` keyword parameter checked
+against a hand-maintained per-caller allow-list, with human-owned headers
+(`## Personal Notes`/`## Actions`) unconditionally, structurally
+unwritable by any caller regardless of that caller's own registered
+allow-list; Thread becomes a directory (`Work/Threads/<slug-of-
+conversation_id>/`, permanently deterministic — reverting `ADR-046`
+Decisions 6/7's human-readable/renamable filename mechanism, no longer
+needed once the human-readable identity lives in frontmatter instead of
+the directory name) holding an immutable, write-once raw message note per
+email under `messages/` plus a distilled concept file (`## Summary`/
+`## Personal Notes`/`## Actions`/`## Related`); two new, independently-
+triggerable, no-shared-lock capabilities (`capture_raw_thread_messages`,
+zero-Compass; `synthesize_thread`, Compass-backed) of the EXISTING
+`email-capture-pipeline` Agent-tier identity, composed together by the
+EXISTING scheduled `pull_email`/`process_staged_email` capability ids
+(no new scheduler wiring); a new, generic `files/`-companion primitive
+(renamed from `attachments/`) giving every captured file its own
+OKF-lite note; Meeting's one-time/recurring split reuses the EXISTING
+`/poc/classify-meetings` endpoint (no new endpoint), recurring series
+keyed by `GlobalAppointmentID`, raw invite boilerplate parsed transiently
+for `teams_link`/`dial_in` then discarded, never persisted; Person notes
+retargeted to nest under their primary Customer
+(`Work/Customers/<slug>/People/<slug>.md`), a second, narrow extension of
+`ADR-004`'s folder-vs-tag boundary for Person only, with a vault-wide
+`find_person_note_path` lookup so an already-existing note is reused
+(never duplicated/moved) and a name-derived dedup key closing
+`meeting_classification.py`'s own silent no-email-attendee skip,
+falling back to the existing flat `Work/People/` location when no
+Customer match exists (operator-confirmed 2026-08-18); and a generalized,
+fully recursive `vault_writer.list_all_note_paths()` replacing three
+hardcoded globs with one bounded scan. See "Vault Base Provisioning +
+Redesigned Email/Meeting Capture" below, appended directly after "Vault
+Migration."
+
+**Previously reviewed:** 2026-08-18 (`REQ-SB-59-US-01` architect pass,
+`/plan-tasks` step 1 — "Full Vault Migration to the New Knowledge Model":
+new `ADR-047` — a new one-time-migration module,
+`app/business/vault_migration.py` (fifth instance of the existing
+`tag_backfill.py`/`vault_restructure.py`/`partner_hub_linking.py`
+retrofit-module precedent), introduces this project's first
+archive-not-delete pattern (`.second-brain/migration_backup/
+<run-timestamp>/`) built entirely from the already-`Accepted`, unmodified
+`vault_writer.move_note_and_attachments` primitive; resolves `ESC-046`
+(the legacy-flat-vs-OKF-directory Customer filename-stem collision) as a
+direct, in-scope consequence of Customer note regeneration rather than a
+separately deferred bugfix; reuses `project_customer_synthesizer.
+synthesize_customer`'s existing `detect_customer_durable_fact`/Pending-
+Approval gate unmodified for pre-migration content, deliberately never a
+migration-only auto-write bypass; reuses existing, already-parametrized
+Outlook-COM read functions (`list_recent_mail`/`list_calendar_events`)
+with operator-supplied large history-window values instead of inventing a
+new "full history" primitive. See "Vault Migration — One-Time Full Vault
+Migration to the New Knowledge Model" below, appended directly after
+"Project & Customer Synthesizer."
+
+**Previously reviewed:** 2026-08-18 (`REQ-SB-58-US-01` architect pass,
+`/plan-tasks` step 1 — "Customer/Project-Aware Expert (Glimpse-First
+Answers)": extends `vault-qa` with a new `app/business/
+glimpse_first_qa.py` business module plus one new, `vault-qa`-gated
+`graph.py` node (`retrieve_memory -> glimpse_first_context -> call_model`)
+that reuses `vault_search.search()` (`ADR-026`) for entity resolution
+(rank-1-result-only, zero new matching logic), resolves the matched
+Customer/Project's own OKF concept-file path directly from the search
+index (`ADR-024`), and injects both `## Glimpse` and `## Background`
+(`vault_writer.read_body_section`, `ADR-042` point 2) as one `SystemMessage`
+ahead of the model call — no durable-vs-current-status classifier
+invented; `## Background` structurally carries every durable fact,
+`## Glimpse` structurally carries only current status, by `ADR-042`'s
+own already-decided split. Evidence drill-down (Scenario 3) needs no new
+tool — `vault-qa`'s existing `retrieve_notes_in_agent_scope` (`REQ-SB-29`)
+stays the sole raw-evidence path, correlated via the Glimpse's own
+already-embedded `[[wikilink]]` stems; a new ungated "read any note"
+tool was considered and rejected as a deviation from `REQ-SB-29`'s own
+scope-enforcement boundary. `REQ-SB-33`'s grounding instruction
+(`state.py::history_entries_to_messages`) gains one additive clause
+naming this new context source, mirroring `REQ-SB-66`/`ADR-044`'s own
+"additive extension, no ADR" precedent. **No new ADR** — every composed
+primitive (`ADR-015`/`ADR-024`/`ADR-026`/`ADR-042`) is unmodified in its
+own contract, and no new MCP tool is registered. See "Glimpse-First
+`vault-qa` Answers" below, appended directly after "File upload, Compass
+summarization & Vault Filing Expert handoff."
+
+**Previously reviewed:** 2026-08-17 (`REQ-SB-69-US-01` architect pass,
+`/plan-tasks` step 1 — "Decoupled Email Pull + Human-Readable,
+Graph-Connected Thread Notes": new `ADR-046`, superseding `ADR-043`
+points 2 and 7 and `ADR-042` point 5 only — `Fetch` retired from the
+pre-graph batch step, replaced by an independently-dispatched,
+incrementally-staged `pull_email` capability writing to a new
+`.second-brain/email_staging/` store, plus a second, Outlook-lock-free
+`process_staged_email` capability; Thread filenames become
+human-readable/collision-safe via a frontmatter-scan lookup (no
+persisted index); a real, previously-latent Pending-Approval
+stale-path gap (found by direct reading, not assumed) is fixed
+alongside it; dates split into a machine-parseable/human-readable
+sibling pair; a new, deterministically-regenerated `## Related` body
+section carries honest Customer/Person/Project wikilinks. See
+"Decoupled Email Pull + Human-Readable, Graph-Connected Thread Notes"
+below, appended directly after "Non-Blocking Manual Capture Dispatch +
+Scheduling Monitor."
+
+**Previously:** 2026-08-17 (`BUGFIX-03-US-01` architect pass, `/plan-tasks`
+step 1 — "Thread attachment capture and collision safety (BUG-014 fix)":
+resolves `ESCALATIONS.md` → `ESC-041`'s own open contradiction between
+`BUG-014`'s stated gap-1 root cause ("`outlook_com.py` never reads a
+`MailItem`'s `Attachments` COM collection at all") and the real, current
+code — `_extract_attachments`/`list_recent_mail` already populate a real
+`"attachments"` key on every email, confirmed false, not newly disputed
+here. Direct re-reading of the LIVE `Summarize-Attachment` Job chain
+(`email_capture_pipeline.py`'s `_summarize_attachment_node` →
+`email_classification.summarize_attachment` →
+`vault_writer.write_attachments`) finds the REAL, confirmed mechanism: an
+attachment that isn't saved (oversized, over `outlook_com.py`'s 20MB
+`_MAX_ATTACHMENT_BYTES` cap) or can't be summarized collapses to a
+`summary_error` the pipeline node silently discards — no `## Attachments`
+line is ever appended, and for the oversized case specifically,
+`write_attachments`'s own `.mkdir()` call is never reached, so the
+attachments folder itself never comes into existence — a single mechanism
+that independently explains BOTH of `BUG-014`'s own live-observed
+symptoms (missing `## Attachments` section AND missing `attachments/`
+folder) with no unverifiable assumption about Outlook's own COM behavior.
+Corroborated by direct comparison against the still-live sibling
+`classify_recent_emails` path, which already carries an honest
+"not saved — exceeds the size cap" fallback line the new Thread pipeline
+never inherited. **No new ADR** — a bugfix within `ADR-043`'s
+already-`Accepted` Job/Pipeline shape, restoring an already-established
+honest-signal convention and mechanically extending `write_attachments`,
+not a new tool/framework/structural boundary. `ESC-041` marked
+`Resolved` (this pass's own finding is the resolving artefact); one
+residual, non-blocking live-diagnostic item (which exact real-world cause
+applied to the ONE already-captured historical Thread — oversized cap
+vs. a OneDrive/SharePoint cloud-attachment link vs. a stale-dedup
+timing artifact from `SPRINT-049`'s own build-out) is folded into `T01`'s
+own scope for the coder to confirm live, mirroring
+`REQ-SB-56-US-01-T00`'s own precedent — it does not change the fix's
+design, only which of several already-covered honest-signal paths fires
+for that one historical note. See "Thread Attachment Capture —
+Silent-Loss Fix + Per-Message Collision Safety" below, appended directly
+after "Real Thread Summary Synthesis + Opening-Line + One-Shot Backfill."
+
+**Previously:** 2026-08-17 (`REQ-SB-68-US-01` architect pass,
+`/plan-tasks` step 1 — "Non-blocking manual capture dispatch + a real
+Job/Scheduling monitor on System Health": corrects a material grounding
+error found by direct re-reading of the REAL current
+`agents_router.py`/`skill_tools.py`/`skill_registry.py` (the story's own
+Context named `_execute_action`/`_ACTION_HANDLERS` as the live blocking
+call site; that path is actually confirmed-dead code today — both of its
+only two entries are also `skill_tools.SKILLS` members, so every real
+caller branches away from it before it is ever reached). The REAL manual
+`run_capture_now` dispatch path (`_invoke_capability` →
+`skill_registry.invoke_skill` → `_dispatch_skill`, fully synchronous, no
+thread offload) is rerouted through `agent_schedule_registry.
+dispatch_with_shared_lock` — an already-`Accepted` (`ADR-037`),
+already-proven mechanism that gains the fix its own non-blocking dispatch
+AND the shared Outlook-COM lock in one stroke, closing `ADR-037`'s own
+stated-but-unachieved "every real trigger source" goal. A new sibling
+`.second-brain/job_run_state.json` store (composed via `vault_writer.py`,
+written from inside `dispatch_with_shared_lock`) backs a new
+`"scheduling"` key on the existing `GET /system-health`, which replaces
+`SystemHealthPage.tsx`'s existing "Last capture run" region outright (not
+coexisting with it) with a richer per-job Scheduling section for the
+three capture-style jobs `agent_schedule_registry`'s shared lock already
+covers. **New ADR** — `ADR-045` — MUST-FLAG trigger 3 fired;
+`gate: flagged`, `REVIEW-QUEUE.md` entry added. See "Non-Blocking Manual
+Capture Dispatch + Scheduling Monitor" below, appended directly after
+"Universal Prompt Override + Guardrails Placeholder."
+
+**Previously:** 2026-08-17 (`REQ-SB-67-US-01` architect pass,
+`/plan-tasks` step 1 — "Real Thread Summary Synthesis + Opening-Line +
+One-Shot Backfill": adds exactly ONE new real Compass call inside the
+already-existing `thread_match_merge` Job (no new Job, no new graph
+node/edge — `email_capture_pipeline.py`'s compiled `StateGraph` topology
+is completely unchanged), reversing a story-level (not ADR-level)
+Constraint from the already-`Done` `REQ-SB-55-US-01`'s own text via a new
+story, per `Implementation/Pipeline.md` hard rule 1. **No new ADR** —
+confirmed by direct re-reading, `ADR-043`'s own seven numbered Decision
+points never assert "this Job never calls Compass" as an architectural
+rule themselves; that was purely `REQ-SB-55-US-01`'s own story-level
+scoping text. This pass also extends `ADR-044`'s own already-`Accepted`,
+self-anticipated Consequence — `thread_match_merge` gains a real Compass
+call site for the first time, so its Job-Settings `GET` response's
+hand-maintained Prompt-omission exclusion set shrinks from
+`{"thread_match_merge", "detect_recurring_pattern"}` to
+`{"detect_recurring_pattern"}`, a mechanical update that ADR's own
+Consequences already named verbatim. `gate: clear` — no MUST-FLAG
+trigger fired. See "Real Thread Summary Synthesis + Opening-Line +
+One-Shot Backfill" below, appended directly after "Pipeline Job Tree
+Visualization."
+
+**Previously:** 2026-08-16 (`REQ-SB-66-US-01` architect pass,
+`/plan-tasks` step 1 — "Universal Prompt Override + Guardrails
+Placeholder — Agents and Pipeline Jobs": resolves the story's own
+genuinely-open Job-Settings-detail-view data-source question as
+**Option A — a new, dedicated `GET`/`PATCH
+/agents/{agent_id}/jobs/{job_id}/settings` pair, paired with a
+genuinely separate, minimal frontend shell — never a widening of
+`agents_router.py`'s Agent-detail resolution or `AgentDetailPanel.tsx`'s
+shared tab machinery.** **New ADR — `ADR-044`** (`gate: flagged`,
+trigger-3): this is a genuine, material narrowing of `ADR-041`'s own
+deferred "whether/how a Job earns its own surface" Consequence and
+`ADR-043` point 6 ("Jobs stay non-addressable in every respect"), not
+pure-read/zero-boundary-change the way `REQ-SB-65-US-01`'s own,
+structurally similar Option A/B choice was — a Job becomes clickable AND
+its Settings become editable/persisted for the first time, and
+`AgentDetailPanel.tsx`'s real, current tab set has no existing
+tab-REMOVAL mechanism to reuse (confirmed by direct reading, a
+correction of the story's own Option B framing). A REVIEW-QUEUE pointer
+was written; the decomposer still runs. See "Universal Prompt Override +
+Guardrails Placeholder — Agents and Pipeline Jobs" below, appended
+directly after "Pipeline Job Tree Visualization."
+
+**Previously:** 2026-08-16 (`REQ-SB-65-US-01` architect pass,
+`/plan-tasks` step 1 — "Pipeline Job Tree Visualization": resolves the
+story's own genuinely-open, `/spec`-flagged (trigger-8) data-source
+question as **Option A — a new, read-only endpoint that inspects the
+real, compiled `email_capture_pipeline.py` `StateGraph`'s own structure,
+via `langgraph`'s own already-installed, already-public `Pregel.get_graph()`
+introspection API, confirmed by direct reading of the installed package
+(`langgraph==1.2.11`), not assumed.** Jobs stay fully non-addressable —
+`ADR-043` point 6 stays intact, not reopened. **No new ADR** — a new READ
+path over an already-compiled object, inside `ADR-043` point 1's own
+already-established module boundary, returning data through the
+already-established `api → business` layering (`ADR-003`), reusing
+`layoutAgents.ts`'s already-built, already-generic tree/dependency-edge
+layout math with zero changes to it. See "Pipeline Job Tree Visualization
+— read-only `StateGraph` introspection" below, appended directly after
+"Email Capture & Threading Pipeline — First Concrete Pipeline." `gate:
+flagged` (trigger-1, material assumption — the concrete endpoint route/
+response shape and the frontend merge/adapter strategy were not specified
+by the story/PRD, both explicitly left "for the architect to confirm";
+this pass designed and verified them; a REVIEW-QUEUE pointer was written)
+— the decomposer still runs.)
+
+**Previously:** 2026-08-16 (`REQ-SB-63-US-01` architect pass,
+`/plan-tasks` step 1 — "The Librarian": generalizes the already-`Done`
+`vault_filing_expert.py`/`ADR-021` from one caller (chat-uploaded
+attachments) into a plain function any business-layer module already
+composes, confirmed by direct inspection of three real existing call sites,
+plus one new caller (a `REQ-SB-55` Pipeline Job) and one new decision
+outcome (cross-cutting-update detection). **No new ADR** — every piece is a
+parameter-additive extension of `ADR-021` point 5's own already-`Accepted`,
+already-self-anticipated Tier-2-shaped dispatch pattern, plus `ADR-004`'s
+already-`Accepted` tag idiom for the deferred write itself (an additive
+`customer/<slug>`/`partner/<slug>` tag, never `captures.md`, never a new
+evidence file). See "The Librarian — Vault Filing Expert generalized to a
+Pipeline-Job caller + cross-cutting-update detection" below, and the
+amendment note appended to "Email Capture & Threading Pipeline — First
+Concrete Pipeline"'s own Fork/merge-shape bullet (a new, seventh,
+`consult_librarian` branch Job). `gate: flagged` (trigger-1, material
+assumption — the concrete shape of "the deferred cross-reference write"
+was not specified by the story/PRD; a REVIEW-QUEUE pointer was written) —
+the decomposer still runs.)
+
+**Previously:** 2026-08-16 (`REQ-SB-55-US-01` architect pass,
+`/plan-tasks` step 1, `ADR-043` — the first concrete Pipeline built under
+`ADR-041`'s directional taxonomy: a new `app/business/pipelines/` subpackage
+(`email_capture_pipeline.py`) owns a `langgraph.graph.StateGraph` compiled
+from `Classify`→`Thread-Match/Merge`→`Route-to-Project` plus two branch Jobs
+(`Summarize-Attachment`, `Detect-Recurring-Pattern`), run once per fetched
+email (`Fetch` itself stays a pre-graph, per-tick batch step); every Job's
+real logic stays a plain, LangGraph-ignorant function in
+`email_classification.py`, composed — not reimplemented — from the existing
+`outlook_com`/`compass_client` calls. Mid-pipeline human approval (Scenario
+3/5) is resolved as a flat-JSON Pending-Approval-payload deferred write via
+`pending_approvals_router.py`'s existing `_APPROVAL_HANDLERS` table — never a
+LangGraph checkpointer suspension — concretely closing `ADR-041`'s own
+left-open "checkpointer durability" question for this Pipeline. One new
+Agent-tier identity (`type: "worker"`) replaces `email-capture` 1:1 in
+`agent_registry.py`; none of the six Jobs get their own registry entry, Map
+node, or Working Mode, closing `ADR-041`'s own "does a Job earn its own
+surface" question the same way: it doesn't, here. Thread's own baseline
+frontmatter (`ADR-042` point 5) gains `customer`/`project`, plus
+`participants`/`last_message_at` — claiming, on `REQ-SB-56`'s behalf, the
+field-ownership decision that section's own Notes left flagged for
+whichever story's decomposer reached it first. See "Email Capture &
+Threading Pipeline — First Concrete Pipeline" below, and the amendment note
+appended to "Meeting → Thread Linking", below. `gate: flagged` (trigger-3,
+`ADR-043` human review) — the decomposer still runs.)
+
+**Previously:** 2026-08-16 (`REQ-SB-56-US-01`/`REQ-SB-57-US-01` architect
+pass, `/plan-tasks` step 1 — no new ADR for either, both extend
+[ADR-042](ADR.md) as parameter choices within its already-Accepted data
+model, not new architectural boundaries. Proposes concrete, buildable
+answers to the two open trigger-8 judgement calls the analyst pass
+explicitly left for the architect: (1) `REQ-SB-56`'s Meeting→Thread
+fallback-link thresholds — attendee-overlap (≥2 shared attendees, or 1
+shared attendee when it's the entirety of the smaller side's list) AND
+date-range proximity (meeting start within 7 days of the Thread's own
+most recent message), both self-excluded and both required together,
+grounded in this vault's own real observed thread cadence; requires two
+new, purely additive Thread frontmatter fields (`participants`,
+`last_message_at`); (2) `REQ-SB-57`'s "genuinely concludes" History-line
+bar — a concrete Project `status` enum (`active|on_hold|won|lost|renewed`)
+and a transition-based trigger (`log.md` gains a line only on a
+transition INTO `won`/`lost`/`renewed`, never on `active`/`on_hold`).
+**Both proposals are recorded as PROPOSALS awaiting operator confirmation
+in their own stories' `## Notes` — neither gate is cleared by this pass.**
+See "Meeting → Thread Linking — ConversationID Primary Strategy,
+Attendee-Overlap/Date-Proximity Fallback" and "Project & Customer
+Synthesizer — the 'genuinely concludes' History-line bar", both below.)
+
+**Previously:** 2026-08-16 (`REQ-SB-54-US-01` Vault Knowledge Model
+Redesign architecture pass, ADR-042 — `Work/Threads/` (one note per
+Outlook `ConversationID`, full-regeneration-on-every-update) replaces
+per-email notes; Customer AND Project each become a small OKF v0.2-
+conformant DIRECTORY (`index.md`/`<slug>.md`/`log.md`/`captures.md`),
+Project nested one level inside its own Customer's directory (operator-
+confirmed, `ESC-037` Resolved); a new header-scoped `replace_body_section`
+primitive replaces the fixed-byte-offset `insert_body_line_if_missing`
+for anything meant to regenerate (a concept file's own Glimpse/Background
+sections, a Thread's own Summary section); OKF's nested `generated`/
+`verified` actor fields reuse the already-`Accepted` JSON-encoded-string
+frontmatter convention (`ADR-036` point 7's `recipients`/`attendees`
+precedent), extended from list-of-dicts to a single dict; extends, does
+not reopen, `ADR-004`'s "Customer is a tag, never a folder level" rule —
+see "Vault Knowledge Model Redesign — Threads, Manual Captures, OKF-
+Conformant Customer & Project Directories", below. **Flagged consequence
+for whoever picks up `T04`/`T05`:** `list_all_note_paths()`'s current
+one-level `Work/*/*.md` glob cannot discover the new two-levels-deep
+directory shape — needs an explicit recursion extension, see that
+section's own Consequences note.)
+
+**Previously:** 2026-08-15 (ADR-041 — Agent/Pipeline/Job/Hub domain-model
+taxonomy adopted, direct operator-driven discussion, not a single
+requirement's own `/plan-tasks` pass: a Pipeline is now a user-extensible
+DAG of lightweight Jobs, executed on LangGraph, authored via a native
+React Flow builder — see "Agent / Pipeline / Job / Hub Domain Model —
+Taxonomy" near the top of this file. Supersedes the REQ-SB-53 Capture
+Pipeline Split pass immediately below this entry — that section is now
+marked SUPERSEDED in place, kept for historical record only.)
+
+**Previously:** 2026-08-15 (REQ-SB-53-US-01/US-02/US-03 Capture Pipeline
+Split architecture pass, ADR-040 — Email/Meetings/To-Do capture split into
+Pull/Tag/Link/Store agent stages behind a new shared, capture-type-agnostic
+`app/business/capture_pipeline.py` orchestration engine; see "Capture
+Pipeline Split — Pull/Tag/Link/Store Agent Stages" below, now marked
+SUPERSEDED by the ADR-041 pass above. Superseded footer text from the
+prior review retained beneath it — see that section for the ADR-039 pass.)
+
+**Previously:** 2026-08-14 (REQ-SB-46-US-01 Agent Creation Wizard
+Redesign architecture pass, ADR-039 — the wizard's entry point moves to a
+new bottom-right Agents Map `.map-fab` opening a popup modal with a
+`.wizard-step-bar` (4 steps), built from new CSS classes composed entirely
+of this codebase's own existing design tokens, deliberately not a reuse of
+`.side-panel-overlay`/`.side-panel`'s own edge-anchored slide-in selectors
+(distinct-shape requirement); `CreateAgentWizard.tsx` renamed/restructured
+to `CreateAgentWizardModal.tsx`, its existing per-type `create_agent`/
+grant/assign call sequences preserved unchanged, only regrouped into 4
+steps per the story's own confirmed field-to-step mapping; Settings' own
+"+ Create agent" affordance retired (sole entry point becomes the Map
+FAB); new shared `SkillsTree.tsx` (mode-parameterized: `manage` for
+`AgentDetailPanel.tsx`'s existing grant/revoke UI, `select` for the
+wizard's new Step 3 multi-select) is originated by `REQ-SB-48-US-01-T02`
+and consumed here via this codebase's first cross-story frontend
+`depends_on` edge, rather than duplicated; Step 4's Trigger choice stays
+recorded-intent-only (new additive `trigger` field on `POST /agents`,
+mirroring Domain/Purpose's `settings` kv-list mechanism), composing
+`REQ-SB-47-US-01`'s now-real Schedule tab without building any of its
+configuration UI inline; folding `REQ-SB-51-US-01`'s `is_background_agent`
+toggle into the wizard was considered and declined (no locked AC needs it,
+and it would add an avoidable dependency on that story's own not-yet-`Done`
+backend field) — see "Amendment — Popup Modal Redesign, shared
+`SkillsTree.tsx` extraction, Trigger/Background-Agent composition" under
+"Agent Creation Wizard", below)
+
+**Previously:** 2026-08-14 (REQ-SB-50-US-01 Tags and Locations
+Autocomplete architecture pass, no new ADR — a purely additive composing
+endpoint over two already-`Accepted`, already-shipped read-only
+enumeration functions, the same "ordinary same-shape extension" posture
+already established repeatedly in this file: new `GET /vault-search/
+scope-suggestions` → new `vault_search.list_scope_suggestions()`, calling
+its own existing `list_tags()` plus `vault_writer.list_known_kinds()`
+directly (mirroring `search()`'s own existing direct-`vault_writer`-call
+precedent), returned as two distinct, un-merged `tags`/`folders` lists,
+not flattened; `AgentDetailPanel.tsx`'s already-shipped Vault Scope
+`kv-row` (`REQ-SB-29-US-01-T05`) gains a client-side-filtered suggestion
+dropdown sourced from it, fetched once per agent-switch alongside
+`fetchSections()`/`fetchProviders()`, with an `onMouseDown`-before-
+`onBlur` interaction-order note recorded for the coder — see "Tag/Folder
+Scope Suggestions" under "Browse & Search" and the matching addendum
+under "Agent-to-Tag/Folder Vault Scoping", below) + REQ-SB-49-US-02 Cockpit Person-Directed
+Instruction `@PersonName` architecture pass, ADR-038 — a deliberate,
+gate-preserving carve-out from `ADR-036`'s own "Cockpit bypasses
+`invoke_skill`'s gate by construction" precedent: a new bound tool,
+`propose_person_note_update`, intercepted before the generic
+`execute_tools` node exactly like `ADR-032`'s `record_knowledge_gap`,
+conditionally bound only to an agent with real access (unlike its two
+graph-level siblings' "bind to everyone" shape); a new `mutates: True`
+Skill of the same name, granted to `people-producer`; a new `"cockpit_
+mention"` trigger literal (never a reuse of `"chat"`/`"direct"`/
+`"hub_routed"`/`ADR-037`'s `"scheduled"`) so the FULL existing two-axis
+working-mode gate (`ADR-029`) applies; "propose" is read as a genuine,
+mode-scoped deviation — Supervised needs no extra step (its own Pending-
+Approval "Approve" click already is the confirmation), Manual/Autonomous
+gains a new opt-in `_dispatch_skill(..., already_approved=False)` seam
+(mirrors the existing `agent_id` auto-injection precedent) so the Skill's
+own handler never writes on an unconfirmed direct dispatch, instead
+recording an explicitly confirmable/discardable in-thread proposal (new
+`app/business/cockpit/person_note_proposals.py`, mirrors `cockpit/
+research.py`'s own scoped-list/direct-`vault_writer`-on-Save shape) — see
+"Cockpit Person-Directed Instruction (`@PersonName`)" section, below) +
+REQ-SB-49-US-01 Cockpit Inline `@agent_id`
+Mention architecture pass, no new ADR — purely additive frontend parsing
+over `ADR-036`'s already-Accepted Cockpit mechanism, no new endpoint, no
+new persisted concern: `Cockpit.tsx`'s `chat-input-row` gains send-time
+`@token` extraction (`/@(\S+)/g`) resolved against the SAME candidate list
+its own "Available Agents" panel already renders from (never a second,
+independently-filtered list) by exact, case-insensitive `id`-or-normalized-
+`name` match, each match triggering the existing, unmodified
+`bringInAgent(...)` call before `sendCockpitMessage(...)`, mirroring the
+"+ Bring in" button's own sequencing; a live, prefix-filtered `@`-suggestion
+dropdown reads the same list as the user types; composes with
+`REQ-SB-51-US-01`'s (Ready, not yet built) `isBackgroundAgent` predicate as
+a soft, same-source dependency, not a hard `depends_on` — see "Cockpit
+Inline `@agent_id` Mention" section, below) + REQ-SB-48-US-01 Skills Capabilities Tree —
+Collapsible, Icon-Bearing, Multi-Select Groups by Tool architecture pass,
+no new ADR — a purely additive/presentational upgrade over the
+already-`Accepted` Skills mechanism, not a new mechanism: every
+`skill_tools.SKILLS` entry gains a `"tool": "Outlook" | "Vault" | "Web" |
+"Compass"` field (the analyst's already-resolved taxonomy, confirmed
+accurate by direct re-read against the current, unchanged 11-entry
+catalog — no Skill has been added or removed since `REQ-SB-39`); the field
+is server-side, not a frontend static map, so it stays the single source
+of truth as the catalog grows (`list_skills()`'s existing full-dict
+passthrough and `skill_registry.list_agent_capabilities`'s skill-kind
+branch both carry it through with no new endpoint); the 4 Tool-level icons
+stay a small frontend-only static lookup keyed by `"tool"` (mirrors
+`Sidebar.tsx`'s own existing plain-Unicode-glyph `.nav-icon` convention;
+unlike the Skill catalog, the 4-Tool taxonomy is not expected to grow at
+anywhere near the same rate, so no drift risk from keeping icon glyphs
+frontend-owned); `AgentDetailPanel.tsx`'s flat Capabilities `kv-list` is
+replaced by a new collapsible, multi-select tree grouped by Tool,
+composing N sequential existing single-Skill grant/revoke calls — no new
+bulk endpoint — see "Amendment — Skills grouped by Tool" under "Skills
+Repository — registration & per-agent access", below) + REQ-SB-47-US-01 / REQ-SB-45 Per-Agent
+Scheduler + Shared Outlook-COM Dispatch Lock architecture pass, ADR-037 —
+the shared dispatch lock's canonical home relocates to a new
+`app/business/agent_schedule_registry.py` (generalized from
+`capture_scheduler._capture_run_lock`), not `app/scheduling/`, mirroring
+ADR-029's own "gate lives where every caller can reach it" resolution
+applied to a concurrency primitive instead of a gating decision;
+`capture_scheduler.py` publishes its live `AsyncIOScheduler` INSTANCE into
+that module once at startup rather than `business` importing
+`app.scheduling`, so live schedule add/edit/remove needs no restart; new
+sibling `.second-brain/agent_schedules.json`
+(`"{agent_id}::{capability_id}"`-keyed); the shared lock is explicitly
+scoped **in-process only** — the SPRINT-030 two-process collision that
+motivated REQ-SB-45 stays a deliberate, disclosed, out-of-scope
+operational-hygiene risk, not solved here; `invoke_skill` gains a
+`"scheduled"` trigger literal composing with ADR-029's existing gate
+(Manual + scheduled skips silently, mirroring the blob tick's own
+precedent; Supervised + mutating falls into the existing pending-approval
+branch unchanged); the existing hardcoded hourly blob tick is unmodified
+except for which lock object it acquires, so it and any new per-agent
+schedule targeting the same capture agent correctly serialize;
+`meeting-capture`'s/`todo-capture`'s `run_capture_now` stays the existing
+honest not-available stub, operator-relayed scoping decision, not rebuilt
+— see "Per-Agent Scheduler & Shared Outlook-COM Dispatch Lock" section,
+below + REQ-SB-51-US-01 Background Agents —
+architecture pass, no new ADR — new `app/business/background_agent_registry.py`
+mirroring `working_mode_registry.py`'s exact shape, backed by
+`.second-brain/agent_background_flags.json`; the 3 real capture-pipeline
+Workers backfilled True via a per-id exception set, all others default
+False; a single backend exclusion check inside
+`agent_keywords.list_candidate_agents_for_keyword_match`, and a single
+shared frontend predicate `isBackgroundAgent` used by both `Cockpit.tsx`
+and `layoutAgents.ts`; applies ADR-014/ADR-018's already-Accepted
+"registry composed alongside `agent_registry.py`" shape, one boolean
+concept over — see "Background Agents" section, below + REQ-SB-28-US-01 File upload, Compass
+summarization & Vault Filing Expert handoff architecture pass, ADR-034 —
+new temporary non-vault blob storage under `.second-brain/uploads/` (first
+extension of the flat-file `.second-brain/` convention to raw bytes, not
+JSON); `pypdf` (new dependency) extracts PDF text before Compass ever sees
+it; a new `summarize_content` Compass function mirrors `classify_email`/
+`classify_task`'s shape; the summarization capability is registered as a
+new `summarize-file` Skill through the already-`Accepted` Skills
+extensibility path (`ADR-015`) — this project's first real, non-stub Skill
+implementation; the handoff to the Vault Filing Expert
+(`determine_placement_and_file`) needs zero interface changes; image
+(PNG/JPG) support is explicitly deferred, not built — direct inspection
+confirmed `diagram-understanding` is an unconditional stub
+(`available: False`) and Compass is text-only, so this pass's real scope
+is text-bearing files only (`.pdf`/`.txt`/`.md`); the new upload endpoint
+is an additive sub-resource on `agents_router.py`, never a modification of
+the existing `POST /agents/{agent_id}/chat` JSON contract
+(`REQ-SB-25-US-01`) — see "File upload, Compass summarization & Vault
+Filing Expert handoff" under "In-App Agent Orchestration", below +
+REQ-SB-38-US-01 Agents Map Density Clustering
+architecture pass, no new ADR — confirms and locks the prototype's own two
+previously-flagged-tentative values as final, by direct operator decision,
+not re-derivation: `VISIBLE_SLOT_CAP = 6`, scoped per-(Section × Type-ring);
+see "Agents Map — Density Clustering (REQ-SB-38-US-01)", below + REQ-SB-41-US-01 Agent Overview surface
+architecture pass, ADR-033 — Overview becomes `AgentDetailPanel.tsx`'s new
+default-landing tab (`TABS` gains `'overview'` first; `activeTab` no
+longer defaults to `'chat'`), resolving the operator's own "before... Can
+Chat with it" complaint directly; Purpose region reads the existing
+`settings` kv-list (`"Purpose"`, falling back to `"Domain"`), composing
+`ADR-030`/`ADR-031`'s already-established mechanism, never a display-time-
+derived summary; all 7 shipped agents backfilled with a real, authored
+Purpose settings entry (a static-seed-data edit only, does not touch
+`REQ-SB-37-US-02-T01`'s already-locked Worker `settings=[]` constraint);
+open-knowledge-gap count composed into the Overview for Expert-type agents
+via `ADR-032`'s already-built endpoint, no new endpoint — extends
+`ADR-030`, `ADR-031`, `ADR-032`, reopens none of them — see "Agent Overview
+surface" under "My Day & Agent Panel APIs", below + REQ-SB-40-US-01 Agent Knowledge-Gap Tracking
+& Expert Readiness architecture pass, ADR-032 — a structured, intercepted-
+tool-call decline signal (`record_knowledge_gap`, mirrors `ADR-017`'s
+`request_cross_section_help` precedent) extends `ADR-015`'s conversation
+graph rather than a text pattern-match; a new, dedicated tenth
+`.second-brain/agent_knowledge_gaps.json` store + `app/business/
+knowledge_gap_tracking.py` (deliberately not `agent_activity.py`, whose
+`_ACTIVITY_KINDS` scope stays background-run-only); closing paths compose
+the already-`Done` Vault Filing Expert (`ADR-021`, human-provided answers)
+and delegated knowledge-bootstrap chain (`ADR-023`, directed research)
+unchanged; display is a new, conditionally-rendered "Knowledge gaps" tab on
+`AgentDetailPanel.tsx` gated to Expert-type agents (`/design` skipped for
+this batch, operator-directed) — does not depend on or modify `REQ-SB-41`
+(Agent Overview, still unspecced) — see "Agent Knowledge-Gap Tracking &
+Expert Readiness" under "In-App Agent Orchestration", below + REQ-SB-37-US-03 Agent Creation Wizard —
+Producer-type flow architecture pass, ADR-031 — resolves the PRD's own
+previously-unresolved output-action fork: a Producer's output action is a
+granted output Skill (single-select at creation), not a destination/write-
+mode field; Purpose is stored via `create_agent`'s existing `settings`
+kv-list, mirroring Expert's Domain (`ADR-030`), not a new field, and does
+not depend on REQ-SB-41-US-01 landing first; one minimal placeholder output
+Skill, `write-to-vault-draft`, is seeded into `skill_tools.SKILLS` so the
+mechanism is exercisable — extends `ADR-030`/`ADR-028`/`ADR-029`, reopens
+none of them — see "Amendment — Producer-type flow" under "Agent Creation
+Wizard — entry point, type selector, Expert-type flow", below + REQ-SB-37-US-02 Agent Creation Wizard —
+Worker-type flow (Skills + Vault Scope + Section) architecture pass, no new
+ADR — additive composition of `ADR-030` (`create_agent`/`POST /agents`,
+its sequential-`PATCH`-after-`POST` precedent), `ADR-028`/`ADR-029`
+(unified Skills grant via the already-existing `POST`/`DELETE
+/agents/{agent_id}/skills/{skill_id}` endpoints, unchanged), and
+`REQ-SB-29-US-01`'s additive `PATCH /agents/{agent_id}` `scope` field:
+`POST /agents`'s `type` check is extended to also accept `"worker"`
+(`domain` becomes optional, unused for Worker — `settings` stays `[]`,
+matching the already-`Done` "starts with zero pre-seeded actions"
+precedent); the wizard's Worker step performs the same
+client-validate-before-any-call discipline `REQ-SB-37-US-01-T04`'s Expert
+step already established (Scenario 4/AC-07 precedent), then issues a
+sequential call chain against an already-live `agent_id` — never a
+draft/staged agent record — `POST /agents` → one `POST
+/agents/{agent_id}/skills/{skill_id}` per selected Skill → one combined
+`PATCH /agents/{agent_id}` carrying both `section_id` and `scope` in the
+same call (`AgentAssignmentUpdateBody` already accepts multiple optional
+fields per request, so no second `PATCH` is needed). See "Amendment —
+Worker-type flow" under "Agent Creation Wizard — entry point, type
+selector, Expert-type flow", below + REQ-SB-37-US-01 Agent Creation
+Wizard — entry point, type selector, and the Expert-type flow — architecture pass,
+ADR-030 — `agent_registry.py`'s static `AGENTS` dict becomes `_SEED_AGENTS`
+(byte-identical, unchanged) merged at read time with a new persisted
+`.second-brain/agents_registry.json` overlay (`created_agents`), a new
+`create_agent()` primitive slug-derives a unique `agent_id` via
+`vault_writer.tag_slug`, a new `POST /agents` endpoint in
+`agents_router.py`, and a new `features/agents-map/CreateAgentWizard.tsx`
++ Settings-page entry affordance — supersedes ADR-011 point 2 only, does
+not reopen points 1/3/4 — see "Agent Creation Wizard — entry point, type
+selector, Expert-type flow", below + REQ-SB-39-US-02 unified agent capability
+model, phase 2 — working-mode gate extended to Skills, the 4 mutating
+Actions migrated — architecture pass, ADR-029: the two-axis gate moves
+inside `skill_registry.invoke_skill` itself (not mirrored into
+`agents_router.py`, since `knowledge_bootstrap.py`'s own call site is a
+business module `ADR-003` forbids from reaching into `api`), a new
+ungated `skill_registry._dispatch_skill` primitive backs both the gate's
+own fallthrough and a new Pending-Approvals Approve-endpoint branch,
+`run_capture_now`/`pause_schedule`/`rebuild_person_note`/`build_knowledge`
+join `skill_tools.SKILLS` with `"mutates": True` preserving today's exact
+real/honest-unavailable split, and the migration-grant seed retrofits 5
+real already-shipped agents (`email-capture`, `meeting-capture`,
+`todo-capture`, `people-producer`, `compass-expert`) — see "Amendment —
+unified capability model, phase 2" under "Skills Repository —
+registration & per-agent access", below + REQ-SB-39-US-01 unified agent
+capability model, phase 1 — read-only Actions migrated to Skills —
+architecture pass, ADR-028: `skill_tools.SKILLS` gains a `mutates` field on
+every entry, `skill_registry.invoke_skill` gains a required `trigger`
+parameter threaded through every real call site, `ADR-011`'s chat funnel's
+dispatch step (not the funnel itself) routes migrated ids to `invoke_skill`
+instead of `_invoke_action`, a one-time migration seed retrofits the 4
+real already-shipped agents onto real Skill grants, and a new
+`skill_registry.list_agent_capabilities` aggregator unifies the
+`GET /agents/{agent_id}` capability list — see "Amendment — unified
+capability model, phase 1" under "Skills Repository — registration &
+per-agent access", below + REQ-SB-09-US-01 To-Do Task Capture Pipeline
 architecture pass, ADR-027 — see "Task Notes & Outlook-Tasks Capture" under
 Data Model, the "To-Do real data" amendment under My Day APIs, and the
 `todo-capture` working-mode-gate update, below + REQ-SB-11-US-01 Agent Activity & Error
@@ -31,7 +902,108 @@ scheduler-tick wiring into `email_classification.
 run_capture_and_record_completion` (zero changes to `capture_scheduler.py`
 itself), and a same-shape `vault_writer.read_note()` frontmatter list-value
 round-trip fix mirroring REQ-SB-30-US-01's own boolean-value fix precedent
-+ REQ-SB-08 meeting-notes-from-calendar-capture architecture pass + REQ-SB-14 vault-graph-connectivity + REQ-SB-15 manual-entry-templates + REQ-SB-10 people-notes-from-email-capture + BUGFIX-01 email-to-person-wikilink pass + REQ-SB-16 partner-hub-notes-and-migration architecture pass + REQ-SB-17 research-notes-template-and-guide architecture pass + REQ-SB-12-US-01 app-shell/Agents Map frontend architecture pass + REQ-SB-12-US-02 My Day dashboard API architecture pass + REQ-SB-13-US-01 agent detail panel (settings/actions/chat/history) architecture pass, ADR-011 + REQ-SB-16-US-01-T04 migration-scan correction pass, ADR-012 + REQ-SB-08-US-01-T06 meeting-occurrence-dedup-key correction pass, ADR-013 — resolves ESC-002 + REQ-SB-18-US-01 dynamic agent Sections/agent-to-section-assignment + REQ-SB-19-US-01 global LLM Provider CRUD/per-agent provider picker architecture pass, ADR-014 + REQ-SB-22-US-01 My Day rolling 7-day window date-filtering architecture pass + LangGraph in-app agent orchestration & shared MCP server architecture pass (REQ-SB-20/25/26/27), ADR-015 — supersedes ADR-007 + REQ-SB-25-US-01 architecture-scoping confirmation pass (ADR-015 already covers this story in full; `run_agent_conversation` history-to-message-shape addendum, no ADR change) + REQ-SB-27-US-01 Skills Repository registration/per-agent-access plumbing architecture pass, no new ADR — applies ADR-015 + REQ-SB-26-US-01 Agent Memory extraction-mechanism architecture pass, ADR-016 — extends ADR-015 point 13, does not reopen it + BUGFIX-02-US-01 Agents Map semantic-zoom/drill-down containment fix architecture pass (BUG-002), no new ADR — applies ADR-010/ADR-014 + REQ-SB-20-US-01 Section-Hub cross-Section routing keyword-storage/routing-node architecture pass, ADR-017 — extends ADR-015 point 12, does not reopen it, resolves ESC-010 + REQ-SB-21-US-01 per-agent working modes (Autonomous/Supervised/Manual) + Pending Approvals workflow architecture pass, ADR-018 — extends ADR-005/ADR-008/ADR-011, does not reopen any of them + REQ-SB-08-US-01-T06 second meeting-occurrence-dedup-key correction pass, ADR-019 — supersedes ADR-013 points 1/2, resolves ESC-002 and ESC-012 + REQ-SB-21-US-01 working-mode gate correction pass, ADR-020 — supersedes ADR-018 points 3/5 only, resolves ESC-013 + REQ-SB-30-US-01 Compass-judged email importance filtering architecture pass, no new ADR — extends the existing `classify_email` capture-time call, fixes a `vault_writer.py` frontmatter boolean round-trip gap, extends `my_day.py`'s read-path filter, and scopes a new in-window-only retrofit, all as same-shape extensions of already-Accepted structure + REQ-SB-33-US-01 agent grounding & honest-uncertainty guardrail architecture pass, no new ADR — extends `history_entries_to_messages`'s existing single identity `SystemMessage` with an additional grounding/honest-uncertainty instruction appended to its own content, applies ADR-015 + REQ-SB-31-US-01 System Health View read-only status-aggregation + chat-path crash-gap fix architecture pass, no new ADR — new `system_health.py`/`system_health_router.py` mirror `my_day.py`'s "read-only, no new persisted state" shape (extends ADR-003), new `SystemHealthPage.tsx`/nav item apply ADR-010, `run_agent_conversation`'s Scenario 8 fix applies ADR-015's existing honest-failure-funnel pattern to a second call site) + REQ-SB-35-US-01 Vault Filing Expert (new registry agent, methodology-grounded placement/write decision, Tier-2 new-top-level-area approval override) architecture pass, ADR-021 + REQ-SB-36-US-01 real Anthropic Provider integration & web-research skill architecture pass, ADR-022 — closes a live-discovered skill-access tool-binding gap in ADR-015's conversational graph + REQ-SB-36-US-02 delegated knowledge-bootstrap orchestration (Hub-routing match → real invocation) architecture pass, ADR-023 — extends ADR-017, does not reopen it. **Live-discovered, not silently patched:** `REQ-SB-35-US-01`'s and `REQ-SB-36-US-02`'s own `## Dependencies` sections both wrongly assert `REQ-SB-21-US-01`/`ADR-020` is "(Done)" — direct code and story-file inspection during this pass found `REQ-SB-21-US-01` is actually `status: Draft`, unbuilt, with zero real code for its Pending-Approvals/working-mode mechanism; `ADR-021`'s Tier 2 and `ADR-023`'s Autonomous-mode check both carry a real, currently unmet blocking prerequisite on it shipping — see `ESCALATIONS.md` → `ESC-017` + REQ-SB-02-US-01 Browse & Search architecture pass, ADR-026 — new `app/business/vault_search.py` (read-only browse/tag-filter/note-detail/ranked-search, composes `vault_indexing.get_index()` only) + new `app/api/vault_search_router.py` + new `VaultBrowserPage.tsx`/`NoteDetailPage.tsx` frontend, plus a small additive `vault_indexing.py` index-readiness accessor (`get_last_rebuilt_at()`) — extends ADR-024, does not reopen it + REQ-SB-09-US-01 To-Do (Outlook Tasks) capture architecture pass, ADR-027 — new `outlook_com.py::list_outlook_tasks` (Tasks-folder COM read, no `IncludeRecurrences`-equivalent exists for Tasks, structurally unlike Calendar), a new load-bearing `.second-brain/task_note_index.json` EntryID-keyed lookup (not a recomputed-path check, diverging from Meeting's own `ADR-019` mechanism — Task's own Scenario 6 requires a due-date/status change to still resolve to the same note), new `compass_client.classify_task` (customer-only, not a reuse of `classify_email`), new `app/business/todo_classification.py` mirroring `meeting_classification.py`, a third gated block in `run_capture_and_record_completion` (extends ADR-005/ADR-008 point 4/ADR-018, reopens none — and resolves ADR-008's own explicitly-anticipated "revisit if a third pipeline..." fork with "no orchestration-module extraction this pass"), plus My Day's `GET /my-day/todo` real-data amendment (no new ADR needed for that piece — same-shape extension of already-Accepted `my_day.py` structure)
++ REQ-SB-08 meeting-notes-from-calendar-capture architecture pass + REQ-SB-14 vault-graph-connectivity + REQ-SB-15 manual-entry-templates + REQ-SB-10 people-notes-from-email-capture + BUGFIX-01 email-to-person-wikilink pass + REQ-SB-16 partner-hub-notes-and-migration architecture pass + REQ-SB-17 research-notes-template-and-guide architecture pass + REQ-SB-12-US-01 app-shell/Agents Map frontend architecture pass + REQ-SB-12-US-02 My Day dashboard API architecture pass + REQ-SB-13-US-01 agent detail panel (settings/actions/chat/history) architecture pass, ADR-011 + REQ-SB-16-US-01-T04 migration-scan correction pass, ADR-012 + REQ-SB-08-US-01-T06 meeting-occurrence-dedup-key correction pass, ADR-013 — resolves ESC-002 + REQ-SB-18-US-01 dynamic agent Sections/agent-to-section-assignment + REQ-SB-19-US-01 global LLM Provider CRUD/per-agent provider picker architecture pass, ADR-014 + REQ-SB-22-US-01 My Day rolling 7-day window date-filtering architecture pass + LangGraph in-app agent orchestration & shared MCP server architecture pass (REQ-SB-20/25/26/27), ADR-015 — supersedes ADR-007 + REQ-SB-25-US-01 architecture-scoping confirmation pass (ADR-015 already covers this story in full; `run_agent_conversation` history-to-message-shape addendum, no ADR change) + REQ-SB-27-US-01 Skills Repository registration/per-agent-access plumbing architecture pass, no new ADR — applies ADR-015 + REQ-SB-26-US-01 Agent Memory extraction-mechanism architecture pass, ADR-016 — extends ADR-015 point 13, does not reopen it + BUGFIX-02-US-01 Agents Map semantic-zoom/drill-down containment fix architecture pass (BUG-002), no new ADR — applies ADR-010/ADR-014 + REQ-SB-20-US-01 Section-Hub cross-Section routing keyword-storage/routing-node architecture pass, ADR-017 — extends ADR-015 point 12, does not reopen it, resolves ESC-010 + REQ-SB-21-US-01 per-agent working modes (Autonomous/Supervised/Manual) + Pending Approvals workflow architecture pass, ADR-018 — extends ADR-005/ADR-008/ADR-011, does not reopen any of them + REQ-SB-08-US-01-T06 second meeting-occurrence-dedup-key correction pass, ADR-019 — supersedes ADR-013 points 1/2, resolves ESC-002 and ESC-012 + REQ-SB-21-US-01 working-mode gate correction pass, ADR-020 — supersedes ADR-018 points 3/5 only, resolves ESC-013 + REQ-SB-30-US-01 Compass-judged email importance filtering architecture pass, no new ADR — extends the existing `classify_email` capture-time call, fixes a `vault_writer.py` frontmatter boolean round-trip gap, extends `my_day.py`'s read-path filter, and scopes a new in-window-only retrofit, all as same-shape extensions of already-Accepted structure + REQ-SB-33-US-01 agent grounding & honest-uncertainty guardrail architecture pass, no new ADR — extends `history_entries_to_messages`'s existing single identity `SystemMessage` with an additional grounding/honest-uncertainty instruction appended to its own content, applies ADR-015 + REQ-SB-31-US-01 System Health View read-only status-aggregation + chat-path crash-gap fix architecture pass, no new ADR — new `system_health.py`/`system_health_router.py` mirror `my_day.py`'s "read-only, no new persisted state" shape (extends ADR-003), new `SystemHealthPage.tsx`/nav item apply ADR-010, `run_agent_conversation`'s Scenario 8 fix applies ADR-015's existing honest-failure-funnel pattern to a second call site) + REQ-SB-35-US-01 Vault Filing Expert (new registry agent, methodology-grounded placement/write decision, Tier-2 new-top-level-area approval override) architecture pass, ADR-021 + REQ-SB-36-US-01 real Anthropic Provider integration & web-research skill architecture pass, ADR-022 — closes a live-discovered skill-access tool-binding gap in ADR-015's conversational graph + REQ-SB-36-US-02 delegated knowledge-bootstrap orchestration (Hub-routing match → real invocation) architecture pass, ADR-023 — extends ADR-017, does not reopen it. **Live-discovered, not silently patched:** `REQ-SB-35-US-01`'s and `REQ-SB-36-US-02`'s own `## Dependencies` sections both wrongly assert `REQ-SB-21-US-01`/`ADR-020` is "(Done)" — direct code and story-file inspection during this pass found `REQ-SB-21-US-01` is actually `status: Draft`, unbuilt, with zero real code for its Pending-Approvals/working-mode mechanism; `ADR-021`'s Tier 2 and `ADR-023`'s Autonomous-mode check both carry a real, currently unmet blocking prerequisite on it shipping — see `ESCALATIONS.md` → `ESC-017` + REQ-SB-02-US-01 Browse & Search architecture pass, ADR-026 — new `app/business/vault_search.py` (read-only browse/tag-filter/note-detail/ranked-search, composes `vault_indexing.get_index()` only) + new `app/api/vault_search_router.py` + new `VaultBrowserPage.tsx`/`NoteDetailPage.tsx` frontend, plus a small additive `vault_indexing.py` index-readiness accessor (`get_last_rebuilt_at()`) — extends ADR-024, does not reopen it + REQ-SB-09-US-01 To-Do (Outlook Tasks) capture architecture pass, ADR-027 — new `outlook_com.py::list_outlook_tasks` (Tasks-folder COM read, no `IncludeRecurrences`-equivalent exists for Tasks, structurally unlike Calendar), a new load-bearing `.second-brain/task_note_index.json` EntryID-keyed lookup (not a recomputed-path check, diverging from Meeting's own `ADR-019` mechanism — Task's own Scenario 6 requires a due-date/status change to still resolve to the same note), new `compass_client.classify_task` (customer-only, not a reuse of `classify_email`), new `app/business/todo_classification.py` mirroring `meeting_classification.py`, a third gated block in `run_capture_and_record_completion` (extends ADR-005/ADR-008 point 4/ADR-018, reopens none — and resolves ADR-008's own explicitly-anticipated "revisit if a third pipeline..." fork with "no orchestration-module extraction this pass"), plus My Day's `GET /my-day/todo` real-data amendment (no new ADR needed for that piece — same-shape extension of already-Accepted `my_day.py` structure) + REQ-SB-29-US-01 Agent-to-Tag/Folder Vault Scoping architecture pass, no new ADR — see "Agent-to-Tag/Folder Vault Scoping — assignment & scope-bounded retrieval" — new `.second-brain/agent_scopes.json` + `app/business/scope_registry.py` mirroring `ADR-017`'s per-agent-list keyword shape, a new `vault_writer.list_notes_matching_scope` primitive deliberately independent of `ADR-024`/`ADR-026`'s vault-indexing layer, a new scope-aware `@mcp.tool()` mirroring `vault_write_tools.propose_vault_write`'s agent_id-explicit/server-resolved shape (`ADR-015` point 9), a `PATCH /agents/{agent_id}` additive `scope` field, and a new "Vault scope" `AgentDetailPanel.tsx` kv-row mirroring the Keywords row — exposes the real per-agent scope lookup `ADR-025` point 6's fail-closed seam (`ESC-026`) needs, but does not itself wire or close that seam (a separate, still-blocked `REQ-SB-04-US-01` task + REQ-SB-42-US-01 Real-Time
+Agent Activity Pulses architecture pass, ADR-035 — Server-Sent Events push
+transport (not WebSocket) plus a new, in-memory-only `app/business/
+agent_presence.py` ephemeral "agent presence" registry, distinct from
+`REQ-SB-11`'s persisted history; instruments five real dispatch call sites
+(capture/Skill via `run_capture_for_agent`, explicit Skill via
+`_dispatch_skill`, chat via `run_agent_conversation`, Hub-routing via each
+real `route_cross_section_request` caller, pending-approval create/resolve
+broadcast-only); new `GET /agent-presence/stream` SSE endpoint — see "Real-
+Time Agent Activity Pulses", below + REQ-SB-43-US-01/REQ-SB-44-US-01
+Meeting & Inbox Cockpits architecture pass, ADR-036 — a multi-agent
+shared-thread chat mechanism composing `ADR-015`'s existing per-agent
+`run_agent_conversation` unmodified (new sibling `.second-brain/
+cockpit_threads.json`, this codebase's first multi-party conversation
+store), one shared `app/business/cockpit/` module + frontend `Cockpit`
+component for both stories (REQ-SB-44's attachment review/draft-reply are
+additive props, not a fork), a confirmed-by-investigation working-mode-gate
+bypass-by-construction (the Cockpit never reaches `skill_registry.
+invoke_skill`/`_invoke_action`'s gated dispatch at all — no new trigger
+value needed), a real `depends_on` cross-story sequencing requirement onto
+`REQ-SB-28-US-01` (`Ready`, not `Done`) for the attachments half, and a new
+Email-note `recipients` frontmatter field mirroring Meeting's `attendees`
+shape — see "Meeting & Inbox Cockpits", below)
+
+## Agent / Pipeline / Job / Hub Domain Model — Taxonomy (see [ADR-041](ADR.md))
+
+**Purpose of the whole system, in the operator's own words (2026-08-15):**
+Second Brain is a framework of agentic solutions on top of Obsidian, to
+remove work from the operator's head and help them be smarter at work.
+The vault is the operator's own human-readable KB, covering both work and
+personal life (currently: work phase only). Everything below exists to
+serve that purpose — read this section before adding any new
+agent-shaped concept anywhere in this codebase; it is the durable
+taxonomy referenced by name across every other section.
+
+**Two independent axes — not one flat list of "agent types":**
+
+- **Kind of work** (what it does): **Expert** (answers questions over the
+  KB), **Producer** (composes/generates a deliverable — a file, an email
+  reply, a to-do action), and the mechanical pipeline verbs (fetch,
+  classify/tag, link, store, and any future verb a Pipeline author adds).
+- **Structural tier** (how it's exposed): **Agent** — a full,
+  independently-addressable identity: own chat, own communication
+  history, own Working Mode, own Agents Map node. **Job** — a
+  lightweight unit living INSIDE a Pipeline's own DAG: its own editable
+  prompt and its own Skill(s), but no guaranteed own chat thread, Map
+  node, or Working Mode, unless a future pass decides a specific Job
+  deserves one.
+
+A "Producer" can be either tier: a standalone Producer Agent (asked
+directly — "build me a sheet") or a Producer-flavored Job embedded in
+someone else's Pipeline (an email reply composed mid-pipeline, then
+handed downstream to be stored). "Expert" is always the Agent tier — by
+definition something the user and other agents/pipelines address
+directly. The mechanical pipeline verbs are always the Job tier.
+
+- **Hub** — the root of a Section's own tree. Both a MANAGER (routes to
+  its own Pipelines and Experts) and a DATABASE (holds the Section's own
+  registry — which files/vault scope, which agents and pipelines belong
+  to it). Not a new structural tier — an organizing node, the same
+  Section concept this app already has, now with an explicit job
+  description.
+- **Pipeline** — a user-extensible DAG of Jobs, not a fixed N-stage
+  chain. Real, confirmed capabilities: forking (parallel Jobs over
+  different parts of one input — e.g. an email's body vs. its
+  attachment), merging (parallel branches recombine into one stream),
+  and branching to consult a standalone Expert mid-flow (additive — the
+  Pipeline's own terminal step, e.g. Store, still runs either way). The
+  user adds/removes/rewires Jobs themselves via the builder, below — not
+  something engineers hardcode per pipeline type.
+- **Prompt customization is universal** — every Agent and every Job gets
+  the same "edit this thing's own instructions" mechanism, one UI
+  pattern wherever it appears.
+- **Execution engine:** a Pipeline's own author-defined DAG compiles to a
+  `langgraph.graph.StateGraph` at runtime (narrows `ADR-007`'s original
+  "simple linear pipelines stay outside any orchestration framework"
+  carve-out further than `ADR-015` already did, for the Pipeline domain
+  specifically — `langgraph` is already a real, installed dependency).
+- **Builder:** a native canvas inside this app's own React frontend
+  (e.g. React Flow), not an external visual-builder application —
+  shares the same Hub/Section/Agent/Skill data model and the Agents
+  Map's own visual language, one cohesive product.
+
+**Status:** directional/foundational, adopted 2026-08-15 (`ADR-041`).
+Real implementation detail (the DAG's own persisted data model, the
+checkpointer's own durability backend, the canvas UI/UX, exactly how/
+whether a Job ever earns its own Agent-like surface) is explicitly left
+open, to be resolved by whatever requirement formally specs the Pipeline
+Builder. `REQ-SB-53` (Capture Pipeline Split into fixed Pull/Tag/Link/
+Store Agent stages, `ADR-040`) is **superseded** by this model and
+parked — see "Capture Pipeline Split", below, and `ADR-040`'s own
+Superseded note. **The first real, concrete Pipeline now exists
+(2026-08-16, `REQ-SB-55`, [ADR-043](ADR.md)) — see "Email Capture &
+Threading Pipeline — First Concrete Pipeline", below.** It resolves the
+DAG's own persisted-data-model question (code-defined `StateGraph`, not
+yet a persisted/user-editable definition), the checkpointer-durability
+question (not needed — mid-pipeline human approval reuses the existing
+flat-JSON Pending Approval mechanism, never a LangGraph suspend/resume),
+and the Job-Agent-surface question (a Job never earns one; one Agent-tier
+identity represents the whole Pipeline) — all concretely, for this one
+Pipeline. The Builder (point 6) stays deferred, per `ADR-041`'s own
+sequencing note, now genuinely closer.
 
 ## System Overview
 
@@ -52,6 +1024,7 @@ with `agentic-map`'s agents is a deliberately separate, later decision.
 | Agent orchestration | LangGraph (`langgraph`), bounded to Second Brain's own in-app Agents Map agent behavior (chat, Hub routing, memory, skill invocation) — not Hermes's own external orchestration, which stays untouched; see [ADR-015](ADR.md) (supersedes [ADR-007](ADR.md)) |
 | Tool protocol | Model Context Protocol — official `mcp` Python SDK, one shared server exposing vault-query tools to both the in-app LangGraph agents and Hermes's external orchestration; see [ADR-015](ADR.md) |
 | External LLM APIs | Compass (OpenAI-wire-compatible, `langchain_openai.ChatOpenAI` via `model_factory.py`) for conversational replies; Anthropic (official `anthropic` SDK, plain client in `data_access/anthropic_client.py`, not LangChain-wrapped) for the web-research skill's server-side web-search tool specifically — see [ADR-022](ADR.md) |
+| Chat rich-text rendering | `react-markdown` (v9.x, CommonMark's default feature set, no `remark-gfm`/`rehype-raw`/`rehype-sanitize` plugins — no raw-HTML/`dangerouslySetInnerHTML` path exists), one shared `src/frontend/src/components/ChatMessageText.tsx` presentational component consumed by both `Cockpit.tsx` and `AgentDetailPanel.tsx` — see [ADR-050](ADR.md) |
 
 ## Source Layout
 
@@ -560,6 +1533,370 @@ specific files/props/functions" once this bugfix story is `Done`.
   `@keyframes kbGrowIn` (entrance-animation-only) are not — see the
   Non-Goals point, above.
 
+## Agents Map — Density Clustering (REQ-SB-38-US-01)
+
+**No new ADR** — this locks two previously-flagged-tentative numbers as
+final by direct operator decision (`REVIEW-QUEUE.md`'s
+"REQ-SB-38-US-01" entry, resolved 2026-08-13: confirm and lock the
+prototype's own proposed values, not re-derive them). Both values were
+already the prototype's own proposed defaults
+(`html-prototype/agents-map.html`'s top-of-file breadcrumb, 2026-08-13
+revision), grounded in `layoutAgents.ts`'s existing ring-per-Type geometry
+and `BUG-009`'s `SECTION_ARC_SPAN_DEG_CAP`/`SECTION_ARC_SPAN_FRACTION`
+precedent — nothing here introduces a new tool, framework, or structural
+boundary, so no ADR is warranted; recorded here purely as the durable home
+for "why these specific numbers/files."
+
+- **Locked: `VISIBLE_SLOT_CAP = 6`.** A new constant in `layoutAgents.ts`
+  (sibling to `SECTION_ARC_SPAN_DEG_CAP`/`SECTION_ARC_SPAN_FRACTION`, same
+  "hand-sized against today's real 5-Section/57.6° wedge geometry"
+  reasoning, not a computed node-size-vs-arc-length check — that remains a
+  deferred follow-up per the story's own Non-Goals). Same class of decision
+  as those two existing sibling constants, which also never received an
+  ADR — confirmed here, not re-litigated.
+- **Locked: clustering scope is per-(Section × Type-ring), not per-Section
+  as a whole.** Grounded directly in `layoutAgents.ts`'s own existing
+  geometry: an agent's angle is keyed to its Section, its radius to its own
+  Type's `RING_RADIUS` (`polarLayout.ts`) — real crowding only happens
+  among agents sharing both. Group by `(sectionId, agentType)` before
+  applying `VISIBLE_SLOT_CAP`, not by `sectionId` alone. This also
+  structurally guarantees a cluster marker never mixes Types (Scenario
+  4) — the grouping key makes it impossible by construction, not an added
+  check.
+- **Cluster overflow placement:** within one (Section × Type-ring) group,
+  the first `VISIBLE_SLOT_CAP - 1` agents (existing sort/index order)
+  render as ordinary `AgentNode` compact dots at their existing fanned
+  positions; the group's LAST fan slot renders one new cluster-marker
+  element instead of an `AgentNode` — mirrors the prototype's own "last
+  slot becomes the overflow marker" shape exactly.
+- **Cluster drill-down reuses `layoutSectionDrilldown()` as-is — no new
+  layout function.** That function already accepts an arbitrary
+  `MockAgent[]` and spreads it full-360°; it is not internally filtered by
+  Section. Calling it with the clustered subset (instead of a whole
+  Section's agents) is a direct, zero-modification reuse — the same "one
+  shared geometry module" convention `BUGFIX-02-US-01`'s architecture pass
+  already established (see above).
+- **Click-to-zoom state widens, does not duplicate.**
+  `AgentsMapCanvas.tsx`'s existing `zoomTargetSectionId`/`activeSectionId`
+  pair (`BUGFIX-02-US-01`, above) currently only ever holds a Section id. A
+  cluster marker's click needs a second, distinct identity — mirroring the
+  prototype's own `data-section-id="technical-cluster-overflow"`
+  convention (deliberately distinct from the Section's own real id, so the
+  Section Hub's click target and the cluster marker's click target never
+  collide, and Scenario 6 is unaffected). The decomposer/coder own the
+  exact shape of that widened state (e.g. a discriminated union, or a
+  second id/subset pair) — ordinary component-state design within the
+  already-established local-`useState`-on-`AgentsMapCanvas` pattern, not a
+  new architectural question.
+- **New component, not a new mechanism.** The cluster-scoped drill-down is
+  a small sibling to `SectionDrilldown.tsx` (or a generalization of it to
+  accept an already-filtered agent list plus a heading), reusing
+  `SectionHub`/`AgentNode`/`layoutSectionDrilldown` unchanged — the same
+  reuse-over-duplication precedent `BUGFIX-02-US-01` already applied to
+  `SectionHub`/`AgentNode`.
+- **Cluster-marker visual:** reuses `.map-overflow-marker`, already defined
+  in `styles.css`'s "Scale-to-~100-agents pattern" and demonstrated live in
+  the prototype — port verbatim, same convention `BUGFIX-02-US-01`'s CSS
+  port already followed (no renaming/translation step, `ADR-010` Decision
+  3).
+
+## Agent Creation Wizard — entry point, type selector, Expert-type flow (REQ-SB-37-US-01, ADR-030)
+
+This is the first story to make `agent_registry.py` a **mutable, persisted**
+concern — see `ADR-030` (supersedes `ADR-011` point 2 only) for the full
+mechanism reasoning. This section records the resulting file-level shape.
+
+- **`app/business/agent_registry.py`** — `AGENTS` is renamed `_SEED_AGENTS`
+  and is otherwise byte-identical (all 7 shipped agents, same ids, same
+  `settings`/`actions`); it stays in code, not migrated into the persisted
+  store. A new `_load_state()` (mirrors `section_registry.py`'s shape)
+  reads/seeds `.second-brain/agents_registry.json`'s `{"created_agents":
+  {}}` shape via two new `vault_writer` primitives,
+  `load_agents_registry_state()`/`save_agents_registry_state()` (mirror
+  `load_skills_state()`/`save_skills_state()` exactly). `get_agent(agent_id)`
+  and `list_agents()` become seed-then-persisted merges (seed agents always
+  first, preserving today's existing ordering); `get_action` is unchanged
+  in body. New `create_agent(name, type, settings=None) -> dict` derives
+  `agent_id` via `vault_writer.tag_slug(name)`, disambiguating on collision
+  (`-2`, `-3`, ...) against the union of `_SEED_AGENTS` and `created_agents`
+  keys — unlike `create_section`'s idempotent-collapse-on-collision
+  semantic, two agent-creation calls must never collapse into one shared
+  identity. A created agent's `actions: []` (mirrors the already-`Done`
+  `vault-filing-expert`/`compass-expert` "starts empty" precedent) — no
+  bespoke-action mechanism is introduced; `REQ-SB-39`'s Skills unification
+  remains the only path to a created agent gaining a capability, via the
+  already-`Done` `skill_registry.grant_skill_access`, unchanged.
+- **`app/api/agents_router.py`** gains `POST /agents` (name, type,
+  domain — the Expert-type wizard's own two required fields beyond name),
+  calling `agent_registry.create_agent(...)` then returning the same shape
+  `GET /agents/{agent_id}` already returns. The wizard's Section selection
+  (Scenario 3) is a second, immediate `PATCH /agents/{agent_id}` call
+  against the already-`Done` `update_agent_assignment` endpoint — `POST
+  /agents` itself does not accept a `section_id`, keeping `agent_registry.py`
+  ignorant of Sections exactly as `ADR-014` already established. Every
+  other existing `agents_router.py` handler (`GET /agents`,
+  `GET /agents/{agent_id}`, `PATCH`, `/chat`, `/history`,
+  `/actions/{action_id}`) is unchanged — each already treats
+  `agent_registry.get_agent`/`list_agents` as its sole, uncached,
+  per-request source of agent identity, so a created agent flows through
+  every one of them with zero code change, including Scenario 8's chat/
+  history parity (an `actions: []` agent's chat falls straight through
+  `agent_chat.handle_chat_message`'s existing no-trigger-phrase-match
+  branch into the ordinary `agent_orchestration.run_agent_conversation`
+  path, `ADR-015`/`ADR-016`, applying `REQ-SB-33`'s grounding/honest-
+  uncertainty `SystemMessage` — confirmed agent-agnostic by direct reading
+  of `state.py::history_entries_to_messages`, which is parameterized
+  purely by the calling agent's own `name`/`type`, with no per-agent-id
+  branching anywhere in the graph).
+- **Every already-`Done` self-healing per-agent registry** —
+  `section_registry.py`, `provider_registry.py`, `working_mode_registry.py`,
+  `skill_registry.py`, `agent_keywords.py` — needs **zero code change**:
+  each already iterates `agent_registry.list_agents()` fresh, uncached, on
+  every read, so a created agent is picked up (default Section, default
+  Provider, default Autonomous working mode, zero granted Skills, empty
+  keywords) the instant it exists — the concrete mechanism
+  `ESCALATIONS.md` → `ESC-020` identified as needing this ADR at all.
+- **Frontend — entry point placed in Settings, not the Agents Map
+  canvas** (an architect sequencing call, `ESC-020`'s net-new-design-needed
+  point 2, `/design` skipped for this batch per operator direction): a new
+  `src/frontend/src/features/agents-map/CreateAgentWizard.tsx` (type
+  selector + Expert-type step: name, domain, Section `<select>`) is
+  reached via a new "+ Create agent" affordance on `SettingsPage.tsx`,
+  mirroring `SectionsCard.tsx`/`ProvidersCard.tsx`'s existing "+ Create
+  new …" `<details>` pattern (the closest existing precedent, per the
+  story's own Notes) rather than adding a new interactive element to
+  `AgentsMapCanvas.tsx`'s already-`Done` semantic-zoom/drill-down surface
+  (`BUGFIX-02-US-01`) — keeps this story's frontend scope additive-only
+  against Settings' existing card-based CRUD area instead of reopening the
+  map canvas's own layout/interaction code. `AgentDetailPanel.tsx` (already
+  `Done`, `REQ-SB-13/18/19/21/27`) needs no change — Scenario 6 reuses it
+  unchanged for a created agent, since it already renders purely from
+  `GET /agents/{agent_id}`'s response shape. `agentsApiClient.ts` gains
+  `createAgent({name, type, domain}) -> Promise<Agent>` (`POST /agents`),
+  and `settingsApiClient.ts` or the wizard component itself issues the
+  follow-up `PATCH /agents/{agent_id}` for Section assignment, reusing the
+  already-`Done` `updateAgentAssignment` call. The already-`Done`
+  `layoutAgents.ts`/`AgentsMapCanvas.tsx` need no change to surface a
+  created agent on the map (Scenario 5) — they already re-fetch
+  `GET /agents`/`GET /sections` and lay out whatever `list_agents()`
+  returns, with no hardcoded agent count or id list anywhere in that path.
+
+### Amendment — Worker-type flow (REQ-SB-37-US-02, no new ADR)
+
+Additive composition of three already-`Accepted`/already-established
+mechanisms — `ADR-030` (this section, above), `ADR-028`/`ADR-029`'s
+unified Skills grant surface, and `REQ-SB-29-US-01`'s additive Vault Scope
+field. No new persisted state, no new structural boundary, no reversal of
+any `Accepted` decision — reopens nothing, so no new ADR is written.
+
+- **`app/api/agents_router.py`'s `POST /agents`** (`ADR-030` point 6,
+  `REQ-SB-37-US-01-T03`) — its `type != "expert"` refusal is extended to
+  also accept `"worker"`. `domain` becomes optional (`str | None`),
+  required only when `type == "expert"`; for a Worker,
+  `agent_registry.create_agent(name, "worker", settings=[])` is called
+  with no Domain-equivalent setting — a Worker's real configuration
+  (Skills, Vault Scope, Section) lives entirely in the three follow-up
+  calls below, never in `settings`. Any `type` other than `"expert"`/
+  `"worker"` is still refused honestly (`400`), unchanged.
+- **Skills step** — calls the already-`Done`, unmodified `skills_router.py`
+  endpoint once per selected Skill: `POST /agents/{agent_id}/skills/{skill_id}`
+  (`grant_skill_access`, `ADR-028`/`ADR-029`). No new endpoint, no batch
+  grant call — the wizard issues one request per selected Skill, mirroring
+  how `AgentDetailPanel.tsx`'s own Skills grant/revoke control
+  (`REQ-SB-39-US-01`) already calls this endpoint one Skill at a time.
+- **Vault Scope + Section step** — a single, combined `PATCH
+  /agents/{agent_id}` call carrying both `scope` (`REQ-SB-29-US-01`'s
+  additive `AgentAssignmentUpdateBody` field) and `section_id` together —
+  `AgentAssignmentUpdateBody` already accepts multiple optional fields per
+  request (it does today, for `section_id`/`provider_id`/`keywords`/
+  `working_mode`), so this is one `PATCH` call, not two sequential ones the
+  way `ADR-030` point 6's original Expert-only flow needed (Expert has no
+  Scope field to combine with).
+- **Sequencing decision — sequential calls against an already-live
+  `agent_id`, never a draft/staged agent record (an explicit alternative,
+  considered and rejected):** `create_agent` returns a real, immediately
+  `get_agent`-visible record, exactly as it does for Expert (`ADR-030`).
+  A draft/pending-finalization agent state was considered and rejected —
+  it would introduce a genuinely new structural concern (staged vs. live
+  record) that no persisted registry in this codebase has today, and it
+  sits against this project's own dominant no-staging-layer posture
+  (`MEMORY.md`: no staging/promotion gate on ingested vault data — the
+  same "written is usable" philosophy this reasoning extends to a second,
+  unrelated concern, agent creation). Scenario 4's "no partial or broken
+  agent appears anywhere" requirement is instead met entirely client-side:
+  the Worker wizard step validates name + at least one selected Skill + a
+  non-empty Vault Scope + a chosen Section are all present **before firing
+  any backend call at all**, mirroring `REQ-SB-37-US-01-T04`'s own
+  already-established "no call fires on a missing required field" pattern
+  (that story's AC-07). No backend rollback/atomicity mechanism is built or
+  needed — none exists anywhere else in this codebase's multi-call
+  workflows either (e.g. Expert's own `POST` then `PATCH` for Section has
+  never had one).
+- **Section's own self-healing default does not weaken Scenario 4:**
+  `section_registry._load_state()` (`ADR-014`) assigns every agent a
+  default Section, including a freshly created one, the instant it exists
+  — before the wizard's own `PATCH` call ever fires. Scenario 4's "without
+  selecting a Section" is therefore a wizard-level (client-validation)
+  requirement, exactly like Expert's own Section field already is (T04) —
+  it does not change or reverse Section's existing self-healing
+  architecture. Skills and Vault Scope carry no such default
+  (`skill_registry.py`'s "deliberately no self-healing default
+  assignment"; `scope_registry.py` mirrors `agent_keywords.py`'s own
+  empty-by-default shape) — both stay empty until explicitly
+  granted/assigned, so the wizard's own required-field validation is the
+  only gate for those two fields as well.
+- **Frontend** — a new Worker step inside the same `CreateAgentWizard.tsx`
+  component `REQ-SB-37-US-01-T04` builds (its `step` state machine gains a
+  `'worker'` value alongside `'type'`/`'expert'`), reusing the Expert
+  step's Section `<select>` verbatim, a new Skills multi-select sourced
+  from `GET /skills` (mirroring `AgentDetailPanel.tsx`'s already-`Done`
+  Skills grant/revoke control, `REQ-SB-39-US-01`), and a new Vault Scope
+  free-text/comma-separated field mirroring the Keywords row's own pattern
+  (per `REQ-SB-29-US-01`'s own Notes). No existing `agentsApiClient.ts`
+  function changes beyond `createAgent`'s `type` accepting `'worker'` —
+  `updateAgentAssignment` and the Skills grant call are already-`Done`/
+  already-additive.
+
+### Amendment — Producer-type flow (REQ-SB-37-US-03, ADR-031)
+
+Resolves the PRD's own previously-unresolved "output action" fork — see
+`ADR-031` for the full context and reasoning. Structurally similar to the
+Worker-type flow above (`POST /agents` + a Skills-grant step), minus
+Worker's Vault Scope/multi-Skill specifics, since a Producer's PRD text
+names only "Purpose and Section," plus the operator's own directed
+Skills-grant step for the output action.
+
+- **`app/api/agents_router.py`'s `POST /agents`** gains a third `type`
+  branch, `"producer"`, alongside `"expert"`/`"worker"` (`ADR-030` point 6's
+  original two-type design anticipated exactly one more). A new required
+  request-body field, `purpose: str`, is validated non-blank (mirrors
+  Expert's `domain` requiredness check) and stored via
+  `agent_registry.create_agent(name, "producer", settings=[{"key":
+  "Purpose", "value": purpose}])` — the same generic `settings` kv-list
+  mechanism Expert's Domain already uses, not a new field on the agent
+  record and not Worker's empty-`settings` pattern (`ADR-031` point 3).
+  **This story is what actually introduces the first real, persisted
+  Purpose value in this codebase** — it does not depend on
+  `REQ-SB-41-US-01` (Agent Overview surface, still `Draft`, unbuilt) landing
+  first; that story's own still-open "Purpose data source" question is
+  narrowed, not closed, by this precedent (`ADR-031` Consequences).
+- **Output-Skill step — single-select, reuses the exact Worker-step grant
+  call.** The wizard's second step offers a single-select (not Worker's
+  multi-select) of exactly one output Skill sourced from `GET /skills`,
+  issuing at most one `POST /agents/{agent_id}/skills/{skill_id}` call —
+  the identical, unmodified `grant_skill_access` endpoint
+  (`ADR-028`/`ADR-029`) `REQ-SB-37-US-02`'s Worker step already calls,
+  called here at most once instead of per-checked-item. See `ADR-031`
+  point 1 for the cardinality reasoning (PRD's own singular "an output
+  action" framing; not a data-model cap — `AgentDetailPanel.tsx`'s existing
+  Skills grant/revoke control can still grant a Producer a second Skill
+  later, unrestricted, exactly as for any other agent).
+- **New placeholder catalog entry, `write-to-vault-draft`** —
+  `app/business/skill_tools.py`'s `SKILLS` gains a tenth entry
+  (`"mutates": True`), a new `@mcp_server.tool()` stub mirroring
+  `diagram_understanding`'s exact honest-unavailable shape, registered in
+  `skill_registry.py`'s `_SKILL_HANDLERS`. Seeded so the Producer wizard's
+  output-Skill-grant step has at least one real, selectable, honestly-
+  labeled entry — mirrors `REQ-SB-27-US-01`'s own "one illustrative stub to
+  prove the plumbing" precedent (`ADR-031` point 2). No real write handler
+  is built by this pass — invoking it always returns the same honest
+  "not yet available" response every other stub Skill in this catalog
+  returns.
+- **Section step reuses Expert's sequential shape, not Worker's combined
+  shape** — a Producer has no Scope-equivalent field to combine with
+  Section in one `PATCH`, so the call sequence is `POST /agents` (Purpose in
+  `settings`) → grant the selected output Skill → `PATCH
+  /agents/{agent_id}` carrying `section_id` alone (`ADR-031` point 4).
+- **This story's own current Acceptance Criteria (Scenarios 1–5) cover only
+  Purpose + Section** — they predate the operator's resolution of the
+  output-action fork and do not yet include a Scenario for granting the
+  output Skill. Per the story's own Notes (anticipating exactly this path
+  since it has not yet reached `Done`) and `ADR-031` point 5, the decomposer
+  amends Scenario 2 (creating a Producer also grants the selected output
+  Skill) and adds a missing-output-Skill rejection Scenario as part of
+  locking this story's ACs — the mechanism is fully specified above and in
+  `ADR-031`; the exact wording is the decomposer's own tightening latitude,
+  including whether the output-Skill grant is required or optional at
+  submit time.
+- **Frontend** — a new Producer step inside `CreateAgentWizard.tsx` (`step`
+  state gains a `'producer'` value alongside `'type'`/`'expert'`/`'worker'`),
+  reusing the Expert/Worker steps' own Section `<select>` verbatim, a new
+  Purpose `<textarea>`/`<input>` (plain controlled input, mirroring Expert's
+  Name/Domain field shape — pre-submit draft state, not a live-editing
+  panel row), and a new single-select output-Skill control (radio-button-
+  equivalent over `GET /skills`, not Worker's checkbox multi-select).
+  `agentsApiClient.ts`'s `createAgent`'s `CreateAgentBody.type` union
+  already includes `'producer'`; gains a new optional `purpose?: string`
+  field. No existing Worker/Expert step code changes.
+
+### Amendment — Popup Modal Redesign, shared `SkillsTree.tsx` extraction, Trigger/Background-Agent composition (REQ-SB-46-US-01, [ADR-039](ADR.md))
+
+Redesigns the wizard's entry point and presentation only — every per-type
+`create_agent`/grant/assign call sequence established above is preserved
+unchanged (`ADR-030`/`ADR-031` untouched, no reopening). See `ADR-039` for
+the full context and reasoning on all four resolved composition questions;
+this section records the resulting file-level shape.
+
+- **`src/frontend/src/features/agents-map/CreateAgentWizardModal.tsx`**
+  (renamed/restructured from `CreateAgentWizard.tsx`) — a centered popup
+  modal (new `.wizard-modal-overlay`/`.wizard-modal` classes, built from
+  this codebase's own existing design tokens, deliberately not a reuse of
+  `.side-panel-overlay`/`.side-panel`'s own edge-anchored slide-in
+  selectors/behavior — Scenario 2's own "distinct from the side panel"
+  requirement) with a new `.wizard-step-bar` (steps 1-4, current step
+  highlighted). Internal `step` state becomes a 4-step machine
+  (`'step1' | 'step2' | 'step3' | 'step4'`), replacing the current
+  type-branching 3-form structure; each step's own fields follow the
+  story's own confirmed `## Context` field-to-step mapping exactly
+  (Step 1: Name/Type/conditional Description(Expert)/conditional
+  Scope(Worker)/Section; Step 2: Working-mode selector (all types) +
+  conditional Purpose/output-Skill (Producer); Step 3: the new shared
+  `SkillsTree.tsx` in `mode="select"`; Step 4: read-only summary + Trigger
+  choice + "Create agent"). The existing `handleSubmit`/
+  `handleWorkerSubmit`/`handleProducerSubmit` bodies and their exact
+  `createAgent` → optional `grantAgentSkill` call(s) → `updateAgentAssignment`
+  PATCH sequences are preserved, fired only from Step 4's own "Create
+  agent" action.
+- **`src/frontend/src/features/agents-map/SkillsTree.tsx`** (new, shared)
+  — a presentational, mode-parameterized (`mode: 'manage' | 'select'`),
+  collapsible, icon-bearing, Tool-grouped tree over `SkillSummary[]`/
+  `AgentCapability[]` (both carrying `REQ-SB-48-US-01-T01`'s new `"tool"`
+  field). `mode="manage"` renders `AgentDetailPanel.tsx`'s own
+  Grant/Revoke buttons calling the parent's callback immediately
+  (`REQ-SB-48-US-01-T02`'s own real usage, unchanged by this amendment).
+  `mode="select"` renders checkboxes over an agent-controlled selected-id
+  array with no immediate API call (this story's Step 3 usage). Grouping/
+  Tool-taxonomy/icon logic (`REQ-SB-48-US-01`'s resolved Outlook/Vault/
+  Web/Compass taxonomy, 4 fixed glyph icons) lives once, here.
+  `REQ-SB-48-US-01-T02` is the task that originates this file;
+  `REQ-SB-46-US-01`'s own Step-3 task carries a real `depends_on:
+  REQ-SB-48-US-01-T02` edge (decomposer-assigned) — this codebase's first
+  cross-story frontend task dependency (`ADR-039` point 2).
+- **`src/frontend/src/pages/AgentsMapPage.tsx`** — gains a new bottom-right
+  `.map-fab` button (reuses `.map-overflow-marker`'s own circular
+  dashed-border/tinted-glow treatment, `position: fixed` instead of
+  map-relative) that mounts `CreateAgentWizardModal.tsx`; on successful
+  creation, behaves exactly as today's `onCreated` callback already does
+  (refreshes the map).
+- **`src/frontend/src/features/settings/CreateAgentCard.tsx`** retired;
+  **`src/frontend/src/pages/SettingsPage.tsx`** loses its "+ Create agent"
+  mount point entirely (Scenario 1 — sole entry point is now the Map FAB).
+- **`src/backend/app/api/agents_router.py`** — `CreateAgentBody` gains one
+  additive optional `trigger: str | None = None` field; `create_agent`
+  appends `{"key": "Trigger", "value": trigger or "user"}` to each
+  type branch's already-built `settings` list uniformly, immediately
+  before calling `agent_registry.create_agent(...)` — no per-type
+  special-casing, no new endpoint, no new persisted store (`ADR-039`
+  point 3). `GET`/`PATCH /agents/{agent_id}` need no change — `Trigger`
+  reads back through the existing `settings` passthrough exactly like
+  `Domain`/`Purpose` already do.
+- **`src/frontend/src/features/agents-map/agentsApiClient.ts`** —
+  `CreateAgentBody` gains an additive optional `trigger?: string` field,
+  mirroring `domain?`/`purpose?`.
+- **Background-Agent toggle** — explicitly NOT added to this story's scope
+  (`ADR-039` point 4); `REQ-SB-51-US-01`'s own deferred-to-a-future-story
+  reasoning stands unchanged.
+
 ## My Day & Agent Panel APIs (REQ-SB-12-US-02, REQ-SB-13-US-01)
 
 Both features follow the existing `api → business → data_access` layering
@@ -946,6 +2283,74 @@ of already-`Accepted` `my_day.py` structure, not a new one.
   triggers all produce the exact same history entry, through the one
   shared entry point already established by ADR-005/ADR-008.
 
+### Agent Overview surface — new default-landing tab, Purpose/Scope/Guardrails/Working-mode summary (`REQ-SB-41-US-01`, see [ADR-033](ADR.md))
+
+Resolves the operator's own "opens straight to Chat... need an Overview...
+before I can chat with it" complaint by making Overview the panel's new
+default-landing tab, not a bolt-on region reached only after Chat.
+`/design` was explicitly skipped for this batch (operator-directed); the
+navigation-shape and Purpose-data-source decisions below are this pass's
+own architectural call, not a prototype port — full reasoning: `ADR-033`.
+
+- **Navigation — `AgentDetailPanel.tsx`'s `TABS` gains `'overview'`,
+  first in the array.** Final tab order: `['overview', 'chat', 'history',
+  'settings', 'gaps']` — `'gaps'` stays exactly as `ADR-032` decided it
+  (conditionally present only for `agent.type === 'expert'`). `activeTab`'s
+  initial state and its reset-on-agent-switch value both change from
+  `'chat'` to `'overview'`. No other tab's own content, route, or behavior
+  changes — Chat is one click away, functionally identical to today.
+- **Purpose region — reads the existing `settings` kv-list, no new field,
+  no new endpoint.** Looks for a `"Purpose"` entry first, then a
+  `"Domain"` entry, in `GET /agents/{agent_id}`'s existing `settings`
+  array; shows whichever is found first. If neither key exists, shows an
+  honest `"No stated purpose recorded for this agent."` string — never a
+  fabricated or Skills/Scope-derived summary. Composes `ADR-030` point 5 /
+  `ADR-031` point 3's existing Expert-Domain/Producer-Purpose mechanism
+  directly; no new field is added to the agent record.
+- **Backfill — all 7 shipped agents (`email-capture`, `meeting-capture`,
+  `todo-capture`, `people-producer`, `vault-qa`, `vault-filing-expert`,
+  `compass-expert`) gain one additive `{"key": "Purpose", "value": "..."}`
+  settings entry each**, appended to their existing static `settings` list
+  in `agent_registry.py`'s seed dict (append-only per entry, nothing
+  existing edited/reordered). Draft copy for all 7: `ADR-033` point 3a.
+  This is a static-seed-data edit only — it does not touch `create_agent`
+  or any of `REQ-SB-37-US-02-T01`'s already-`Ready`, already-locked
+  "Worker's `create_agent` call MUST pass `settings=[]`" constraint, which
+  governs the runtime wizard-creation path only. A Worker (or any agent)
+  created after this pass via the wizard with no Purpose/Domain entry
+  shows the same honest "No stated purpose recorded" state above — never a
+  display-time-derived summary.
+- **Scope region** reads `GET /agents/{agent_id}`'s existing `"scope":
+  [...]` field (`REQ-SB-29-US-01`, already additive on this same
+  endpoint) — a real assigned value once one exists (Scenario 5), or an
+  honest "no scope assigned" state for an empty list (Scenario 6, real for
+  every agent today since `REQ-SB-29-US-01` remains unbuilt). No new field.
+- **Guardrails region** is a static, non-configurable informational
+  sentence describing `REQ-SB-33-US-01`'s already-live grounding/honest-
+  uncertainty guardrail — the same text for every agent, sourced from no
+  API field at all (the guardrail itself has no per-agent toggle to read).
+  Unchanged by this pass.
+- **Working-mode region** reads `GET /agents/{agent_id}`'s existing
+  `"working_mode"` field (`REQ-SB-21-US-01`, already-`Done`), the same
+  value the Settings tab's own `kv-list` row already shows. No new field.
+- **Open-knowledge-gap count (Expert-type agents only)** — composes
+  `ADR-032`'s existing `GET /agents/{agent_id}/knowledge-gaps` endpoint's
+  `open_count` field, no new endpoint or business-layer function. Rendered
+  as a one-line summary with a link that switches `activeTab` to the
+  existing `'gaps'` tab, gated identically to it. Has a real,
+  sequencing-only build dependency on `REQ-SB-40-US-01`'s endpoint landing
+  first; the rest of this section's regions do not.
+- **Frontend** — a new `AgentOverviewTab.tsx` (or an inline
+  `activeTab === 'overview'` branch inside `AgentDetailPanel.tsx`, exact
+  file split is decomposer/coder latitude) renders the four required
+  regions plus the conditional gap-count line, composing only fields
+  `GET /agents/{agent_id}` (and, for the gap count,
+  `GET /agents/{agent_id}/knowledge-gaps`) already returns — no new
+  backend endpoint anywhere in this section.
+
+Full reasoning, every alternative considered, and every consequence:
+[ADR-033](ADR.md).
+
 ### Agent Sections & LLM Providers — mutable, persisted agent configuration (REQ-SB-18-US-01, REQ-SB-19-US-01, see [ADR-014](ADR.md))
 
 Both stories give the user runtime, restart-surviving control over two new
@@ -1200,6 +2605,287 @@ deliberately deferred (the first real skill's implementation).
   trust-surface decision, and nothing here contradicts any `Accepted`
   ADR, the PRD, or a `MEMORY.md` constraint.
 
+#### Amendment — unified capability model, phase 1: read-only Actions migrated to Skills (REQ-SB-39-US-01, see [ADR-028](ADR.md))
+
+`REQ-SB-39` is an operator-confirmed "genuine architecture reversal" of
+`ADR-011` point 2's "agent identity/actions stay hardcoded" framing:
+every capability any agent has — including capabilities that exist today
+as hardcoded `agent_registry.py` Actions — becomes a Skill, granted/
+revoked through the one mechanism above, **including already-shipped
+agents, not just future wizard-created ones.** Split into two sequential
+stories (`ESCALATIONS.md` → `ESC-029`) so a mutating capability is never
+observably ungated even transiently. This amendment covers only `US-01`'s
+own scope: the capability model itself, plus the 3 currently
+`"mutates": False` action ids (`view_last_run` — `email-capture`,
+`meeting-capture`, `todo-capture`, `people-producer`; `ask_question` and
+`view_channel_status` — `vault-qa`). The mutating-Action migration and the
+working-mode gate extension are `REQ-SB-39-US-02`'s own scope, deliberately
+not touched here. Full reasoning, every alternative considered, and every
+consequence: [ADR-028](ADR.md).
+
+- **`skill_tools.SKILLS` gains a `"mutates": bool` field on every entry**
+  (all 5, post-migration — `diagram-understanding`/`web-research` both
+  `False`, same as the 3 newly-migrated ids), mirroring `ADR-020` point 1's
+  `agent_registry.py` action shape one layer over, fail-safe-defaulting to
+  `True` if a future entry omits it. **Not consulted by any gate this
+  pass** — a structural field `REQ-SB-39-US-02` reads directly for its own
+  extension, not a behaviour change here.
+- **`skill_registry.invoke_skill(agent_id, skill_id, args, trigger)` gains
+  a required `trigger: Literal["chat", "direct", "hub_routed"])`
+  parameter**, mirroring `_invoke_action`'s existing shape/discipline
+  exactly (no default; every call site explicit). Threaded through, not
+  yet branched on. Real call sites: `skills_router.py`'s invoke endpoint
+  hardcodes `trigger="direct"` server-side (never client-supplied, same
+  trust-boundary posture as `trigger_action`'s own hardcoded `"direct"`);
+  `knowledge_bootstrap.py`'s existing Hub-routed `invoke_skill` call gains
+  `trigger="hub_routed"` — the first real call site anywhere to pass that
+  value, on either the Actions or Skills path.
+- **`ADR-011`'s chat funnel is extended at its dispatch step only —
+  `agent_registry.py` and `agent_chat.py` are both left completely
+  unmodified.** The 3 migrated ids' existing action entries (id, label,
+  `trigger_phrases`, `"mutates": False`) stay exactly where they are;
+  `agent_chat.handle_chat_message` keeps matching off them unchanged.
+  `agents_router.py`'s `trigger_action`/`chat()` dispatch is what changes:
+  a matched/requested id that is a member of `skill_tools.SKILLS` routes to
+  `skill_registry.invoke_skill(...)` instead of `_invoke_action(...)`;
+  every other id (the still-real Actions) is unaffected. This membership
+  check is the only new "is this migrated" logic anywhere — no separate
+  migration-id constant, since the migrated Skill ids deliberately reuse
+  their exact former Action id string. A small result-shape translation
+  normalizes `invoke_skill`'s varying return shapes into the
+  `{"status", "message"}` envelope `agents_router.py`'s existing
+  post-dispatch code already expects (exact helper name is decomposer/
+  coder latitude).
+- **3 new zero-arg `@mcp_server.tool()` stub handlers in `skill_tools.py`**
+  (`view_last_run`, `ask_question`, `view_channel_status`), each
+  unconditionally honest-unavailable — no real handler exists for any of
+  the three today on either the old Action path or the new Skill path.
+  Registered as ordinary skill tools (not excluded from the LangGraph
+  conversational loop the way `web-research` was) — `mcp_client.
+  load_agent_tools`'s existing `has_skill_access` filter (`ADR-022` point
+  6) already governs them generically, with zero change to that filter.
+- **Retrofit of the 4 real already-shipped agents: a one-time, explicitly-
+  scoped migration seed inside `skill_registry._load_state()`**, granting
+  the 3 migrated ids to their real prior agents via a small literal
+  mapping, idempotent (seeds once, reuses `grant_skill_access`'s own
+  already-idempotent behaviour thereafter) — the same "seed once, on first
+  load" shape `provider_registry._seed_state()` already established for
+  the pre-seeded "Compass" Provider. **Deliberately not a reopening of
+  this module's own "no self-healing default-assignment" principle** —
+  scoped to exactly this known, fixed, named migration set; a genuinely
+  new future Skill still needs its own explicit grant, no auto-default.
+  This is the concrete task the decomposer must create for "retrofit
+  existing agents," separate from building the new mechanism itself — the
+  operator's own directive ("Everything, including existing shipped
+  agents") is not satisfied by the mechanism alone.
+- **New `skill_registry.list_agent_capabilities(agent_id) -> list[dict]`**
+  — merges the agent's still-real Actions (`agent_registry.py`'s array,
+  filtered to exclude any `skill_tools.SKILLS`-member id) with its granted
+  Skills (`list_agent_skills`) into one list. `agents_router.py::get_agent`
+  changes `"actions": [...]` to `"capabilities": [...]` (the `"actions"`
+  key is removed, not kept alongside a new key) — directly satisfies
+  Scenario 7's "no separate 'Actions' section shown alongside a separate
+  'Skills' section." `AgentDetailPanel.tsx`'s "Available actions" block
+  becomes a unified capability list sourced from this field, with a real
+  grant/revoke control reusing the already-existing `GET /skills` /
+  `GET,POST,DELETE /agents/{agent_id}/skills[/{id}]` endpoints (no new
+  endpoint needed for grant/revoke) — no `/design` pass gates this build:
+  the operator explicitly decided to skip `/design` for this entire batch
+  of work (`REQ-SB-28/29/37/38/39/40/41`, `REVIEW-QUEUE.md` 2026-08-13
+  update) and build directly, matching the established Section/Provider/
+  Keywords/Working-mode kv-list row pattern; a new `skillsApiClient.ts`
+  (mirroring `settingsApiClient.ts`'s thin fetch-wrapper shape) is the
+  concrete new frontend file.
+- **New ADR — [ADR-028](ADR.md).** A genuine structural addition (a new
+  field on a shared catalog's own entry shape, a new required parameter on
+  a cross-cutting invocation function, a new dispatch fork in the chat/
+  direct-trigger funnel) — not a same-shape extension of already-Accepted
+  structure the way most `architecture.md`-only amendments in this file
+  are. Extends `ADR-011`, `ADR-014`, `ADR-015`, `ADR-020`, `ADR-022`;
+  reopens none of them.
+
+#### Amendment — unified capability model, phase 2: the working-mode gate extended to Skills, the 4 mutating Actions migrated (REQ-SB-39-US-02, see [ADR-029](ADR.md))
+
+The safety-critical second half of the same reversal (`ESCALATIONS.md` →
+`ESC-029`): every mutating capability — including today's 4 hardcoded
+mutating Actions (`run_capture_now`, `pause_schedule`,
+`rebuild_person_note`, `build_knowledge`) — keeps honoring the agent's own
+working mode after becoming a Skill, with zero transient window where a
+mutating capability is invocable ungated. Full reasoning, every
+alternative considered, and every consequence: [ADR-029](ADR.md).
+
+- **The gate lives inside `skill_registry.invoke_skill` itself**, not
+  mirrored into `agents_router.py` the way `_invoke_action` (`ADR-020`)
+  does — the one function all three real call sites (`skills_router.py`'s
+  direct invoke endpoint, `agents_router.py`'s dispatch fork,
+  `knowledge_bootstrap.py`'s Hub-routed call) already pass through
+  unconditionally, so no caller can bypass it, and putting it in
+  `agents_router.py` would be structurally unreachable from
+  `knowledge_bootstrap.py` (a business module) without violating `ADR-003`.
+  Inserted between the existing `has_skill_access` check and the existing
+  handler dispatch — same Manual+`hub_routed`-refuses /
+  Supervised+`mutates`-defers / everything-else-falls-through decision
+  table as `ADR-020` point 2, keyed off `skill_tools.SKILLS[skill_id][
+  "mutates"]`. A Supervised+mutating proposal reuses
+  `pending_approval_registry.create_pending_approval` unedited, storing the
+  `skill_id` in the existing generic `action_id` field (the same field
+  `ADR-021` point 5's Tier-2 ids already use) and the invocation's own
+  `args` in the existing `payload` field.
+- **New `skill_registry._dispatch_skill(agent_id, skill_id, args)`** — the
+  pre-this-ADR body of `invoke_skill`, extracted unchanged as a raw,
+  ungated primitive, mirroring `_execute_action`'s own "thin gate wraps
+  unconditional dispatch" split. `pending_approvals_router.py`'s Approve
+  endpoint gains one new branch, checked before its existing
+  `_APPROVAL_HANDLERS`/`_execute_action` chain, calling `_dispatch_skill`
+  directly for a pending record whose `action_id` is a `skill_tools.SKILLS`
+  member — mirroring the file's own already-existing cross-module private-
+  function import of `agents_router._execute_action`.
+- **Migration preserves exactly today's real/honest-unavailable split —
+  no new real behavior is built.** Direct code inspection confirms
+  `_ACTION_HANDLERS` wires a real handler to only 2 of the 4 mutating ids'
+  agent pairs today (`("email-capture", "run_capture_now")`,
+  `("compass-expert", "build_knowledge")`); the other 5 real pairs
+  (`meeting-capture`/`todo-capture`'s own `run_capture_now`, all 3 agents'
+  `pause_schedule`, `people-producer`'s `rebuild_person_note`) have no
+  wired handler today and already return an honest "not yet available" via
+  `_execute_action`. The migrated `run_capture_now`/`build_knowledge` Skill
+  handlers call through to the same real functions
+  (`run_capture_and_record_completion`, `knowledge_bootstrap.
+  bootstrap_agent_knowledge` via the existing `_run_build_knowledge`
+  translation); the migrated `pause_schedule`/`rebuild_person_note` Skill
+  handlers are honest unconditional stubs, identical posture to `ADR-028`
+  point 4's 3 read-only stubs.
+- **`agent_registry.py`'s per-agent action arrays for these 4 ids stay in
+  place, unedited** — vestigial, chat-funnel-matching only, mirroring
+  `ADR-028` point 3's identical "leave in place" precedent. No new
+  dispatch-fork code is needed in `agents_router.py`: the already-built
+  `id in skill_tools.SKILLS` membership check (`ADR-028` point 3)
+  automatically routes these 4 ids to `invoke_skill` once they join the
+  catalog. The 2 real `_ACTION_HANDLERS` entries become dead code post-
+  migration — left in place, a named consequence, not a cleanup this story
+  performs.
+- **Retrofit: the existing one-time migration-grant seed
+  (`skill_registry._load_state()`, `ADR-028` point 5) gains 4 new
+  id→agent-list entries**, same idempotent shape as the 3 already there —
+  `run_capture_now`/`pause_schedule` → `["email-capture", "meeting-
+  capture", "todo-capture"]`, `rebuild_person_note` → `["people-
+  producer"]`, `build_knowledge` → `["compass-expert"]`. **5 distinct real
+  agents in total** carry these 4 mutating ids today (confirmed by direct
+  reading of `agent_registry.py`'s own `AGENTS` catalog — 3 agents share
+  `run_capture_now`+`pause_schedule`, 2 each carry one distinct id):
+  `email-capture`, `meeting-capture`, `todo-capture`, `people-producer`,
+  `compass-expert`.
+- **Atomicity, concretely defined for this single-process app with no
+  staged rollout:** the gate-logic task, the Approve-endpoint task, and the
+  4-id-migration-plus-retrofit task must be `depends_on`-chained (migration
+  depends on gate, never the reverse or a parallel-independent ordering) —
+  there is no real deploy boundary to enforce this technically, so it is a
+  decomposer-level task-sequencing discipline, not a code mechanism. See
+  [ADR-029](ADR.md) point 8 for the full reasoning.
+- **New ADR — [ADR-029](ADR.md).** Extends `ADR-020`, `ADR-028`, and
+  `ADR-021` point 5's `action_id`-reuse precedent; reopens none of them.
+
+#### Amendment — Skills grouped by Tool: collapsible multi-select tree with icons (REQ-SB-48-US-01, no new ADR)
+
+A presentation/interaction-only upgrade of `AgentDetailPanel.tsx`'s
+Capabilities section — no new backend behavior, no new endpoint, no new
+persisted store, no new dispatch fork or trust-boundary decision, so
+nothing here rises to the same "genuine structural addition" bar `ADR-028`/
+`ADR-029` cleared. `/design` was explicitly skipped for this story (operator
+confirmation, 2026-08-14, matching the established "well-understood,
+coder-improvisable UI pattern" precedent already used for this batch of
+work) — the analyst's own resolved Tool taxonomy and fixed-icon-per-Tool
+decision are adopted as final, not re-derived here.
+
+- **Taxonomy re-confirmed against the current, real `skill_tools.SKILLS`
+  catalog, not re-derived.** Direct re-read at this pass confirms the
+  catalog is still exactly the same 11 entries the analyst's own pass
+  enumerated (`diagram-understanding`, `web-research`, `view_last_run`,
+  `ask_question`, `view_channel_status`, `run_capture_now`,
+  `pause_schedule`, `rebuild_person_note`, `build_knowledge`,
+  `write-to-vault-draft`, `summarize-file`) — `REQ-SB-47-US-01`'s own
+  architecture pass (the only work landed since the analyst's pass) reads
+  `skill_tools.SKILLS[capability_id]["mutates"]` but adds no new catalog
+  entry. The analyst's per-Skill Tool assignment (Outlook: 3, Vault: 4,
+  Web: 1, Compass: 3) is accurate against this confirmed-unchanged catalog
+  and is adopted verbatim, including the one disclosed adjustment
+  (`summarize-file` → Compass, not the PRD breadcrumb's own proposed
+  Vault) and the one disclosed pragmatic default (`view_channel_status` →
+  Vault).
+- **`skill_tools.SKILLS` gains a `"tool": "Outlook" | "Vault" | "Web" |
+  "Compass"` field on every entry** — a plain, code-literal classification
+  field, the same shape as the existing `"mutates": bool` field `ADR-028`
+  already added one layer over. **Server-side, not a frontend static
+  lookup table** — chosen over a frontend-only mapping because
+  `skill_tools.SKILLS` is this project's own already-established single
+  source of truth for a Skill's catalog metadata (`ADR-015` point 9,
+  `skill_registry.py`'s own docstring: "composed alongside
+  `skill_tools.py`, not inside it"); a frontend-side lookup keyed by Skill
+  id would need to be kept in sync by hand on every future Skill addition,
+  the exact drift risk `skill_tools.py`'s own module docstring already
+  warns against for the catalog generally. No default/fallback value is
+  defined — every one of today's 11 entries carries an explicit `"tool"`
+  value; a future new Skill needs its own explicit Tool placement decision
+  at the time it's added (the story's own Constraints), mirroring
+  `"mutates"`'s "fail-safe-defaulting" caution but requiring an explicit
+  value rather than defaulting, since an un-classified Skill has no safe
+  default Tool group the way an un-classified `mutates` has a safe
+  default (`True`, gate-first).
+- **Passed through by two already-existing read paths, no new endpoint:**
+  `skill_registry.list_skills()`'s existing `list(skill_tools.SKILLS.
+  values())` passthrough carries the new field automatically (`GET
+  /skills`, feeding `AgentDetailPanel.tsx`'s not-yet-granted `skillCatalog`
+  list); `skill_registry.list_agent_capabilities`'s skill-kind branch adds
+  `"tool": skill["tool"]` to its per-item dict alongside the existing
+  `"id"`/`"label"`/`"kind"` keys (feeding `GET /agents/{agent_id}`'s
+  `capabilities` array, the already-granted half of the tree). The
+  action-kind branch is unchanged and carries no `"tool"` key — Scenario
+  9's "Built-in capabilities stay outside the Tool tree entirely" is true
+  by construction (the frontend tree only ever groups items that carry a
+  `"tool"` key), not a new conditional.
+- **Icon sourcing: 4 fixed Tool-level icons, frontend-only static lookup,
+  not a backend field.** Recommended and adopted over a backend `"icon"`
+  field on `skill_tools.SKILLS` because the drift risk a server-side field
+  guards against (many, growing Skills) does not apply symmetrically to a
+  4-entry, rarely-changing Tool taxonomy — the same reasoning that makes
+  `"tool"` worth centralizing server-side makes a dedicated backend `icon`
+  field unnecessary ceremony for 4 fixed glyphs. Mirrors `Sidebar.tsx`'s
+  own existing plain-Unicode-glyph `.nav-icon` convention (no icon
+  library/SVG asset pipeline introduced). A new small `TOOL_ICONS: Record<
+  string, string>` constant (frontend, exact file left to the
+  decomposer/coder — plausibly a sibling of the new tree component) maps
+  the same 4 literal Tool names the backend now emits.
+- **New frontend tree component replacing `AgentDetailPanel.tsx`'s flat
+  Capabilities `kv-list`** (exact component boundary — inline in
+  `AgentDetailPanel.tsx` vs. a new sibling file — is decomposer/coder
+  latitude, not resolved by this architecture pass, consistent with this
+  story's own net-new, prototype-uncovered UI territory): groups
+  `agent.capabilities` (skill-kind rows) and the not-yet-granted, filtered
+  `skillCatalog` rows by their shared `"tool"` value into one merged,
+  per-Tool section, expanded by default (Scenario 1), collapsible without
+  ever calling grant/revoke (Scenario 2/3), each Tool header and each
+  Skill row rendering `TOOL_ICONS[tool]` (Scenario 4). Multi-select is a
+  same-grant-state-only selection model (Scenario 7) that, on a bulk
+  Grant/Revoke trigger, issues N sequential calls against the already-
+  existing `grantAgentSkill`/`revokeAgentSkill` (`skillsApiClient.ts`,
+  unchanged) — one `POST`/`DELETE
+  /agents/{agent_id}/skills/{skill_id}` per selected Skill, exactly
+  today's per-row mechanism repeated, never a new batch endpoint
+  (Scenarios 5/6/8, the story's own Constraints). Action-kind capabilities
+  keep rendering exactly as today, outside the tree (Scenario 9).
+- **Frontend type changes, additive only:** `skillsApiClient.ts`'s
+  `SkillSummary` interface gains `tool: string`; `agentsApiClient.ts`'s
+  `AgentCapability` interface gains `tool?: string` (present for
+  `kind: 'skill'` rows, absent/undefined for `kind: 'action'` rows,
+  mirroring the field's own absence server-side on the action-kind
+  branch).
+- **No ADR.** Every decision above is an additive field on an
+  already-`Accepted` catalog shape (`ADR-015`'s `skill_tools.SKILLS`,
+  extended the same way `ADR-028`'s `"mutates"` field already was) plus a
+  frontend rendering/interaction upgrade with no new mechanism, endpoint,
+  persisted store, or trust-boundary decision — nothing here contradicts
+  any `Accepted` ADR, the PRD, or a `MEMORY.md` constraint.
+
 ### Agent Working Modes & Pending Approvals (REQ-SB-21-US-01, see [ADR-018](ADR.md) + [ADR-020](ADR.md))
 
 Every agent gains a third new mutable, persisted property — its working
@@ -1252,13 +2938,52 @@ design, superseding `ADR-018` points 3 and 5 only, `ESCALATIONS.md` →
   concern from working mode itself — a workflow record with a lifecycle,
   not a settable property) — `list_pending_approvals(status=None,
   agent_id=None)`, `get_pending_approval(approval_id)`,
-  `create_pending_approval(agent_id, trigger, action_id, description)`
+  `create_pending_approval(agent_id, trigger, action_id, description,
+  payload=None, dedupe_key=None)`
   (idempotent for `trigger="background"` only — reuses an existing
   unresolved record for that agent rather than piling up a duplicate
   every scheduler tick; `"chat"`/`"direct"` proposals are never
-  deduplicated), `resolve_pending_approval(approval_id, status)`. `id`s
-  are `uuid.uuid4().hex[:12]` — this project's first `uuid` usage
-  (stdlib only, no new dependency).
+  deduplicated by THIS check), `resolve_pending_approval(approval_id,
+  status)`. `id`s are `uuid.uuid4().hex[:12]` — this project's first
+  `uuid` usage (stdlib only, no new dependency).
+  - **Target-aware `dedupe_key` idempotency check (`BUGFIX-08-US-01`,
+    see [ADR-056](ADR.md))** — additive alongside the `trigger ==
+    "background"` guard above, never replacing it. When a caller supplies
+    `dedupe_key` (opaque `str`, caller's own convention — mirrors
+    `payload`'s existing opaque-to-the-registry shape), a second check
+    matches an existing `status == "pending"` record sharing the SAME
+    `agent_id` AND the SAME `dedupe_key`, **regardless of `trigger`**, and
+    returns it instead of creating a duplicate. Closes the gap the
+    `"background"`-only guard deliberately left open: two DIFFERENT
+    non-`"background"` triggers (or the SAME trigger repeated across
+    ticks) both targeting the exact same real thing. The stored record
+    gains one additive field, `"dedupe_key": str | None`, `None` on every
+    pre-existing record (never matched — the check is skipped entirely
+    when the caller passes no `dedupe_key`). Real call sites wired to this
+    check, each namespaced `"{action_id}:{stable_target_identifier}"` so
+    two different action kinds under one `agent_id` never collide:
+    `skill_registry.py::invoke_skill`'s own Supervised+mutates gate
+    (`dedupe_key = f"{agent_id}:{skill_id}"`, computed inside
+    `invoke_skill` itself — zero change needed to any of its own callers,
+    including `agent_schedule_registry.dispatch_with_shared_lock`, closing
+    `BUG-029`'s own scheduled-vs-direct race for ANY Supervised mutating
+    Skill, not just `meeting-capture`/`run_capture_now`);
+    `email_classification.py::route_to_project`
+    (`f"route_thread_to_project:{conversation_id}"`) and
+    `::_create_classification_failure_pending_approval`
+    (`f"acknowledge_classification_failure:{conversation_id}"`); and
+    `librarian_housekeeping.py::propose_customer_backfill`
+    (`f"propose_customer_backfill_routing:{customer}"`, per batch) and
+    `::propose_customer_archival_candidates`
+    (`f"propose_customer_archival_candidate:{customer}"`, per candidate) —
+    closing `BUG-030`'s staged-email/Thread reprocessing duplication and
+    the same-shaped gap `ADR-055`'s own Consequences already disclosed for
+    Customer-backfill batches. `agent_schedule_registry.py`'s shared
+    dispatch lock is unmodified — the fix is deliberately independent of
+    lock timing (see `ADR-056`'s Context for why the literal race is not
+    reproducible against the current, already lock-consolidated
+    `dispatch_with_shared_lock` path, and why the dedupe_key check is the
+    correct guarantee regardless).
 - **The chat/direct-action gate: `agents_router.py::_invoke_action` split
   into a thin gate plus the existing unconditional dispatch, renamed
   `_execute_action`.** The gate takes a new `trigger: "chat" | "direct" |
@@ -1670,6 +3395,54 @@ architect pass made for its structurally identical read-only status page.
   value, the same "grow the set, don't redefine it" shape `ADR-018` point
   7 already used when it added `"proposal"` to the same field.
 
+## Real-Time Agent Activity Pulses (REQ-SB-42-US-01, see [ADR-035](ADR.md))
+
+A new, additive, data-driven layer over the Agents Map overview and a
+Section's drill-down Agents Tree — replaces nothing (the existing
+decorative `kb-pulse-dot` KB↔Hub spoke animation is unaffected by
+construction, Scenario 8). Full reasoning, alternatives, and consequences:
+[ADR-035](ADR.md). This section records the resulting module shape only.
+
+- **New in-memory, module-level module `app/business/agent_presence.py`
+  — no `.second-brain/` persistence, mirroring `ADR-024`'s
+  `vault_indexing.py` shape one layer over.** Holds two small ephemeral
+  dicts (`_active`: `agent_id -> {"kind": "capture" | "chat", "since"}`;
+  `_hub_routes`: `token -> {"from_agent_id", "to_agent_id", "since"}`) plus
+  an in-process `asyncio.Queue`-per-client subscriber set. `get_snapshot()`
+  composes both dicts with a fresh, live read of
+  `pending_approval_registry`'s own already-persisted open-approvals list
+  — the steady/pending-approval highlight (Scenario 4) is never a second,
+  separately-tracked copy of that state. `start_activity`/`end_activity`/
+  `start_hub_routing`/`end_hub_routing` each mutate state then call
+  `broadcast_snapshot()`, pushing the fresh snapshot to every connected
+  client.
+- **Five real dispatch call sites gain start/end (or, for pending
+  approvals, a broadcast-only) instrumentation** — see `ADR-035` point 3
+  for the exact call sites: `email_classification.run_capture_for_agent`
+  (capture/Skill via the scheduled/Approve paths), `skill_registry.
+  _dispatch_skill` (an explicit, non-conversational Skill invocation),
+  `agents_router.py::chat`'s call to `run_agent_conversation` (chat
+  generation — this single wrap also covers a Skill invoked mid-
+  conversation via the model's own tool-calling, so that path is not
+  separately marked), each real caller of `graph.
+  route_cross_section_request(...)` that goes on to invoke the matched
+  agent (the Hub-routed traveling pulse — currently `knowledge_bootstrap.
+  bootstrap_agent_knowledge`'s two hops), and `pending_approval_registry`'s
+  create/resolve functions (broadcast-only, no new state).
+- **New router `app/api/agent_presence_router.py`, `GET
+  /agent-presence/stream`** (SSE, `text/event-stream`) — registered in
+  `main.py` alongside the existing routers. Yields an initial snapshot on
+  connect, then every subsequent broadcast.
+- **Frontend: new `src/frontend/src/features/agent-presence/client.ts`**,
+  a thin wrapper over the browser's native `EventSource` (no new npm
+  dependency) — feeds parsed snapshots into the Agents Map's existing
+  per-agent-id node lookup, applying the approved prototype's own new CSS
+  classes (`.agent-node--activity-glow`, `.agent-node--pending-approval`,
+  `.route-pulse-dot` + `.affinity-line.active`/the drill-down's own
+  captioned `.cluster-line` treatment) exactly as `html-prototype/
+  agents-map.html`'s approved `REQ-SB-42` design-pass revision defines
+  them.
+
 ## In-App Agent Orchestration (LangGraph) & Shared MCP Server (REQ-SB-20, REQ-SB-25, REQ-SB-26, REQ-SB-27, see [ADR-015](ADR.md))
 
 `ADR-007`'s original "no agent-orchestration framework in Second Brain's
@@ -1866,6 +3639,158 @@ server" subsection directly above.
   live-verified until `REQ-SB-29-US-01` ships a real scope registry — a
   real, load-bearing, honestly-recorded blocker (`ESCALATIONS.md` →
   `ESC-026`), not silently worked around.
+
+### Agent-to-Tag/Folder Vault Scoping — assignment & scope-bounded retrieval (`REQ-SB-29-US-01`, no new ADR)
+
+The operator resolved the retrieval-mechanism question on 2026-08-12 (see the
+story's own `## Notes`, `ESC-008` → `Resolved`): a narrower, story-scoped ad
+hoc primitive built directly against the vault, not a wait on `REQ-SB-01`/
+`REQ-SB-02` (neither has a story yet). Everything below is the architect's
+confirmation of *shape* against already-`Accepted` precedent — no genuinely
+new tool, framework, storage mechanism, or trust-surface decision is made
+here, so **no new ADR**, matching this codebase's own repeated "same-shape
+extension of already-Accepted structure" precedent (e.g. the
+`REQ-SB-12-US-02`/`REQ-SB-30-US-01` passes, above).
+
+- **Assignment storage: mirrors `agent_keywords.json`'s shape, not
+  `agent_sections.json`'s.** A vault scope (one or more tags/folders per
+  agent) carries no separate, shared, renameable identity the way a Section
+  or Provider does — the same reasoning `ADR-017`'s own keyword-storage
+  decision already recorded. New sibling `.second-brain/agent_scopes.json`,
+  `{agent_id: [tag_or_folder: str, ...]}`. New `vault_writer.py`
+  primitives, `load_agent_scope(agent_id)` / `save_agent_scope(agent_id,
+  scope)` / `load_all_agent_scopes()`, mirroring `load_agent_keywords`/
+  `save_agent_keywords`/`load_all_agent_keywords`'s exact shape. New
+  `app/business/scope_registry.py` (sibling to `agent_keywords.py`,
+  composed *alongside* `agent_registry.py`, unmodified): `get_agent_scope`/
+  `set_agent_scope` (whole-list replace, the same free-text kv-list editing
+  UX already used for Keywords).
+- **API: one more optional field on the existing `PATCH
+  /agents/{agent_id}`**, not a new sub-resource — `agents_router.py`'s
+  `AgentAssignmentUpdateBody` (already `section_id | provider_id | keywords
+  | working_mode`, all optional) gains `scope: list[str] | None = None`;
+  `update_agent_assignment` gains one more `if body.scope is not None:
+  scope_registry.set_agent_scope(agent_id, body.scope)` branch, mirroring
+  the existing `keywords` branch exactly. `GET /agents/{agent_id}`'s
+  response gains `"scope": scope_registry.get_agent_scope(agent_id)`,
+  alongside the existing `"keywords"` key.
+- **Retrieval primitive: `vault_writer.list_notes_matching_scope(scope:
+  list[str]) -> list`, mirroring `list_known_customers()`'s/
+  `list_notes_in_kind_folder()`'s exact shape** — iterates
+  `list_all_note_paths()`, reads each note's frontmatter, and matches a
+  note whose `tags` list intersects `scope` or whose vault-relative path
+  falls under a folder named in `scope`. **Must NOT compose
+  `vault_indexing.get_index()` or anything in `vault_search.py`**
+  (`ADR-024`/`ADR-026`, `REQ-SB-01`/`REQ-SB-02`) — the story's own
+  Constraints are explicit that this primitive is independent of those
+  still-unbuilt requirements; reusing the indexer, even though it now
+  technically exists, would silently reintroduce the exact dependency the
+  operator's 2026-08-12 decision rejected. Tag-vs-folder disambiguation
+  inside the primitive is ordinary `/plan-tasks` implementation latitude,
+  not a further architectural fork.
+- **Tool wiring: a new `@mcp_server.tool()`, registered on the SAME shared
+  MCP server** (`ADR-015` point 9's "register, never a new server per
+  capability" rule — the same rule `vault_write_tools.propose_vault_write`
+  already extended it with), **not a plain passthrough like
+  `vault_query_tools.py`'s existing four read-only tools.** Scenarios 4 and
+  6 require the tool itself, not the calling model, to determine and
+  enforce the requesting agent's scope — so the new tool follows
+  `vault_write_tools.propose_vault_write`'s established shape instead:
+  an explicit, required `agent_id` parameter the calling agent supplies (an
+  unknown `agent_id` is rejected outright, matching
+  `propose_vault_write`'s own unknown-agent handling), with the business
+  layer resolving that agent's real assigned scope server-side via
+  `scope_registry.get_agent_scope(agent_id)` — the tool never accepts a
+  freeform `tags`/`folders` argument from the model. An empty assigned
+  scope returns an explicit "no bounded vault query access" result
+  (Scenario 6), never a silent whole-vault search; a non-empty scope with
+  no matching notes returns an explicit "nothing found" result (Scenario
+  5), never a fabricated one — both compose with `REQ-SB-33`'s already-
+  live grounding/honest-uncertainty system-prompt instruction
+  (`history_entries_to_messages`), not a new honesty mechanism. Exact
+  module placement (a new sibling module, e.g. `scope_query_tools.py`, or
+  a new function inside `vault_query_tools.py`) is decomposer/coder
+  latitude.
+- **Load-bearing for `ADR-025` point 6 (`ESC-026`) — but that seam's own
+  real implementation is NOT this story's task.** `ADR-025` point 6
+  fail-closes `vault_write_tools._is_within_assigned_scope(...)` pending
+  "a real per-agent scope lookup this seam can call." `scope_registry.
+  get_agent_scope(agent_id)` (above) is that lookup — its module/function
+  name and signature are a small stable contract a future
+  `REQ-SB-04-US-01` task depends on, so the decomposer should treat it as
+  effectively public API, not private to this story's own retrieval
+  feature. Wiring `_is_within_assigned_scope`'s body to actually call it
+  is `REQ-SB-04-US-01`'s own future task (still blocked, no task id exists
+  yet — `ESC-026` stays `Open` until that story is decomposed and built;
+  this story does not close `ESC-026` by itself).
+- **Frontend: a new "Vault scope" row on `AgentDetailPanel.tsx`'s existing
+  Settings `kv-list`, following the Keywords row's pattern, not the
+  Section/Provider `<select>` pattern.** Scope is user-typed, multi-value,
+  free-form tags/folder paths — not a small fixed catalog — so it follows
+  Keywords' exact "single `<input>`, comma-separated, `onBlur` commit via
+  `updateAgentAssignment(agentId, { scope: [...] })`" shape (own local
+  `scopeDraft` state, split-trim-filter on blur), not the Section/Provider
+  `<select>`-against-a-fetched-list shape. `agentsApiClient.ts`'s
+  `AgentDetail`/`updateAgentAssignment` gain a `scope: string[]` field, the
+  same additive-field precedent `keywords` already established. No new
+  component, panel, or interaction pattern — this is the story's own
+  established "not net-new-design" instruction: match
+  `REQ-SB-18/19/20/21`'s already-built row language exactly (per the
+  operator's decision to skip `/design` for this story), not invent a new
+  visual shape for the missing prototype coverage.
+- **Non-Goals respected by construction:** no boolean/compound scope
+  queries (the primitive is a straightforward tag/folder membership
+  match); no automatic scope inference (assignment is explicit,
+  user-typed, via the kv-row above only); no change to `REQ-SB-20`'s
+  Keywords field or Hub-routing mechanism (a fully separate
+  `.second-brain/` file, business module, and kv-row).
+
+### Addendum (REQ-SB-50-US-01, tag/folder autocomplete on the Vault Scope field, no new ADR)
+
+The already-shipped `scopeDraft`/`handleScopeCommit` free-text `<input>`
+(above) gains a suggestion dropdown sourced from the new `GET
+/vault-search/scope-suggestions` endpoint (see "Tag/Folder Scope
+Suggestions" under "Browse & Search", above) — the field's own established
+free-text/comma-separated/`onBlur`-commit mechanism is unchanged;
+suggestions are additive UI on top of it, not a replacement input control
+(`REQ-SB-50-US-01`'s own Constraints). Scope confirmed narrow to this one
+field only — `CreateAgentWizard.tsx`'s Worker-step Scope field is
+deliberately deferred to a follow-on once `REQ-SB-46`'s still-`Draft`
+wizard redesign settles that field's own eventual shape (see the story's
+own Context).
+
+- New `fetchScopeSuggestions()` (`features/vault-browser/client.ts`)
+  imported cross-feature into `AgentDetailPanel.tsx`.
+- **Fetched once per agent-switch inside the panel's existing agent-load
+  `useEffect`**, mirroring `fetchSections()`/`fetchProviders()`'s identical
+  fetch-on-mount shape — even though the suggestion data itself is
+  vault-wide, not agent-specific, this keeps the fetch inside the same
+  already-established lifecycle rather than introducing a second,
+  differently-scoped effect.
+- New local `scopeSuggestions` state (`{tags, folders} | null`), filtered
+  client-side against the in-progress last comma-segment of `scopeDraft`
+  as the user types (substring/prefix match — no fuzzy matching, per the
+  story's own Non-Goals) — rendered as a small suggestion dropdown beneath
+  the existing Vault Scope `<input>`, offered as two labeled groups (Tags /
+  Folders) matching the endpoint's own two-list shape. No new component or
+  route — this augments the existing `kv-row` in place, matching the
+  story's own "not net-new-design" scope decision (this row already has no
+  approved prototype coverage, a pre-existing, unresolved-by-this-story
+  gap — see the story's own Notes → Prototype parity).
+- **Interaction-order note for the coder:** the field's existing
+  `onBlur={handleScopeCommit}` already commits the draft on blur.
+  Selecting a suggestion by click must use `onMouseDown` (not `onClick`)
+  on the suggestion item — a plain click fires the input's `onBlur` first,
+  committing the draft (and unmounting the dropdown) before any `onClick`
+  handler would ever run, silently losing the selection. This is a genuine
+  interaction-order pitfall the existing Keywords/Vault-scope
+  `onBlur`-commit pattern never previously had to consider (no dropdown
+  existed before this story) — recorded explicitly so the coder does not
+  discover it mid-build.
+- Selecting or committing a typed suggestion joins the existing
+  comma-separated list via the same `split → trim → filter → join`
+  round-trip `handleScopeCommit` already performs — no change to that
+  function's own dedup/ordering behaviour (Scenario 4).
 
 ### Addendum (REQ-SB-25-US-01 architecture-scoping confirmation, 2026-08-12) — message shape for `run_agent_conversation`, no ADR change
 
@@ -2182,6 +4107,145 @@ built — see [ADR-021](ADR.md)'s own Context and `ESCALATIONS.md` →
 Full reasoning, every alternative considered, and every consequence:
 [ADR-021](ADR.md).
 
+### The Librarian — Vault Filing Expert generalized to a Pipeline-Job caller + cross-cutting-update detection (`REQ-SB-63`, extends [ADR-021](ADR.md)/[ADR-004](ADR.md)/[ADR-042](ADR.md), no new ADR)
+
+`REQ-SB-63`'s own analyst pass argued extending `vault_filing_expert.py` with a
+new caller and a new decision outcome is implementation-latitude composition
+of an already-`Accepted` `ADR-021`, not a new architectural boundary —
+independently verified, not taken on faith, by direct inspection during this
+pass:
+
+- **The "new caller" half needs no new mechanism at all.**
+  `determine_placement_and_file` is already, TODAY, a plain business-layer
+  function called directly (never through `agents_router.py`'s chat/
+  working-mode funnel) from **three** structurally different real call
+  sites: `agents_router.py`'s chat-attachment handler, `agent_orchestration/
+  knowledge_bootstrap.py`'s delegated research chain (`ADR-023`), and
+  `knowledge_gap_tracking.py`'s human-answer/research-closing paths
+  (`ADR-032`) — confirmed by direct reading of all three. A fourth caller
+  (a plain function Job inside `app/business/pipelines/
+  email_capture_pipeline.py`'s graph, `ADR-043`) composes it exactly the
+  same way `knowledge_gap_tracking.resolve_gap_with_human_answer` already
+  does — "Composes the already-Done Vault Filing Expert unchanged," that
+  module's own docstring, verbatim, applies unchanged to this new caller.
+  No new call topology, no new registry entry, no Hub-routing involvement.
+- **The "new decision outcome" half is the exact case `ADR-021`'s own
+  Consequences already pre-authorized:** "A future second Tier-2-shaped
+  action (any other 'always pauses regardless of mode' decision) reuses the
+  same `payload` field and `_APPROVAL_HANDLERS` dispatch-table pattern
+  rather than inventing a third approval mechanism." The operator-confirmed
+  Option B (Pending Approval, `REQ-SB-63-US-01`'s own `## Notes`) is exactly
+  this — no new call contract, no new persistence store, no new tool or
+  framework.
+
+**Concrete design for this pass (architect proposal — see this story's own
+gate reasoning: flagged, trigger-1, not trigger-3, since no ADR was
+created):**
+
+1. **`determine_placement_and_file` gains one additive, keyword-only
+   parameter: `already_filed_path: str | None = None`.** All three existing
+   callers omit it (behavior byte-for-byte unchanged — mirrors this
+   codebase's own established additive-parameter precedent,
+   `skill_registry.invoke_skill`'s `args` parameter, `ADR-022`). When a
+   pipeline Job caller supplies it (the content it's asking the Librarian
+   about is ALREADY filed at a deterministic path the Pipeline's own Job
+   controls — a Thread's path, never the Librarian's to decide), the
+   function skips the Tier-1/Tier-2 write branch entirely (writing a SECOND,
+   redundant note for content that already has a real, deterministic home
+   would be wrong) and instead runs `_link_referenced_entity(already_filed_
+   path, decision)` against the already-filed note — Scenario 2's own text
+   ("the written note is mechanically linked... exactly as already proven
+   for the chat-uploaded-attachment caller") is satisfied against the
+   ALREADY-filed note, not a new one. The SAME single grounded completion
+   (`known_kinds`/`known_customers`/`known_partners`, one `model.invoke`
+   call) still runs — Scenario 1's "receives a real placement decision
+   grounded in the live vault structure... the SAME Tier 1 vs Tier 2
+   boundary... governs this decision" is satisfied by construction: the
+   boundary is still evaluated (a Thread's own `kind` is always already
+   known, so it always resolves Tier 1 for the primary axis), just without
+   redundantly re-writing content the caller already placed.
+2. **The model's own returned JSON decision gains one additive, optional
+   field, evaluated in the SAME completion, never a second Provider
+   round-trip:** `"cross_cutting_implication": {"customer": str | null,
+   "partner": str | null, "reason": str} | null`. Independent of the
+   Tier 1/Tier 2 axis (Scenario 4) — re-checked in Python, never trusted
+   from the model's own naming alone (mirrors `ADR-021` point 2's own
+   Tier-boundary discipline, applied a second time): the named
+   customer/partner must both (a) already appear in the SAME pre-fetched
+   `known_customers`/`known_partners` lists (a genuinely NEW entity is not
+   "elsewhere" — normal Tier 1/2 new-entity handling already covers that
+   case) and (b) differ from whatever `referenced_customer`/
+   `referenced_partner` the SAME decision already names for the content's
+   own primary placement (the same entity is not "elsewhere", it's already
+   mechanically hub-linked by step 1's own `_link_referenced_entity`).
+   Failing either check silently discards the field (Scenario 4's own
+   regression guard) rather than raising or fabricating a proposal.
+3. **A new, independent Pending Approval, `action_id=
+   "propose_cross_cutting_update"`,** created via a new sibling function,
+   `_create_cross_cutting_proposal` (mirrors `_create_tier_2_proposal`'s own
+   shape exactly), payload carrying `already_filed_path` (or the just-
+   written Tier-1 path), the named customer/partner, and the model's own
+   `reason` string. Independent of whatever Tier 1/Tier 2 outcome the
+   primary axis produced (Scenario 4) — a Tier-1 write and a cross-cutting
+   proposal can both happen for the same call.
+4. **A new `finalize_cross_cutting_update(payload)`**, registered in
+   `pending_approvals_router.py`'s existing `_APPROVAL_HANDLERS` table
+   alongside `propose_new_top_level_area` (no new dispatch mechanism).
+   Performs the deferred write as an **additive `customer/<slug>` or
+   `partner/<slug>` tag on the already-filed note** — reusing `REQ-SB-55-
+   US-01-T01`'s own new unconditional frontmatter-key setter (read the
+   note's current `tags`, union in the new tag, write back), the SAME
+   already-established "tags for multidimensional/cross-cutting
+   attributes" idiom `ADR-004` already governs, never a new evidence file
+   and never `captures.md` (that file is operator-written only, per `ADR-
+   042`'s own structural invariant — an agent-authored write there would be
+   a real `ADR-042` deviation, not attempted).
+- **Honest, disclosed forward dependency, not silently assumed satisfied
+  (mirrors `ADR-021`'s own Tier-2/`REQ-SB-21` disclosure style above):**
+  `REQ-SB-63-US-01`'s own `## Notes` expects this write to "become new
+  evidence, letting `REQ-SB-57`'s own already-designed evidence-change
+  trigger fire normally afterward." `REQ-SB-57-US-01` is still `Draft` —
+  its Synthesizer does not exist, and it has not yet designed HOW it
+  discovers evidence for a Customer/Project (a `customer:`/`project:`
+  frontmatter scan, confirmed for a note's PRIMARY owner; a secondary,
+  cross-referencing tag is a NEW discovery case `REQ-SB-57` has not yet
+  committed to reading). The tag write above is real, immediately visible,
+  vault-inspectable evidence the moment it lands — satisfying Scenario 3's
+  own "never silently dropped, never silently applied with no trace" bar —
+  but does **not**, on its own, cause any Glimpse to actually regenerate
+  until `REQ-SB-57` is built and extended to scan for it. This is NOT a
+  blocking prerequisite for `REQ-SB-63-US-01` itself (unlike `ADR-021`'s
+  own Tier-2/`REQ-SB-21` case) — the Pending Approval and the tag write are
+  both fully buildable and verifiable today; it is named here so a future
+  `REQ-SB-57` build does not silently assume this tag convention already
+  feeds synthesis without deliberately reading and honoring it.
+- **Pipeline wiring point (`REQ-SB-55`'s own Thread pipeline, the one
+  concrete integration this story builds):** a new branch Job,
+  `Consult-Librarian`, mirrors `Detect-Recurring-Pattern`'s own additive-
+  branch shape (fires on every Thread update, never gates `Route-to-
+  Project` or the graph's own terminal step, per `ADR-041`'s "consulting an
+  Expert is additive, not a replacement for the Pipeline's own terminal
+  step"). A new plain function in `email_classification.py`, called after
+  `Thread-Match/Merge` regenerates the Thread's `## Summary`, invokes
+  `vault_filing_expert.determine_placement_and_file(content=<the Thread's
+  own regenerated Summary>, source_description=f"Thread update: {thread_
+  note_path}", requesting_agent_id="email-capture-pipeline",
+  already_filed_path=thread_note_path)`. Exact `StateGraph` node wiring
+  (parallel to vs. sequential after `Route-to-Project`) is left to the
+  decomposer, per `ADR-043`'s own established "Job wiring specifics belong
+  to the decomposer" precedent.
+
+**Why no new ADR:** every piece above is a parameter-additive extension of
+an already-`Accepted` module (`ADR-021`) reusing an already-`Accepted`
+approval-dispatch pattern (`ADR-021` point 5, explicitly pre-authorized for
+exactly this reuse) and an already-`Accepted` tag idiom (`ADR-004`) — no new
+tool, framework, external dependency, or structural boundary (module family,
+persisted-store shape, or call topology) is introduced. The one genuinely
+new judgement call this pass makes — WHAT the deferred cross-reference write
+concretely consists of — is recorded as a flagged architect proposal
+(trigger-1, material assumption) in `REQ-SB-63-US-01`'s own `## Notes`,
+not folded silently into an unflagged implementation detail.
+
 ### Real Anthropic Provider integration & web-research skill (`REQ-SB-36-US-01`, see [ADR-022](ADR.md))
 
 `app/business/provider_registry.py`'s `_REAL_CLIENT_PROVIDER_IDS` gains
@@ -2293,6 +4357,2004 @@ unbuilt). See `ESCALATIONS.md` → `ESC-017`.
 
 Full reasoning, every alternative considered, and every consequence:
 [ADR-023](ADR.md).
+
+### Agent Knowledge-Gap Tracking & Expert Readiness (`REQ-SB-40-US-01`, see [ADR-032](ADR.md))
+
+Records every honest "I don't know" an Expert agent gives
+(`REQ-SB-33-US-01`'s guardrail) as a trackable, closeable knowledge gap,
+via a **structured, intercepted-tool-call signal** — not a text
+pattern-match — reusing `ADR-017`'s already-real `request_cross_section_
+help` precedent one concept over. `/design` was explicitly skipped for
+this batch (operator-directed); the display-surface placement decision
+below is this pass's own architectural call, not a prototype port.
+
+- **Detection (`graph.py`/`state.py`).** A new bound tool,
+  `record_knowledge_gap(topic: str)`, sits alongside
+  `request_cross_section_help` — bound to the model, but its own body is
+  never actually invoked. `history_entries_to_messages`'s existing single
+  `SystemMessage` (`state.py`) gains one more appended instruction
+  (mirrors `REQ-SB-33-US-01`'s own append-not-replace precedent):
+  producing an honest decline means calling this tool first, then
+  replying honestly as normal text. `_route_after_model` gains one more
+  branch, checked alongside the existing hub-routing interception: a
+  `record_knowledge_gap` call routes to a new node,
+  `_record_knowledge_gap` (mirrors `_route_hub_request`'s exact shape) —
+  it reads the turn's real originating `HumanMessage` deterministically
+  from `current_state["messages"]` (never trusting the model's own
+  `topic` argument for the durable question text), calls
+  `knowledge_gap_tracking.record_gap(agent_id, question, topic)`, appends
+  a confirming `ToolMessage`, and edges back to `call_model` so the
+  model's own real final reply text is produced afterward — identical
+  control flow to `route_hub_request -> call_model`.
+  `AgentConversationState` gains one additive optional field,
+  `gap_recorded: dict | None` (mirrors `hub_routing_result`'s own
+  addition, `ADR-017`).
+- **Storage — new `app/business/knowledge_gap_tracking.py`, a tenth
+  `.second-brain/` state file (`agent_knowledge_gaps.json`), deliberately
+  NOT folded into `agent_activity.py`** (confirmed by direct read that
+  `_ACTIVITY_KINDS = {"run_event", "run_error"}` stays background-run-only
+  per that `Done` story's own Constraints). Mirrors `skill_registry.py`'s
+  exact "one business module + one dedicated JSON file, pure I/O in
+  `vault_writer`" shape: `list_agent_gaps(agent_id, status=None)`,
+  `record_gap(agent_id, question, topic) -> dict`, `close_gap(gap_id,
+  resolution) -> bool`, `count_open_gaps(agent_id) -> int` (the
+  readiness signal — a simple current count, no rate/window/threshold,
+  per the story's own Constraints). New `vault_writer.py` primitives
+  `load_knowledge_gaps_state()`/`save_knowledge_gaps_state()`, mirroring
+  `load_skills_state()`/`save_skills_state()`.
+- **Closing paths compose already-`Done` mechanisms unchanged, never
+  reimplemented.** Scenario 3 (human-provided answer) routes through
+  `vault_filing_expert.determine_placement_and_file(...)`
+  (`REQ-SB-35-US-01`/`ADR-021`) — the gap closes once content is actually
+  filed (immediately for Tier 1, at Tier-2 approval-finalization time for
+  Tier 2), never before, and needs no additional correctness-verification
+  step (mirrors `MEMORY.md`'s standing no-staging-gate constraint).
+  Scenario 4/7 (directed research) routes through
+  `knowledge_bootstrap.bootstrap_agent_knowledge(agent_id, subject)`
+  (`REQ-SB-36-US-02`/`ADR-023`) unchanged — a real written/pending-approval
+  outcome closes the gap; an honest `"no_results"` outcome (the same
+  honest-empty behavior `REQ-SB-36-US-01` Scenario 3 already established)
+  leaves it open, producing Scenario 7's regression guard by composition.
+- **Display — a fourth, conditionally-rendered tab on the existing
+  `AgentDetailPanel.tsx`, gated to Expert-type agents, not a new
+  top-level nav page and not `REQ-SB-41`.** Direct read confirms this
+  panel carries exactly 3 tabs today (`TABS = ['chat', 'history',
+  'settings']`) — "Available actions" is a subsection inside `settings`,
+  not a fourth tab. `TABS` gains `'gaps'` (`'Knowledge gaps'`), omitted
+  from the array entirely (not disabled/shown-empty) when
+  `agent.type !== 'expert'`. A new `GET /agents/{agent_id}/
+  knowledge-gaps` endpoint on `agents_router.py` mirrors the existing
+  `/history`/`/skills` per-agent sub-resource convention, returning
+  `{"gaps": [...], "open_count": int}`; the tab's gap-closing form posts
+  to a new resolve endpoint composing the Scenario-3 path above. Does not
+  depend on, and does not modify, `REQ-SB-41` (Agent Overview, still
+  unspecced) — narrows, does not close, that story's own eventual
+  "where does readiness surface" question, the same relationship
+  `ADR-031` already established for Purpose's own data source.
+
+Full reasoning, every alternative considered, and every consequence:
+[ADR-032](ADR.md).
+
+### File upload, Compass summarization & Vault Filing Expert handoff (`REQ-SB-28-US-01`, see [ADR-034](ADR.md))
+
+**`/design` was explicitly skipped for this batch (operator-directed)** —
+this pass's own attach-affordance and status-indication placement below is
+this pass's own architectural call, not a prototype port, mirroring
+`REQ-SB-40-US-01`'s identical "`/design` explicitly skipped... this pass's
+own architectural call" precedent, above.
+
+- **New temporary, non-vault blob storage, `.second-brain/uploads/`.** A
+  new `app/data_access` module (exact name left to `/plan-tasks`, e.g.
+  `upload_storage.py`) writes the raw uploaded bytes to a generated-id-
+  named file under this directory on attach, and deletes it once its
+  Compass summary has been produced and handed off (Scenario 5) or on
+  validation rejection (Scenario 7). This is the flat-file `.second-brain/`
+  state convention's first extension to raw bytes rather than JSON — see
+  [ADR-034](ADR.md)'s Consequences.
+- **New API surface — an additive sub-resource route on the existing
+  `app/api/agents_router.py`**, e.g. `POST /agents/{agent_id}/chat/
+  attachment` (exact path left to `/plan-tasks`/decomposer), accepting
+  `multipart/form-data` (`message: str`, `file: UploadFile`). Validates
+  type (`.pdf`/`.txt`/`.md` — see below) and the 20 MB size cap before
+  writing to `.second-brain/uploads/`; a failing file is rejected with a
+  clear message and nothing is stored (Scenario 7). **Does not modify the
+  existing `POST /agents/{agent_id}/chat` JSON-only endpoint
+  (`REQ-SB-25-US-01`, `Done`)** — that contract, and Scenario 6's "a plain
+  message is unaffected," stay byte-for-byte unchanged.
+- **New Compass function, `summarize_content(content: str,
+  source_description: str) -> dict`, in `app/data_access/
+  compass_client.py`** — same payload construction and `CompassError`
+  handling shape as `classify_email`/`classify_task`; no generic summarize
+  function existed there before this story.
+- **PDF text extraction — `pypdf` (new dependency).** `.pdf` uploads are
+  extracted to plain text before being handed to `summarize_content`;
+  `.txt`/`.md` are read directly. Compass itself never receives a PDF
+  binary.
+- **The summarization capability is registered as a new Skill,
+  `summarize-file`, through the already-`Done` Skills mechanism** ("Skills
+  Repository — registration & per-agent access," above; `ADR-015` point 9)
+  — one new `skill_tools.py` catalog entry + handler, one new
+  `_SKILL_HANDLERS` row in `skill_registry.py`, granted to whichever
+  agent(s) accept uploads. Invoked as `skill_registry.invoke_skill(agent_id,
+  "summarize-file", {"content": ..., "source_description": ...})`, mirroring
+  `knowledge_bootstrap.bootstrap_agent_knowledge`'s own existing
+  `invoke_skill(..., "web-research", ...)` → `vault_filing_expert.
+  determine_placement_and_file(...)` composition shape (`ADR-023`), one
+  concept over. This is this project's first real (non-stub) Skill
+  implementation.
+- **Handoff to the Vault Filing Expert — zero changes to that module.**
+  `vault_filing_expert.determine_placement_and_file(content=<Compass
+  summary>, source_description=<original filename + uploading agent>,
+  requesting_agent_id=<agent_id>)` (`REQ-SB-35-US-01`, `ADR-021`, `Done`)
+  is called exactly as its existing signature already accepts — confirmed
+  by direct reading, no interface change needed. A Compass failure
+  (Scenario 8) or a Filing Expert failure (Scenario 9) is surfaced
+  honestly and does not lose the summary already produced, mirroring this
+  project's standing honesty posture (`ADR-011`/`ADR-014`/`REQ-SB-33`).
+- **Image (PNG/JPG) support is explicitly deferred, not built, by this
+  story.** Direct reading of `skill_tools.py` confirms `diagram-
+  understanding` unconditionally returns `{"available": False, ...}` — no
+  multimodal-capable Provider exists yet, and `compass_client.py` is
+  confirmed text-only. Composing either into an image "summary" would
+  either fabricate content or add real code for a capability that does not
+  exist today. This pass's real, buildable scope is **text-bearing files
+  only — `.pdf`, `.txt`, `.md`.** Full reasoning and the deferred-work note
+  for a follow-up story: [ADR-034](ADR.md).
+- **Frontend — `AgentDetailPanel.tsx`'s Chat tab gains an attach-file
+  control.** An attach control in the message-compose bar (accepted types/
+  size enforced client-side, mirroring the backend's own validation, per
+  Scenario 7) plus a chat-thread rendering of: the attached filename on
+  the sent message (Scenario 1), a summarization-in-progress indicator, and
+  a filed-note confirmation (linking to the new note) or an honest failure
+  message (Scenarios 8/9) — composed via `agentsApiClient.ts`'s existing
+  per-agent chat call pattern, extended with one new multipart call to the
+  new attachment endpoint above. Exact visual shape (spinner style, chip
+  design, inline vs. banner failure message) is coder-level latitude, per
+  the operator's own "skip `/design`, build directly" instruction for this
+  batch.
+
+Full reasoning, every alternative considered, and every consequence:
+[ADR-034](ADR.md).
+
+### Glimpse-First `vault-qa` Answers — entity resolution + Glimpse/Background context injection, evidence drill-down unchanged (`REQ-SB-58`, extends [ADR-015](ADR.md)/[ADR-026](ADR.md)/[ADR-042](ADR.md), no new ADR)
+
+**Grounded in direct reading, not assumed:** `vault-qa`'s only always-bound
+read-capable tools today are the four "core" MCP tools
+(`list_known_customers`/`list_known_kinds`/`list_known_partners`/
+`list_notes_in_kind_folder` — metadata only, never note body content) plus
+`retrieve_notes_in_agent_scope(agent_id)` (`REQ-SB-29-US-01`, `Done`) — the
+ONE existing tool that returns real note body content, and the ONLY one
+that is scope-gated. With no scope assigned, it honestly returns
+`"no_scope"`; with a scope assigned (e.g. `customer/<slug>`), it bulk-reads
+**every** note matching that scope — every linked Thread, Meeting, and
+manual Capture — into the model's context in one call. This bulk,
+scope-wide bulk-read **is** the "full vault search re-synthesizing an
+answer from scratch every time" the PRD's own `REQ-SB-58` text names as
+the baseline this story routes around for the common case, while keeping it
+completely intact and unchanged for the drill-down case (see below). No
+`vault_search.search()`/`vault_search.py` (`REQ-SB-02`/`ADR-026`) function
+is registered as an MCP tool today — `vault-qa` cannot call it directly;
+this story reuses it as a **business-layer composition inside the graph**,
+not as a new bound tool.
+
+**Mechanism — new business module, one new graph node, zero new MCP
+tools:**
+
+1. **New `app/business/glimpse_first_qa.py`** (sibling to `vault_search.py`/
+   `project_customer_synthesizer.py`, `ADR-003` layering; mirrors
+   `route_cross_section_request`'s own "directly-callable, independently
+   testable public entry point wrapping the exact logic a graph node uses"
+   shape, `ADR-017` point 5) — one public function,
+   `resolve_glimpse_first_context(question: str) -> dict | None`:
+   - **Entity resolution reuses `vault_search.search(question)` verbatim —
+     no new matching mechanism** (the story's own Constraint). Takes that
+     function's own **rank-1 result only** (not a filtered subset re-ranked
+     by this story): if the single highest-scoring note for `question`
+     across the WHOLE vault has `kind` (`frontmatter["type"]`, per
+     `vault_search._kind_for`) equal to `"customer"` or `"project"`
+     (`ADR-042` point 1's own concept-file `type` values, confirmed by
+     direct reading of `build_customer_concept_frontmatter`/
+     `build_project_concept_frontmatter`), the question resolves to that
+     entity; otherwise it does not (Scenario 6 — no match, honest `None`).
+     This top-1-only bar is a conservative, zero-new-logic threshold: a
+     Customer/Project's own concept-file `title` IS that entity's exact
+     name (weighted 3× by `ADR-026`'s field weights), so a question that
+     genuinely names a real Customer/Project reliably outranks any Thread/
+     Meeting note that merely *mentions* it in a tag (2×) or body (1×) —
+     the same "ordinary `/plan-tasks` implementation latitude, not a
+     further architectural fork" judgement already used for `REQ-SB-29`'s
+     own tag-vs-folder disambiguation (this file, "Agent-to-Tag/Folder
+     Vault Scoping" section, above).
+   - **Resolves the matched entity's own concept-file path directly from
+     the search result's own `vault_indexing.get_index()` entry** (`ADR-024`,
+     `Done`) — never recomputed via `customer_directory_paths`/
+     `project_directory_paths` from a name/slug round-trip. It is, by
+     construction, the exact same on-disk file `project_customer_
+     synthesizer.py` (`REQ-SB-57`, `Done`) already owns and keeps current.
+   - **Reads BOTH `## Glimpse` and `## Background`** via `vault_writer.
+     read_body_section(path, header)` (`ADR-042` point 2, `Done`) —
+     deliberately not a durable-vs-current-status classifier. `## Glimpse`
+     is structurally incapable of carrying a durable historical fact
+     (`_build_project_glimpse`/`_build_customer_glimpse` are pure
+     current-state rollups, fully regenerated every pass); `## Background`
+     is structurally the ONLY section a durable fact can ever land in
+     (`REQ-SB-57`'s own Pending-Approval-gated amendment path is its one
+     write mechanism). Reading both and letting the model draw from
+     whichever one structurally contains the relevant fact satisfies
+     Scenario 5 ("reads Background... rather than Glimpse") **by
+     construction**, without this story inventing a new "is this a durable
+     question" heuristic — the same reasoning this file's own adjacent
+     "Project & Customer Synthesizer" section already used to explicitly
+     decline building a `status`-inference classifier one layer over
+     ("automatically inferring status is a plausible FUTURE extension, not
+     proposed here").
+   - Returns `{"entity_type": "customer" | "project", "entity_name": str,
+     "glimpse": str, "background": str}` or `None`.
+2. **New `graph.py` node, wired `retrieve_memory -> glimpse_first_context ->
+   call_model`** (both edges unconditional — mirrors `_retrieve_memory`'s
+   own "always runs, a no-op most of the time" shape; `ADR-015` points
+   3/9's "grow this one shared graph by adding nodes" pattern, no second
+   graph). **Gated to `current_state["agent_id"] == "vault-qa"` only** — the
+   first literal agent-identity gate in this graph (every existing
+   conditional gate so far is skill-based, `skill_registry.
+   has_skill_access`, or Cockpit-context-based, never a hardcoded agent id)
+   — deliberately narrow: the story's own Constraint locks this to "an
+   extension of the existing `vault-qa` Expert... no new Agent," and an
+   ungated version would silently change every OTHER already-`Done` agent's
+   chat behavior, an out-of-scope risk this pass avoids proactively rather
+   than leaving for the coder to discover at verification time. Reads the
+   turn's real question from the last `HumanMessage` in `current_state[
+   "messages"]` (mirrors `_record_knowledge_gap`'s own "never trust a
+   model-paraphrased arg, read the real originating message" precedent,
+   `ADR-032` point 1) and calls `glimpse_first_qa.
+   resolve_glimpse_first_context(question)`. On a real match, inserts ONE
+   new `SystemMessage` at position 1 (mirrors `_retrieve_memory`'s own
+   insertion shape exactly — both may fire the same turn; final order is
+   simply `[identity, glimpse-context, memory, ...]`, purely additive, no
+   collision) naming the resolved entity, its Glimpse, and its Background,
+   with an explicit instruction to prefer this content as the primary
+   answer and to fall back to its other bound tools for more detail or a
+   citation on request (Scenario 3). On no match — an unresolved question,
+   OR any agent other than `vault-qa` — the node returns `{}`, a genuine
+   no-op; every existing behavior (Scenario 6, every other agent) stays
+   byte-for-byte unchanged. **No new `AgentConversationState` field** —
+   mirrors `_retrieve_memory`'s own "no new state field needed" precedent
+   exactly (`state.py`).
+3. **Evidence drill-down (Scenario 3) needs NO new tool — `vault-qa`'s
+   existing bound tools are reused exactly as-is.** Considered and
+   REJECTED: a new, always-available "read one note by path" MCP tool —
+   this would be a genuine, unflagged deviation from `REQ-SB-29`'s own
+   already-`Accepted` scope-enforcement boundary (the only existing tool
+   that returns raw note BODY content, `retrieve_notes_in_agent_scope`, is
+   deliberately scope-gated; the four "core, never-gated" tools return only
+   metadata, never body content — an ungated body-content tool would
+   silently create a wider vault-read surface than a scoped agent is
+   supposed to have). Instead: `_build_project_glimpse`'s own Glimpse
+   bullets already carry a real `[[wikilink]]` stem to each source Thread
+   (`REQ-SB-57`, unchanged) — that stem is now present in the injected
+   context (point 2, above), giving the model a concrete handle to
+   correlate against `retrieve_notes_in_agent_scope`'s own returned notes'
+   `"path"` field and pick out "the original email" precisely, using tool
+   access it already has. **Depends on `vault-qa` actually having a
+   `REQ-SB-29` scope assigned** (e.g. the relevant `customer/<slug>` tag) —
+   an operator/test-setup configuration step the already-`Done` `REQ-SB-29`
+   Settings UI fully supports; not a gap this story closes, but a real
+   precondition the decomposer's own task-level test-data design must
+   account for.
+4. **`REQ-SB-33`'s grounding/honest-uncertainty instruction (`state.py::
+   history_entries_to_messages`'s `default_identity_and_grounding_text`)
+   gains one additive clause** naming this new context source explicitly
+   (e.g. "...or any Customer/Project Glimpse/Background context provided
+   to you below, when present...") — its existing wording names only
+   "tool calls," "conversation history," and "memory" as legitimate
+   grounded sources; the injected Glimpse/Background content (point 2) is
+   genuinely real vault data but is none of those three literally, so
+   leaving the sentence unchanged would leave the model's own honesty
+   framing silently incomplete for this new source. This is an additive
+   widening of what counts as a real, named source — never a weakening of
+   the "never state something as fact unless it came from a real source"
+   rule itself — mirroring `REQ-SB-66`/`ADR-044`'s own already-`Accepted`
+   "additive extension of this exact function, no ADR" precedent (this
+   file's own 2026-08-12 Addendum, above). The `record_knowledge_gap`
+   honesty-funnel mechanism itself is completely untouched — the story's
+   own Constraint ("`REQ-SB-33`'s guardrail... must not be weakened") is
+   satisfied, not just avoided.
+
+**Why no new ADR:** every primitive this mechanism composes is already
+`Accepted` and unmodified in its own contract — `vault_search.search`
+(`ADR-026`), `vault_indexing.get_index` (`ADR-024`), `vault_writer.
+read_body_section` (`ADR-042` point 2), the graph's own "grow by adding
+nodes" shape (`ADR-015` points 3/9). **No new MCP tool is registered** —
+the shared tool set (`ADR-015` point 9) is completely unchanged. No new
+tool, framework, external dependency, or structural layering boundary is
+introduced; this is a business-logic composition plus one new graph node,
+the same class of "same-shape extension of already-`Accepted` structure, no
+new ADR" already recorded for `REQ-SB-29`/`REQ-SB-40`/`REQ-SB-57`'s own
+architect passes (this file, above).
+
+## Meeting & Inbox Cockpits — multi-agent shared-thread workspace (REQ-SB-43-US-01, REQ-SB-44-US-01, see [ADR-036](ADR.md))
+
+A shared 3-panel workspace pattern (approved `/design` passes,
+`html-prototype/meeting-cockpit.html` / `html-prototype/inbox-cockpit.html`)
+reached by clicking a meeting (My Day's Calendar) or an email (My Day's
+Emails). Full reasoning, alternatives, and consequences: [ADR-036](ADR.md).
+This section records the resulting module shape only.
+
+- **New sub-package `app/business/cockpit/`** (mirrors
+  `agent_orchestration/`'s "first concern with enough internal structure to
+  warrant one" precedent), shared by both stories, parametrized by
+  `subject_kind: "meeting" | "email"` and `subject_note_stem: str` — never
+  two parallel per-kind modules:
+  - `threads.py` — composes `ADR-015`'s existing, **unmodified**
+    `agent_orchestration.run_agent_conversation(agent_id, message, history,
+    memory)` once per currently-brought-in Expert on every user message,
+    building each Expert's own `history` view of the shared thread (the
+    user's own turns map to `chat_user`; every OTHER Expert's own prior
+    turn maps to a `chat_user`-kind entry prefixed `"[{agent_name} said]:
+    "`, framed as relayed context, never as this Expert's own past words).
+    Backed by a new sibling `.second-brain/cockpit_threads.json`, keyed
+    `"{subject_kind}:{subject_note_stem}"` — this codebase's first
+    multi-party (not per-agent) conversation store, distinct from
+    `agent_communication_history.json`.
+  - `people.py` — resolves a subject note's `attendees`/`recipients`
+    frontmatter list (below) into chips: a new **read-only**
+    `people_extraction.find_existing_person_note(email) -> dict | None`
+    lookup per person (never creates a Person note as a side effect of
+    opening a cockpit), rendering a clickable chip when found, the
+    approved prototype's `.tag-chip--static` plain fallback otherwise.
+  - **`people.py` extended — plain wikilink-string attendee entries also
+    resolve to real Person data (`BUGFIX-06-US-01`, fixes `BUG-027`).**
+    The `attendees`/`recipients` frontmatter value documented above (and
+    in the REQ-SB-54 section, below) as a JSON-encoded `list[dict]` string
+    is that shape ONLY for Email `recipients`; direct reading of
+    `meeting_classification.py`'s real, current write path confirms
+    Meeting `attendees` is actually written as a plain `list[str]` of
+    wikilinks (`[f"[[{stem}]]" for stem in person_stems]`) —
+    `_coerce_people_list`'s own `list[dict]` docstring claim was never
+    implemented for Meeting attendees; the real, shipped behaviour and the
+    docstring's claimed contract had diverged (correction recorded here,
+    docstring left as-is, not retrofitted). `_coerce_people_list`/
+    `resolve_people_chips` now also recognize a per-item wikilink STRING
+    (`"[[stem]]"`): the stem is extracted by reusing `vault_writer.py`'s
+    existing wikilink-stripping regex (the SAME extraction
+    `upsert_attendee_links` already performs on an `**Attendees:**` body
+    line), promoted from private `_WIKILINK_PATTERN` to public
+    `WIKILINK_PATTERN` per this project's own "promote a private
+    `data_access` normalization helper to public the moment a second layer
+    needs the identical logic" pattern (`MEMORY.md`; `vault_writer.
+    _tag_slug` → public `tag_slug` precedent, `REQ-SB-10-US-01-T01`) —
+    `cockpit/people.py`, a business-layer module, is now that second
+    layer. The extracted stem is then looked up via `vault_indexing.
+    get_index().get(stem)` — the SAME stem-keyed lookup `resolve_people_
+    chips` already performs for the subject note itself. A found entry's
+    `frontmatter.get("name")`/`frontmatter.get("email")` populate the
+    chip; an unresolvable stem falls back to the existing "no note yet"
+    `has_note: False` chip shape — no Person note is ever created
+    (`ADR-036` point 7's read-only contract, unchanged). No new tool,
+    framework, or layering boundary — two already-`Accepted` primitives,
+    each already live elsewhere in this codebase, composed at a second
+    call site; no new ADR.
+  - `research.py` — the explicit save/discard flow: Save is a direct
+    `vault_writer.write_note(...)` call (a new, standalone note wikilinked
+    to the Meeting/Email note, never appended into it), never routed
+    through `skill_registry`/`_invoke_action`. The scoped "this meeting/
+    email's own research results" list is read via the subject note's own
+    already-generic backlinks (`ADR-024`'s `vault_indexing.get_index()`),
+    not a separate persisted list — a saved note's own forward wikilink to
+    the subject note is what makes it appear, matching this codebase's
+    established forward-only-linking convention.
+- **Working-mode gate: untouched, unreferenced.** Confirmed by direct
+  investigation (`ADR-036` point 4) that neither a brought-in Expert's own
+  chat/tool-calling reply nor the user's own explicit Save/Discard click
+  ever reaches `skill_registry.invoke_skill`/`agents_router.py::
+  _invoke_action`'s gated dispatch path — the Cockpit is a structurally
+  separate invocation surface by construction. `skill_registry.
+  invoke_skill`'s `trigger` `Literal["chat", "direct", "hub_routed"]` is
+  unchanged; no `"cockpit"` value is added.
+- **Frontend: one shared `Cockpit` panel component** (3-column grid: chat
+  thread + agents-to-bring-in/research list + subject info/people chips),
+  accepting an optional attachments slot and an optional draft-reply
+  affordance — mirrors `BUGFIX-02-US-01`'s "one component, optional props,
+  two call sites" precedent. `MeetingCockpitPage.tsx`/`InboxCockpitPage.tsx`
+  are thin route-level wrappers supplying `subject_kind`/`subject_note_stem`
+  and (Inbox only) the attachments/draft-reply props — not two forked
+  layouts. `my-day-calendar.html`'s/`my-day-emails.html`'s own item rows
+  become clickable, opening the respective Cockpit for that item.
+- **Inbox-only: attachment review reuses `REQ-SB-28`'s own mechanism
+  directly** (`ADR-036` point 6) — the Cockpit calls the same
+  `summarize-file` Skill / chat-attachment endpoint `REQ-SB-28-US-01`
+  builds (`ADR-034`), never a second read-only preview. **Real, currently-
+  unmet cross-story dependency:** `REQ-SB-28-US-01` is `status: Ready`,
+  `gate: flagged`, not `Done` — the decomposer must give
+  `REQ-SB-44-US-01`'s attachment-review task(s) a `depends_on` edge onto
+  `REQ-SB-28-US-01-T03`/`T04`, mirroring `REQ-SB-39-US-02`'s own precedent
+  for a `Ready`-not-`Done` cross-story dependency; the rest of
+  `REQ-SB-44-US-01` is not blocked by it.
+- **Inbox-only: a drafted reply needs no new backend concept.** Per the
+  operator's own resolution (ephemeral, no persistence), it is an ordinary
+  Expert chat reply the frontend renders with a distinct "draft" affordance
+  (e.g. Copy) — `threads.py` above needs no draft-specific field, endpoint,
+  or send capability (explicitly out of scope this pass).
+- **New Email-note frontmatter field, `recipients: list[{"name","email"}]`**
+  (`ADR-036` point 7) — see "Data Model", below, for the full field/capture
+  addition.
+
+## Background Agents — explicit opt-in exclusion from Hub-routing and Cockpit addressing (REQ-SB-51-US-01, applies [ADR-014](ADR.md)/[ADR-018](ADR.md), no new ADR)
+
+A fourth new mutable, persisted, user-editable per-agent property —
+`is_background_agent: bool`, default `False` — composed *alongside*
+`agent_registry.py` exactly the way Section/Provider (`ADR-014`) and
+Working Mode (`ADR-018`) already are: a small dedicated registry module, a
+sibling `.second-brain/` JSON store, a merged `GET /agents` field, a
+`PATCH /agents/{agent_id}` extension, and a real edit control on the Agent
+Settings tab — never the read-only-after-creation `settings` kv-list
+(`Purpose`/`Domain`-style fields have no edit control anywhere; this flag
+must be live and user-toggleable, `AgentDetailPanel.tsx`'s Settings tab).
+No new ADR — see "Why no new ADR," below.
+
+- **New sibling `.second-brain/agent_background_flags.json`** —
+  `{"assignments": {<agent_id>: bool}}`, extending the established
+  flat-JSON-file convention one further concern (alongside
+  `agent_sections.json`/`agent_providers.json`/`agent_working_modes.json`).
+  `app/data_access/vault_writer.py` gains the paired
+  `load_background_flags_state()`/`save_background_flags_state()`
+  primitives — pure I/O, no default computed here, mirroring
+  `load_working_modes_state()`/`save_working_modes_state()`'s exact shape.
+- **New business module, `app/business/background_agent_registry.py`**
+  — mirrors `working_mode_registry.py`'s exact shape: a fixed-value
+  concern (here, boolean, not a 3-value enum), no separate user-created
+  catalog, so seeding folds directly into one `_load_state()` (no separate
+  `_seed_state()`). Self-healing default differs from every prior registry
+  in exactly one respect: instead of one uniform default for every agent,
+  it uses a small literal exception set,
+  `_DEFAULT_BACKGROUND_AGENT_IDS = {"email-capture", "meeting-capture",
+  "todo-capture"}` (the 3 real capture-pipeline Workers, `agent_registry.py`'s
+  `_SEED_AGENTS`, Scenario 2) — any known agent
+  (`agent_registry.list_agents()`) absent from `assignments` self-heals to
+  `True` if its id is in that set, `False` otherwise, and persists
+  immediately. Exposes `get_is_background_agent(agent_id) -> bool` (never
+  raises/`None` — an unknown `agent_id` also resolves to `False`, matching
+  `get_agent_working_mode`'s no-raise style) and
+  `set_is_background_agent(agent_id, value: bool) -> bool`.
+- **Composition at the router, not inside `agent_registry.py`** (`ADR-014`'s
+  established precedent, unchanged a third time over): `app/api/
+  agents_router.py`'s `GET /agents` and `GET /agents/{agent_id}` merge in
+  `background_agent_registry.get_is_background_agent(agent_id)` as
+  `"is_background_agent"`, the same way `"working_mode"` is merged in
+  today. `AgentAssignmentUpdateBody` gains `is_background_agent: bool |
+  None = None`; `PATCH /agents/{agent_id}` calls
+  `background_agent_registry.set_is_background_agent(...)` when supplied,
+  alongside its existing `section_id`/`provider_id`/`working_mode`/`scope`
+  handling — one endpoint, one more optional field, not a new route.
+- **Frontend types & edit control:** `agentsApiClient.ts`'s `AgentSummary`
+  and `AgentDetail` gain `is_background_agent: boolean`;
+  `updateAgentAssignment`'s body type gains the matching optional field.
+  `AgentDetailPanel.tsx`'s Settings tab gains one new `.kv-row`,
+  "Background Agent," with a checkbox control and a
+  `handleBackgroundAgentChange` handler mirroring
+  `handleWorkingModeChange`'s exact `updateAgentAssignment(agentId, {
+  is_background_agent: checked }) → setAgent(updated)` shape (Scenario 1,
+  9 — reads live, no cache).
+- **Shared exclusion-filter helper, backend: one call site, no
+  duplication.** The single real Hub-routing candidate-selection function,
+  `app/business/agent_keywords.py::list_candidate_agents_for_keyword_match`,
+  gains one skip inside its existing per-agent loop —
+  `if background_agent_registry.get_is_background_agent(agent_id): continue`
+  — evaluated alongside its existing self-id/same-Section skips, before the
+  keyword-substring check (Scenario 3/4). `app/business/agent_orchestration/
+  graph.py`'s `_route_hub_request` → `route_cross_section_request` calls
+  this function exclusively and never re-implements candidate filtering
+  itself, so this is the only backend Hub-candidate site — confirmed by
+  direct inspection, not assumed.
+- **Cockpit bring-in is NOT enforced inside
+  `app/business/cockpit/threads.py`.** Confirmed by direct inspection:
+  `threads.py` has no agent-listing code of its own — `bring_in_agent(
+  subject_kind, subject_note_stem, agent_id)` only ever accepts an
+  already-chosen `agent_id`, idempotently appending it; it does no
+  candidate filtering. The Cockpit's own "Available Agents" list
+  (Scenario 5/6) is sourced entirely from the frontend's
+  `fetchAgentList()` (`GET /agents`) — the same source `AgentsMapCanvas`
+  and the (not-yet-built) `REQ-SB-49-US-01` `@mention` list read, per this
+  story's own Constraint. The exclusion is therefore enforced once,
+  frontend-side, at that one shared source, never duplicated
+  backend-side. (Backend-side defense-in-depth on `bring_in_agent` itself
+  is left as ordinary coder/decomposer latitude, not mandated by this
+  story's ACs, which are scoped to the visible list only.)
+- **Shared exclusion-filter helper, frontend: one predicate, two real
+  call sites.** A new small predicate, `isBackgroundAgent(agent:
+  AgentSummary): boolean`, exported from `agentsApiClient.ts` alongside
+  the `AgentSummary` type it reads — the one shared implementation both
+  real consumers use, never two independent inline checks:
+  - `Cockpit.tsx` filters `availableAgents` through it before rendering
+    the "Available Agents" `.item-list` rows (Scenario 5/6).
+  - `layoutAgents.ts`'s `layoutAgents(agents, sectionList)` partitions its
+    input `agents` at the top: `backgroundAgents = agents.filter(
+    isBackgroundAgent)` (returned as a new `backgroundAgents: MockAgent[]`
+    field on `AgentMapLayout`, never fed into `agentsBySection` — so it is
+    structurally excluded from ring placement and `VISIBLE_SLOT_CAP`
+    density clustering, `REQ-SB-38-US-01`, Scenario 7) and
+    `addressableAgents = agents.filter((a) => !isBackgroundAgent(a))` (the
+    only set that continues into the existing Section/ring logic,
+    unchanged).
+  - `AgentsMapCanvas.tsx` (or a sibling in `AgentsMapPage.tsx` — exact
+    mount point is coder latitude) gains a new small "Background Agents"
+    rail/list component consuming `AgentMapLayout.backgroundAgents`,
+    reusing the `.card`/`.item-list` vocabulary `Cockpit.tsx`'s own
+    "Available Agents" card and `agents-map.html`'s demo-state legend card
+    already establish — one row per background agent (name + type);
+    clicking a row calls the same `onSelectAgent(agentId)` callback
+    `AgentNode` clicks already use, opening the identical
+    `AgentDetailPanel` (Scenario 7). No fresh `/design` pass, per the
+    story's own Notes.
+- **Why no new ADR.** This is an ordinary CRUD-pattern extension of
+  `ADR-014`'s/`ADR-018`'s already-`Accepted` "new persisted concern
+  composed alongside a hardcoded registry, self-healing default,
+  `PATCH`-endpoint-plus-edit-control" shape, one boolean concept over
+  (background-agent addressability, not Section/Provider/Working-mode) —
+  directly mirroring the already-settled "Skills Repository ... applies
+  `ADR-014`, no new ADR" precedent for `skill_registry.py` (itself a more
+  novel extension — a grant/revoke access list — than this story's plain
+  boolean). The two decisions this story adds beyond that already-settled
+  shape — (a) a per-id exception set for the 3 seed Workers' backfilled
+  default, and (b) exactly which two consumption sites read the flag for
+  exclusion — are ordinary `/plan-tasks` implementation latitude, not
+  further architectural forks. No `Accepted` ADR, PRD text, or `MEMORY.md`
+  constraint is contradicted; no new tool, framework, or structural
+  boundary is introduced.
+
+## Cockpit Inline `@agent_id` Mention — chat-input parsing over the existing bring-in call (REQ-SB-49-US-01, applies [ADR-036](ADR.md), no new ADR)
+
+Purely frontend, additive parsing added to `Cockpit.tsx`'s existing
+`chat-input-row` — no new endpoint, no new persisted concern, no second
+bring-in code path. Composes `ADR-036`'s already-Accepted Cockpit
+mechanism (`threads.bring_in_agent` / `POST /cockpit/{subject_kind}/
+{stem}/bring-in`) unmodified. No new ADR — see "Why no new ADR," below.
+
+- **Single candidate source — never a duplicate list.** Both parsing modes
+  (send-time resolution and live-typing suggestion) read from the exact
+  same in-memory list `Cockpit.tsx`'s own "Available Agents" panel already
+  renders from (`fetchAgentList()` → `AgentSummary[]`) — never a second,
+  independently-fetched or independently-filtered copy. Concretely, today
+  that is the `availableAgents` state variable itself (line 20); once
+  `REQ-SB-51-US-01`'s `T04` lands and introduces a filtered
+  `bringInCandidates` derived list (`availableAgents` minus
+  `isBackgroundAgent`), this story's mention-matching source must be
+  repointed at that SAME filtered variable — see "Composition with
+  `REQ-SB-51-US-01`," below.
+- **Send-time resolution (Scenarios 1, 2, 3, 4).** On Send/Enter, extract
+  every `@token` from the full message text via `/@(\S+)/g`. For each
+  token, strip the leading `@` and resolve against the candidate list by
+  exact, case-insensitive match on either `agent.id` or `agent.name` with
+  internal whitespace stripped (`token.toLowerCase() === agent.id
+  .toLowerCase() || token.toLowerCase() === agent.name.replace(/\s+/g,
+  '').toLowerCase()`) — no fuzzy/partial/ranked matching, per the story's
+  own pre-resolved Context. Every token that resolves to a real,
+  not-yet-brought-in agent triggers the existing `bringInAgent(subjectKind,
+  subjectNoteStem, agent.id)` call — awaited before `sendCockpitMessage`
+  fires, mirroring the "+ Bring in" button's own "bring in, then the
+  thread includes this agent for this and every subsequent message"
+  sequencing. An already-brought-in agent's repeated mention triggers no
+  additional call (`bringInAgent`'s own existing idempotency, unmodified,
+  covers Scenario 2 — no new dedupe logic needed client-side). A token
+  that resolves to no real agent is left exactly as typed, plain text,
+  and triggers no call (Scenario 3).
+- **Live suggestion (Scenario 5).** While typing, detect an in-progress
+  `@`-token immediately before the cursor (`/@(\S*)$/` against the text up
+  to the cursor position) and, once at least one character follows the
+  `@`, filter the same candidate list by prefix/substring match on `id` or
+  `name` (case-insensitive) to populate a small dropdown — a looser filter
+  than send-time resolution's exact-match requirement, intentionally: a
+  suggestion affordance that only ever appeared for a complete exact match
+  would be useless while typing. This dropdown is visual-only; selecting a
+  suggestion (or continuing to type an exact token) does not itself call
+  `bringInAgent` — only Send/Enter's resolution pass does, keeping exactly
+  one call site. Dropdown visual treatment (position, styling) is coder
+  latitude against the existing `.card`/`.item-list` vocabulary, per the
+  story's own Notes — not decided here.
+- **Real, load-bearing interaction with the current `chat-input-row`
+  disabled state.** `Cockpit.tsx`'s Send button and text input are
+  currently gated `disabled={!hasExperts}` — disabled until at least one
+  agent is already brought in. Scenario 1 requires sending a message that
+  itself brings in the first agent via `@mention`, with zero agents
+  brought in beforehand — the existing hard gate must be relaxed (e.g. to
+  also allow Send when the current message text contains at least one
+  `@token`) or the mention-resolution pass must run ahead of that check.
+  Recorded here as a real, confirmed-by-direct-inspection conflict for the
+  decomposer/coder to resolve, not a new architectural decision — the
+  exact mechanism (relaxed condition vs. reordered check) is ordinary task
+  implementation latitude, bounded by Scenario 1 already requiring SOME
+  resolution.
+- **Composition with `REQ-SB-51-US-01` (Background Agents, `Ready`, not
+  yet `Done`) — a soft, same-source dependency, not a hard `depends_on`.**
+  `REQ-SB-51-US-01`'s own Context already states this story "inherits the
+  exclusion automatically once built" because both read the same
+  `fetchAgentList()`-sourced list. This composes correctly in either build
+  order with one small follow-on edit, never a redesign:
+  - If `REQ-SB-51-US-01` lands first, this story's own tasks wire mention-
+    matching directly against the already-filtered `bringInCandidates`
+    list `T04` introduces — a Background Agent is excluded from
+    `@mention` matching for free, no separate check.
+  - If this story lands first, its tasks wire mention-matching against
+    today's unfiltered `availableAgents` (the only list that exists yet);
+    when `REQ-SB-51-US-01`'s `T04` later lands and introduces the filtered
+    `bringInCandidates` variable inside this same `Cockpit.tsx`, that
+    task's own coder must additionally repoint this story's
+    mention-matching source at it — a small, same-file, mechanical
+    follow-on, not a new design (recorded here so it is not missed,
+    since `T04`'s own current scope, written before this story's
+    architecture pass, does not yet mention it).
+  - Not wired as a hard cross-story `depends_on` edge — mirrors
+    `REQ-SB-51-US-01`'s own explicit "not blocked by, either direction"
+    position for this pair. The decomposer may still choose to leave a
+    task-level note pointing at whichever of the two stories lands second.
+- **Why no new ADR.** This is client-side parsing and UI logic layered
+  over a single, already-`Accepted`, unmodified backend call
+  (`ADR-036`'s `bring_in_agent`) — no new tool, framework, endpoint,
+  persisted store, or structural boundary is introduced. It is a smaller
+  extension than the already-settled "Skills grouped by Tool ... applies
+  `ADR-015`, no new ADR" and "Background Agents ... applies `ADR-014`/
+  `ADR-018`, no new ADR" precedents (both of which touched a real backend
+  field/endpoint; this story touches neither). No `Accepted` ADR, PRD
+  text, or `MEMORY.md` constraint is contradicted.
+
+## Cockpit Person-Directed Instruction (`@PersonName`) — gate-preserving proposed Person-note edit (`REQ-SB-49-US-02`, see [ADR-038](ADR.md))
+
+A deliberate, narrow carve-out from `ADR-036`'s own "Cockpit actions bypass
+`invoke_skill`'s gate by construction" precedent — the Cockpit's first
+real, autonomous, LLM-initiated vault-mutation candidate gets the SAME
+working-mode-gate protection every other mutating action in this codebase
+already has, via a new, gate-preserving call path, not the ordinary
+chat/tool-calling loop `ADR-036` found never reaches the gate.
+
+- **A third bound-tool interception, mirroring `ADR-017`'s `request_
+  cross_section_help` and `ADR-032`'s `record_knowledge_gap` shape
+  exactly.** `graph.py` gains `propose_person_note_update(person_name,
+  instruction)`, never registered on the shared MCP server, never
+  reachable via the generic `execute_tools` node — `_route_after_model`
+  intercepts it before the fallthrough, routing to a new
+  `_propose_person_note_update` node. Deliberately, this is the ONE
+  structural difference from its two siblings: it is bound to a given
+  agent's model only when `skill_registry.has_skill_access(agent_id,
+  "propose_person_note_update")` is true (mirrors `mcp_client.load_agent_
+  tools`'s own existing access-grant filtering, applied to a graph-bound
+  tool for the first time), not unconditionally to every agent — because,
+  unlike its two siblings, this tool composes with a real, declared,
+  per-agent-granted Skill (below), not a generic ungated graph capability.
+- **A new, real `mutates: True` Skill, `propose_person_note_update`**,
+  added to `skill_tools.SKILLS`/`skill_registry._SKILL_HANDLERS`, granted
+  to `people-producer` via one new `_MIGRATION_GRANT_SEED` row — mirrors
+  `ADR-029` point 7's exact per-id, per-agent seeding shape.
+- **Read-only resolution first, gate only on a real match.** The
+  interception node resolves `@PersonName` against a new, name-keyed,
+  read-only sibling of `people_extraction.find_existing_person_note`
+  directly (no gate involvement — mirrors `_record_knowledge_gap`'s own
+  direct business-module call). No match → an honest "not found" reply,
+  no Skill call, no proposal, no note created (Scenario 4). A match →
+  `skill_registry.invoke_skill(agent_id, "propose_person_note_update",
+  args, trigger="cockpit_mention")` — the FULL existing two-axis
+  working-mode gate (`ADR-029`) applies exactly as it would for any other
+  mutating Skill (Scenario 3), by construction.
+- **New trigger literal, `"cockpit_mention"`** — deliberately not a reuse
+  of `"chat"`/`"direct"`/`"hub_routed"`/`ADR-037`'s `"scheduled"`: this is
+  the first dispatch in this codebase whose Skill `args` are determined by
+  an LLM's own interpretation of free text rather than a deterministic
+  caller, and `"hub_routed"` would incorrectly refuse it in Manual mode.
+  Requires zero new gate branches — `invoke_skill`'s existing two `if`
+  checks already compose correctly with any new literal, mirroring
+  `ADR-037` point 8's own identical consequence.
+- **"Propose" deliberately deviates from this Skill's own standard
+  post-gate dispatch behavior for Manual/Autonomous mode only — a real,
+  documented precedent-break, not an oversight.** Supervised mode needs no
+  extra step: approving the gate's own existing Pending Approval IS the
+  human confirmation (Scenario 2 — approve writes immediately, exactly as
+  any other mutating Skill's approval already does). Manual/Autonomous
+  mode's dispatch, unmodified, has zero human click at all in its own path
+  — correct for every other mutating Skill, but exactly the "direct,
+  unconfirmed side effect" this story's own unqualified Constraint forbids
+  for THIS one. `_dispatch_skill` gains one new opt-in, signature-
+  introspected keyword, `already_approved: bool = False` (mirrors the
+  existing `agent_id` auto-injection seam — a no-op for every other
+  handler), passed `True` only by `pending_approvals_router.py`'s
+  Approve branch. The Skill's own handler: `already_approved=True` writes
+  directly via `vault_writer`; `already_approved=False` (Manual/Autonomous
+  direct dispatch) never writes — it records an explicitly confirmable/
+  discardable in-thread proposal instead (new `app/business/cockpit/
+  person_note_proposals.py`, mirrors `cockpit/research.py`'s own scoped-
+  list-plus-direct-`vault_writer`-on-explicit-Save shape, stored inside the
+  owning thread's own `cockpit_threads.json` record, not a new top-level
+  file). This deviation lives entirely inside the Skill's own handler body
+  — the shared gate's own axis logic (Supervised → pending, Manual/
+  Autonomous → dispatch) is untouched, satisfying Scenario 3's own "never
+  a special-cased, ungated bypass" wording, which describes the gate, not
+  a Skill's own per-handler dispatch behavior.
+- **Refines, does not reopen, `ADR-036`'s own finding.** `cockpit/
+  research.py::trigger_research` already calls `invoke_skill(...,
+  trigger="direct")` directly for the (non-mutating) `web-research` Skill
+  — `ADR-036`'s "the Cockpit never reaches the gate" finding was always
+  really about the model's OWN bound-tool-calling loop
+  (`_execute_tools`, MCP-loaded tools only); this story is the first
+  Cockpit-originated call to reach the gate for a MUTATING Skill, the
+  first time that finding's own scope is consequential.
+- See `ADR-038` for the full reasoning, including every alternative
+  considered and rejected (extending `ADR-036`'s bypass to this
+  capability; reusing `trigger="direct"`/`"hub_routed"`; an always- or
+  never-explicit-confirm design; a wholly new, bespoke gate mechanism).
+
+## Cockpit Chat — Addressed-Reply Dispatch, Send-on-Enter, and Pending-State Live Update (`BUGFIX-04-US-01`, `BUG-022`/`BUG-023`/`BUG-024`, extends `ADR-036`, no new ADR)
+
+Three independent defects in the already-`Accepted` Meeting & Inbox Cockpit
+send flow (`ADR-036` point 1, `threads.py::send_user_message` above),
+fixed without reopening that mechanism's own shape — each composes an
+already-`Accepted` precedent rather than introducing a new one. Full
+per-bug root cause: `BUGFIX-04-US-01`'s own `## Context`. No new ADR — see
+"Why no new ADR," below.
+
+- **BUG-022 — addressed-reply dispatch reuses `REQ-SB-49-US-01`'s existing
+  mention resolution as the dispatch signal, never a second parsing
+  implementation.** `threads.py::send_user_message` gains one new optional
+  parameter, `addressed_agent_ids: list[str] | None = None`. Its per-agent
+  loop changes from unconditionally iterating
+  `thread["brought_in_agent_ids"]` to iterating
+  `addressed_agent_ids if addressed_agent_ids else
+  thread["brought_in_agent_ids"]` — an empty/omitted addressee list falls
+  back to today's broadcast-to-every-brought-in-agent behavior unchanged
+  (the story's own Constraint: a no-mention message in a single- or
+  multi-agent thread must keep working exactly as it does today).
+  `POST /cockpit/{subject_kind}/{subject_note_stem}/message`'s body gains
+  a matching optional `addressed_agent_ids: list[str]` field;
+  `cockpit_router.py::send_message` passes it straight through, no
+  validation logic added at the router. **The addressee list is computed
+  exactly once, frontend-side** — `Cockpit.tsx`'s existing
+  `resolveMentionedAgents(messageInput, bringInCandidates)` (built for
+  `REQ-SB-49-US-01`, until now used ONLY to drive `bringInAgent(...)`
+  calls) becomes a SECOND consumer of that same computed
+  `mentionedAgents` list: after its existing `bringInAgent(...)` calls
+  resolve, `handleSendMessage` passes
+  `mentionedAgents.map((agent) => agent.id)` as `sendCockpitMessage`'s new
+  `addressedAgentIds` argument. This mirrors `REQ-SB-49-US-01`'s own
+  "single candidate source — never a duplicate list" precedent one layer
+  over: Second Brain now has exactly one `@mention`-parsing
+  implementation (JS, client-side), never a second, independently
+  maintained Python regex re-deriving the same result.
+- **BUG-023 — `Cockpit.tsx`'s `chat-input-row` becomes a real
+  `<form onSubmit={...}>`, mirroring `AgentDetailPanel.tsx`'s own already-
+  working precedent exactly.** `handleSendMessage` gains a
+  `(event: React.FormEvent) => { event.preventDefault(); ... }` signature;
+  the Send `<button>` becomes `type="submit"`; the existing `<input
+  type="text">` needs no new handler of its own — a form's native
+  Enter-submits-on-focused-text-input behavior fires `onSubmit` for free,
+  the same mechanism `AgentDetailPanel.tsx`'s `chat-input-row` already
+  relies on. The `@mention` suggestion dropdown's own row buttons
+  (`Cockpit.tsx`'s `mention-suggestion-list`) stay `type="button"` — a
+  real, load-bearing detail: an un-typed `<button>` inside a `<form>`
+  defaults to `type="submit"`, so leaving them unspecified would make a
+  suggestion click also submit the in-progress (unresolved) message.
+- **BUG-024 — pending-state UI mirrors `AgentDetailPanel.tsx`'s existing
+  `sending`/typing-dot pattern; no new live-update mechanism.**
+  `Cockpit.tsx` gains a `const [sending, setSending] = useState(false)`,
+  set `true` before the `bringInAgent(...).then(sendCockpitMessage...)`
+  chain begins and `false` in a trailing `.finally(...)`. The chat input
+  and Send button gain `disabled={sending}` (composed with their existing
+  `disabled={!canSend}` condition); the chat thread gains a
+  `sending && <div className="chat-message chat-message--agent
+  chat-message--pending">` block reusing the SAME `.chat-typing-dot` CSS
+  class `AgentDetailPanel.tsx` already defines and uses — no new CSS.
+  **Also folds in one real, related simplification, not just a spinner:**
+  `sendCockpitMessage`'s response is already the fully updated
+  `CockpitThread` — confirmed live, `threads.py::send_user_message`
+  already returns the thread with every dispatched agent's reply
+  appended, and `cockpitApiClient.ts::sendCockpitMessage` already types
+  its return as `Promise<CockpitThread>` — yet `handleSendMessage`
+  discards that response and fires a SEPARATE `reload()`
+  (`fetchCockpit(...)` GET) afterward. The fix applies the send response
+  directly via `setData(...)`, removing that redundant round trip rather
+  than merely adding a loading indicator on top of it. **No SSE,
+  websocket, or polling is introduced or needed:** `send_user_message`'s
+  own real, synchronous, sequential per-agent dispatch (`ADR-036` point 1,
+  untouched in shape by the BUG-022 fix above beyond which agents are in
+  the loop) already returns the complete post-turn thread state in its
+  one awaited HTTP response — there is no server-side asynchrony left to
+  bridge. `REQ-SB-42`'s existing `GET /agent-presence/stream` SSE channel
+  (`ADR-035`) is a considered-and-rejected reuse candidate, not an
+  oversight: it is a broadcast-only, ephemeral, cross-agent ACTIVITY
+  signal (who is currently running), structurally unrelated to relaying
+  one specific Cockpit thread's own completed message content back to one
+  specific requesting browser tab.
+- **Why no new ADR.** All three fixes compose an already-`Accepted`
+  mechanism (`ADR-036`'s Cockpit shape, `REQ-SB-49-US-01`'s mention
+  resolution) without introducing a new tool, framework, endpoint,
+  persisted store, or live-update transport — smaller in weight than the
+  already-settled "Cockpit Inline `@agent_id` Mention ... applies
+  `ADR-036`, no new ADR" and "Background Agents ... applies `ADR-014`/
+  `ADR-018`, no new ADR" precedents directly above/below this section (both
+  of which added a real new field or endpoint; BUG-022's one new optional
+  parameter/body field is the closest analog and is smaller than either).
+  No `Accepted` ADR, PRD text, or `MEMORY.md` constraint is contradicted.
+
+## Chat Rich-Text Rendering — `react-markdown` (`BUGFIX-04-US-01`, first real delivery of `REQ-SB-32`, see [ADR-050](ADR.md))
+
+`BUG-025` found all real chat surfaces render message text as a raw
+literal string. Direct code + `package.json` inspection (the triage
+analyst's own confirmed root cause, and this architecture pass's own
+re-confirmation) established this is genuinely NET-NEW capability, not a
+regression — `REQ-SB-32` ("Rich Text Rendering in Agent Chat") was never
+actually spec'd or built. Full reasoning, alternatives, and consequences:
+[ADR-050](ADR.md). This section records the resulting module shape only.
+
+- **One new shared presentational component,
+  `src/frontend/src/components/ChatMessageText.tsx`**
+  (`<ChatMessageText text={string} />`), wrapping `react-markdown` with
+  ZERO additional remark/rehype plugins — CommonMark's own default
+  feature set already covers the operator-resolved markdown subset
+  (bold/italic, bulleted/numbered lists, links, inline/block code,
+  headings; not full CommonMark/GFM — no tables, strikethrough, task
+  lists, footnotes this pass).
+- **Exactly two real call sites — confirmed by direct inspection that a
+  third, separate "Agents Map chat panel" component does not exist:**
+  `Cockpit.tsx`'s chat-thread map (both `chat-message--user` and
+  `chat-message--agent` rows — Meeting Cockpit and Inbox Cockpit share
+  this one component) and `AgentDetailPanel.tsx`'s chat-thread map (both
+  `role === 'user'` and `role === 'agent'` rows — this component IS "the
+  Agents Map's own embedded agent chat panel" the story's `## Story`
+  section names). Each site's literal `{message.text}` is replaced with
+  `<ChatMessageText text={message.text} />` — no `message.speaker`/`role`
+  branch on whether to apply it, directly implementing the operator's own
+  "All Text Should be Rich Text in Chat" resolution (both user- and
+  agent-authored messages render symmetrically).
+- **Sanitization posture: default-safe by omission, not a second
+  sanitizer dependency.** `react-markdown` never invokes
+  `dangerouslySetInnerHTML` and never parses/renders raw HTML embedded in
+  message text unless the `rehype-raw` plugin is explicitly added — this
+  pass adds no such plugin, so the story's own Constraint ("never raw
+  `dangerouslySetInnerHTML` of unsanitized content") is satisfied
+  structurally. Link/image URLs render through `react-markdown`'s own
+  built-in `defaultUrlTransform`, unmodified — it already strips
+  non-`http(s)`/`mailto`/`tel` link schemes (blocking `javascript:`-style
+  injection) with no custom `urlTransform` override needed.
+- **Package: `react-markdown`** (current stable v9.x — pin-then-verify-at-
+  real-install, this project's established `react-router`/`langgraph`
+  pattern), the first markdown/rich-text dependency in `src/frontend/
+  package.json`.
+
+A generalized, per-`(agent_id, capability_id)` recurring-schedule
+mechanism (configure/edit/remove/run-now/run-history via a new Schedule
+tab), built together with the shared serialization guarantee that no two
+Outlook-COM-touching runs ever execute concurrently, regardless of trigger
+source — per the operator's own confirmed decision to build both
+requirements as one piece of work. Extends `ADR-005` (the existing
+`app/scheduling/` layer and its one hardcoded hourly job) and `ADR-029`
+(the Skills working-mode gate). Full reasoning, every alternative
+considered, and every consequence: [ADR-037](ADR.md).
+
+- **New sibling `.second-brain/agent_schedules.json`** —
+  `{"schedules": {"<agent_id>::<capability_id>": {"agent_id",
+  "capability_id", "interval_value": int, "interval_unit": "minutes" |
+  "hours", "created_at", "updated_at"}}}`, a composite string key (not a
+  uuid-keyed list) — this project's structural guarantee that at most one
+  active schedule exists per (agent, capability) pair. `app/data_access/
+  vault_writer.py` gains the paired `load_agent_schedules_state()`/
+  `save_agent_schedules_state()` primitives, pure I/O, mirroring
+  `load_working_modes_state()`/`save_working_modes_state()`'s exact shape.
+- **New business module, `app/business/agent_schedule_registry.py`** —
+  the single owner of three related concerns, deliberately kept together
+  rather than split into three modules:
+  1. **Persisted schedule CRUD**, `list_schedules(agent_id=None)`,
+     `create_or_update_schedule(agent_id, capability_id, interval_value,
+     interval_unit)` (refuses — Scenario 9 — unless `capability_id` is
+     both granted, per `skill_registry.list_agent_skills(agent_id)`, and
+     `skill_tools.SKILLS[capability_id]["mutates"] is True`),
+     `remove_schedule(agent_id, capability_id)`.
+  2. **The live `AsyncIOScheduler` reference.** `capture_scheduler.
+     lifespan()` calls `set_live_scheduler(scheduler)` once, at startup,
+     right after building it — this is what lets `create_or_update_schedule`/
+     `remove_schedule` call `.add_job(..., replace_existing=True)`/
+     `.remove_job(...)` directly on the live process's own scheduler,
+     making Scenario 4/5's "no restart required" true without `app/
+     business/` ever importing `app.scheduling` (the object being
+     manipulated is a plain third-party `AsyncIOScheduler` instance, not
+     `app.scheduling`-owned code — see [ADR-037](ADR.md) point 2 for the
+     full reasoning behind this seam).
+  3. **The shared dispatch lock** — one module-level `asyncio.Lock()`,
+     `get_shared_dispatch_lock()`, and `dispatch_with_shared_lock(agent_id,
+     capability_id, trigger: Literal["scheduled", "direct"]) -> dict` — the
+     ONE function every real scheduled/on-demand trigger source now passes
+     through (mirrors `ADR-005` point 3's own "one concurrency guard spans
+     both trigger sources," generalized). Skips (never queues) and records
+     an honest `"skipped — another run is already in progress"` run-history
+     entry if the lock is already held; otherwise acquires it and calls
+     `await asyncio.to_thread(skill_registry.invoke_skill, agent_id,
+     capability_id, None, trigger)`. **Explicitly in-process only** — this
+     is a plain Python `asyncio.Lock` object, one per running interpreter;
+     it does not, and is not intended to, prevent two independent OS
+     processes from racing against the same real Outlook/Compass session
+     (the literal `SPRINT-030` collision `REQ-SB-45`'s own PRD text cites)
+     — that remains a deliberate, disclosed, out-of-scope operational-
+     hygiene risk (see [ADR-037](ADR.md)'s Context and Alternatives
+     Considered for the full reasoning).
+- **`app/scheduling/capture_scheduler.py` — surgically edited, not
+  rewritten.** Its own private `_capture_run_lock` is removed;
+  `run_capture_if_idle` (the existing hourly blob tick) now acquires
+  `agent_schedule_registry.get_shared_dispatch_lock()` instead — the one
+  change that makes the blob tick and any newly-configured per-agent
+  schedule targeting the same capture agent correctly serialize against
+  each other. `build_scheduler()` still registers the existing hardcoded
+  `hourly_capture` job unchanged, and additionally reads
+  `agent_schedule_registry.list_schedules()` at boot, registering one
+  APScheduler job per persisted schedule (`id=f"schedule:{agent_id}:
+  {capability_id}"`, same `coalesce=True, misfire_grace_time=None,
+  max_instances=1` configuration as the existing job), each job's callback
+  calling `agent_schedule_registry.dispatch_with_shared_lock(agent_id,
+  capability_id, trigger="scheduled")`. The existing blob tick's own
+  bespoke per-capture-type Autonomous/Supervised/Manual gate inside
+  `email_classification.py` (`ADR-018`/`ADR-020`) is untouched — the two
+  mechanisms coexist, sharing only the dispatch lock, never each other's
+  gating logic.
+- **`skill_registry.invoke_skill` gains a new `"scheduled"` trigger
+  literal** — `Literal["chat", "direct", "hub_routed", "scheduled"]`.
+  **Manual mode gains one new branch**, `mode == "manual" and trigger ==
+  "scheduled"` → `{"status": "skipped_manual", "reason": "This agent is in
+  Manual mode — its scheduled runs stay dormant."}`, with **zero** history
+  entry — mirroring the blob tick's own already-established "Manual skips
+  silently" precedent, generalized to any scheduled capability. **"Run
+  now" reuses the existing `"direct"` literal, unchanged** — no new
+  branch needed, since Manual mode already lets an explicit user-initiated
+  `"direct"` call through today. Supervised + mutating + `"scheduled"`
+  falls into the existing pending-approval branch, unchanged — identical
+  decision table, one more `trigger` value over.
+- **New API surface, `app/api/agent_schedules_router.py`**,
+  `APIRouter(prefix="/agents/{agent_id}/schedules")`: `GET` (list), `POST`
+  (create, `400` on Scenario 9's refusal), `PATCH /{capability_id}` (edit),
+  `DELETE /{capability_id}` (remove), `POST /{capability_id}/run-now`
+  (`await agent_schedule_registry.dispatch_with_shared_lock(agent_id,
+  capability_id, trigger="direct")`). Registered in `app/main.py`. **Run
+  history needs no new endpoint** — the Schedule tab reuses the existing
+  `GET /agents/{agent_id}/history` (`REQ-SB-11`).
+- **`meeting-capture`'s/`todo-capture`'s `run_capture_now` stays the
+  existing honest "not yet available" stub** — schedulable through the
+  new capability picker (any granted `"mutates": True` Skill, Scenario 2),
+  but a tick or run-now against it always produces the same honest
+  "not available" outcome the direct/chat path already produces today,
+  recorded to run history like any other outcome — operator-relayed
+  scoping decision (see [ADR-037](ADR.md)'s Context): this pass
+  generalizes the scheduling mechanism only, it does not build real
+  on-demand handlers for either capability.
+- **Frontend — net-new, no approved prototype coverage today.**
+  `AgentDetailPanel.tsx` gains a 5th tab, "Schedule" (alongside
+  `overview`/`chat`/`history`/`settings`/`gaps`): a capability picker
+  scoped to the agent's own granted, mutating capabilities (Scenario 2), an
+  interval value+unit control, Save/Edit/Remove, a "Run now" button per
+  schedulable capability, and a run-history list reusing the same
+  agent-history fetch the History tab already calls. A new
+  `agentSchedulesApiClient.ts` (or an extension of the existing
+  `agentsApiClient.ts`) carries `fetchSchedules`/`createSchedule`/
+  `updateSchedule`/`removeSchedule`/`runScheduleNow`. **Exact layout is
+  decomposer/coder latitude, not resolved by this architecture pass** — no
+  tab-bar or schedule-configuration control pattern exists anywhere in
+  `html-prototype/agents-map.html` today (confirmed by direct inspection,
+  per the story's own Notes); a `/design` pass or an explicit operator
+  sign-off to skip one remains open, independent of this section's own
+  backend-mechanism scope.
+
+## Capture Pipeline Split — Pull/Tag/Link/Store Agent Stages (`REQ-SB-53-US-01`/`US-02`/`US-03`, see [ADR-040](ADR.md)) — SUPERSEDED, see [ADR-041](ADR.md)
+
+**Superseded 2026-08-15 — kept below for historical record, do not build
+against this section.** The taxonomy discussion that produced
+[ADR-041](ADR.md) (see "Agent / Pipeline / Job / Hub Domain Model", near
+the top of this file) established that a Pipeline is a user-extensible
+DAG of lightweight Jobs, not a fixed chain of 4 separately-visible, Type-
+assigned Agents. `REQ-SB-53` and its 3 stories are parked pending a
+re-spec against that model. The section below describes what `ADR-040`
+designed, unedited, for continuity only. **`REQ-SB-55` (below, see
+[ADR-043](ADR.md)) is the real story that actually supersedes
+`REQ-SB-53-US-01`'s own Email-capture scope** — build against "Email
+Capture & Threading Pipeline — First Concrete Pipeline", below, not this
+section.
+
+Each of the 3 monolithic capture Workers (`email-capture`/`meeting-capture`/
+`todo-capture`) is split into 4 separate, individually-visible,
+individually-gated agent identities — Puller (`type: "worker"`) → Tagger
+(`type: "worker"`) → Linker (`type: "producer"`) → Storer
+(`type: "producer"`) — running in-process, in one atomic pipeline pass per
+fetched item, on the SAME existing `capture_scheduler.py` trigger (no new
+schedule, no persisted queue/staging). Full reasoning, every alternative
+considered, and every consequence: [ADR-040](ADR.md).
+
+- **New shared, capture-type-agnostic `app/business/capture_pipeline.py`**
+  — mirrors the Cockpit's own `app/business/cockpit/` "one shared module,
+  generic over a per-application parameter, not N parallel copies"
+  precedent ([ADR-036](ADR.md)). Owns exactly four concerns: the per-stage
+  working-mode gate check, the per-item buffered/deferred history commit,
+  Supervised-stage Pending-Approval creation and resumption, and the
+  top-level tick entry point `run_capture_pipeline(capture_type,
+  stage_agent_ids, pull_fn, tag_fn, link_fn, store_fn) -> list[dict]`. It
+  never imports `outlook_com`/`compass_client`/`customer_hub_linking`/
+  `people_extraction` directly and never contains any capture-type-specific
+  business logic.
+- **Each capture type's own real Pull/Tag/Link/Store logic stays inside
+  that type's own existing file** (`email_classification.py`,
+  `meeting_classification.py`, `todo_classification.py`), split from one
+  monolithic function into 4 stage functions with the contract `pull_fn()
+  -> list[dict]`, `tag_fn`/`link_fn`/`store_fn(items) -> StageResult`
+  where `StageResult = {"succeeded": [...], "failed": [(item, exc), ...]}`
+  — each type's own real divergences (Compass-vs-majority-vote Tag,
+  EntryID-keyed-vs-recompute-and-`exists()` dedup, a narrower
+  no-Person-linking Link stage for To-Do) are fully preserved, invisible
+  to the shared engine.
+- **Working-mode gate — per-stage, per-tick (batch-level), generalizing
+  [ADR-018](ADR.md) point 4's existing two-explicit-block, direct
+  `working_mode_registry` check (never `skill_registry.invoke_skill`) to 4
+  blocks.** Autonomous runs the stage against the whole batch; Manual
+  skips silently (no history entry, no downstream stage runs this tick);
+  Supervised creates exactly ONE Pending Approval covering the whole batch
+  that reached this stage this tick, reusing `trigger="background"`'s
+  existing per-agent-per-tick idempotency-dedup guard verbatim (zero new
+  dedup code), with `action_id` set to a new synthetic, colon-bearing
+  value (`"pipeline:email:store"`) and `payload={"pipeline_resume":
+  {capture_type, stage_agent_ids, resume_stage, items}}`.
+- **Partial-failure rollback — buffered/deferred per-item history commit,
+  never immediate-write-then-mutate** (history stays append-only, per
+  [ADR-018](ADR.md) point 7). Each item's per-stage outcomes are held in
+  memory until its fate for the tick is known: full success commits one
+  real `"run_event"` entry per stage; a failure commits a `"run_error"`
+  for the failing stage and a new, additive `"reverted"` history-entry
+  kind for every earlier stage that item had already tentatively passed —
+  so a human browsing that earlier stage's own Agent Activity never sees a
+  stray success for an item that ultimately failed downstream. Store never
+  runs for a failed item; it naturally retries whole from Pull next tick
+  via each type's own existing dedup mechanism (no explicit retry state).
+- **`pending_approvals_router.py`'s Approve endpoint gains one new
+  branch** (checked before the 2 pre-existing background/direct branches):
+  a `payload` containing `"pipeline_resume"` calls
+  `capture_pipeline.resume_pipeline_from_stage(...)` directly, bypassing
+  the gate (mirrors [ADR-018](ADR.md) point 6's "the approval is itself the
+  authorization" precedent), resuming the walk at the stage after the one
+  just approved — a downstream stage may itself be Supervised too,
+  producing a cascaded second approval, which is intended, not a bug.
+- **`skill_registry.invoke_skill`/`_dispatch_skill` are untouched** — no
+  new `trigger` literal, no new branch. These 4 stages are never
+  `skill_tools.SKILLS` catalog entries; they are gated by the same direct
+  `working_mode_registry` check [ADR-018](ADR.md) point 4 already
+  established for an internal pipeline step, never through `invoke_skill`.
+- **`_SEED_AGENTS` gains 4 new entries per capture type** (12 total across
+  the 3 sibling stories), replacing that type's one retired monolithic
+  entry; `background_agent_registry.py`'s `_DEFAULT_BACKGROUND_AGENT_IDS`
+  literal exception set is extended to the 12 new ids, inheriting the
+  retired agent's own Hub-routing/Cockpit-`@mention` exclusion.
+- **Zero new `.second-brain/` state files** — reuses
+  `agent_working_modes.json`, `agent_pending_approvals.json`, and
+  `agent_communication_history.json` exactly as they exist today; the only
+  additive surface is the new `"reverted"` history `kind` and the new
+  `pipeline_resume` payload convention on existing Pending Approval
+  records.
+
+## Email Capture & Threading Pipeline — First Concrete Pipeline (REQ-SB-55, see [ADR-043](ADR.md))
+
+The first real Pipeline built under [ADR-041](ADR.md)'s directional
+Agent/Pipeline/Job/Hub taxonomy — replaces the monolithic
+`email_classification.classify_recent_emails` Worker with a genuine
+`Fetch`→`Classify`→`Thread-Match/Merge`→`Route-to-Project` chain, plus two
+branch Jobs (`Summarize-Attachment`, `Detect-Recurring-Pattern`), populating
+the Thread evidence shape [ADR-042](ADR.md) already established. Full
+architectural reasoning, every alternative considered, and every
+consequence: [ADR-043](ADR.md).
+
+- **Module layout — a new `app/business/pipelines/` subpackage, this
+  codebase's first home for a Pipeline's own DAG assembly, kept separate
+  from each capture type's own business-logic module.**
+  `app/business/pipelines/email_capture_pipeline.py` owns exactly: the
+  `langgraph.graph.StateGraph` construction/compile, a typed pipeline
+  state, and the public entry point `run_email_capture_pipeline(limit:
+  int = 10) -> list[dict]` — what `run_capture_for_agent`/
+  `run_capture_and_record_completion` call for the new Agent-tier identity
+  (below) that replaces `email-capture`. Never imports `outlook_com`/
+  `compass_client` directly — every graph node is a thin callable wrapping
+  a PLAIN function living in `email_classification.py` (`Fetch` reuses
+  `outlook_com.list_recent_mail` unchanged; `Classify` extends the
+  existing `compass_client.classify_email` call with two new outcomes —
+  does this belong to an existing Thread or start a new one; does this
+  look like a recurring/structured artifact; `Thread-Match/Merge`,
+  `Route-to-Project`, `Summarize-Attachment`, and
+  `Detect-Recurring-Pattern` are new plain functions, each independently
+  callable/testable outside any LangGraph context, taking/returning
+  ordinary Python data, never a graph-state dict — this is deliberate, so
+  `Thread-Match/Merge`/`Route-to-Project` stay cleanly consultable by a
+  future generalized Vault Filing Expert consult call (`REQ-SB-63`, not
+  built here) without this story anticipating that integration's shape).
+  Future Pipelines (Meeting-capture's own eventual migration, `REQ-SB-56`;
+  To-Do) get their own sibling module in this same subpackage, not a
+  forced-generic shared engine invented ahead of a second real example.
+- **`Fetch` is a pre-graph, per-tick batch step — the compiled
+  `StateGraph` (`Classify`→`Thread-Match/Merge`→`Route-to-Project`, plus
+  the two branch Jobs) runs once PER FETCHED EMAIL,** mirroring
+  `classify_recent_emails`'s existing per-email loop shape. No persisted
+  queue/staging between `Fetch` and the rest of the graph, and no
+  cross-email graph state, per this story's own Non-Goals. `list_recent_
+  mail`'s own already-processed-id dedup stays exactly where it is today,
+  in the per-tick loop, outside the graph.
+- **Fork/merge shape:** `Classify` is the fork point — routes
+  unconditionally to `thread_match_merge`; in parallel, to
+  `summarize_attachment` (once per real attachment) when the email has
+  any, whose output feeds back INTO `thread_match_merge`'s own input (a
+  fan-in — the Attachments section and the regenerated Summary land in
+  the same pass); and, independently, to `detect_recurring_pattern` when
+  `Classify`'s new recurring-candidate outcome fires — this branch never
+  feeds back into `thread_match_merge`, it terminates on its own once it
+  creates its own Pending Approval. `thread_match_merge` conditionally
+  routes to `route_to_project` **only when this pass created a brand-new
+  Thread** (first message in the conversation) — an update to an
+  already-existing Thread routes straight to the graph's end for this
+  item, the concrete mechanism behind Scenario 4 (no re-routing/
+  re-approval on a later message in an already-routed conversation).
+  **`thread_match_merge` also, unconditionally, feeds a seventh, additive
+  branch Job, `consult_librarian`** (`REQ-SB-63`, not this story's own
+  scope to design further — see "The Librarian..." above), mirroring
+  `detect_recurring_pattern`'s own terminates-on-its-own branch shape:
+  never gates `route_to_project` or the graph's own end, and calls
+  `vault_filing_expert.determine_placement_and_file(..., already_filed_
+  path=thread_note_path)` — the one concrete `REQ-SB-63` integration point
+  this Pipeline exposes.
+- **Mid-pipeline human approval is a flat-JSON Pending-Approval-payload
+  deferred write, never a LangGraph checkpointer suspension.**
+  `route_to_project` and `detect_recurring_pattern` each run their own
+  branch to a clean, ordinary completion on every invocation — never
+  `interrupt()`, never a suspended/checkpointed graph state. Each creates
+  a Pending Approval whose `payload` carries everything needed to finish
+  the deferred write (the Thread's own path plus the guessed/candidate
+  Project or new-Project proposal; the seed content for the Agent
+  Creation Wizard pre-fill) — the actual "finish the routing"/"hand off
+  to the wizard" side effect on Approve is dispatched via two new entries
+  in `pending_approvals_router.py`'s existing `_APPROVAL_HANDLERS`
+  dispatch table (mirroring the Vault Filing Expert Tier-2 precedent,
+  [ADR-021](ADR.md) point 5), never a graph resume. This sidesteps
+  `MemorySaver`/`SqliteSaver` and any cross-restart durability question
+  entirely.
+- **Approval gating composes with, rather than replaces, the Pipeline's
+  own top-level working-mode gate.** Exactly ONE working-mode check gates
+  the whole per-tick Pipeline run (Autonomous/Manual/Supervised),
+  evaluated once against the single new Agent-tier identity below —
+  mirroring today's existing single `working_mode_registry.get_agent_
+  working_mode("email-capture")` check, **not** the now-superseded
+  `capture_pipeline.py`'s own rejected per-stage 4-gate shape.
+  Independently, and regardless of that top-level gate's own resolution
+  (even Autonomous), `route_to_project` and `detect_recurring_pattern`
+  ALWAYS create their own Pending Approval — [ADR-021](ADR.md)'s
+  "independent of the agent's own working mode" precedent, applied a
+  second time.
+- **One new Agent-tier identity replaces `email-capture` 1:1 in
+  `agent_registry.py`'s `_SEED_AGENTS`** (`type: "worker"`, matching the
+  retired entry's own type — zero changes needed to any existing
+  type-keyed Map/Section-coloring code or `background_agent_registry.py`'s
+  literal exception set). None of the six Jobs get their own
+  `agent_registry` entry, Map node, chat surface, or Working Mode — the
+  Job-tier default [ADR-041](ADR.md) already defines. Satisfies Scenario 8
+  (`email-capture` no longer appears as its own agent) by direct
+  construction. **Every real `email-capture`-referencing file this
+  retirement touches, confirmed by direct search this pass:**
+  `agent_registry.py`, `background_agent_registry.py`, `skill_tools.py`,
+  `skill_registry.py`, `agent_schedule_registry.py`, `agents_router.py`,
+  `demo_taxonomy.py`, `email_classification.py` itself — the
+  decomposer's own retirement task must enumerate all of them explicitly.
+- **Thread's own baseline frontmatter family ([ADR-042](ADR.md) point 5)
+  gains additive keys, extended rather than reopened:** `customer`
+  (written by `Thread-Match/Merge`, mirroring Email's old per-note
+  `customer` field) and `project` (absent on a newly created Thread;
+  written only once `Route-to-Project`'s Pending Approval resolves).
+  **This pass also claims ownership — closing the flag left open by the
+  "Meeting → Thread Linking" section, below — of `participants`/
+  `last_message_at`,** the two Thread fields `REQ-SB-56`'s own
+  fallback-linking heuristic needs: `Thread-Match/Merge` is their natural
+  writer, being the only code path that touches every Thread's
+  frontmatter on every message.
+- **`customer_hub_linking.ensure_hub_note_and_link`'s inline-body-wikilink
+  half is NOT reused by `Thread-Match/Merge`** — only
+  `ensure_customer_hub_note` (ensures the Customer's OKF directory
+  skeleton exists) is called. The inline `**Customer:** [[Hub]]` wikilink
+  was Email's own per-note linking convention, superseded by the OKF
+  concept file's own `sources:` provenance field, populated at synthesis
+  time (`REQ-SB-57`, out of this story's own scope) —
+  `Thread-Match/Merge` does not itself write `sources:`.
+- **Tags accumulate (unioned, never pruned) on every Thread update** —
+  Scenario 7, matching [ADR-042](ADR.md)'s own already-established Thread
+  Tags cadence.
+- **New `vault_writer.py` primitives needed, both mechanical extensions
+  of already-shipped shapes, no new mechanism family:**
+  - A header-SCOPED body append (`## Transcript` and the new `##
+    Attachments` section are both independently growing — only one of a
+    note's sections can be "physically last" for the existing EOF-blind
+    `append_person_note_update_line` to correctly target; reuses
+    `replace_body_section`'s own header/next-header location logic,
+    inserting just before the region's own end instead of replacing it).
+  - An enumeration of a Customer's own `projects/*/` subdirectories and
+    each one's `status`, for `Route-to-Project`'s "currently open
+    Projects" guess — a mechanical extension of
+    `list_known_customers()`'s own frontmatter-scan shape, bounded to one
+    customer's own projects subtree.
+- **`record_conversation_note`/`conversation_index.json` and
+  `find_related_note_stems`/`## Related Emails` become dead code for the
+  email path once this Pipeline ships** (a `conversation_id`-scoped
+  Thread already IS "the related emails, merged") — not deleted by
+  `ADR-043` itself; confirming and retiring dead code is a coder-level
+  task-scoping decision.
+- **Does not decide the Pipeline Builder** ([ADR-041](ADR.md) point 6) —
+  stays deferred, now genuinely closer (one real Pipeline exists).
+
+### Pipeline Job Tree Visualization — read-only `StateGraph` introspection (`REQ-SB-65`, extends `ADR-043` point 1, no new ADR)
+
+Renders the Email Capture Pipeline's own real, compiled Job structure as a
+connected tree on the Agents Map's Data Gathering Section, replacing the
+single opaque `email-capture-pipeline` node with its six real Jobs
+(`classify`, `summarize_attachment`, `detect_recurring_pattern`,
+`thread_match_merge`, `route_to_project`, `consult_librarian` — confirmed by
+direct reading of `email_capture_pipeline.py`'s own current `_build_graph`
+this pass, six nodes today, one more than the PRD's own pre-`REQ-SB-63`
+prose). Resolves the story's own genuinely-open architecture question
+(`gate: flagged`, trigger-8 at `/spec`) as **Option A — a new, read-only
+endpoint that inspects the real, compiled graph's own structure; Jobs stay
+non-addressable, `ADR-043` point 6 fully intact, not reopened.** Option B
+(a genuine per-Job `agent_registry` entry) was considered and rejected —
+see Alternatives, below.
+
+- **Verified, not assumed, before deciding:** this codebase's installed
+  `langgraph` (`1.2.11`, `requirements.txt`) already exposes exactly the
+  introspection primitive Option A needs, as a real, already-public API —
+  confirmed by direct reading of the installed package, not inferred from
+  documentation. `langgraph.graph.StateGraph.compile()` returns a
+  `CompiledStateGraph`, which is a `langgraph.pregel.Pregel` — and
+  `Pregel.get_graph(config=None, xray=False)` (`langgraph/pregel/main.py`)
+  calls `langgraph.pregel._draw.draw_graph`, returning a real
+  `langchain_core.runnables.graph.Graph` object: `.nodes: dict[str, Node]`
+  (`Node.id`/`Node.name`) and `.edges: list[Edge]` (`Edge.source`/
+  `Edge.target`/`Edge.conditional`/`Edge.data`), built by actually walking
+  the compiled graph's own real trigger/write wiring — not a static
+  re-statement of whatever `add_node`/`add_edge` calls were made, a live
+  structural read. `langgraph`/`langchain_core` are both already-installed,
+  already-imported dependencies of this exact module (`ADR-015`/`ADR-041`
+  point 5) — this is a new READ call against an existing object, never a
+  new dependency, never a new subpackage, never a new tool.
+  `langgraph.constants.START`/`END` (`"__start__"`/`"__end__"`) are the
+  graph's own synthetic entry/exit sentinel node ids and must be filtered
+  out of any Job list — they are not real Jobs.
+- **New function, same module, same owner (`ADR-043` point 1's own module
+  boundary extended, not reopened):**
+  `app/business/pipelines/email_capture_pipeline.py` gains
+  `get_job_tree() -> list[dict]`, calling `_GRAPH.get_graph()` on the
+  SAME already-compiled, module-level `_GRAPH` singleton
+  `run_email_capture_pipeline` already calls (never recompiles a second
+  graph instance), filtering `START`/`END`, and shaping the result into
+  `{"id": str, "name": str, "depends_on": list[str]}` entries —
+  `depends_on` derived directly from the real edges (every edge whose
+  `target` is this node contributes its `source` to `depends_on`), which
+  is exactly the shape `AgentSummary.depends_on`
+  (`agentsApiClient.ts`) and `layoutAgents.ts`'s `computeAgentDepth`/
+  `assignTreeAngles`/`buildDependencyEdges` already consume — no new
+  frontend data shape is invented, the existing one is finally fed real
+  data for the first time (`list_agents()`'s own comment,
+  `agents_router.py`, already named `depends_on: []`/
+  `branch_target_agent_id: None` as "honest, structurally-correct empty
+  defaults, not fabricated data... no real pipeline-dependency source
+  exists yet" — this is that source, arriving). This never bakes in a
+  static 5-or-6-name Job list (Scenario 3's own bar) — it reads
+  `_GRAPH.get_graph()` fresh on every call, so a future Job added, removed,
+  or rewired in `_build_graph` changes the returned tree with zero code
+  change here.
+- **New route, existing router, existing per-agent-subresource
+  convention:** `GET /agents/{agent_id}/jobs` in `agents_router.py` —
+  mirrors the already-established `GET /agents/{agent_id}/history` /
+  `GET /agents/{agent_id}/knowledge-gaps` shape (one more per-agent
+  sub-resource, not a new top-level `/pipelines` resource — no second real
+  Pipeline exists yet to generalize toward, mirroring `ADR-041`'s own
+  "prove one real thing before generalizing" sequencing one layer down).
+  Read-only (`GET` only). For `agent_id == "email-capture-pipeline"`,
+  returns `email_capture_pipeline.get_job_tree()`'s shaped list, each
+  entry additionally carrying `section_id` — the SAME
+  `section_registry.get_agent_section("email-capture-pipeline")` value
+  `GET /agents`/`GET /agents/{agent_id}` already resolve for this Agent's
+  own identity, looked up fresh on every call (Scenario 4's own "resolved
+  live, never hardcoded" bar — a future Section reassignment of
+  `email-capture-pipeline` moves its whole rendered Job tree with it, with
+  zero code change). For any other real `agent_id`, returns `[]` — an
+  honest empty list (no Job tree exists for that agent), never a 404 and
+  never a fabricated tree; this is what keeps the endpoint's own shape
+  generic (not a hardcoded single-agent special case at the router layer)
+  while its only real, populated answer today stays exactly the one
+  Pipeline this story targets (Scenario 5's own scope bound). Composes
+  `app/business/pipelines/email_capture_pipeline.py` directly from the API
+  layer, matching `list_agents()`'s own existing multi-registry-composition
+  shape (`ADR-003` layering).
+- **Frontend integration — reuses `layoutAgents.ts` verbatim, zero changes
+  to its own tree/dependency-edge math (`AC` bar: "not a new, parallel
+  rendering mechanism"):** a new thin adapter (`features/agents-map/`)
+  shapes each fetched Job into an `AgentSummary`-compatible object —
+  `id`/`name`/`depends_on`/`section_id` from the endpoint above,
+  `type`/`working_mode`/`icon`/`color`/`is_background_agent`/`description`
+  all INHERITED from `email-capture-pipeline`'s own already-fetched
+  `AgentSummary` entry (so no new CSS class, no new visual affordance is
+  needed — the Non-Goals bar) — then REMOVES that one pipeline `AgentSummary`
+  entry from the list handed to `layoutAgents()` and splices in its Jobs in
+  its place, before `layoutAgents()` ever runs. `layoutAgents()`'s own
+  `computeAgentDepth`/`assignTreeAngles`/`buildDependencyEdges` need no
+  changes at all — they already operate generically over any
+  `AgentSummary[]`; this is the concrete mechanism satisfying "reusing the
+  already-built tree/dependency-edge layout math, not a new, parallel
+  rendering mechanism." `agentsApiClient.ts` gains one new call,
+  `fetchAgentJobs(agentId)`, mirroring `fetchAgentHistory`'s own shape.
+  **Left open for the decomposer/coder, disclosed here rather than decided:**
+  whether the frontend fetches `/jobs` only for the one, literally-known
+  `email-capture-pipeline` id (tighter scope match to this story's own
+  explicit single-Pipeline bound, Scenario 5) or fetches it for every
+  returned agent and merges whichever responses are non-empty (fully
+  generic, zero hardcoded id, marginally more network chatter against
+  today's small agent count) — both are real, honest, non-fabricating
+  options; neither reopens any tier boundary.
+- **`ADR-043` point 6 stays fully intact, not reopened:** none of the six
+  Jobs gain an `agent_registry` entry, a chat surface, an independent
+  Working Mode, or a Pending-Approval `agent_id` — their SHAPE becomes
+  visible on the Map; their addressability does not change at all. This is
+  the concrete reason no new ADR is needed: nothing here reverses,
+  narrows, or reinterprets any `Accepted` decision — it is a new READ path
+  over an already-compiled object, inside the already-established module
+  boundary (`ADR-043` point 1), returning data through the already-
+  established `api → business` layering (`ADR-003`), reusing an
+  already-approved frontend visual language and an already-built,
+  already-generic layout module with zero changes to either.
+
+**Alternatives Considered:**
+
+- **Option B — a genuine, lightweight per-Job `agent_registry` entry.**
+  Would let `GET /agents` return Jobs alongside real Agents with ZERO new
+  frontend code (`layoutAgents.ts` already consumes `AgentSummary[]`
+  directly). Rejected: this reopens `ADR-043` point 6's own explicit,
+  same-day decision for no functional gain this story's own Acceptance
+  bar needs — every one of Option A's real technical requirements
+  (grounded tree data, live Section resolution, reuse of the existing
+  layout math) is already fully satisfiable without it. It would also
+  require every downstream `GET /agents` consumer (chat routing, action
+  triggers, the Agent Detail panel, Working Mode toggles) to defensively
+  distinguish "a real Agent" from "a Job wearing an Agent's registry
+  shape" to avoid exposing chat/Working-Mode/Pending-Approval affordances
+  `ADR-041`'s own Job-tier default explicitly withholds — the exact
+  structural blurring `ADR-041`/`ADR-043` deliberately built the two-tier
+  split to avoid. The operator's own fresh mid-`/spec` context ("the API
+  needed anyway" for a future visual tool, distinct from the already-
+  deferred Builder) independently confirms a READ-only API is what's
+  actually needed now, not a registry/authoring surface.
+- **A brand-new top-level `/pipelines` router/resource.** Considered, not
+  chosen — no second real Pipeline exists yet to generalize a shared
+  resource shape toward (`ADR-041`'s own repeated "prove one real thing
+  first" sequencing); nesting under the existing per-agent
+  `/agents/{agent_id}/...` sub-resource convention needs no new router
+  file and matches this story's own explicit single-Pipeline scope bound
+  exactly. Revisit once a second real Pipeline (`REQ-SB-56`) needs the
+  same treatment.
+- **Recomputing/re-deriving the Job list by re-reading `_build_graph`'s own
+  source structure by hand (a hardcoded 6-name list), instead of calling
+  the real compiled graph's own introspection API.** Rejected outright —
+  directly contradicts Scenario 3's own explicit "never fabricated, never
+  hardcoded" bar; would silently go stale the next time this graph's own
+  topology changes, exactly the failure mode the story's own Context
+  section calls out by name (the PRD's pre-`REQ-SB-63` 5-Job prose already
+  having gone stale once).
+
+### Real Thread Summary Synthesis + Opening-Line + One-Shot Backfill (`REQ-SB-67`, extends `ADR-043`/`ADR-044`, no new ADR)
+
+Reverses one narrow, story-level (not ADR-level) Constraint from the
+already-`Done` `REQ-SB-55-US-01`'s own text — "this Job never makes a
+second Compass call" — via a NEW story, per `Implementation/Pipeline.md`
+hard rule 1 (specs are append-only; `REQ-SB-55-US-01` itself is never
+edited). Confirmed by direct re-reading: `ADR-043`'s own seven numbered
+Decision points never assert this as an architectural rule themselves —
+it was purely `REQ-SB-55-US-01`'s own story-level Constraint text, citing
+`ADR-041`'s "no second, independent classification/routing call chain"
+precedent for the CLASSIFY/ROUTE chain specifically. Adding exactly ONE
+new real Compass call inside the already-existing `thread_match_merge`
+Job therefore narrows a story-level scoping decision, not any
+`Accepted` ADR's own Decision — mirrors `REQ-SB-56-US-01`'s own architect
+pass reasoning ("parameter/business-rule choices made WITHIN an
+already-`Accepted` data model... neither introduces a new tool,
+framework, or structural boundary").
+
+- **Job/node placement — extends `thread_match_merge` in place; no new
+  Job, no new graph node/edge.** The new synthesis call lives inside
+  `email_classification.py`'s existing `thread_match_merge` function (a
+  new plain helper it calls, same module — `ADR-043` point 1's module
+  boundary is unchanged). `email_capture_pipeline.py`'s compiled
+  `StateGraph` topology is completely unchanged — `get_job_tree()`
+  (`REQ-SB-65-US-01`) continues returning the same six Jobs, byte-for-byte.
+- **Exactly ONE new real Compass call per `thread_match_merge`
+  invocation, covering BOTH the Summary and the opening line together** —
+  the parent story's own Constraint ("this story adds exactly the ONE new
+  synthesis call... does not reopen or duplicate Classify/Route-to-Project's
+  own existing Compass calls") settles this directly; two separate calls
+  (one per output) was considered and rejected as an unnecessary doubling
+  of real Provider round-trips on every single captured message.
+  `compass_client.summarize_content` is reused VERBATIM — same signature,
+  same `{"summary": <string>}` parse/error shape (`ADR-034` point 3) — **no
+  change to `compass_client.py` at all** (the parent story's own task
+  table left this open as "if a narrower prompt shape is warranted"; it is
+  not — `summarize_content`'s existing `content`/`source_description`/
+  `prompt_override` signature is already generic enough). The new
+  `prompt_override` text (default: a hardcoded literal in
+  `email_classification.py`, mirroring every sibling Job's own
+  `default_instructions` shape; override: `agent_prompts.get_prompt(
+  "thread_match_merge")`, below) instructs Compass to return its one
+  `"summary"` string as two parts — a first-line "current state at a
+  glance" sentence, then a blank line, then the fuller synthesized
+  abstract. `thread_match_merge` splits that ONE returned string on the
+  first blank line: part 1 → the new opening-line primitive (below); part
+  2 (or the whole string, if the model returns no blank line — a graceful
+  single-string fallback, not an error) → `## Summary` via the
+  already-existing `replace_body_section`. This split lives entirely in
+  `email_classification.py` (the Thread-owning module) —
+  `compass_client.summarize_content`'s own shared parsing is untouched, so
+  every other real caller (`summarize_attachment`, `skill_tools.
+  summarize_file`, `vault_filing_expert`) is provably unaffected.
+- **Grounding — composed from the Thread's own currently-PERSISTED state,
+  not from a full raw-body history that doesn't exist anywhere in this
+  data model.** Confirmed by direct reading: `## Transcript`
+  (`append_body_section_line`) only ever accumulates a terse one-line
+  `- **{received}** — {sender}: {subject}` entry per message — it never
+  carries a message's own body text, and this story's own Constraints
+  (Scenario 2/3) forbid changing that shape ("unchanged in shape"/
+  "completely unchanged"). The richest available grounding is therefore:
+  the Thread's OWN existing `## Summary` region (read via the
+  already-existing `vault_writer.read_body_section`, BEFORE it gets
+  overwritten — on live capture this is the PRIOR real synthesis; empty on
+  the very first message; on backfill it's the OLD raw-dump content) + the
+  FULL current `## Transcript` region (same `read_body_section`, giving
+  Compass the whole conversation's own chronological subject/sender/date
+  shape) +, live-capture only, the NEW message's own full body as the
+  explicit "what just arrived" delta (backfill passes no delta — a pure
+  resynthesis of what's already persisted). This is a rolling/incremental
+  synthesis, not a full-history reconstruction — the prior Summary IS the
+  accumulated memory of everything before it, since it was itself
+  synthesized the same way on the previous message. One new plain helper
+  in `email_classification.py` (naming left to the decomposer, e.g.
+  `_synthesize_thread_summary(existing_summary, transcript,
+  new_message_body, prompt_override) -> dict`) composes this and is called
+  IDENTICALLY by both `thread_match_merge` (live capture) and the new
+  backfill function (below) — one shared mechanism, not two divergent
+  ones, mirroring this codebase's own repeated "generic-primitive-first"
+  precedent (`Implementation/Learnings.md`, `SPRINT-048`).
+- **Honest, non-fabricating failure posture, mirroring
+  `summarize_attachment`'s own `"summary_error"` pattern exactly** —
+  `compass_client.CompassError` is caught locally around the one new call;
+  on failure, the Thread's existing `## Summary` and opening line are left
+  completely untouched (no write attempted), an honest failure outcome is
+  recorded for that one item, and the surrounding per-email (live capture)
+  or per-Thread (backfill) loop continues — never a raised exception that
+  aborts the run (Scenario 5/6).
+- **`route_to_project`'s own grounding is repointed; `_build_thread_
+  summary_content` is retired as dead code.** `_build_thread_summary_
+  content(email)` had exactly two real callers: `thread_match_merge`
+  (replaced by the above) and `route_to_project` (used only to ground
+  `guess_project_for_thread`'s prompt, and only ever on a brand-new
+  Thread's first message — `route_to_project` no-ops immediately when
+  `thread_result["created"]` is False). `route_to_project` now reads the
+  just-written, REAL synthesized Summary directly —
+  `vault_writer.read_body_section(Path(thread_result["thread_path"]),
+  "## Summary")` — instead of recomputing a second, divergent summary of
+  the same message. This keeps `guess_project_for_thread`'s own call shape
+  completely unchanged (still exactly one call — `REQ-SB-55-US-01`'s own
+  "no second, independent classification/routing call chain" Constraint
+  stays airtight) while improving its grounding text for free.
+  `_build_thread_summary_content` itself is deleted — zero remaining
+  callers once this lands.
+- **New `vault_writer.py` primitive for the opening line (`REQ-SB-54`
+  point 11's first real implementation) — a mechanical generalization of
+  `replace_body_section`'s own bounded-region-replace mechanism, no new
+  mechanism family.** `replace_body_section` locates a GIVEN header's own
+  line as the region start; this new primitive (naming left to the
+  decomposer, e.g. `replace_body_opening_line(path, new_line)`) instead
+  locates the end of the frontmatter block (the SECOND literal `---` line
+  in the file — confirmed by direct reading of `_write_frontmatter_note`'s
+  own `---\n...\n---\n\n<body>` layout) as the region start, and the FIRST
+  `## `-level header line as the region end — the "opening" region,
+  regenerated wholesale on every call (create AND update alike), exactly
+  like every other `replace_body_section` call site.
+  `create_thread_note_baseline`'s own body literal
+  (`"## Summary\n\n## Transcript\n"`) needs NO change — the opening region
+  starts empty and is filled by this same primitive on `thread_match_
+  merge`'s very first invocation, mirroring how `## Summary` itself starts
+  empty and is immediately regenerated with real content the same way.
+- **Config surface — the new call's prompt composition routes through the
+  already-`Accepted` `agent_prompts.py` sibling-store mechanism
+  (`ADR-044`), keyed `"thread_match_merge"`, mirroring
+  `summarize_attachment`'s own exact wiring**
+  (`compass_client.summarize_content(content, source_description,
+  prompt_override=agent_prompts.get_prompt("thread_match_merge"))`) —
+  never a bare Python literal with no override path. `thread_match_merge`
+  gains a real Compass call site for the FIRST time (previously it had
+  none — `ADR-044`'s own Decision text explicitly named
+  `thread_match_merge`, alongside `detect_recurring_pattern`, as one of
+  exactly two Jobs whose Job-Settings `GET` response omits the `prompt`
+  key entirely, "a disclosed, hand-maintained fact, deliberately not
+  self-healing — if a future story gives either Job a real LLM call site,
+  this endpoint's own small exclusion check must be updated by hand").
+  This story is exactly that future story: the hand-maintained exclusion
+  set in `agents_router.py`'s `/agents/{agent_id}/jobs/{job_id}/settings`
+  `GET` handler shrinks from `{"thread_match_merge",
+  "detect_recurring_pattern"}` to `{"detect_recurring_pattern"}` — a
+  mechanical update `ADR-044`'s own Consequences already anticipated
+  verbatim, not a reopening of that ADR.
+- **No other new tunables.** The existing shared `content[:8000]`
+  truncation inside `compass_client.summarize_content` (pre-existing,
+  shared by every caller) remains the only length/token cap on the
+  synthesis input — this story does not introduce a second, narrower cap.
+  The backfill discovers however many Thread notes exist under
+  `Work/Threads/` at run time (iterates `vault_writer.list_all_note_
+  paths()`, filtering `frontmatter.get("type") == "Thread"` — mirrors
+  `tag_backfill.py`'s own iterate-and-filter shape; no new enumeration
+  primitive) — no hardcoded count, so nothing to route through config.
+  Sequential, no artificial delay between per-Thread calls, mirroring
+  `classify_recent_emails`'s/`summarize_attachment`'s own established
+  no-rate-limit precedent at this data volume — nothing new to make
+  tunable there either.
+- **Backfill module/endpoint — the established `/poc/...` one-shot
+  pattern, confirmed by direct reading of all six existing endpoints.**
+  New `app/business/thread_summary_backfill.py` (mirrors
+  `tag_backfill.py`'s one-module-per-maintenance-operation naming),
+  exposing `backfill_thread_summaries() -> list[dict]`, calling the SAME
+  shared `_synthesize_thread_summary` helper `thread_match_merge` uses
+  (`new_message_body=None`), same per-item honest `try/except
+  CompassError` + continue posture. New `POST
+  /poc/backfill-thread-summaries` in `app/api/email_poc_router.py`, a thin
+  wrapper — identical shape to the six existing endpoints there.
+
+**Alternatives Considered (no new ADR, recorded here for the same reason
+`REQ-SB-56-US-01`'s architect pass recorded its own reasoning in prose
+rather than a new ADR):**
+
+- **Two separate `summarize_content` calls (one for the Summary, one for
+  the opening line).** Rejected — the parent story's own Constraint
+  explicitly settles this to exactly ONE new synthesis call; two calls
+  would also double real Provider round-trip latency/cost on every single
+  captured message for no locked-AC benefit.
+- **A new, dedicated `compass_client.py` function (e.g.
+  `synthesize_thread_summary`, multi-key JSON response) mirroring
+  `classify_email`'s own multi-key-JSON shape.** Considered — this
+  codebase does have real precedent for one call returning several named
+  fields (`classify_email`'s `customer`/`kind`/`confidence`/
+  `recurring_candidate`). Rejected specifically for this story: the
+  parent story's own Constraint locks reuse of `summarize_content`
+  DIRECTLY ("no second, divergent summarization call shape is invented"),
+  and `summarize_content`'s own parsing is shared by several other
+  callers this story must not risk — a same-shape split performed
+  entirely in the Thread-owning module satisfies the Constraint literally
+  with zero shared-file risk.
+- **Growing `## Transcript`'s own per-message entries to carry full
+  message bodies, enabling a true full-history reconstruction instead of
+  a rolling synthesis.** Rejected — a genuinely bigger, unrequested
+  Transcript-shape change; the parent story's own Constraints explicitly
+  require Transcript's shape/content to stay unchanged (Scenario 2/3).
+- **A generic, structural "does this Job have a real call site" probe**
+  (mirroring `ADR-044`'s own already-rejected equivalent for the same
+  2-item exclusion set) instead of hand-updating the exclusion set.
+  Rejected for the identical reason `ADR-044` already recorded: no such
+  introspection exists or is warranted for a fixed, small, already-known
+  Job set.
+
+### Thread Attachment Capture — Silent-Loss Fix + Per-Message Collision Safety (`BUGFIX-03-US-01`, `BUG-014`, extends `ADR-043`, no new ADR)
+
+Closes `BUG-014`'s two confirmed gaps against the live `Summarize-Attachment`
+Job chain (`ADR-043` point 3) — a genuine, code-confirmed silent-loss defect
+(gap 1, real root cause below, NOT the mechanism `BUG-014`'s own ledger
+entry originally named — see `ESCALATIONS.md` → `ESC-041`, `Resolved`) and
+`write_attachments`'s already-confirmed missing filename-collision
+protection (gap 2). **No new ADR** — both fixes are mechanical extensions
+of already-`Accepted` primitives/conventions (`write_attachments`'s own
+save path; `summarize_attachment`'s own already-established "honest,
+non-fabricating" return-value convention), never a new tool, framework, or
+structural boundary; `ADR-043`'s own seven Decision points are unchanged.
+
+- **Root-cause investigation (resolves `ESC-041`) — the real gap-1
+  mechanism, confirmed by direct reading, not `BUG-014`'s own originally
+  stated one:** `_summarize_attachment_node`
+  (`app/business/pipelines/email_capture_pipeline.py`) only appends an
+  entry to `thread_match_merge`'s `attachment_entries` list when
+  `email_classification.summarize_attachment(...)` returns a real
+  `dated_entry` string — produced ONLY on a genuinely successful
+  save-then-summarize path. Every OTHER real outcome of a real,
+  non-inline, genuinely-attached file collapses to a `summary_error` key
+  that this node silently discards (no exception, no log, no fallback
+  entry): an oversized attachment (`outlook_com.py`'s own
+  `_MAX_ATTACHMENT_BYTES = 20MB` cap already sets `attachment["content"]`
+  to `None` upstream, before `write_attachments` ever sees it), a
+  saved-but-non-text-extractable file type, or a real
+  `compass_client.CompassError` during summarization. For the oversized
+  case specifically, `vault_writer.write_attachments`'s own `.mkdir()`
+  call sits INSIDE its per-attachment `if attachment["content"] is None`
+  early-continue branch (confirmed by direct reading, lines ~478-483) —
+  it is never reached, so the whole `attachments/<thread-slug>/`
+  directory itself never comes into existence for that Thread. **This
+  single, confirmed mechanism independently explains BOTH of `BUG-014`'s
+  own live-observed symptoms** (a real captured Thread missing its own
+  `## Attachments` section AND missing its own `attachments/` folder
+  anywhere in the vault) from one cause, without needing any unverifiable
+  claim about Outlook's own COM behavior for that specific message.
+  - **Corroborating evidence, not just structural reading:** the still-live
+    sibling path, `email_classification.classify_recent_emails` (dead code
+    for the live Thread pipeline, but real, unmodified, and still reachable
+    via `app/api/email_poc_router.py`'s `/poc/classify-emails`), already
+    carries an honest fallback line for exactly this case —
+    `f"- {att['filename']} (not saved — {att['size']} bytes exceeds the
+    size cap)"` — proving "record an unsaved attachment's own existence
+    anyway" was already an established convention in this codebase BEFORE
+    the new Thread pipeline shipped. `REQ-SB-55-US-01-T05`'s own
+    `summarize_attachment` Job deliberately chose not to fabricate a
+    `dated_entry` for a failed real summary (`MEMORY.md`, 2026-08-16 —
+    "`summary_error` was chosen as the equivalent honest signal") but no
+    downstream node/function was ever built to actually surface
+    `summary_error` into a visible Thread-note artifact — the "equivalent
+    honest signal" was designed at the Job level but never wired at the
+    pipeline/node level. This is the real, confirmed regression: not "an
+    attachment is never extracted," but "an attachment that fails to save
+    or summarize for ANY reason vanishes from the Thread note without a
+    trace" — a genuine loss of a convention the OLD per-email path already
+    had.
+  - **What this finding does NOT settle — folded into `T01`'s own
+    live-verification scope, not blocking this design:** which of several
+    real-world causes explains the specific "Presight Agent Academy Demo"
+    Thread's own historical repro — (a) the real attachment's own byte
+    size genuinely exceeded the 20MB cap (most probable given a
+    presentation file with embedded media, but not provable from code
+    alone); (b) it was actually a OneDrive/SharePoint cloud-attachment
+    link, which modern M365-signed-in Outlook's own "Attach File" flow can
+    insert as a body hyperlink rather than a real `Attachments`-collection
+    entry — Outlook's own behavior, not a defect in this codebase, and
+    would need a live `item.Attachments.Count` read against the real
+    message to confirm or rule out; (c) the specific message was processed
+    once via a direct, pre-`T07`-pipeline-wiring dev-verification call
+    during `SPRINT-049`'s own same-day build-out (`thread_match_merge`
+    shipped at `T03`, `summarize_attachment` at `T05`, the two only wired
+    together by `T07`) — `vault_writer.mark_email_processed` is called
+    ONLY by `run_email_capture_pipeline`'s own per-tick loop, never by any
+    Job function directly, so a message captured once outside that loop
+    during development, then later revisited by a real tick as an
+    Thread-`update` (`created: False`), is structurally indistinguishable
+    from (a)/(b) by static reading; (d) a real, silently-swallowed
+    per-attachment COM read failure inside `_extract_attachments`'s own
+    broad `except Exception: continue`/`except Exception: return results`
+    guards, which log nothing on failure. None of (a)-(d) changes the fix
+    below — each is already covered by the SAME honest-signal mechanism
+    this fix restores — so the fix proceeds on the strength of the
+    confirmed code-read mechanism above; `T01` additionally carries a
+    live-diagnostic verification sub-step (mirroring
+    `REQ-SB-56-US-01-T00`'s own precedent for "confirm live, don't guess")
+    so the coder records which of (a)-(d) actually applied, without that
+    confirmation gating the fix itself.
+
+- **Fix scope, gap 1 (silent-loss) — restore the honest-signal convention
+  at the pipeline layer, never fabricate a summary that never happened:**
+  a real, non-inline attachment must leave SOME durable, visible trace on
+  the Thread note regardless of whether it was ultimately saved and/or
+  summarized. Concretely: `_summarize_attachment_node`'s loop (or
+  `summarize_attachment`'s own return contract — the exact layer is a
+  decomposer/coder-level implementation choice, not decided here, since
+  either preserves `ADR-043` unchanged) gains a fallback entry, synthesized
+  from `result["summary_error"]` + `result["filename"]` (+
+  `result.get("relative_link")` when the file WAS actually saved to disk
+  but only failed to summarize), appended into `attachment_entries`
+  whenever `dated_entry` is absent — mirroring `classify_recent_emails`'s
+  own already-established "record even when unsaved/unsummarized" wording
+  convention, never a new mechanism family. `summarize_attachment`'s own
+  already-AC-tested contract (never fabricate a `dated_entry` implying a
+  real summary that never happened) stays intact — the fallback entry is
+  visibly distinct wording (e.g. "not saved — exceeds size cap" vs. "saved
+  but could not be summarized"), never disguised as a genuine summary.
+- **Fix scope, gap 2 (per-message collision safety) — nests one level
+  deeper per message, using the message's own `received` timestamp as the
+  path segment, not a rename/hash-check scheme (the story's own adopted
+  direction):** `vault_writer.write_attachments` gains one new required
+  parameter, `message_segment: str`, threaded into its own directory
+  composition (`attachments_dir = settings.vault_path / subfolder /
+  "attachments" / note_slug / _slugify(message_segment)`) and into its
+  returned `relative_link`'s own path. `email_classification.
+  summarize_attachment`'s one live call site passes
+  `message_segment=received` — `received` is already one of
+  `summarize_attachment`'s own existing parameters (used today for the
+  `dated_entry`'s own date prefix), so this needs zero new plumbing
+  upstream of that one call site. `received` (Outlook's own
+  `str(ReceivedTime)`, full timestamp, not a bare `YYYY-MM-DD` truncation)
+  is deliberately chosen over a day-only date: a Thread routinely receives
+  multiple messages on the same calendar day, and a day-only segment would
+  simply relocate `BUG-014`'s own collision window one level down (two
+  same-day messages, same-named attachment) rather than closing it; a
+  genuine same-second collision within one Thread is not realistically
+  reachable. Reuses the SAME `_slugify` primitive `note_stem` already runs
+  through (its own 80-char truncation ceiling, the mechanism `BUG-011` — a
+  different, still-`Open`, explicitly out-of-scope bug — targets, applies
+  unchanged here too, but `received`'s own raw string is well under 80
+  chars, so no new truncation-collision surface is introduced by this
+  specific segment).
+  - **The OTHER live caller of `write_attachments`**
+    (`classify_recent_emails`, line ~652 — dead code for the live Thread
+    pipeline but still reachable via `/poc/classify-emails`) is NOT part of
+    this story's own repro/regression scope: its own `note_stem` already
+    embeds a per-email Outlook EntryID suffix
+    (`email['received'][:10]}-{email['subject']}-{email['id'][-8:]}`), so
+    it is one note ↔ one email ↔ one attachments folder — already
+    collision-safe by construction, with no cross-message sharing at all.
+    Making `message_segment` a REQUIRED parameter still needs this call
+    site updated purely to keep it compiling (a mechanical follow-through,
+    not a design question) — an empty-string or id-derived segment is
+    equally correct there since no real collision risk exists on that
+    path.
+
+**Alternatives considered (why no new ADR):** teaching `outlook_com.py` to
+"read `Attachments`" (`BUG-014`'s own originally-stated gap-1 fix) was
+rejected outright — it already does, and building against a contradicted
+premise would be redundant, non-closing work; a rename/hash-check
+collision scheme for gap 2 was rejected in favor of the story's own
+adopted per-message nesting, which matches `summarize_attachment`'s own
+existing "dated sub-entry per attachment" convention already used in the
+Thread body, rather than introducing a second, divergent collision
+mechanism.
+
+## Universal Prompt Override + Guardrails Placeholder — Agents and Pipeline Jobs (REQ-SB-66, see [ADR-044](ADR.md))
+
+Replaces four scattered, hardcoded prompt-building call sites plus the
+per-turn Chat system message with a real, operator-editable override,
+additively layered over today's existing default text; adds a
+structure-only Guardrails field with zero enforcement behavior. Applies
+uniformly to every real Agent (Worker/Producer/Expert) and every real Job
+of the Email Capture Pipeline. The Job-Settings-detail-view
+addressability question (how a Job's own Settings becomes reachable at
+all) is `ADR-044`'s own decision — this section covers the whole
+mechanism; `ADR-044` covers only that one boundary-crossing piece.
+
+- **New sibling store, same shape this codebase already repeats:**
+  `app/business/agent_prompts.py` + `.second-brain/agent_prompts.json`,
+  composed alongside `agent_registry.py` (never inside it, `agent_
+  registry.py` stays byte-for-byte unmodified by this story), keyed
+  directly by `id` — a real Agent id (e.g. `"vault-filing-expert"`) and a
+  real Job id (e.g. `"classify"`) share one flat namespace, no
+  special-casing between the two (mirrors `agent_keywords.py`/`scope_
+  registry.py`/`working_mode_registry.py`'s own already-`Accepted`
+  shape, `ADR-011` point 2/`ADR-030`; no new ADR needed for this part —
+  see `ADR-044`'s own Consequences). An unset id's own Prompt/Guardrails
+  both read back as absent/empty — additive layering only, never a
+  behavior change for an id nobody has edited yet.
+- **Prompt override wiring — four owning call sites in
+  `compass_client.py`, plus two more elsewhere, each an additive
+  override-or-default read, mirroring `working_mode_registry.py`'s own
+  self-healing-default shape (never a required field, never a crash on
+  absence):**
+  - `classify_email` (owned by the `classify` Job).
+  - `classify_task` (owned by the `todo-capture` Agent).
+  - `guess_project_for_thread` (owned by the `route_to_project` Job).
+  - `summarize_content`, wired ONLY at its `summarize_attachment` Job
+    call site — `skill_tools.summarize_file`'s own separate, multi-agent
+    shared call to the same function is explicitly left unwired (no
+    single owning identity reaches that call site, disclosed scoping
+    call, parent story's own `## Non-Goals`).
+  - `vault_filing_methodology.build_placement_prompt`'s own
+    `_METHODOLOGY_EXCERPT` half (owned unambiguously by the
+    `vault-filing-expert` Agent — `determine_placement_and_file` always
+    resolves that one identity's model regardless of caller, confirmed by
+    direct reading).
+  - `agent_orchestration/state.py`'s `history_entries_to_messages` (the
+    real, only per-turn Chat `SystemMessage`, read by `graph.py` on every
+    Agent's chat turn, Worker/Producer/Expert alike — the override
+    replaces the DEFAULT TEXT only; `REQ-SB-33`'s own honest-uncertainty/
+    grounding mechanism itself is untouched, it just reads whichever text
+    is currently in effect).
+- **Guardrails: storage only, zero enforcement call sites anywhere** —
+  the same `agent_prompts.json` entry carries a `guardrails` value per
+  id, editable and persisted, read by nothing except the Settings view
+  itself. Distinct from, and does not touch, `AgentDetailPanel.tsx`'s
+  pre-existing, hardcoded Overview-tab `GUARDRAILS_STATEMENT` row
+  (`REQ-SB-33-US-01`) — that row is left byte-for-byte unchanged.
+- **Settings-tab extension for real Agents — `AgentDetailPanel.tsx`'s
+  existing Settings tab gains two new `kv-list` rows (Prompt, Guardrails),
+  unconditionally shown for every real Agent Type (Worker/Producer/
+  Expert), on the SAME existing tab, alongside the existing per-Type-
+  conditional-field convention (Domain-for-Expert/Purpose-for-Producer) —
+  never a new tab, never a new screen.** This is the only piece of this
+  story that touches `AgentDetailPanel.tsx` itself.
+- **Job Settings — a genuinely separate surface, `ADR-044`'s own
+  decision, not an `AgentDetailPanel.tsx` extension:** a new `GET`/`PATCH
+  /agents/{agent_id}/jobs/{job_id}/settings` pair in `agents_router.py`
+  (`agent_id` scopes/validates against `email_capture_pipeline.
+  get_job_tree()`, never the storage key) and a new, small, standalone
+  frontend component mounted by `AgentsMapPage.tsx` in place of
+  `AgentDetailPanel` whenever the clicked Map node's id is a known Job id
+  (reusing the SAME already-fetched `fetchAgentJobs(EMAIL_CAPTURE_
+  PIPELINE_AGENT_ID)` list `pipelineJobTreeAdapter.ts` already consumes —
+  no new fetch). `GET` omits the `prompt` key entirely for
+  `thread_match_merge`/`detect_recurring_pattern` (no real call site of
+  their own, `ESC-039` Resolved) — `guardrails` is always present. Full
+  reasoning, every alternative considered, every consequence:
+  [ADR-044](ADR.md).
+- **`ADR-043` point 6 stays intact except for this one, explicit,
+  bounded exception** — a Job still has no Chat, no History, no
+  independent Working Mode, no Schedule, no Pending-Approval `agent_id`,
+  no Skills grant; only its own Settings (Prompt where a real call site
+  exists, Guardrails always) becomes reachable by clicking its Map node.
+
+## Non-Blocking Manual Capture Dispatch + Scheduling Monitor (REQ-SB-68-US-01, see [ADR-045](ADR.md))
+
+Fixes a real 2026-08-17 production incident (a manual "Run Capture Now"
+click froze the entire backend for the full duration of a real, slow
+Outlook-COM-plus-Compass capture pass, confirmed live via a concurrent
+`GET /agents` returning nothing until it finished) and adds a real
+running/duration/outcome monitor for the three capture-style jobs
+`agent_schedule_registry`'s shared dispatch lock already covers
+(`email-capture-pipeline`, `meeting-capture`, `todo-capture`). Full
+reasoning, every alternative considered, every consequence: `ADR-045`.
+
+- **A material grounding correction, found by direct re-reading, not
+  assumed.** The story's own analyst-authored Context named
+  `agents_router.py::_execute_action`'s `_ACTION_HANDLERS` dispatch as
+  the blocking call site. Both of `_ACTION_HANDLERS`'s only two entries
+  (`run_capture_now`, `build_knowledge`) are ALSO `skill_tools.SKILLS`
+  members (migrated there by `REQ-SB-39-US-02`/`ADR-029` point 5); every
+  real caller (`trigger_action`, `chat`, `pending_approvals_router.py`'s
+  Approve endpoint) checks `action_id in skill_tools.SKILLS` first and
+  branches away before `_execute_action` is ever reached for either id.
+  **`_execute_action`/`_ACTION_HANDLERS`/`_run_build_knowledge`/
+  `_execute_async_action` are confirmed dead code today** — left
+  unchanged, disclosed to `REVIEW-QUEUE.md` as a separate future cleanup
+  item, not fixed by this story. The REAL manual dispatch path is
+  `agents_router.py::trigger_action`/`chat` → `_invoke_capability` →
+  `skill_registry.invoke_skill` → `_dispatch_skill` →
+  `skill_tools.run_capture_now` → `email_classification.
+  run_capture_and_record_completion` — fully synchronous end-to-end, no
+  thread offload anywhere in the chain. This is the path this story
+  actually fixes.
+- **The fix: reroute through `ADR-037`'s own `dispatch_with_shared_lock`,
+  not a new mechanism.** `_invoke_capability` becomes `async def`; when
+  `capability_id == "run_capture_now"` (the one id shared by exactly the
+  three covered agents, no other agent/capability pair), it calls
+  `await agent_schedule_registry.dispatch_with_shared_lock(agent_id,
+  capability_id, trigger=trigger)` instead of calling `skill_registry.
+  invoke_skill` directly — gaining `asyncio.to_thread` (the non-blocking
+  fix) AND the shared Outlook-COM lock (closing the race-condition risk
+  the story's own Non-Goals left open, resolved here as "yes, join it")
+  in one already-`Accepted`, already-proven function. Every other
+  `capability_id` is unaffected — this is a single-id routing branch,
+  not a rewrite. Both of `_invoke_capability`'s two real call sites
+  (`trigger_action`'s button dispatch, `chat`'s keyword-matched
+  dispatch — both already `async def`) add `await` at their existing,
+  unchanged call-site lines; `dispatch_with_shared_lock`'s own `trigger`
+  Literal widens to include `"chat"` alongside `"scheduled"`/`"direct"`.
+  A translated `"skipped"` status (the lock-already-held case) and a new
+  `"history_recorded": True` flag (avoiding a duplicate history entry,
+  since `dispatch_with_shared_lock` already records its own outcome)
+  round out `_invoke_capability`'s existing result-shape translation.
+- **`build_knowledge`/`compass-expert` keeps its own, structurally
+  identical, already-live blocking gap** (`skill_tools.build_knowledge`'s
+  own `ThreadPoolExecutor(...).result()` call still blocks its own
+  calling thread) — disclosed, not fixed, explicitly out of this story's
+  own three-covered-jobs scope boundary.
+- **New run-state persistence — a new sibling store,
+  `.second-brain/job_run_state.json`**, via two new pure-I/O primitives
+  on `vault_writer.py` (`load_job_run_state()`/`save_job_run_state()`),
+  keyed by the same `"{agent_id}::{capability_id}"` composite string
+  `agent_schedules.json` already uses. Two new functions on
+  `agent_schedule_registry.py` (already `ADR-037`'s canonical home for
+  this class of concern) mark start/finish, called from inside
+  `dispatch_with_shared_lock`'s own lock-held block, gated to
+  `capability_id == "run_capture_now"` — the same structural gate the
+  dispatch-routing fix uses, so run-state tracking stays scoped to
+  exactly the three covered jobs with no hardcoded agent-id list. A new
+  `get_job_run_states()` read accessor computes an in-flight run's
+  elapsed duration fresh at read time (`now − started_at`, never
+  persisted incrementally) — mirroring `REQ-SB-31-US-01`'s own
+  established recompute-fresh-on-refresh convention for this exact page.
+  A covered job with no run yet is honestly omitted, never fabricated
+  (Scenario 5).
+- **No new API surface — extends the existing `GET /system-health`
+  only.** `system_health.py::get_system_health()` gains a new
+  `"scheduling"` key composing `get_job_run_states()`; the existing
+  `"last_capture_run"` key is REMOVED (superseded for display purposes —
+  see below). `system_health_router.py` needs no change.
+- **`.second-brain/last_capture_run.json`: superseded for display,
+  left alone for storage.** The new per-job record for
+  `email-capture-pipeline` is a strict superset of what
+  `last_capture_run.json` ever tracked. `SystemHealthPage.tsx`'s
+  existing `<h2>Last capture run</h2>` + card region is REPLACED outright
+  (not left to coexist) by the new "Scheduling" section, at the same
+  position (immediately after the "Providers" card), reusing that same
+  page's already-established `item-list`/`item-row` visual idiom (one
+  row per covered job: running state, elapsed/most-recent duration, last
+  outcome — success, or the real error message on failure).
+  `record_capture_run_completed()`'s own call site
+  (`email_classification.py`, `ADR-008`) and the underlying JSON file are
+  left byte-for-byte unchanged — a harmless, disclosed redundancy, not a
+  defect; removing that write path is not required by any Scenario here.
+
+## Decoupled Email Pull + Human-Readable, Graph-Connected Thread Notes (REQ-SB-69-US-01, see [ADR-046](ADR.md))
+
+Fixes a real, repeated 2026-08-17 production incident (the shared
+Outlook-COM dispatch lock wedged twice the same night, inside `Fetch`'s
+own single synchronous `outlook_com.list_recent_mail` call, ahead of
+`Classify`/`Thread-Match/Merge`/`Route-to-Project`) by retiring `Fetch`
+from the pre-graph batch step (`ADR-043` point 2) and replacing it with
+an independently-dispatched, incrementally-staged Pull step, plus a
+second, Outlook-lock-free step that drains the staging area. Also makes
+Thread notes read like a human wrote them (filename, dates, wikilinks).
+Full architectural reasoning, every alternative considered, and every
+consequence: [ADR-046](ADR.md).
+
+- **Not a staging/promotion gate on ingested vault data** (`MEMORY.md`'s
+  own standing constraint) — a transient, pre-note raw-content buffer
+  only, existing solely so an Outlook-COM stall can't lose already-
+  fetched content; a staged email becomes a real Thread note through the
+  SAME already-`Accepted` graph and approval gates, with no new
+  review/promotion step interposed.
+- **Staging: a new `app/data_access/email_staging.py` module, one
+  directory per staged email under `.second-brain/email_staging/
+  <entry_id>/`** (`email.json` metadata + attachment shape identical to
+  `outlook_com.list_recent_mail`'s own returned dict, minus raw
+  attachment bytes; `attachments/<filename>` — raw bytes on disk,
+  mirroring `ADR-034`'s own blob-storage precedent). `stage_email`/
+  `list_staged_emails`/`remove_staged_email` are the three primitives;
+  `already_processed`/`mark_email_processed` (`ADR-043` point 2) are
+  unchanged and consulted a second time, at processing time.
+- **`outlook_com.list_recent_mail` gains one new, optional,
+  backward-compatible `on_item_fetched` callback**, invoked per item
+  immediately after it's fully resolved — never buffered until the whole
+  COM loop returns. This is what makes staging genuinely live-updating
+  and resumable: a mid-loop stall still leaves every already-fetched item
+  durably staged.
+- **A new `app/business/pipelines/email_pull.py` module** (sibling to
+  `email_capture_pipeline.py`) owns `pull_and_stage_emails` — the ONLY
+  function in the email path that still imports `outlook_com`.
+  `email_capture_pipeline.py` itself drops that import entirely and now
+  reads its per-item input from `email_staging.list_staged_emails()`
+  instead of calling `Fetch` — its own compiled
+  `Classify`→`Thread-Match/Merge`→`Route-to-Project` DAG (`ADR-043`
+  points 1/3/4) is structurally unchanged.
+- **Pull and Processing become two independently-dispatchable
+  capabilities of the SAME `email-capture-pipeline` Agent-tier identity —
+  `pull_email` (joins the shared Outlook-COM dispatch lock, `ADR-037`/
+  `ADR-045`) and `process_staged_email` (its own separate, lightweight
+  guard — never the Outlook lock).** This is what makes "a stalled Pull
+  never blocks already-staged mail" and "stalled processing never blocks
+  the next Pull" true by construction — the two capabilities share no
+  lock. `run_capture_now` stays the unchanged composite email+meeting+
+  todo manual/chat dispatch it is today. Pull does NOT earn its own
+  Agent-tier identity (a real, disclosed open question the story left to
+  this pass) — it stays a second capability of the existing Agent, per
+  `ADR-041`'s Job-tier default, extended one capability further.
+- **Thread filename: `<slug(thread_name)>-<date>-<hash8(conversation_id)>.md`**,
+  mirroring `meeting_note_filename_stem`'s own shape. `thread_name` (new,
+  additive frontmatter) is the FIRST message's own subject, captured once
+  at creation, never recomputed. `date` = `last_message_at[:10]`. The
+  hash suffix is derived from `conversation_id` alone (not the mutable
+  date), keeping it stable across renames. `thread_note_path`'s own
+  "deterministic from `conversation_id` alone" contract (`ADR-042` point
+  5) is retired for lookup purposes and replaced by a frontmatter-scan
+  lookup (`resolve_thread_note_path`, built on the already-shipped
+  `list_thread_notes()`) — no new persisted index. A new
+  `rename_thread_note` primitive physically renames the file in place,
+  preserving content, whenever the date component changes (Scenario 7).
+- **A real, previously-latent correctness gap, found and fixed by this
+  pass:** `route_to_project`'s Pending-Approval payload now also carries
+  `conversation_id`, and `finalize_thread_project_routing` re-resolves
+  the Thread's CURRENT path at Approve time via `resolve_thread_note_
+  path`, rather than trusting a `thread_path` string captured at proposal
+  time — which could go stale the moment a Thread's filename is no
+  longer permanently stable.
+- **A new, deterministically-regenerated `## Related` body section**
+  (via the already-shipped `replace_body_section`) carries Thread's real
+  `[[wikilink]]`s to Customer/Person/Project — NOT Email's existing
+  `insert_body_line_if_missing`-based inline primitives, which would
+  silently conflict with `replace_body_opening_line`'s own full
+  ownership of the same pre-first-header region (a genuine primitive
+  conflict found by direct reading). Regenerated from real, currently-
+  resolvable data only on every `thread_match_merge` call — an honest
+  absence, never a fabricated link, for Unsorted/unresolved entities.
+- **Human-readable dates without breaking `_date_proximity_gap_days`'s
+  real, already-shipped parsing:** a new, additive `last_message_at_
+  display` frontmatter sibling field; `last_message_at` itself stays
+  byte-for-byte unchanged (still ISO-8601). `## Transcript` entries
+  format their own timestamp human-readably at write time.
+- **Out of scope, disclosed:** Meeting-capture's/Todo-capture's own
+  triggering is unchanged (still bundled with `pull_email` under one
+  shared-lock hold in the hourly/app-start composite tick); backfilling
+  already-captured Thread notes onto the new filename/date/wikilink shape
+  is deferred, not built here.
 
 ## Vault Indexing Layer (REQ-SB-01-US-01, see [ADR-024](ADR.md))
 
@@ -2541,6 +6603,210 @@ and `ADR-010`'s frontend routing/styling/data-fetching conventions. The one
 genuinely new mechanism decision — ranked search — is `ADR-026`, below /
 [ADR.md](ADR.md).
 
+### Tag/Folder Scope Suggestions — new composing endpoint over already-real enumeration functions (`REQ-SB-50-US-01`, no new ADR)
+
+A new, additive `GET /vault-search/scope-suggestions` endpoint feeding
+`AgentDetailPanel.tsx`'s Vault Scope field typeahead (see "Agent-to-Tag/
+Folder Vault Scoping" addendum, below) — composing two already-`Accepted`,
+already-shipped read-only enumeration functions with zero new
+vault-scanning logic of its own, the same "ordinary same-shape extension"
+posture already established for every other endpoint in this section
+(`ADR-003` layering, `list_tags()`'s own precedent). **No new ADR:** no new
+tool, framework, storage mechanism, or trust surface — a pure
+recomposition of `vault_search.list_tags()` (business-layer aggregation,
+already shipped `REQ-SB-02-US-01`) and `vault_writer.list_known_kinds()`
+(data_access-layer folder enumeration, already shipped, previously
+reachable only via the MCP tool surface / `vault_query_tools.
+list_known_kinds()`, never over HTTP) into one HTTP-reachable shape — the
+one genuine gap the story's own Context identified.
+
+- **`app/business/vault_search.py` gains `list_scope_suggestions() ->
+  {"tags": [{"tag", "count"}], "folders": [str]}`.** Calls its own existing
+  `list_tags()` internally (no duplicated tag-aggregation logic) and
+  `vault_writer.list_known_kinds()` directly — mirroring this same
+  module's existing precedent of calling `vault_writer.read_note()`
+  directly inside `search()`, above. Tags and folders are returned as two
+  distinct, un-merged lists, not flattened into one combined suggestion
+  array — this mirrors `scope_registry`'s own tag-vs-folder matching
+  distinction (a scope value matches either a note's `tags` list or its
+  folder name, never conflated — see "Agent-to-Tag/Folder Vault Scoping",
+  below) and lets the frontend render two labeled suggestion groups
+  without an artificial merge/dedup step. **No `q=` filter parameter** —
+  the endpoint always returns the vault's full current tag/folder lists
+  (matching this vault's real, small scale, and `agents-map.html`'s own
+  already-established "fetch once, filter client-side" tag-filter-chip
+  precedent — `list_tags()`'s own existing consumer) rather than a
+  server-side search; keystroke-level narrowing happens client-side
+  against this one fetched snapshot. This is an implementation-internal
+  shape decision, not AC-locked — matching `list_notes`'s own
+  page/page_size default precedent, above.
+- **`app/api/vault_search_router.py` gains `GET /vault-search/
+  scope-suggestions` → `vault_search.list_scope_suggestions()`.** No
+  change to this router's own "calls `vault_search`/`vault_indexing` only,
+  never `vault_writer`/filesystem directly" rule — the
+  `vault_writer.list_known_kinds()` call lives inside the new
+  business-layer function, not the router itself.
+- **Frontend fetch wrapper: `features/vault-browser/client.ts` gains
+  `fetchScopeSuggestions()`**, alongside its existing `fetchTags()` — the
+  file that already owns every other `/vault-search/...` fetch wrapper —
+  imported cross-feature into `AgentDetailPanel.tsx` (see addendum,
+  below), the same already-established cross-feature-import shape this
+  panel already uses for `settingsApiClient`/`pendingApprovalsApiClient`/
+  `skillsApiClient`.
+
+## The Vault — Knowledge Graph Screen (REQ-SB-75-US-01, no new ADR)
+
+A new interactive force-directed graph screen over the SAME
+`vault_indexing.get_index()` snapshot `Browse & Search`, above, already
+reads — every note a node (grouped/colored by its own real `frontmatter.
+type`, the same field `_kind_for` already reads), every real, resolved
+wikilink an edge, click-through into the existing, unmodified `/browse/
+:stem` route. Design sign-off happened directly against a live Artifact,
+not `/design` (disclosed operator override, see the story's own
+`## Context`); this section covers only the mechanism-level choices left
+open to `/plan-tasks`.
+
+**No new ADR — a pure composition of two already-`Accepted` decisions,
+applied to a new screen, not reopened:** `ADR-003`'s layered `data_access
+→ business → api` boundary (the new endpoint composes `vault_indexing`/
+`vault_search` only, exactly like every other `/vault-search/*` route);
+and `ADR-010`'s frontend routing/styling/data-fetching/component-structure
+conventions, including its own Alternatives-Considered posture against
+adding a dependency without a concrete, non-speculative need (Decision 2
+rejecting React Query/SWR "ahead of any real endpoint," `ADR-002`/`ADR-007`'s
+own "no speculative dependency" precedent). Nothing here introduces a new
+tool, framework, storage mechanism, or trust surface — the same "ordinary,
+same-shape extension" posture the `Browse & Search` section above already
+recorded for its own no-ADR endpoints (`ADR-003` layering, the
+one-module-per-feature `business/`/`api/` pattern, `ADR-010`'s conventions).
+
+### `app/business/vault_search.py` gains `get_graph() -> {"nodes": [...], "edges": [...]}`
+
+Composes `vault_indexing.get_index()` directly — zero new indexing/caching,
+never a second, divergent graph-construction mechanism (the story's own
+Constraint 1). Lives in this SAME module (not a new module/router) since it
+is an ordinary read-only aggregation over the index, exactly like
+`list_notes`/`search`/`list_tags` above.
+
+- **Nodes** — `[_summary(entry) for entry in index.values()]`, reusing this
+  module's own existing `_summary()` (`{"stem", "title", "kind", "tags"}`)
+  verbatim — the exact same projection `list_notes`/`search` results
+  already use, so `kind` is `_kind_for(entry)`
+  (`frontmatter.get("type", "Unknown")`), the exact reuse point the story's
+  own `## Notes` identified. **No kind-to-fixed-enum mapping table** — every
+  real `type` value currently in use (`Customer`, `Thread`, `Meeting`,
+  `Person`, `File`, `Partner`, `RawMessage`, `Task`, `Research`, and any
+  future value) renders as its own real node kind, never coerced into one
+  of only the 5 named-in-Scenario-5 kinds — the PRD's own "every real note"
+  acceptance text (the story's own `## Notes` already confirms this
+  directly against the real corpus).
+- **Edges** — for each entry, each raw `outgoing_wikilinks` target is
+  resolved via the identical case-insensitive stem-matching rule
+  `_resolve_forward_links`/`ADR-024` point 3 already establish, emitting
+  `{"source": entry["stem"], "target": matched_stem}` for a match; a
+  target that doesn't resolve to any indexed note's stem (a dangling link)
+  or resolves to the entry itself (a self-link) is silently omitted — the
+  same "no crash, no fabricated entry" posture `ADR-024`/`get_note_detail`
+  already apply, not a new rule (Scenario 2). No dedup of reciprocal
+  A→B/B→A pairs — an implementation-internal shape decision, not AC-locked;
+  the frontend's own rendering may collapse them visually if desired.
+- **No pagination, no `q=`/`tag=` filter parameters** — the endpoint always
+  returns the full current graph in one call (matching this vault's real,
+  small scale, ~680 notes, and the story's own explicit "large-corpus
+  performance work... out of scope at the vault's current real scale"
+  Constraint); kind-filtering, name search, and live per-kind counts are
+  all a client-side concern over this one fetched snapshot — not a new
+  backend aggregation endpoint, since Scenario 3's "the count reflects the
+  hidden node count" requirement is inherently a live, client-side-only
+  computation regardless (there is no server round-trip on a filter
+  toggle). Mirrors `agents-map.html`'s/`scope-suggestions`'s own
+  already-established "fetch once, filter client-side" precedent, above.
+
+### `app/api/vault_search_router.py` gains `GET /vault-search/graph`
+
+`GET /vault-search/graph` → `vault_search.get_graph()` directly, registered
+alongside this router's existing routes — no new router, no new module
+(the story's own Constraint 2). No change to this router's own "calls
+`vault_search`/`vault_indexing` only, never `vault_writer`/filesystem
+directly" rule.
+
+### Frontend — new `pages/VaultGraphPage.tsx`, route `/vault`, nav label "The Vault"
+
+- **Route path `/vault`** — the natural short-segment continuation of this
+  app's existing single-segment route convention (`/browse`, `/settings`,
+  `/crawlers`, `/my-day`); `App.tsx` gains `<Route path="/vault"
+  element={<VaultGraphPage />} />`, alongside the existing routes.
+- **Nav label "The Vault"** — `Sidebar.tsx` gains a new `<NavLink to="/vault">`
+  after the existing "Browse & Search" nav item (this file's own established
+  "append after existing nav items" placement, already used for `Browse &
+  Search` itself). **Resolves the story's own disclosed "Vault Browser" vs.
+  "The Vault" naming concern:** direct reading of the real, current
+  `Sidebar.tsx` (2026-08-19) confirms the existing `/browse` nav item's own
+  real, on-screen label is **"Browse & Search," never "Vault Browser"** — so
+  the human-facing naming collision the PRD flagged does not actually exist
+  in the shipped UI today; only the internal PascalCase component name
+  (`VaultBrowserPage`) shares the "Vault" prefix. This new screen's own
+  component/feature names (`VaultGraphPage.tsx`, `features/vault-graph/`,
+  below) are deliberately chosen distinct from `VaultBrowserPage`/
+  `vault-browser` at the CODE level too, so no future grep for "vault" under
+  `pages/`/`features/` collides, even though the nav-facing name is "The
+  Vault." The PRD's own naming-overlap concern stays explicitly
+  non-blocking/deferred, per the story's own Non-Goals — this decision
+  only prevents a NEW collision from this story, it does not rename the
+  existing "Browse & Search" screen.
+- **New `features/vault-graph/`:**
+  - `client.ts` — thin fetch wrapper over `GET /vault-search/graph`, the
+    same thin-`fetch`-client convention as `features/vault-browser/
+    client.ts`/`features/my-day/client.ts` (`ADR-010` Decision 2).
+  - `VaultGraphCanvas.tsx` — a literal HTML5 `<canvas>` element with a 2D
+    drawing context, a hand-rolled `requestAnimationFrame` force-directed
+    physics loop (repulsion + edge-spring + centering forces) plus
+    drag/zoom/pan pointer handling — a direct, zero-new-dependency port of
+    the signed-off Artifact's own named technique (the story's own
+    Objective #4: "hand-rolled canvas force-directed layout with no
+    external libraries"). Confirmed against the real, current
+    `src/frontend/package.json`: no graph/visualization dependency exists
+    today (`react`, `react-dom`, `react-markdown`, `react-router` only) —
+    adding one (e.g. `d3`, `react-force-graph`, `vis-network`) is
+    explicitly rejected, no concrete need this screen's own scale (~680
+    nodes, a one-time layout computation plus incremental physics ticks,
+    not a large-N production-grade rendering problem) doesn't already meet
+    with plain `<canvas>` — the exact same "no speculative dependency"
+    posture `ADR-010`/`ADR-002`/`ADR-007` already established, applied
+    here, not reopened. **Not a reuse of `AgentsMapCanvas.tsx`** — that
+    component is an SVG-plus-positioned-`<div>` renderer for a fixed,
+    non-physics-simulated radial layout (`polarLayout.ts`), a
+    structurally different visualization; `VaultGraphCanvas.tsx` is a new,
+    sibling "one component owns one bespoke visualization" instance
+    (`ADR-010` Decision 4's own precedent, applied a second time to a
+    genuinely different visualization technique, not a new pattern).
+  - `forceLayout.ts` — a pure physics/geometry module (node position state,
+    one simulation-tick function), mirroring `polarLayout.ts`'s own
+    "pure, testable geometry function, not hand-derived per-node
+    coordinates inline" precedent (`ADR-010` Decision 4's Alternatives
+    Considered explicitly rejected hardcoded per-node coordinates for
+    exactly this reason).
+  - Kind-filter chips (with live counts) + name search — computed
+    client-side over the one already-fetched `{nodes, edges}` snapshot (no
+    backend aggregation call), per `get_graph()`'s own "no pagination/
+    filter parameters" decision above. Unchecking a kind filters the
+    node/edge arrays passed into `VaultGraphCanvas.tsx` before render —
+    fully removing, never dimming (Scenario 3; a filtered-out node/edge is
+    simply absent from what gets drawn to the canvas that frame, not drawn
+    at reduced opacity).
+  - Click-to-navigate — `react-router`'s existing `useNavigate()` to
+    `/browse/:stem` on node click; zero new note-viewing mechanism
+    (`ADR-010`, the story's own Constraint 3). Connection-highlighting and
+    any on-canvas inspector panel are coder-level polish within this
+    component, not separately AC-locked (see the story's own `## Notes` —
+    "Design reference parity").
+- **CSS: new `src/frontend/src/styles/vault-graph.css`**, imported
+  globally alongside the existing per-feature stylesheets — every node-
+  fill-per-kind/edge-stroke/background/chip/search/panel color resolves
+  through a real `tokens.css` custom property, zero hardcoded color values
+  (Scenario 6), the same posture `vault-browser.css` already established
+  for its own two additive rules.
+
 ## Data Model
 
 The vault has three top-level roots: `Personal/` (untouched by Second Brain),
@@ -2560,6 +6826,19 @@ folder-vs-tag decision it drove. Current state, not full adoption:
   (`customer/<slug>`, `kind/<slug>`), `classification_confidence`, plus
   source metadata (`subject`, `sender`, `sender_email`, `received`,
   `outlook_entry_id`, `conversation_id`).
+- **Email notes gain `recipients: list[{"name","email"}]`
+  (`REQ-SB-44-US-01`, [ADR-036](ADR.md) point 7)** — merged To + CC
+  recipients, mirroring the Meeting note's own `attendees` field shape
+  exactly (below), captured via `outlook_com.py`'s existing
+  `_resolve_attendees(item)` mechanism generalized to mail items (a
+  `MailItem`'s own `Recipients` collection uses numeric type values that
+  coincide with the meeting-recipient ones already filtered on). Additive
+  only — an Email note captured before this change simply has no
+  `recipients` field; readers must treat a missing field as an empty list,
+  not an error. Deliberately does **not** extend `people_extraction.
+  ensure_person_note` to CC'd/thread participants — only the sender still
+  gets a Person note ensured at capture time (see the Cockpit section,
+  above, for why).
 - **Linking:** same-thread notes (matched on Outlook `conversation_id`) get
   a `## Related Emails` section with `[[wikilinks]]` to prior notes in the
   thread — Obsidian computes the reverse link automatically, so only the
@@ -2585,7 +6864,7 @@ folder-vs-tag decision it drove. Current state, not full adoption:
   `Implementation/Plans/2026-08-10-vault-taxonomy-draft.md`.
 - **Wikilink placement — inline body, not frontmatter.** Every customer-tagged
   note gets a single line near the top of its body, e.g.
-  `**Customer:** [[ADNOC]]`, linking to its hub note — extending the existing
+  `**Customer:** [[Acme Corp]]`, linking to its hub note — extending the existing
   inline-body-wikilink convention already used for same-thread email linking
   (`## Related Emails`, above) rather than introducing a frontmatter-property
   link. Frontmatter-resolved wikilinks are a newer, version-dependent Obsidian
@@ -3252,6 +7531,2171 @@ one-idea distillations), output-oriented structure (organized around
 and the AI Staging review gate for AI-generated classification (deferred by
 the operator 2026-08-10 — direct-write stands until real misclassifications
 justify revisiting it).
+
+### Vault Knowledge Model Redesign — Threads, Manual Captures, OKF-Conformant Customer & Project Directories (REQ-SB-54, see [ADR-042](ADR.md))
+
+Replaces the vault's note-per-email capture shape with a layered model: an
+**evidence layer** (Thread, Meeting, manual Captures — raw, append-only,
+never silently rewritten) feeding a **synthesis layer** (Customer and
+Project — living documents, regenerated from current evidence). This
+section defines the target data shape only — the capture pipeline that
+populates Threads (`REQ-SB-55`), the Meeting↔Thread link (`REQ-SB-56`),
+and the actual Glimpse/History/Background synthesis mechanism
+(`REQ-SB-57`) are separate, dependent stories built on top of it. Full
+architectural reasoning: [ADR-042](ADR.md).
+
+**Evidence layer:**
+
+- **Thread — `Work/Threads/<slug-of-conversation-id>.md`, one note per
+  Outlook `ConversationID`.** `Threads` is a new, dynamically-discovered
+  `kind` folder (`list_known_kinds` already scans folder names, no code
+  change needed). The path is resolved **deterministically from
+  `conversation_id` alone** (`vault_writer.thread_note_path`), mirroring
+  `hub_note_path`/`meeting_note_path`'s existing "deterministic path from
+  a stable key, no separate lookup index" precedent — deliberately NOT a
+  repurposing of `conversation_index.json`/`record_conversation_note`
+  (still owned by today's live `email_classification.py`, unaffected
+  here; see [ADR-042](ADR.md) Alternatives). Body = `## Summary` (fully
+  regenerated on every new message in the same conversation, via the new
+  `replace_body_section` primitive below — never incrementally patched)
+  + `## Transcript` (append-only, one dated entry per message, via the
+  existing generic append primitive). `Tags` accumulate (unioned, never
+  pruned) across updates — the opposite cadence from `## Summary`.
+  `ConversationID` stability was verified live 2026-08-16 against the
+  real Outlook installation (no false merge across 41 real multi-message
+  threads) — see `REQ-SB-54-US-01`'s own `## Notes`. `ConversationID`
+  under-merging (one real conversation legitimately spanning multiple
+  `ConversationID`s) is explicitly out of scope here — reserved for a
+  future `Conversation` note kind (`REQ-SB-60`, not yet spec'd); Thread
+  stays exactly one note per `ConversationID`.
+- **Meeting gains one additive, currently-empty `thread` frontmatter
+  field** — reserved for `REQ-SB-56`'s own future Meeting→Thread linking,
+  not populated by this pass. Ordinary additive field on the existing
+  `Work/Meetings/` schema (see "Meeting Notes & Calendar-Attendee
+  Extraction", above) — no new primitive, no ADR.
+- **Manual Captures — a third evidence source, operator-written directly
+  into a Customer/Project's own `captures.md`** (below), same tier as a
+  Thread or Meeting, feeding the same synthesis. Never rewritten by any
+  agent, under any circumstance — a hard invariant, structurally enforced
+  by `captures.md` being a physically separate file a Glimpse/Background
+  regeneration never opens (see below), not merely a respected convention.
+
+**Synthesis layer — Customer and Project, each a small OKF v0.2-conformant
+directory, not a single file:**
+
+- **Shape, identical for both (operator-confirmed 2026-08-16 for
+  Project — "Yes, Project gets the same directory shape as Customer",
+  `ESCALATIONS.md` → `ESC-037`, `Resolved`):**
+  ```
+  Work/Customers/<customer-slug>/
+    index.md        — OKF reserved: directory listing, pure
+                       auto-generated bullet links + descriptions,
+                       zero user-owned content — whole-file swap on
+                       every directory-membership change.
+    <customer-slug>.md — the OKF concept file: frontmatter (`type`,
+                       OKF's one required field, plus title/
+                       description/tags/status/stale_after/
+                       generated/verified/sources) + a body of
+                       exactly two `##`-headed sections, `## Glimpse`
+                       (regenerated on every relevant evidence
+                       change) and `## Background` (changes only on
+                       a new DURABLE fact — see `REQ-SB-54` point 5).
+    log.md           — OKF reserved: History. Date-headed prose,
+                       append-only.
+    captures.md       — NOT an OKF-reserved name, same
+                       isolate-append-only-content-into-its-own-file
+                       principle, extended.
+  Work/Customers/<customer-slug>/projects/<project-slug>/ — identical
+    four-file shape, nested one level inside its own Customer's
+    directory.
+  ```
+  `Work/Customers/` remains the existing `kind` folder — this changes
+  what lives *inside* an already-established kind folder (directories
+  instead of flat files), it does not introduce a new kind-folder
+  concept. **This does not reopen [ADR-004](ADR.md)** ("Customer is a tag,
+  never a folder level") — that rule governs real, multidimensional
+  content notes (Emails/Files/Notifications, now Threads/Meetings), which
+  stay flat and cross-link via `customer:`/`project:` frontmatter + tags +
+  an OKF `sources:` entry only, exactly as before. This extends the
+  separate, already-established carve-out (first used for the single-file
+  Customer hub note, `REQ-SB-14`) that a `kind` folder may hold the
+  hub/synthesis entities of that kind themselves — now one level deeper
+  for Project nested inside Customer, by explicit operator confirmation.
+- **New `vault_writer.py` primitive family** (mirrors the existing
+  hub-note-baseline shape — path-resolution / exists-check /
+  create-baseline / top-up-if-partial — applied to a 4-file directory
+  instead of 1 file), shared by Customer and Project, not two parallel
+  implementations:
+  - Directory path resolution + baseline creation/top-up for the 4-file
+    shape above.
+  - **`replace_body_section(path, header, new_content)` (new, general
+    purpose — not Customer/Project-only).** Locates the `header` line
+    (e.g. `"## Glimpse"`) and the next `##`-level header (or EOF),
+    replaces everything strictly between them, leaves everything outside
+    that bounded region byte-for-byte untouched regardless of how many
+    times the file has already been edited. This is the canonical
+    mechanism for **every** full-regeneration write this requirement
+    introduces (a concept file's `## Glimpse`/`## Background`; a Thread's
+    own `## Summary`, above) — it replaces `insert_body_line_if_missing`'s
+    fixed-byte-offset mechanism, an already-documented fragility for a
+    note touched many times over its life (`MEMORY.md`, `BUG-003`/
+    `ESC-003`, `Open`) that repeated Glimpse regeneration would otherwise
+    lean directly on.
+  - `log.md`/`captures.md` appends reuse the existing generic
+    unconditional-append primitive (`append_person_note_update_line` —
+    already fully generic over `path`/`line` despite its Person-era name;
+    may be renamed by the coder to reflect its now-multi-purpose role, no
+    new append primitive is needed).
+  - **`generated`/`verified` (OKF's nested actor-provenance fields, e.g.
+    `generated: {by: <agent-id>, at: <timestamp>}`) are written as
+    JSON-encoded STRINGS under their own literal field names** — the
+    existing `_format_frontmatter_value`/`_parse_frontmatter_value` pair
+    round-trips a string or a list-of-strings only; a native dict write
+    silently corrupts on read. This extends, rather than duplicates, the
+    already-`Accepted` list-of-dicts workaround already shipped twice
+    (Meeting `attendees`, [ADR-036](ADR.md) point 7; Email `recipients`,
+    2026-08-14) to a single-dict value.
+- **Correction (`BUGFIX-06-US-01`, 2026-08-19):** the "already shipped
+  twice" claim in the bullet immediately above is only accurate for Email
+  `recipients`. Meeting `attendees` is, and has always actually been,
+  written as a plain `list[str]` of wikilinks, not the JSON-encoded
+  `list[dict]` string shape — direct reading of `meeting_classification.
+  py`'s real write path found the earlier claim never matched shipped
+  behaviour. See "Meeting & Inbox Cockpits" → `people.py` extended bullet,
+  above, for the corrected read-side mechanism and the fix this enabled.
+- **Correction (`BUGFIX-07-US-01`, 2026-08-19, `BUG-028`):**
+  `create_okf_directory_baseline`/`ensure_okf_directory_baseline` wrote
+  `log.md`/`captures.md` as a bare empty string on first creation, and
+  never retrofitted a header onto an already-existing headerless file —
+  every Customer's/Project's `log.md`/`captures.md` opened completely
+  anonymous in Obsidian's own tab bar/quick switcher/file explorer (all
+  identically named, no content identifying which Customer/Project they
+  belong to). Fixed by extending the SAME shared primitive both functions
+  already are (no fork, no Customer-only/Project-only patch):
+  - Both functions gain a new explicit `identifying_name: str` parameter
+    (the real display name, e.g. `customer`/`project` — the same value
+    already passed into `index_listing_body`) — a new parameter, not a
+    parse of `index_listing_body`'s own first line, since every one of
+    the four Customer/Project wrapper functions already has the display
+    name in local scope and string-parsing an unrelated parameter back
+    apart is needless fragility for zero benefit.
+  - One shared helper writes `# {identifying_name}\n\n` as `log.md`'s/
+    `captures.md`'s header — the bare `# {name}` HALF of `index.md`'s own
+    already-`Accepted` header convention only, deliberately without its
+    trailing wikilink-listing line (`index.md`-specific, not applicable)
+    and without a `— Log`/`— Captures` differentiating suffix (`BUG-028`'s
+    own complaint is "no place to see the customer name" across
+    identically-named tabs from DIFFERENT Customers/Projects — Obsidian's
+    own tab title already differentiates `log.md` from `captures.md`
+    WITHIN one Customer/Project, so no further differentiation is needed
+    or asked for).
+  - The SAME helper both creates the header fresh (`create_okf_directory_
+    baseline`, file did not exist) and backfills it onto an
+    already-existing file (`ensure_okf_directory_baseline`) — one
+    generic-primitive-first mechanism for both Scenario 1 and Scenario 2,
+    not two. "Headerless" is detected as: the file's CURRENT first line
+    does not start with `# `. Confirmed safe against every real line any
+    current caller has ever written to these files — `append_person_note_
+    update_line`'s three real call sites (`project_customer_synthesizer.
+    py`'s date-headed History lines, e.g. `"2026-08-19 — Project ... status
+    changed to ..."`; `person_note_proposals.py`'s/`skill_tools.py`'s
+    `"- <instruction>"` bullets) — none begin with `# `, so an
+    already-appended real file is detected as headerless and gets the
+    header PREPENDED, every existing byte preserved unchanged afterward.
+    An already-headered file (a second `ensure_*` run, post-fix) is
+    correctly detected as NOT headerless and left untouched — idempotent.
+  - This is a content-only change to `log.md`/`captures.md`'s OWN
+    creation/top-up logic — a different code path from `<slug>.md`'s
+    Glimpse/Background regeneration entirely. `ADR-042` Decision point 1's
+    actual guarantee (a `<slug>.md` full-file regeneration can never reach
+    `captures.md`, by construction) is unchanged and unreachable by this
+    fix. `create_okf_directory_baseline`'s own docstring sentence
+    "`captures.md` is never opened by this function beyond that one
+    existence check" becomes stale wording once this ships (the function
+    now reads/writes `captures.md`'s own content for the header) — a
+    docstring-precision correction for the coder to make in-scope, not an
+    architectural reopening; the guarantee the sentence was protecting
+    (isolation from `<slug>.md` regeneration) still holds exactly as
+    `ADR-042` decided.
+  - **No new ADR** — reuses the already-`Accepted` `# {name}` header
+    convention verbatim (invents nothing new), does not change the 4-file
+    directory shape, does not touch `ADR-004`'s folder/tag boundary, and
+    does not weaken or reach through `ADR-042`'s captures.md-isolation
+    guarantee. A new parameter plus one small shared helper on an
+    already-shared primitive is mechanical composition, not a new
+    tool/framework/structural-boundary decision.
+- **Structural (not conventional) update-ownership boundary.** Physically
+  separating `captures.md`/`log.md` from `<slug>.md` means a full-file
+  open-and-regenerate of the concept file (Glimpse/Background) **cannot**
+  reach either of them, by construction — this upgrades `REQ-SB-54` point
+  7's single-owner rule from a discipline to a structural guarantee for
+  the Captures axis specifically. The Glimpse/History "exactly one
+  synthesizer" half of that rule is still convention-only (caller
+  discipline, no enforcement code yet) — the actual regeneration-trigger
+  mechanism is `REQ-SB-57`'s own scope, not built here.
+- **`customer_hub_linking.py` is substantially restructured, not merely
+  extended**, by this shape change — its single-file
+  `ensure_customer_hub_note`/`create_customer_hub_note_baseline` contract
+  no longer matches the new directory shape. `email_classification.py`'s
+  existing live call site (`ensure_hub_note_and_link`) is a real,
+  currently-running caller — whatever replaces the single-file functions
+  must either preserve that call's existing signature/behavior for the
+  transition period, or the cutover must become an explicit task
+  dependency; this is a real, load-bearing consequence
+  ([ADR-042](ADR.md)), not an incidental side effect.
+- **Flagged consequence, not yet resolved by this pass:**
+  `list_all_note_paths()`'s current one-level `Work/*/*.md` glob cannot
+  discover the new two-levels-deep directory shape
+  (`Work/Customers/<slug>/<slug>.md`,
+  `Work/Customers/<slug>/projects/<slug>/<slug>.md`) — without an explicit
+  recursion extension (or an equivalent), every OKF concept file is
+  structurally invisible to `list_known_customers()`, `vault_indexing`,
+  and search. Whoever picks up `T04`/`T05` must turn this into an
+  explicit task, not discover it live.
+- **`REQ-SB-55`/`REQ-SB-56`/`REQ-SB-57` inherit this data model as
+  settled** — they call the primitives established here rather than
+  re-deriving path-resolution or write-primitive shape themselves.
+
+### Meeting → Thread Linking — ConversationID Primary Strategy, Attendee-Overlap/Date-Proximity Fallback (REQ-SB-56, extends [ADR-042](ADR.md), no new ADR)
+
+Adds a `Link-to-Thread` Job onto the existing, unmodified `meeting-capture`
+Worker (`app/business/meeting_classification.py::classify_recent_meetings`),
+populating the currently-empty, already-reserved Meeting `thread`
+frontmatter field (`REQ-SB-54-US-01`/T03) once a real Thread match is
+found. Two strategies, tried in priority order — the second only applies
+when the first structurally cannot (no shared `conversation_id`):
+
+1. **Primary — `conversation_id` match.** `app/data_access/outlook_com.py::
+   list_calendar_events` does not read `ConversationID` off the underlying
+   `AppointmentItem` COM object today (confirmed by direct reading) — this
+   is a **code gap, not a data gap**: a live, read-only sample of 100 real
+   calendar items on this Outlook installation (2026-08-16, see
+   `REVIEW-QUEUE.md` → `REQ-SB-56-US-01`) found `ConversationID` non-empty
+   on 100/100. The primary strategy's own task adds
+   `"conversation_id": getattr(item, "ConversationID", None) or ""` to the
+   returned dict, mirroring `list_recent_mail`'s existing field exactly,
+   then joins against `vault_writer.thread_note_path(conversation_id)` —
+   free, no separate matching logic, identical to every other
+   `conversation_id` join in this batch.
+2. **Fallback — attendee-overlap + date-range-proximity heuristic**, for
+   meetings created directly (no shared `conversation_id` with any
+   Thread). **Architect proposal (2026-08-16), concrete and buildable,
+   recorded as a PROPOSAL awaiting operator confirmation in
+   `REQ-SB-56-US-01`'s own `## Notes` — not yet final:**
+   - **Attendee sets, both self-excluded.** Compares the meeting's own
+     attendee list (`outlook_com._resolve_attendees`, already
+     `{"name","email"}` pairs, organizer/resource types already excluded)
+     against the candidate Thread's own accumulated participant set — a
+     NEW, purely additive Thread frontmatter field, `participants:
+     list[str]` (lower-cased email addresses, unioned/accumulated across
+     every message the Thread's own `Thread-Match/Merge` Job processes,
+     mirroring the already-`Accepted` Tags-accumulate cadence exactly —
+     an ordinary flat list-of-strings, no JSON-string round-trip
+     workaround needed, unlike `generated`/`verified`). **Ownership
+     resolved 2026-08-16, by the `REQ-SB-55` architect pass ([ADR-043](ADR.md)):
+     `Thread-Match/Merge` (now real, see "Email Capture & Threading
+     Pipeline", above) is the writer of both fields — the flagged
+     either-ordering decision below no longer applies.** Both sets exclude
+     the vault owner's own `settings.self_email` before comparison,
+     mirroring `meeting_classification._exclude_self` exactly — without
+     this, the operator's own presence on virtually every captured
+     meeting and thread would trivially inflate every candidate pair's
+     overlap count.
+   - **Overlap bar (deliberately conservative — false-positive links are
+     worse than no link, this story's own Constraint):** clears if EITHER
+     (a) **≥2 shared attendees** (raw count) — a single shared external
+     contact alone is not sufficient signal, since one recurring
+     point-of-contact will legitimately appear across MANY unrelated
+     meetings/threads for the same account, not just the one that's
+     actually related; OR (b) **exactly 1 shared attendee AND that
+     attendee is the entirety of the smaller of the two sets**
+     (`min(|meeting attendees|, |thread participants|) == 1`) — covers
+     the common genuine 1:1-call-matches-1:1-thread case without
+     weakening the ≥2 bar for any larger meeting/thread.
+   - **Date-range-proximity bar:** the meeting's own `start` timestamp
+     must fall within **7 calendar days (inclusive, either direction)**
+     of the candidate Thread's own most-recently-captured-message
+     timestamp — a second NEW, additive Thread frontmatter field,
+     `last_message_at` (ISO-8601 string, overwritten — not accumulated —
+     on every Thread update). Grounded in this vault's own real observed
+     thread cadence, not an arbitrary round number: the live
+     `ConversationID` verification (`REQ-SB-54-US-01`'s own `## Notes`)
+     found a real, genuinely-threaded 3-message conversation ("G42/Data
+     Lake RFP Discussion") spanning exactly 7 days end-to-end
+     (2026-08-07 to 2026-08-14) — reusing that same order of magnitude as
+     the meeting-to-thread proximity window keeps the fallback's temporal
+     bar consistent with this vault's own observed "still the same live
+     topic" cadence: tight enough to reject a same-contact-but-months-stale
+     Thread, loose enough to survive ordinary invite-scheduling lag.
+   - **Both bars must clear (AND)** for the fallback to fire; either bar
+     failing leaves the meeting explicitly unlinked (Scenario 3) — never
+     a forced link to the closest-but-still-weak match.
+   - **Tie-break, multiple qualifying Threads:** prefer the higher
+     attendee-overlap COUNT; if still tied, prefer the smaller
+     date-proximity gap; if still tied on both axes, leave the meeting
+     unlinked rather than arbitrarily choose one — an unresolved tie is
+     itself weak evidence, the same false-positive-conservative reasoning
+     as the bars themselves.
+   - **`participants`/`last_message_at` are a purely additive extension
+     of the already-`Accepted` Thread shape** (`ADR-042` point 5,
+     `REQ-SB-54-US-01`/T02's own `_THREAD_NOTE_BASELINE_KEYS`) — both are
+     ordinary scalar/list-of-string values `_format_frontmatter_value`
+     already round-trips natively; neither introduces a new primitive,
+     and neither reopens `ADR-042` or any of `T02`'s own locked ACs
+     (its baseline key set was never closed/exhaustive). **Ownership
+     RESOLVED 2026-08-16 by the `REQ-SB-55` architect pass ([ADR-043](ADR.md)):**
+     `REQ-SB-55`'s own `Thread-Match/Merge` Job (now real, see "Email
+     Capture & Threading Pipeline", above) is the writer of both fields —
+     `REQ-SB-56`'s own `Link-to-Thread` Job task reads them, it does not
+     originate them. This closes the either-ordering decision previously
+     left open here; `REQ-SB-56`'s decomposer pass should record a
+     `depends_on` edge onto `REQ-SB-55`'s `Thread-Match/Merge` task rather
+     than re-deciding this.
+
+Once linked, the Meeting feeds the same Project Glimpse its linked Thread
+feeds (`REQ-SB-57`, below) — this story only produces the link.
+
+### Project & Customer Synthesizer — the "genuinely concludes" History-line bar (REQ-SB-57, extends [ADR-042](ADR.md), no new ADR)
+
+Defines the concrete trigger the Project/Customer Synthesizer Job(s) use
+to decide when a `log.md` line is warranted versus routine Glimpse-only
+activity (`REQ-SB-54` point 5, `REQ-SB-57`'s own Scenario 2/4). **Architect
+proposal (2026-08-16), concrete and buildable, recorded as a PROPOSAL
+awaiting operator confirmation in `REQ-SB-57-US-01`'s own `## Notes` — not
+yet final:**
+
+- **Project concept-file `status` enum** — the first concrete value set
+  defined for OKF's already-`Accepted`, previously-unconstrained generic
+  `status` field (`ADR-042` point 1): **`active | on_hold | won | lost |
+  renewed`**. `active` is the default/ongoing value; `on_hold` is an
+  explicit pause, not a conclusion.
+- **History-line trigger:** on every Synthesizer run, compare the
+  Project's `status` value as read at the START of this pass (its prior,
+  on-disk value — a full read always precedes a full rewrite, per the
+  "regenerate, don't patch" convention) against the value active DURING
+  this pass. Append a dated `log.md` line **iff that value differs from
+  the previous pass's own observed value AND the new value is one of
+  `won` / `lost` / `renewed`** — never on `active`/`on_hold`, and never on
+  a re-observation of an already-terminal value (idempotent: a Project
+  that stays `won` across many later re-syntheses — e.g. a linked Thread
+  still receiving replies — never re-appends). This directly
+  operationalizes the operator's own two named conclusion examples
+  (`REQ-SB-54` point 5: "a Project closes, a renewal lands") — `won`/
+  `lost` together cover "closes" (a defensible pairing: a loss is exactly
+  as much a genuine conclusion as a win, and routine-noise-vs-conclusion
+  is about FINALITY, not favorability), `renewed` is the operator's own
+  second named case verbatim.
+- **Customer rollup rule:** the Customer's own Glimpse "active Project"
+  rollup (`REQ-SB-57` Scenario 5) lists every Project whose `status` ∈
+  `{active, on_hold}`; a Project's transition into `{won, lost, renewed}`
+  both appends the Customer's own `log.md` line and drops that Project
+  from the rollup, in the SAME synthesis pass (Scenario 2) — the Customer
+  Synthesizer is TRIGGERED BY (never independently deciding) the
+  Project's own status change, per the ownership rule (`REQ-SB-54` point
+  7).
+- **Who writes `status`:** the operator, directly in the Project's own
+  frontmatter in Obsidian — the same "Obsidian is the authoring surface"
+  convention already established for narrative body content
+  (`REQ-SB-54-US-01`'s own `## Notes`). The Synthesizer only READS and
+  reacts to it; it does not itself infer a conclusion from evidence text
+  (a materially larger, unscoped NLP-classification problem this story's
+  own scope does not include — automatically inferring `status` is a
+  plausible FUTURE extension, not proposed here).
+
+## Vault Migration — One-Time Full Vault Migration to the New Knowledge Model (REQ-SB-59, see [ADR-047](ADR.md))
+
+A one-time, operator-triggered backfill: wipes the legacy per-email
+`Work/Emails/` notes and their now-dead-code cross-link stores, re-runs
+capture over Outlook history through the already-`Done` `REQ-SB-55`/
+`REQ-SB-56` pipelines, and regenerates every Customer note onto the new
+OKF shape (`ADR-042`) while preserving durable pre-migration content. Full
+architectural reasoning, every alternative considered, and every
+consequence: [ADR-047](ADR.md).
+
+- **New module — `app/business/vault_migration.py`, the fifth instance of
+  this codebase's existing one-off-migration-module shape**
+  (`tag_backfill.py`, `vault_restructure.py`,
+  `partner_hub_linking.migrate_customer_to_partner`) — three public
+  functions, one per the story's own T01/T02/T03 split, each exposed as
+  its own new flat `POST /poc/<verb>` endpoint in `email_poc_router.py`
+  (matching `/poc/backfill-tags`/`/poc/flatten-customer-folders`'s own
+  existing naming convention, operator-triggered, no scheduler wiring, no
+  UI):
+  - `wipe_legacy_email_notes() -> dict`
+  - `recapture_outlook_history(email_limit: int, meeting_days_back: int) -> dict`
+  - `regenerate_customer_notes() -> dict`
+- **`.second-brain/migration_backup/<UTC-run-timestamp>/` — this
+  project's first archive-not-delete ("soft delete") location.** Every
+  Note this migration removes from `Work/` is moved, never
+  `Path.unlink()`-deleted, via the EXISTING, unmodified
+  `vault_writer.move_note_and_attachments(note_path, target_dir)`
+  primitive (`target_dir` pointed under this new archive root instead of
+  another `Work/` location — the primitive itself already accepts any
+  `Path`, no code change) — preserving each note and its own sibling
+  `attachments/<slug>/` folder byte-for-byte, just relocated. This is what
+  makes every function below naturally idempotent (a rerun finds nothing
+  left to move, mirroring `vault_restructure.py`'s own existing
+  idempotency framing) while giving the operator a real, inspectable,
+  restorable safety net with zero new backup mechanism invented. Any
+  FUTURE similarly destructive one-off migration should reuse this same
+  location/shape rather than inventing a second archive convention.
+- **`wipe_legacy_email_notes()` (T01):**
+  1. Moves every note currently under `Work/Emails/` into
+     `.second-brain/migration_backup/<run-timestamp>/Emails/` via
+     `move_note_and_attachments`, then `vault_writer.remove_empty_dirs`
+     on the now-empty `Work/Emails/` (mirrors `vault_restructure.py`'s own
+     cleanup step; non-blocking — Scenario 1 only requires zero notes, not
+     folder removal).
+  2. **Archives, never deletes, the two now-stale `.second-brain/` stores
+     this migration's "stale cross-links...cleaned up" language refers
+     to**, via a plain `Path.rename` inside `vault_migration.py` itself
+     (direct `pathlib` use for non-Note filesystem bookkeeping, mirroring
+     `vault_restructure.py`'s own precedent of touching
+     `settings.vault_path` directly for mechanical operations, rather than
+     inventing new `vault_writer` primitives for a one-time move of
+     already-owned files):
+     - `processed_email_ids.json` — **load-bearing, not merely tidy.**
+       Outlook `EntryID`s are stable across a same-mailbox rerun; leaving
+       this file in place would make `run_email_capture_pipeline`'s own
+       existing `email["id"] in already_processed` check (unchanged,
+       `ADR-043` point 2) silently skip every real historical email as
+       "already processed," making `recapture_outlook_history()` below a
+       silent no-op. Moving the file out of its canonical path lets
+       `vault_writer.load_processed_email_ids()`'s own existing
+       `if not path.exists(): return set()` branch transparently take
+       over — **zero new `vault_writer` code needed for the reset
+       itself.**
+     - `conversation_index.json` — the retired
+       `record_conversation_note`/`find_related_note_stems`/`## Related
+       Emails` mechanism this same architecture file's own "Vault
+       Knowledge Model Redesign" section above already flagged as dead
+       code for the email path post-`ADR-046`; archived for the same
+       "stale, not silently left dangling" reason, never read by the new
+       pipeline either way.
+  3. **Never touches `Work/Meetings/`.** Scenario 5 ("Meeting notes and
+     their own stale cross-links are also cleaned up") needs no wipe at
+     all — `meeting_classification.mark_meeting_processed`/
+     `processed_meeting_ids.json` is already a non-gating, top-up-only
+     audit trail (confirmed by that function's own docstring), so
+     `recapture_outlook_history()`'s own wide-window
+     `classify_recent_meetings` call (below) naturally re-visits and tops
+     up every pre-migration Meeting note in place, and — since
+     `REQ-SB-56`'s `Link-to-Thread` Job already runs unconditionally
+     inside that same existing call — also naturally re-links every
+     historical Meeting to its now-recaptured Thread, with zero code
+     change.
+- **`recapture_outlook_history(email_limit, meeting_days_back)` (T02):**
+  reuses existing, already-parametrized read functions with an
+  operator-supplied large history-window value — **no new Outlook-COM
+  primitive.** Both parameters are required call-site inputs, never a
+  hardcoded magic number inside this function's own body (this project's
+  standing "config, not constants" convention):
+  1. `email_pull.pull_and_stage_emails(limit=email_limit)` once — since
+     `outlook_com.list_recent_mail` iterates its own `Items` collection
+     until EITHER `limit` items are collected OR the collection is
+     exhausted, an `email_limit` set at/above the mailbox's real Inbox
+     item count fetches its full history in this one call.
+  2. `email_capture_pipeline.run_email_capture_pipeline()` once — this
+     function's own current body already loops over EVERY currently
+     staged, not-yet-processed email in a single call (its own `limit`
+     parameter is retained only for call-site backward compatibility,
+     per its own docstring), so one call drains everything T02 just
+     staged.
+  3. `meeting_classification.classify_recent_meetings(days_back=
+     meeting_days_back, days_ahead=14, limit=<a matching large value>)`
+     once — `list_calendar_events` applies a real COM `Restrict()` date
+     filter on `days_back`, so this genuinely reaches full calendar
+     history, not merely a large item cap.
+  - **Inherited scope boundary, not a new limitation:** both underlying
+    Outlook reads are scoped to the default Inbox/Calendar folders only
+    (unchanged, pre-existing behavior) — this migration does not reach
+    into Sent Items or any other mailbox folder; "Outlook history" here
+    means the same scope the live hourly capture already reads from.
+- **`regenerate_customer_notes()` (T03) — also resolves `ESC-046` as a
+  direct, in-scope consequence, not a separately deferred bugfix:**
+  1. Enumerates every note `vault_writer.list_all_note_paths()` already
+     returns whose `frontmatter.get("type") == "Customer"` AND whose
+     `path.parent.name == "Customers"` (a flat file directly under
+     `Work/Customers/`, never a `<slug>/<slug>.md` OKF concept file, whose
+     own parent directory is the slug, not `"Customers"`) — a generic,
+     vault-wide scan mirroring `partner_hub_linking.
+     migrate_customer_to_partner`'s own established "never a hardcoded
+     name list" precedent, so it correctly covers however many real
+     legacy flat Customer notes exist at run time (`ESC-046` found 14
+     colliding, of 17 migrated Customers, on 2026-08-18 — not assumed
+     fixed at that count).
+  2. For each: `customer_hub_linking.ensure_customer_hub_note(customer)`
+     guarantees its OKF directory exists (a no-op for an already-migrated
+     Customer; creates the directory from scratch for one that only ever
+     had the old flat shape).
+  3. Reads the flat note's full body (`vault_writer.read_note`), then
+     calls the SAME, unmodified, already-`Accepted`
+     `project_customer_synthesizer.synthesize_customer(customer,
+     evidence_text=<flat note body>)` the ongoing Synthesizer itself uses
+     going forward (`REQ-SB-57`) — never a migration-only bypass. This
+     both regenerates `## Glimpse` from current evidence (a harmless,
+     idempotent re-regeneration) and, via that function's own internal
+     `compass_client.detect_customer_durable_fact` call, proposes a
+     normal `propose_background_amendment` Pending Approval for any
+     durable fact the legacy note's body contains that isn't already
+     reflected in the new OKF `## Background` — the exact same
+     human-reviewed gate every other Background amendment already goes
+     through.
+  4. Archives the flat file itself via `move_note_and_attachments` into
+     `.second-brain/migration_backup/<run-timestamp>/Customers/` — the
+     same reused primitive T01 uses. **This step is what removes the
+     filename-stem collision from `vault_indexing.rebuild_index()`'s
+     index (`ADR-024`):** once the flat file no longer exists anywhere
+     under `Work/`, only the OKF concept file remains at that stem, so
+     `get_index()[stem]` can no longer silently resolve to the wrong
+     file — closing `ESC-046` directly, per that escalation's own
+     recorded option (a) ("a one-time cleanup pass deleting/archiving
+     each stale legacy flat Customer hub note once its OKF directory
+     concept file exists").
+  - **Out of scope, no evidence either currently exists:** the Partner
+    namespace (never migrated to an OKF directory by design, `ADR-009`)
+    and any legacy flat Project-kind note (no such file is known to
+    exist) — if the coder discovers either during implementation, that is
+    a scope-internal finding to log, not something pre-decided here.
+- **Pending Approvals `regenerate_customer_notes()` produces are
+  explicitly NOT part of this story's own Definition of Done** — resolving
+  them is ordinary, ongoing operator review through the existing Pending
+  Approvals surface (unmodified), decoupled from "migration complete." The
+  migration's own job is to surface every real durable fact for review,
+  never to force approval before the story can close.
+- **No new "already ran" state marker anywhere** — every function above is
+  naturally idempotent through the same "nothing left to act on" mechanism
+  its sibling migration modules already rely on (see `.second-brain/
+  migration_backup/` above and `ADR-047`'s own Alternatives Considered).
+
+## Vault Base Provisioning + Redesigned Email/Meeting Capture — Raw/Distilled Evidence Split, Section-Ownership Enforcement, Files/OKF Companions, People Nested Under Customer (`REQ-SB-70`, `REQ-SB-71`, see [ADR-048](ADR.md))
+
+One coherent redesign, worked out turn-by-turn with the operator in a
+dedicated vault-structure conversation immediately after `REQ-SB-59`'s own
+migration was paused mid-run over a live reliability concern. Four stories
+implement it (`REQ-SB-70-US-01`, `REQ-SB-71-US-01/-02/-03`); this section
+covers all four together, matching how they were designed. Full
+architectural reasoning, every alternative considered, and every
+consequence: [ADR-048](ADR.md).
+
+### Superseded vs. unchanged — read this first
+
+- **Superseded, going forward:** the single-file Thread shape described
+  under "Vault Knowledge Model Redesign" above (`ADR-042` point 5) and its
+  own human-readable/renamable-filename mechanism described under
+  "Decoupled Email Pull + Human-Readable, Graph-Connected Thread Notes"
+  above (`ADR-046` Decisions 6/7/9/10, Thread-specific parts only). Those
+  sections stay as an accurate historical record of what shipped and
+  remains true for already-captured Thread notes (no backfill is built by
+  this redesign); this section describes what NEW capture produces going
+  forward.
+- **Unchanged, still exactly as described above:** the Customer/Project
+  OKF 4-file directory family (`ADR-042` points 1-4), `replace_body_
+  section`'s own core region-location mechanism (`ADR-042` point 2, now
+  gated — see below, but the header/next-header logic itself is untouched),
+  the Project & Customer Synthesizer's own "genuinely concludes" bar
+  (`REQ-SB-57`), Meeting→Thread Linking's own conversation_id-primary /
+  attendee-overlap-fallback strategy (`REQ-SB-56`, still the mechanism
+  `_link_to_thread_by_conversation_id`/`_link_to_thread_by_fallback_
+  heuristic` use — only the shape of what they read/write changes, per
+  below), and every scheduled trigger (`pull_email`, `process_staged_
+  email`, `meeting-capture`) — same capability ids, same cadence, zero new
+  `agent_schedule_registry` entries anywhere in this redesign.
+
+### Vault Base Provisioning (`REQ-SB-70-US-01`)
+
+New `app/business/vault_provisioning.py` — mirrors `vault_migration.py`'s
+own module shape but is explicitly NOT a migration (no archive, no wipe,
+no re-run over Outlook history): one function, `provision_vault_base()
+-> dict`, idempotent `mkdir(parents=True, exist_ok=True)` for exactly
+`Work/Customers/`, `Work/Threads/`, `Work/Meetings/`, `Work/Resources/`,
+`Work/Archive/{Opportunities,Customers,Resources}/` — mirroring
+`_write_frontmatter_note`'s/`write_attachments`'s own already-proven
+idempotent-mkdir convention. Creates nothing else — no individual Customer
+OKF directory, no `Work/Opportunities/`, `Work/Websites/`, `Work/Notes/`.
+Exposed as `POST /poc/provision-vault-base` in the existing `app/api/
+email_poc_router.py` (already this codebase's general home for flat,
+operator-triggered one-off `/poc/*` operations regardless of subject
+area — a new sibling router would fragment an already-established
+convention for no gain).
+
+### Section-Ownership Enforcement (`REQ-SB-71-US-01`)
+
+New, composed-alongside `app/data_access/section_ownership.py` (data_access
+layer — `ADR-003`'s layer boundary means `replace_body_section` itself,
+which performs this check, cannot depend on `app/business`). Two
+independent, structural rules:
+
+1. **`_HUMAN_OWNED_HEADERS: frozenset[str] = frozenset({"## Personal
+   Notes", "## Actions"})`** — checked FIRST and unconditionally in
+   `is_header_allowed(caller, header)`, never overridable by any caller's
+   own registered allow-list. Header text alone is the key, vault-wide —
+   both headers carry the identical human-owned meaning on a Thread, a
+   Meeting, a File companion, or any future note kind that reuses either
+   name.
+2. **`_CALLER_ALLOW_LISTS: dict[str, frozenset[str]]`** — deny-by-default
+   per-caller registry, granularity = the calling FUNCTION
+   (`module.function`), not the calling module (least-privilege). Current
+   registrations:
+   | Caller | Allowed headers |
+   |---|---|
+   | `email_classification.thread_match_merge` (retired once `synthesize_thread` ships — dead entry, see below) | `## Summary`, `## Related` |
+   | `email_classification.synthesize_thread` (new, `REQ-SB-71-US-02`) | `## Summary`, `## Related` |
+   | `thread_summary_backfill.backfill_thread_summaries` | `## Summary` |
+   | `project_customer_synthesizer.synthesize_project` | `## Glimpse` |
+   | `project_customer_synthesizer.synthesize_customer` | `## Glimpse` |
+   | `project_customer_synthesizer.finalize_background_amendment_proposal` | `## Background` |
+   | `meeting_classification.classify_recent_meetings` (new, `REQ-SB-71-US-03`) | `## Summary` |
+   | `email_classification.write_file_companion` (new, `REQ-SB-71-US-02`, exact module left to the coder) | `## Summary` |
+
+`vault_writer.replace_body_section(path, header, new_content, *, caller:
+str)` — `caller` is a REQUIRED keyword-only parameter (a deliberate
+breaking-signature change: every call site, present and future, must
+explicitly declare identity; there is no default). Raises `section_
+ownership.SectionWriteNotAllowed` (a `PermissionError` subclass) when
+`caller` may not write `header` — a real, observable, honest failure,
+never a silent no-op indistinguishable from this same function's own
+separate, unchanged "header not found in THIS file" contract (still
+returns `False` for that case only). `read_body_section`/`append_body_
+section_line`/`replace_body_opening_line`/`insert_body_line_if_missing`
+are all UNCHANGED — scope is exactly `replace_body_section`.
+
+### Email Capture Redesign — Thread Raw/Distilled Split, Stage 1/Stage 2 (`REQ-SB-71-US-02`)
+
+- **Thread directory shape — `Work/Threads/<slug-of-conversation_id>/`,
+  permanently deterministic from `conversation_id` alone** (reverts to
+  `ADR-042` point 5's ORIGINAL scheme, superseding `ADR-046`'s own
+  human-readable/renamable-filename mechanism — no longer needed once the
+  human-readable identity lives in the concept file's `thread_name`
+  frontmatter rather than the directory/file name itself):
+  ```
+  Work/Threads/<conversation-id-slug>/
+    <conversation-id-slug>.md   — distilled concept file
+    messages/
+      <received[:10]>-<hash8(message_id)>.md   — raw, immutable, write-once
+  ```
+  `thread_directory_paths(conversation_id) -> dict` (`{"directory",
+  "concept", "messages"}`) is the new deterministic path-resolution
+  primitive — mirrors `okf_directory_paths`' own shape but WITHOUT
+  `index.md`/`log.md`/`captures.md` (a genuinely different, simpler
+  2-part convention; `ADR-042` point 1's own "Customer and Project are
+  the ONLY two 4-file-OKF-shaped kinds" scope-lock is not reopened).
+- **Distilled concept file body:** `## Summary` (agent-owned, regenerated)
+  + `## Personal Notes` (human-owned) + `## Actions` (human-owned, a
+  literal checklist — never backed by `todo_classification` in either
+  direction) + `## Related` (agent-owned, regenerated, unchanged mechanism
+  from `ADR-046` Decision 9). `## Transcript` is RETIRED — superseded by
+  the `messages/` directory itself.
+- **Raw message note** — `raw_message_note_path`/`raw_message_note_
+  exists`/`create_raw_message_note` (new `vault_writer` primitives); the
+  caller MUST check `raw_message_note_exists()` first and never write the
+  same `message_id` twice.
+- **Stage 1 — zero Compass calls, reuses `email_pull.pull_and_stage_
+  emails`/`email_staging` verbatim as its raw-fetch substrate.** New `app/
+  business/pipelines/raw_message_capture.py` (sibling to `email_capture_
+  pipeline.py`/`email_pull.py`), owning `capture_raw_thread_messages(limit:
+  int = 10) -> dict`: calls `pull_and_stage_emails` (joins `agent_schedule_
+  registry.get_shared_dispatch_lock()`, the SAME lock `pull_email` already
+  joins — concurrency-safety reuse, never a new schedule entry), then
+  drains every staged-but-not-yet-message-noted email: `create_raw_
+  message_note` (write-once) + ensures the Thread's own distilled note
+  exists (`create_thread_note_baseline` if `thread_directory_paths(...)
+  ["concept"]` doesn't exist yet), then `email_staging.remove_staged_
+  email`. Zero `compass_client` import anywhere in this module. Exposed as
+  `POST /poc/capture-raw-thread-messages` — a new, independent capability
+  id (`capture_raw_thread_messages`) of the EXISTING `"email-capture-
+  pipeline"` Agent-tier identity — no new Agent, no new Map node.
+- **Stage 2 — the real Compass-backed judgment, no shared lock with Stage
+  1.** `email_classification.synthesize_thread(conversation_id: str) ->
+  dict` replaces `thread_match_merge`'s own prior role: reads EVERY raw
+  message currently under that Thread's own `messages/` directory (full
+  reconstruction on every call, never a rolling/incremental delta — a
+  deliberate reversal of `REQ-SB-67`'s own rolling-synthesis design, now
+  that full raw content is durably, cheaply re-readable), calls
+  `classify_email` ONCE against the FIRST raw message's own body (customer/
+  kind — preserves the existing "decided once, on the first message, never
+  contradicted later" Constraint), does the real merge-vs-new-Thread
+  judgment, and regenerates `## Summary` + `## Related` via the
+  allow-list-checked `replace_body_section(..., caller="email_
+  classification.synthesize_thread")`. `route_to_project`'s own existing
+  Pending-Approval shape (`ADR-043` point 4) is preserved, now triggered
+  from `synthesize_thread`'s own end. Exposed as `POST /poc/synthesize-
+  thread?conversation_id=<id>` — a second new, independent capability id
+  (`synthesize_thread`) of the SAME Agent-tier identity, sharing no lock
+  with `capture_raw_thread_messages` (Scenario 5's own proof obligation).
+- **The EXISTING scheduled `pull_email`/`process_staged_email` capability
+  ids stay wired exactly as-is — their own underlying implementation was
+  INTENDED to compose the two functions above in sequence.** ⚠
+  **Correction (`BUGFIX-05-US-01` architect pass, 2026-08-19): this was
+  this batch's own stated INTENT, not yet the real live wiring — direct
+  code reading during that later pass confirmed `process_staged_email`
+  still ran the OLD `email_capture_pipeline.run_email_capture_pipeline`/
+  `thread_match_merge` path end-to-end, unchanged, until `BUGFIX-05-US-01`
+  actually retargeted it (`BUG-026`/`ESC-048`/`ESC-050`).** See
+  "`process_staged_email` Retargeted onto Stage 1/Stage 2 Composition"
+  below (after "The Librarian Section") for the real, now-accurate design.
+  The hourly tick keeps fully capturing mail automatically with zero new
+  registration, while each stage is ALSO independently, directly
+  operator-triggerable — that part was, and remains, accurate.
+
+### Files/OKF Companion Convention (`REQ-SB-71-US-02`)
+
+New, generic `vault_writer.write_file_companion(subfolder: str, note_stem:
+str, file_slug: str, original_filename: str, content: bytes, summary: str)
+-> dict` — parameterized by `(subfolder, note_stem)` exactly like
+`write_attachments` already is, renamed `attachments/` → `files/`:
+`<subfolder>/files/<slug-of-file_slug>/<original_filename>` (raw bytes,
+untouched) beside `<subfolder>/files/<slug-of-file_slug>/<slug-of-
+file_slug>.md` (an OKF-lite companion note: frontmatter + `## Summary`
+agent-owned + `## Personal Notes` human-owned) — replacing today's buried,
+unlinked dated sub-entry with a first-class, backlink-discoverable note.
+Built once, against the one real concrete need (Email/Thread attachments);
+generic enough that Meeting/Customer/Person/a future Opportunity reuse it
+UNCHANGED the moment a second real files-capturing need exists. Reuses
+`compass_client.summarize_content` + `upload_storage.save_upload/
+extract_text_content/delete_upload` verbatim — the identical technique
+`summarize_attachment` already established, no new extraction/
+summarization mechanism. The companion's own `## Summary` write is
+allow-list-checked (new caller id, see the Section-Ownership table above);
+`## Personal Notes` is human-owned, uniformly, with zero extra code beyond
+the guard already covering it.
+
+### Meeting Capture Redesign — One-Time/Recurring Split (`REQ-SB-71-US-03`)
+
+Reuses the EXISTING `POST /poc/classify-meetings` endpoint and
+`"meeting-capture"` capability id unchanged — `meeting_classification.
+classify_recent_meetings` is rewritten IN PLACE to produce the new shape;
+no new endpoint is built. The existing scheduled trigger keeps running
+exactly as wired, now producing the new shape on its next tick.
+
+- **One-time — unchanged filename scheme,** `Work/Meetings/<meeting-
+  slug>.md` (`meeting_note_filename_stem`, `hash8("{subject}|{start}")`,
+  `ADR-019`, untouched).
+- **Recurring — a new directory shape, `Work/Meetings/<series-slug>/
+  <series-slug>.md`, `series-slug` keyed by `item.GlobalAppointmentID`** —
+  a direct, deliberate reuse of the exact fact `ADR-013`/`ESC-012` already
+  live-confirmed (identical across every occurrence of a series) and
+  rejected as a per-OCCURRENCE dedup key; that same "constant across
+  occurrences" property is exactly right for series identity.
+  `outlook_com.list_calendar_events` gains `is_recurring: bool` and
+  `series_id: str` (`getattr(item, "GlobalAppointmentID", None) or ""`).
+- **Frontmatter-only logistics, raw invite dropped entirely, never
+  archived** (a deliberate, operator-authorized, named exception to this
+  project's own archive-not-delete discipline). `teams_link`/`dial_in` are
+  extracted via regex from `item.Body` TRANSIENTLY inside `list_calendar_
+  events` (or a small helper it calls) — the raw body string itself is
+  NEVER included in the returned dict and never reaches any caller or
+  disk. Surviving frontmatter: `teams_link`, `dial_in`, `organizer`,
+  `attendees` (wikilinks), `recurrence`, `calendar_event_id` (`id`, one-time)
+  or `calendar_series_id` (`series_id`, recurring).
+- **Body — identical shape for one-time and recurring** (one shared code
+  path): `## Summary` (agent-owned, regenerated, allow-list-checked, new
+  caller `meeting_classification.classify_recent_meetings`) + `## History`
+  (agent-owned, GROWING via the existing, unguarded `append_body_section_
+  line` — one dated entry per occurrence; a one-time meeting ends up with
+  exactly one entry, ever) + `## Personal Notes`/`## Actions` (human-owned).
+  Each `## History` entry is synthesized (new Compass call, reusing
+  `compass_client.summarize_content` verbatim) from the occurrence's own
+  calendar logistics AND, when linked, its Thread's current `## Summary`
+  (`read_body_section` against `synthesize_thread`'s own just-written
+  output — never a second, divergent Thread-summarization call).
+
+### People — Nested Under Primary Customer (`REQ-SB-71-US-03`)
+
+Extends `ADR-004`'s folder-vs-tag boundary a second time (after `ADR-042`'s
+own Customer/Project hub-entity carve-out), deliberately and narrowly, for
+Person only — Thread, Meeting, and Files all stay flat/tag-linked,
+unchanged.
+
+- `vault_writer.person_note_dedup_key(name, email) -> str` (new) —
+  lowercased email when one exists (unchanged `REQ-SB-10` convention), or
+  a slug of the display name when it does not (closes `meeting_
+  classification.py`'s own silent no-email-attendee `continue`, line
+  271-279's `if not email: continue`). A name-based key cannot
+  structurally distinguish two different no-email people sharing an exact
+  display name — a real, disclosed, narrow residual limitation.
+- `vault_writer.person_note_path(dedup_key, customer) -> Path` — SIGNATURE
+  CHANGE from `person_note_path(email)`: `Work/Customers/<slug>/People/
+  <slug-of-dedup_key>.md` when `customer` is a real, matched Customer name;
+  the existing flat `Work/People/<slug-of-dedup_key>.md` otherwise
+  (operator-confirmed 2026-08-18 fallback for a Person with no derivable/
+  matched Customer at all — including every no-email attendee, since there
+  is no email domain to derive a company from).
+- `vault_writer.find_person_note_path(dedup_key) -> Path | None` (new) —
+  vault-wide lookup (`Work/Customers/*/People/<stem>.md` +
+  `Work/People/<stem>.md`), mirroring `resolve_thread_note_path`'s own "no
+  persisted index, a live bounded scan" precedent for the identical class
+  of problem (a Person's home is no longer deterministic from `dedup_key`
+  alone once nesting depends on a per-caller Customer match that can
+  differ across callers/time).
+- `people_extraction.ensure_person_note(name, email)` (signature otherwise
+  unchanged; `email` may now be `None`/`""`) checks `find_person_note_
+  path` FIRST — an already-existing note is topped up in place, NEVER
+  moved or duplicated, even when this call's own newly-derived Customer
+  differs from where the note already lives (a Person spanning multiple
+  Customers is wikilinked from the others via the SAME forward-link
+  mechanism already used everywhere in this codebase, plus Obsidian's own
+  automatic backlinks — no new linking mechanism). Only when no note
+  exists anywhere yet is a new one created, nested under the matched
+  Customer or, absent one, at the flat fallback. `customer_hub_linking.
+  ensure_customer_hub_note`/`link_note_to_customer_hub` are called exactly
+  as they already are today, layered on top, unmodified.
+- **Explicitly out of scope for this batch:** Person's own PRD-named
+  `## Glimpse` (agent-owned, rolled up from every Thread/Meeting mention)
+  + `## Personal Notes` body redesign — none of `REQ-SB-71-US-03`'s own AC
+  Scenarios test Person body content, only existence/dedup/nesting
+  location. Person's own body stays exactly as it is today for this batch;
+  a future Person-Synthesizer story is where that lands.
+
+### `list_all_note_paths()` generalization (cross-cutting)
+
+Replaces the 1-level flat glob plus two hardcoded Customer/Project-specific
+2-level globs with one bounded recursive scan:
+```python
+def list_all_note_paths() -> list:
+    work_root = settings.vault_path / _WORK_ROOT
+    if not work_root.exists():
+        return []
+    return sorted(
+        path for path in work_root.rglob("*.md")
+        if path.name not in _OKF_RESERVED_FILENAMES
+    )
+```
+Strictly behavior-preserving for every existing caller (a superset of the
+old result); newly, correctly discovers Thread's own distilled concept
+file, a recurring Meeting series' own concept file, every raw message
+note, and every File OKF companion note — all real, normally-frontmattered
+notes this redesign nests at varying depths. `list_thread_notes()`
+(composed by `list_threads_for_project`, Meeting's own fallback linker,
+and `_link_to_thread_by_conversation_id`'s existence check) is similarly
+rewritten for the new 2-level shape (`Work/Threads/*/*.md`, filtered to
+`path.parent.name == path.stem` — excludes `messages/*.md`).
+
+### Disclosed, unresolved-by-this-pass regression risks
+
+- **`inbox-cockpit.html`'s backend** (`app/business/cockpit/attachments.py`,
+  hardcoded `Work/Emails/attachments`) **and `meeting-cockpit.html`'s own
+  backend** both have a real, disclosed regression risk against these new
+  shapes (raw `files/` layout; recurring Meeting's own `## History`-per-
+  occurrence shape) — named here, not silently left broken. Whether each
+  is fixed inside these same stories' own tasks or filed as a separate,
+  disclosed follow-up is a decomposer-level scoping call.
+- **Backfilling already-captured Thread/Meeting/Person notes onto any of
+  these new shapes is explicitly out of scope** (mirrors `REQ-SB-67`/
+  `REQ-SB-69`'s own "capture vs. backfill are separable concerns"
+  precedent) — going-forward capture only.
+
+## The Librarian Section — First Housekeeping Pipeline (`REQ-SB-72-US-01`, see [ADR-049](ADR.md))
+
+The first Section built as ongoing, self-running vault hygiene rather than
+operator-triggered capture — the "housekeeping runs itself" half of this
+project's own capture-vs-housekeeping split (`REQ-SB-70`/`REQ-SB-71` are
+explicitly manual/API-only; this Section is the deliberate opposite). Full
+architectural reasoning, every alternative considered, and every consequence
+(including a real, escalated finding against the still-live `thread_match_
+merge` pipeline): [ADR-049](ADR.md).
+
+### Thread lookup — frontmatter-based, again (partially supersedes `ADR-048` Decision 3)
+
+A new, shared, read-only primitive is the ONE place the "does a Thread for
+this `conversation_id` already exist, and if so, where" question is answered
+going forward:
+
+```python
+def resolve_thread_directory(conversation_id: str) -> Path | None:
+    """Frontmatter-based scan over list_thread_notes() (never a second,
+    independent Thread-enumeration mechanism), matching frontmatter.get(
+    "conversation_id") == conversation_id. Returns the Thread's own
+    DIRECTORY (path.parent), or None. This is the THIRD swing of this
+    project's own Thread-matching mechanism (ADR-046 frontmatter-scan ->
+    ADR-048 deterministic-path -> back to frontmatter-scan), justified by
+    real steady-state capture volume (~10 emails/hour) being cheap enough
+    to scan -- the 400-email bulk-retrofit volume ADR-048 was optimized
+    for is a separate, disclosed concern (bulk/retrofit callers may still
+    compose thread_directory_paths(conversation_id) directly)."""
+```
+
+- **`resolve_thread_note_path(conversation_id) -> Path | None`** — PUBLIC
+  SIGNATURE UNCHANGED, retargeted to a thin wrapper over
+  `resolve_thread_directory` (`directory / f"{directory.name}.md"` or `None`)
+  — every existing caller (`_link_to_thread_by_conversation_id`,
+  `_trigger_project_resynthesis`, `synthesize_thread`'s own create-vs-update
+  check) keeps working with ZERO call-site change.
+- **`raw_message_note_path(conversation_id, message_id, received)`** —
+  retargeted to resolve-first-with-deterministic-fallback: composes `resolve_
+  thread_directory` first; if found, writes under THAT directory's own
+  `messages/`; only when the Thread genuinely does not exist yet (Stage 1's
+  own very-first message for a new conversation) does it fall back to the
+  deterministic `thread_directory_paths(conversation_id)["messages"]` — the
+  same two-tier "resolve, else deterministic-create-path" shape `resolve_
+  meeting_note_path` already established for Meeting.
+- **Two more real callers, found by direct reading, migrated off directly
+  composing `thread_directory_paths(conversation_id)` (which silently
+  resolves to the WRONG, since-renamed, now-nonexistent path once a Thread
+  has been renamed):**
+  - `raw_message_capture.capture_raw_thread_messages`'s own "does the Thread
+    concept file exist yet" check — swapped for `resolve_thread_note_path`,
+    matching Stage 2's own existing semantics exactly.
+  - `meeting_classification._synthesize_history_entry`'s own linked-Thread
+    `## Summary` read for a Meeting's own `## History` entry — swapped for
+    `resolve_thread_note_path`, so a Meeting linked to a since-renamed Thread
+    still finds its real, current Summary instead of silently falling back to
+    empty.
+  - `synthesize_thread`'s own `messages/` directory read is reordered to
+    derive from the ALREADY-resolved `existing_path`'s own parent directory
+    (falling back to the deterministic path only on the genuinely-new-Thread
+    branch) — the exact mechanism Scenario 2's own "further message in the
+    SAME conversation still correctly matches the renamed Thread" requires.
+- **`thread_directory_paths(conversation_id)` itself is UNCHANGED** — still
+  the deterministic path a brand-new Thread is always FIRST created at, and
+  still available for bulk/retrofit internal use per this story's own
+  Constraint carve-out. Nothing about Thread's own directory-vs-single-file
+  shape, its permanent `conversation_id` grouping key, the Stage 1/Stage 2
+  split, or the write-once raw-message contract changes — only WHERE an
+  ALREADY-EXISTING Thread's current location is looked up.
+
+### Legacy flat-shape Thread recognition — self-healing migration on first touch (`BUGFIX-05-US-01`, narrows `ADR-049` Decision 1's "purely read-only" framing, see [ADR-052](ADR.md))
+
+`ESC-055` (`BUGFIX-05-US-01`'s own decomposer pass) found that the section
+above is still, on its own, blind to a genuinely flat, pre-redesign `Work/
+Threads/<name>.md` note — `list_thread_notes()`'s own `Work/Threads/*/*.md`
+glob structurally cannot match it, so `resolve_thread_directory()` never
+even offered it as a scan candidate, independent of which composing
+function (`thread_match_merge` OR `synthesize_thread`) called it. Confirmed
+already live: 8 real flat notes in the vault at this pass, one already
+diverged into a real, duplicate directory-shaped Thread
+(`conversation_id ED0954959F6F4A4C88F9E2ACA3D7113A`, see `ESC-055`).
+Full reasoning, why "just widen the glob and return the flat note's own
+path unmigrated" is not actually viable given `synthesize_thread`'s own
+existing update-branch code, and every alternative considered:
+[ADR-052](ADR.md).
+
+`resolve_thread_directory(conversation_id)` gains a second scan tier, tried
+ONLY on a miss from the first (existing, directory-shaped) scan above:
+
+```python
+def resolve_thread_directory(conversation_id: str) -> Path | None:
+    """... existing directory-shaped scan first (unchanged) ...
+    On a miss, a second tier globs Work/Threads/*.md directly (flat notes
+    only, never folded into list_thread_notes() itself) for the same
+    frontmatter.get("conversation_id") == conversation_id match. On a
+    match, immediately calls migrate_flat_thread_to_directory(flat_path)
+    -- moving it to the standard thread_directory_paths(conversation_id)
+    location (concept file + empty messages/) -- and returns the NEW
+    directory. Never returns a flat file's own path/parent directly. A
+    one-time, idempotent, self-healing WRITE for this one legacy-shape
+    case only -- the ONE deliberate exception to this function's own
+    otherwise purely-read-only contract."""
+```
+
+- **Ordering is load-bearing:** directory-shaped scan first, flat-note scan
+  second, only on a miss — this is what correctly, silently no-ops for a
+  `conversation_id` that already has BOTH shapes (the already-diverged
+  Azure Forecast case) instead of attempting a redundant migration of the
+  already-orphaned flat note. That already-diverged case is NOT fixed by
+  this mechanism — a deliberate, disclosed non-goal (see `ESC-055`'s own
+  resolution note for the separate, deferred data-remediation decision).
+- **`migrate_flat_thread_to_directory(flat_path: Path) -> Path`** (new,
+  `vault_writer.py`) — mirrors `rename_thread_directory`'s own
+  refuse-to-overwrite discipline (raises `FileExistsError` on the
+  structurally near-impossible deterministic-slug collision, never
+  silently overwrites); reuses `thread_directory_paths(conversation_id)`
+  unchanged for the target location — no second naming scheme. The
+  Librarian's own already-scheduled `rename_threads()` Job picks up a
+  freshly-migrated Thread on its own very next pass and renames it to the
+  human-readable `<date> <subject>` stem exactly like any other Thread — no
+  special-casing needed there.
+- **`list_thread_notes()` itself is UNCHANGED** — still directory-shape-only
+  by contract; every one of its own callers (`list_threads_for_project`,
+  every Librarian Job) sees a migrated former-flat-note for free on its own
+  next pass, once any `resolve_thread_directory` call has touched it — no
+  caller anywhere else needs to change.
+- Of the 8 real flat Threads confirmed live at this pass, 7 have no known
+  directory-shaped duplicate yet and self-heal correctly, losslessly, the
+  next time a new message lands for their own `conversation_id` — no human
+  action needed. Only the 1 already-diverged case needs separate handling.
+
+### Migration content-preservation — the `pre_migration_summary.md` sidecar (`BUGFIX-05-US-01-T04` finding, `ESC-056`, see [ADR-053](ADR.md))
+
+`ESC-056` (`T04`'s own live verification of `AC-01`) found that the
+section above, while a correct and lossless SHAPE migration on its own,
+is not sufficient once composed with `synthesize_thread` in the SAME
+pipeline tick: `synthesize_thread` always regenerates `## Summary` by
+full reconstruction from every raw message currently under `messages/`
+(see "Email Capture Redesign — Thread Raw/Distilled Split, Stage 1/Stage 2"
+above, `REQ-SB-71-US-02`'s own "full reconstruction... never a rolling/
+incremental delta" Stage 2 design); a
+just-migrated flat Thread's `messages/` starts empty (by
+`migrate_flat_thread_to_directory`'s own correct, `ADR-052` design), so
+the FIRST post-migration synthesis silently replaces the flat note's
+own real, substantive, pre-migration `## Summary` (written over real
+history by the OLD `thread_match_merge` pipeline) with a synopsis of
+just the one new message. Confirmed live, fully repaired before this
+fix (`Compass Alert- Failed API Calls`, byte-identical restore).
+`## Summary` is confirmed, by direct reading, the ONLY at-risk section —
+`## Related` ownership already transferred to the Librarian
+(`ADR-049` Decision 4), `## Personal Notes`/`## Actions` are human-owned
+and never agent-written, and the legacy `## Transcript` section is dead
+and untouched by `synthesize_thread` either way.
+
+**The fix is a one-time, self-consuming sidecar file, not a change to
+`ADR-048`'s "full reconstruction, never a rolling/incremental delta"
+design** (that design is extended, not reopened — this exception is
+scoped exclusively to a freshly-migrated Thread's own pre-migration
+history, real content otherwise represented nowhere under `messages/`):
+
+```python
+def migrate_flat_thread_to_directory(flat_path: Path) -> Path:
+    """... unchanged shape-migration steps, PLUS: reads the flat note's
+    own pre-migration ## Summary via the existing read_body_section
+    primitive, BEFORE the rename. If non-empty, writes it verbatim to a
+    new sidecar file, <new-directory>/pre_migration_summary.md -- plain
+    text, no frontmatter, the same 'reserved, non-frontmatter sidecar'
+    shape index.md/log.md/captures.md already established for OKF
+    directories (ADR-042 point 1), here for a Thread directory instead.
+    Lives OUTSIDE messages/, so it is structurally invisible to
+    list_thread_notes() and to synthesize_thread's own messages_dir
+    glob -- never pollutes the messages list, first-message
+    classification, participant accumulation, or message_count."""
+```
+
+```python
+def synthesize_thread(conversation_id: str) -> dict:
+    """... unchanged Stage 2 body, PLUS: immediately before composing
+    full_content for its existing Compass call, checks for path.parent /
+    'pre_migration_summary.md'. If present, its text is prepended to
+    full_content as an explicitly-labeled prior-history block -- the SAME
+    existing Compass call, never a second one, never a new function. On a
+    SUCCESSFUL synthesis only, the sidecar is renamed in place to
+    pre_migration_summary.consumed.md -- never deleted, archive-not-
+    delete (mirrors ADR-047 Decision 2's own soft-delete convention at
+    the smallest possible scope), and never fed again on any later call
+    (the renamed file no longer matches the check). On a FAILED
+    synthesis, the sidecar is left untouched, exactly like the Thread's
+    own existing ## Summary -- retried on the next successful run."""
+```
+
+- **`list_all_note_paths()` excludes both `pre_migration_summary.md` and
+  `pre_migration_summary.consumed.md` by filename** — the same mechanism
+  already used for `index.md`/`log.md`/`captures.md`, so this plain,
+  non-frontmatter sidecar is never surfaced to "every real note" callers
+  (search/browse indexing, Librarian Jobs).
+- **No `section_ownership.py` change.** The sidecar carries no `## `
+  header of its own and is never written via `replace_body_section` —
+  `## Summary`'s own allow-list stays exactly `{"email_classification.
+  synthesize_thread"}`, one writer, unchanged.
+- **Deliberately scoped to `## Summary` only** — the one section
+  confirmed at risk. `migrate_flat_thread_to_directory`'s own move/rename
+  already preserves every other section losslessly (unchanged from
+  `ADR-052`); a second, whole-note `.second-brain/migration_backup/`
+  archive was considered and rejected as redundant, not because
+  redundancy is undesirable in principle but because no second at-risk
+  section has been found (see `ADR-053` Alternatives Considered).
+
+Full reasoning, every alternative considered (including why `ESC-056`'s
+own three candidate options were each rejected in favor of this narrower
+design), and every consequence: [ADR-053](ADR.md).
+
+### Thread rename — a real, atomic whole-directory move
+
+```python
+def rename_thread_directory(old_directory: Path, new_directory: Path) -> Path:
+    """Mirrors rename_thread_note's own refuse-to-overwrite discipline, one
+    level up (a directory, not a single file): no-op if old == new; raises
+    FileExistsError if new_directory already exists (a genuine <date>
+    <subject> collision -- surfaced, never silently overwritten); otherwise
+    old_directory.rename(new_directory) moves the WHOLE tree -- concept
+    file, messages/, and any files/ -- in one atomic filesystem op, then the
+    concept file inside is itself renamed from <old-slug>.md to <new-slug>.md,
+    preserving the <slug>/<slug>.md invariant list_thread_notes() depends
+    on. Returns the new concept file path."""
+```
+
+The Librarian's own Rename Job computes each Thread's new slug as `<date>
+<subject-without-Re->` (e.g. `2026-08-16 Ewec Discussion`) from the Thread's
+own already-captured `thread_name`/`last_message_at` frontmatter — no hash
+suffix (unlike Meeting's/legacy Thread's own schemes); a genuine collision
+surfaces via `rename_thread_directory`'s own raise, handled per-Thread
+(skip-and-report, never silently dropping one Thread's rename to save
+another's). The OLD `rename_thread_note`/`thread_note_path_for`/`thread_
+note_filename_stem` primitives (`ADR-046`) are left completely UNTOUCHED —
+still the still-live (though `supervised`-only) `thread_match_merge`'s own
+internal mechanism; see Consequences/`ESC-050` below for why this pass does
+NOT touch them.
+
+### Files/OKF backfill + `## Files` section
+
+The Files Backfill Job scans `staged_attachment_files(conversation_id,
+message_id)` for every raw message under a Thread's own (resolved, current)
+`messages/` directory, and for any attachment with no `files/<slug>/`
+companion yet, calls `write_file_companion` (`REQ-SB-71-US-02`, UNCHANGED) —
+never a second, divergent companion primitive. A new caller id registers
+`## Files` in `section_ownership.py` (below); the writer composes each
+companioned attachment's own filename/date/`## Summary`-derived blurb/working
+link into a structured list, distinct from `## Summary`'s own prose.
+Re-running is idempotent by construction: an attachment with an existing
+companion is skipped (matches Scenario 4).
+
+### `## Related` ownership transfer
+
+`email_classification.synthesize_thread`'s own `section_ownership.py`
+allow-list entry narrows from `{"## Summary", "## Related"}` to `{"##
+Summary"}` alone, in the EXACT SAME change that registers the Librarian's own
+new `## Related`-writing caller — never a window where both are simultaneously
+permitted (Scenario 6/8's own "sole ownership by construction" requirement).
+The Librarian's own `populate_thread_related_links` Job reuses `_build_
+thread_related_wikilinks`'s existing honest-omission contract (a participant
+with no real Person note is omitted, never guessed) and extends it with the
+new company-mention detection below, for every other real company genuinely
+mentioned in a Thread's own content.
+
+### Company-mention detection & the ambiguous-finding Pending Approval
+
+A NEW, dedicated Compass call — reuses `compass_client.summarize_content`'s
+own structured-JSON-call TECHNIQUE, never `vault_filing_expert.determine_
+placement_and_file` itself (that function decides WHERE ONE piece of brand-new
+content is filed; this is a different-shaped problem — extracting WHICH
+already-known/plausible companies an already-filed Thread's content mentions).
+Re-checked in Python against the live `known_customers`/`known_partners`
+lists before ever acting — never trusted from the model's own naming alone,
+mirroring `_maybe_create_cross_cutting_proposal`'s own exact discipline
+(`ADR-021` point 2):
+
+- **Genuinely new, unambiguous company name** (no fuzzy/partial match against
+  either known list) → auto-creates via `ensure_customer_hub_note`
+  (`REQ-SB-63`, UNCHANGED) directly — Tier-1-shaped, no approval (Scenario 9).
+- **A name that plausibly matches an existing `known_customers`/`known_
+  partners` entry under a different spelling, or that the model itself flags
+  low-confidence** → a new Pending Approval, `action_id=
+  "propose_librarian_company_link"`, payload mirroring `_create_cross_
+  cutting_proposal`'s own shape (`entity_type`, `entity_name`, `reason`,
+  `thread_path`, `requesting_agent_id="librarian-housekeeping"`), finalized by
+  a new `finalize_librarian_company_link` handler that performs the deferred
+  create-or-link action on approval, and nothing on decline (Scenario 10) —
+  never a second, divergent placement/proposal mechanism (`ADR-021` point 2's
+  own precedent, reused by analogy).
+
+### Section-ownership registrations (new `section_ownership.py` entries)
+
+| Caller | Allowed headers |
+|---|---|
+| `librarian_housekeeping.backfill_files` (exact module path left to the coder) | `## Files` |
+| `librarian_housekeeping.populate_thread_related_links` | `## Related` |
+| `email_classification.synthesize_thread` (narrowed) | `## Summary` only |
+
+### Librarian Section/Agent identity, endpoints, and scheduling
+
+- **Section:** `section_registry.create_section("Librarian")` →
+  `"librarian"` (existing, unmodified mechanism, `REQ-SB-18`/`ADR-014`).
+- **Agent:** `agent_registry.create_agent("Librarian Housekeeping",
+  type="worker", settings=[...])` → `"librarian-housekeeping"` (mirrors
+  `email-capture-pipeline`'s own "worker" type + Pipeline-shaped
+  settings-block convention), then `section_registry.set_agent_section
+  ("librarian-housekeeping", "librarian")`. No new Section-creation
+  machinery — `REQ-SB-61`'s own separately-deferred Location/Tags
+  generalization is not built here (per this story's own explicit scoping
+  call).
+- **Endpoints — reuse the EXISTING `app/api/email_poc_router.py`** (already
+  this codebase's general home for flat, operator-triggered one-off `/poc/*`
+  operations regardless of subject area, per `ADR-048` Decision 1's own
+  precedent — no new sibling router):
+  - `POST /poc/librarian-rename-threads`
+  - `POST /poc/librarian-backfill-files`
+  - `POST /poc/librarian-populate-related`
+  - `POST /poc/librarian-backfill-company-folders`
+  - `POST /poc/librarian-run-housekeeping-pass` — the ORCHESTRATING
+    capability, running all four Jobs in sequence (rename first, so
+    downstream Jobs operate on each Thread's own final, current directory;
+    Files/Related/Company-folder Jobs have no ordering dependency among
+    themselves) — the ONE capability id `agent_schedule_registry` targets.
+  Each Job is its own independent, directly operator-triggerable capability
+  of the NEW `"librarian-housekeeping"` Agent-tier identity (mirrors Stage
+  1/Stage 2's own "independently triggerable AND composed by the scheduled
+  tick" shape, generalized here to five capabilities of one brand-new Agent
+  identity rather than two of an already-existing one).
+- **Scheduling — a REAL, disclosed, deliberate opposite of `REQ-SB-70`/
+  `REQ-SB-71`'s own standing no-scheduler constraint**, per this story's own
+  explicit PRD mandate: `agent_schedule_registry.create_schedule(agent_id=
+  "librarian-housekeeping", capability_id="run_housekeeping_pass",
+  interval_value=6, interval_unit="hours")` — a reasonable, operator-
+  adjustable DEFAULT (never a locked-AC value, mirrors this codebase's own
+  "no locked AC tests a specific field value" pattern), editable/pausable via
+  the existing Schedule tab like any other `agent_schedule_registry` entry.
+  Directly, manually triggerable too, via the endpoints above.
+
+### Disclosed, escalated consequence — NOT fixed by this pass
+
+Reverting `resolve_thread_note_path` to a frontmatter scan restores this
+pipeline's own ability to find an ALREADY-RENAMED Thread — but the still-live,
+`supervised`-only `thread_match_merge` (`email_capture_pipeline.py`,
+`ESC-048`) ALSO composes `resolve_thread_note_path` for its own create-vs-
+update check, and then — independently, via its own still-live legacy `thread_
+note_path_for`/`rename_thread_note` calls (`ADR-046`, deliberately left
+untouched by this pass) — computes a FLAT, hash-suffixed legacy path and
+renames the concept file onto it, ORPHANING that Thread's `messages/`/`files/`
+subdirectories. This is NOT a new risk this story introduces — direct reading
+confirms it already fires TODAY for ANY already-existing new-shape
+(`ADR-048`) Thread the moment `thread_match_merge` runs against it, entirely
+independent of whether this story ships — but it is materially WORSE than
+`ESC-048`'s own original description (directory-orphaning data corruption,
+not merely duplicate-Thread creation), and this story's own rename mechanism
+means MORE real Threads become exposed to it over time. `email_capture_
+pipeline.py`/`thread_match_merge` are OUTSIDE this story's own `## Files to
+Modify` (per its own Non-Goals) — named here, not silently fixed or left
+undisclosed. See [ADR-049](ADR.md) Consequences and `ESCALATIONS.md` →
+`ESC-050`.
+
+**Fixed (`BUGFIX-05-US-01`, 2026-08-19):** `thread_match_merge`'s live call
+site is retired from `process_staged_email`'s real path — see
+"`process_staged_email` Retargeted onto Stage 1/Stage 2 Composition" below,
+[ADR-051](ADR.md).
+
+## `process_staged_email` Retargeted onto Stage 1/Stage 2 Composition (`BUGFIX-05-US-01`, see [ADR-051](ADR.md))
+
+Closes `BUG-026`/`ESC-048`/`ESC-050`. `process_staged_email` (the only
+capability the real, scheduled `email-capture-pipeline` Agent invokes to
+process staged mail) previously ran the OLD compiled `email_capture_
+pipeline.py` `StateGraph` end-to-end — including its still-buggy
+`thread_match_merge` node — despite `ADR-048`/`ADR-049` and this file's own
+prior "stays wired... composes the two [Stage 1/Stage 2] functions" bullet
+above having already stated the INTENT to retarget it. That intent was
+never actually implemented until this pass. Full architectural reasoning,
+every alternative considered, and every consequence: [ADR-051](ADR.md).
+
+### What backs `process_staged_email` now
+
+`skill_registry.py`'s `"process_staged_email": skill_tools.
+process_staged_email` mapping and `skill_tools.process_staged_email`'s own
+signature/deferred-import call site (`email_capture_pipeline.
+run_email_capture_pipeline`) are UNCHANGED — the fix is entirely inside
+`run_email_capture_pipeline`'s own function body, same module, same name,
+same zero-argument call shape. That body no longer builds or invokes the
+`StateGraph`; it is now a plain, sequential composing function:
+
+1. Calls `raw_message_capture.capture_raw_thread_messages(limit=...)`
+   once (Stage 1 — zero-Compass raw capture, unchanged). Its own return
+   dict gains one additive key, `conversation_ids_touched: list[str]`
+   (derived from its own already-in-scope per-item loop over newly
+   processed messages) — a pure superset of its existing `pulled`/
+   `processed`/`skipped_already_noted` keys; the `/poc/capture-raw-thread-
+   messages` endpoint's response shape is unaffected for any existing
+   consumer.
+2. For each distinct `conversation_id` in `conversation_ids_touched`,
+   calls `email_classification.synthesize_thread(conversation_id)`
+   (Stage 2, unchanged) — which already internally performs create-vs-
+   update, customer/tags/participants, `## Summary` regeneration, the
+   Files/OKF companion writes, and `route_to_project`'s created-only
+   Pending-Approval trigger (confirmed by direct reading; no separate call
+   needed for any of these).
+3. For each such Thread, three of the old graph's OTHER real branch
+   effects — which have NO equivalent anywhere in the `REQ-SB-71`/
+   `REQ-SB-72` redesign — are explicitly, directly re-composed as plain
+   calls in this SAME function, never re-implemented (mirrors
+   `librarian_housekeeping.run_housekeeping_pass`'s own "one orchestrator,
+   direct sequential calls to existing plain Jobs" shape, `ADR-049`
+   Decision 7):
+   - **`detect_recurring_pattern`** — for each NEWLY captured raw message
+     this run (Stage 1's `processed` list only, not `skipped_already_
+     noted`), reads back that message's own just-written raw note,
+     reconstructs an `email`-shaped dict, calls `classify_captured_email_
+     with_fallback` once against it (a genuine, additional per-message
+     Compass classify call — `synthesize_thread`'s own internal classify
+     is Thread-lifetime-scoped, always the FIRST message, the wrong signal
+     for a later message's own recurring-pattern check), and calls
+     `detect_recurring_pattern(email, classification)` when
+     `recurring_candidate` is true. Wrapped in its own try/except — never
+     gates the Thread's own already-successful capture/synthesis.
+   - **`consult_librarian`** — called once per synthesized Thread
+     (`synthesized: True`), passing `synthesize_thread`'s own result dict
+     directly, unconditional for both a brand-new and an updated Thread
+     alike. NOTE: this is a DIFFERENT "Librarian" than the `REQ-SB-72`
+     `librarian-housekeeping` Agent below — `consult_librarian` calls the
+     GENERALIZED Vault Filing Expert (`vault_filing_expert.determine_
+     placement_and_file`, `ADR-021`/`REQ-SB-63`), an unrelated mechanism
+     the confusingly similar name should not be conflated with.
+   - **`project_customer_synthesizer.resync_project_from_thread`** —
+     called once per synthesized Thread, passing `thread_result[
+     "thread_path"]` directly (its own existing signature/no-op-for-
+     unrouted-Thread contract unchanged), unconditional — the ongoing
+     Project-`## Glimpse`-resync-on-every-update behavior `REQ-SB-57`
+     Scenario 1/AC-01 requires, which `synthesize_thread`'s own
+     `route_to_project` call (created-only) does not provide.
+4. The whole per-`conversation_id` unit (Stage 2 plus its three composed
+   side effects) is wrapped in one outer try/except at the loop level,
+   mirroring the old per-email try/except+continue+honest-error-result
+   posture — a genuinely unexpected exception is reported as
+   `{"conversation_id", "error"}` and the run continues to the next
+   Thread, never aborting the rest of the tick.
+
+`summarize_attachment`'s own old role needs NO equivalent on this new
+path — it is already, deliberately superseded by the Files/OKF companion
+mechanism (`write_file_companion`, called from `synthesize_thread`'s own
+end) plus the Librarian's structured `## Files` backfill
+(`REQ-SB-72-US-01-T04`); `## Attachments` does not exist in the new
+distilled concept-file body shape at all.
+
+### Return-shape change (disclosed behavior change, not a signature change)
+
+`run_email_capture_pipeline()` now returns one row per synthesized THREAD
+this run, not one row per fetched email. `skill_tools.process_staged_
+email`'s own `"error"`-key-presence convention
+(`filed = [r for r in results if "error" not in r]`) stays compatible
+as-is; its success-message wording ("N email(s) filed" → "N thread(s)
+updated") is a task-level detail for the coder.
+
+### `email_capture_pipeline.py`'s `StateGraph` — deprecated, not deleted
+
+`_build_graph()`/`_GRAPH`/`get_job_tree()` and `email_classification.
+thread_match_merge`'s own function body all remain in the codebase,
+unchanged, fully functional — but no longer on any live execution path for
+real capture. Kept specifically because `get_job_tree()` (`REQ-SB-65-US-01`)
+is a real, separate, currently-shipped read-only capability
+(`agents_router.py`'s Pipeline Job Tree endpoints, consumed by the Agents
+Map) that introspects this SAME compiled `_GRAPH` singleton via
+`langgraph`'s own `Pregel.get_graph()` — deleting it outright would break
+that surface as an uncontrolled side effect of a bugfix whose own scope
+never named it.
+
+**Disclosed, not fixed by this pass:** `get_job_tree()`'s own Pipeline Job
+Tree visualization now reflects a topology (`Classify`→`Thread-Match/
+Merge`→...) that is no longer what `process_staged_email` actually
+executes — a real, known staleness, named here rather than silently left
+broken. Rebuilding it against the new Stage-1/Stage-2-plus-three-composed-
+side-effects shape is recommended as its own future, separately-scoped
+follow-up story.
+
+`thread_match_merge` keeps its already-live `section_ownership.py`
+allow-list entry (`## Summary`, `## Related`) — unchanged; see the Section-
+Ownership table above (already annotated "retired once `synthesize_thread`
+ships — dead entry" ahead of this pass actually retiring its call site).
+
+## The Librarian — Bidirectional Thread ↔ Message Linking (`REQ-SB-73-US-01`, see [ADR-054](ADR.md))
+
+A new Job under the ALREADY-EXISTING Librarian Section/`librarian-
+housekeeping` Agent (`REQ-SB-72-US-01`) — no new Section, no new Agent, no
+new `vault_writer.py` primitive. Full architectural reasoning, why every
+mechanism-level question resolves by reuse, and every alternative
+considered: [ADR-054](ADR.md).
+
+### `link_thread_messages()` — `## Messages` + `thread:` backlink, retrofit and self-heal in one Job
+
+```python
+def link_thread_messages() -> dict:
+    """For every real Thread (list_thread_notes()), regenerates ## Messages
+    wholesale from the Thread's own CURRENT messages/*.md glob (sorted) as
+    "- [[<message-stem>]]" bullets, via insert_body_section_if_missing +
+    replace_body_section(..., caller="librarian_housekeeping.link_thread_
+    messages") -- never incrementally patched, mirroring ## Files' own
+    "regenerated each pass" contract. For every message under that same
+    glob, calls vault_writer.upsert_frontmatter_key(message_path, "thread",
+    f"[[{concept_path.stem}]]") -- the Thread's own CURRENT stem -- which
+    inserts if absent, self-heals a stale value, and is a true no-op if
+    already correct, all from ONE existing primitive."""
+```
+
+`upsert_frontmatter_key` (already shipped, used live by `meeting_
+classification.py`'s own `thread:` field) is the load-bearing reuse here —
+unlike `insert_frontmatter_key_if_missing` (every OTHER baseline-field
+top-up in this codebase), it OVERWRITES an already-present key holding a
+different value, which is what makes this one Job satisfy write-new,
+self-heal-stale, AND true-no-op-on-rerun from a single primitive.
+
+### `rename_threads()` fan-out extension — zero-staleness-window, not "eventually consistent"
+
+A bounded addition to the already-Accepted `ADR-049` Decision 2 Job: on a
+successful `rename_thread_directory` call, in the SAME loop iteration,
+`rename_threads()` now also globs the renamed Thread's own (now-current)
+`messages/*.md` and calls `upsert_frontmatter_key(message_path, "thread",
+f"[[{new_concept_path.stem}]]")` for each — a genuinely new invariant
+`ADR-049` Decision 2 did not provide (its own shipped docstring is explicit
+that it "touches nothing INSIDE `messages/`", confirmed by direct reading).
+This is a zero-staleness-window guarantee: no message is ever left pointing
+at a Thread's own stale, pre-rename slug, even momentarily — not merely
+"corrected on the next scheduled `link_thread_messages()` pass." `rename_
+threads()`'s own external contract (return shape, per-Thread collision
+handling) is otherwise unchanged.
+
+### `section_ownership.py` — new entry
+
+| Caller | Allowed headers |
+|---|---|
+| `librarian_housekeeping.link_thread_messages` | `## Messages` |
+
+### Job-chain placement & endpoint
+
+`link_thread_messages()` runs SECOND in `run_housekeeping_pass()`,
+immediately after `rename_threads()` — grouping the two Jobs that together
+own the Thread↔Message relationship, though not load-bearing for
+correctness (Scenario 4's own fan-out already keeps `thread:` correct
+independent of ordering). New endpoint: `POST /poc/librarian-link-thread-
+messages`, mirroring the existing `/poc/librarian-*` convention.
+
+### `vault_indexing.py` extension (cross-cutting — closes a real, independently-found gap)
+
+`_build_entry`'s own `outgoing_wikilinks` was, until this pass, derived from
+`body` alone (`extract_wikilink_targets(body)`) — every existing wikilink
+convention in this codebase lives in a note's body (`**Customer:** [[Hub]]`,
+`**Attendees:** [[P1]], [[P2]]`, `index.md`'s own listing); there was no
+precedent for a wikilink embedded as a FRONTMATTER field's own string value,
+which is exactly what `thread:` must be (the story's own Gherkin locks this
+to a frontmatter field, never a body line, precisely because a `RawMessage`
+note's body is the immutable, verbatim email content, `ADR-048` Decision 3).
+Left unfixed, a Thread's own real, correctly-written `thread:` value would
+have been silently invisible to both the already-shipped backlinks panel and
+graph view (`REQ-SB-14`) — breaking Scenario 3/4/5's own "resolves to its
+owning Thread" requirement and the story's own "no prototype change needed"
+premise. Fixed generically, not by a `thread:`-named special case:
+
+```python
+def _build_entry(path) -> dict:
+    """... outgoing_wikilinks = extract_wikilink_targets(body) + <targets
+    found in any frontmatter string value or string-list element, via the
+    SAME extract_wikilink_targets primitive, reused unchanged> -- strictly
+    additive: a note with no wikilink-shaped frontmatter value contributes
+    zero extra targets, byte-identical to today for every existing note."""
+```
+
+Mirrors `list_all_note_paths()`'s own "generalize without reopening the
+underlying invariant" precedent (`Implementation/Learnings.md`,
+`SPRINT-048`) — this is why the fix does not need its own standalone ADR; it
+is folded into `ADR-054` only because `REQ-SB-73`'s own correctness
+genuinely depends on it. **Decomposer note: add `app/business/vault_
+indexing.py` to this story's own file scope** — it is not named in the
+story's own `## Implementation Tasks` table.
+
+## The Librarian — Customer Backfill (`REQ-SB-74-US-01`, see [ADR-055](ADR.md))
+
+A new, manually-triggered (NOT scheduled) Job pair under the ALREADY-
+EXISTING Librarian Section/`librarian-housekeeping` Agent — no new Section,
+no new Agent. Full architectural reasoning, why the batched-approval shape
+needs zero registry change, and every alternative considered:
+[ADR-055](ADR.md).
+
+### Detection — `compass_client.detect_customer_for_thread` (new, narrower sibling of `classify_task`)
+
+```python
+def detect_customer_for_thread(
+    thread_content: str, known_customers: list[str],
+    prompt_override: str | None = None,
+) -> dict:
+    """Narrower sibling of classify_task (ADR-027 point 4's own precedent,
+    applied a fourth time) -- asks Compass for this Thread's own primary
+    Customer: reuse an exact known name when it clearly matches one,
+    propose a new proper-noun name when it clearly relates to a real
+    company not yet known, or answer "Unsorted" rather than guess. Returns
+    {"customer": str, "confidence": float} -- the SAME honest-"Unsorted"
+    contract classify_email/classify_task already established, no extra
+    Python-side confidence threshold needed."""
+```
+
+`known_customers` here is `vault_writer.list_customer_folders()`'s own
+`"customer"` values — the real 26 (+growing) Customer FOLDER names,
+deliberately NOT `vault_writer.list_known_customers()` (which scans
+`customer:` frontmatter USAGE, currently near-empty since nothing has been
+routed yet — a real, disclosed enumeration gap found by direct reading, not
+assumed).
+
+### `vault_writer.list_customer_folders()` (new)
+
+```python
+def list_customer_folders() -> list[dict]:
+    """Every real Customer OKF directory under Work/Customers/ -- mirrors
+    list_customer_projects()'s own "enumerate this directory level, read
+    title from concept file" shape one level up. Returns [{"customer":
+    <title>, "slug": <dir name>, "directory": Path}, ...]; [] if Work/
+    Customers/ does not exist yet."""
+```
+
+### `propose_customer_backfill()` / `propose_customer_archival_candidates()` — one evidence pass, two proposal kinds
+
+`propose_customer_backfill()` iterates every real Thread still `customer:
+"Unsorted"` (`list_thread_notes()`, filtering out any already-routed Thread
+for free — Scenario 9's own idempotency), calls `detect_customer_for_
+thread` against each, and groups every non-`"Unsorted"` result into ONE
+batched Pending Approval per distinct proposed Customer name (`trigger=
+"direct"`, mirroring `_create_librarian_company_link_proposal`'s own
+reasoning — one pass can legitimately produce multiple distinct findings,
+which `"background"`'s idempotency guard would silently collapse). Returns
+`{"proposed_batches": [...], "matched_existing_customer_names": [...]}` —
+the second key feeds directly into `propose_customer_archival_candidates(
+matched_existing_customer_names)`, which surfaces every `list_customer_
+folders()` entry NOT in that set as its own archival-candidate Pending
+Approval — one evidence pass, never two independently-run Compass sweeps
+that could disagree.
+
+**Batched-per-Customer payload convention** (`ADR-055` Decision 1 — reuses
+`pending_approval_registry.create_pending_approval`/`pending_approvals_
+router.py`'s `_APPROVAL_HANDLERS` dispatch UNMODIFIED; confirmed by direct
+reading that both are already fully payload-shape-agnostic):
+
+- **Routing batch:** `action_id="propose_customer_backfill_routing"`,
+  `payload={"customer": <name>, "is_new_customer": <bool>, "thread_paths":
+  [<str>, ...]}`.
+- **Archival candidate:** `action_id="propose_customer_archival_candidate"`,
+  `payload={"customer": <name>, "source_directory": <str>}`.
+
+### Finalize handlers (deferred writes, mechanical — never a second Compass call, mirrors `finalize_background_amendment_proposal`'s own precedent)
+
+```python
+def finalize_customer_backfill_routing(payload: dict) -> dict:
+    """If is_new_customer: customer_hub_linking.ensure_customer_hub_note(
+    customer) -- UNCHANGED, reused exactly as backfill_company_folders
+    already does for a new_unambiguous mention. For every thread_path:
+    vault_writer.upsert_frontmatter_key(path, "customer", customer); and
+    upsert_frontmatter_key(path, "tags", <existing tags with any customer/
+    entry replaced by customer/<slug-of-customer>>) -- mirrors synthesize_
+    thread's own existing tags-mutation shape, both existing primitives,
+    zero new vault_writer.py code."""
+
+
+def finalize_customer_archival(payload: dict) -> dict:
+    """vault_writer.move_okf_directory(Path(payload["source_directory"]),
+    settings.vault_path / "Work/Archive/Customers") -- content byte-for-
+    byte unchanged by construction (a directory rename, never a per-file
+    copy)."""
+```
+
+### `vault_writer.move_okf_directory()` (new, generic — not Customer-specific)
+
+```python
+def move_okf_directory(source_directory: Path, target_parent_directory: Path) -> Path:
+    """Mirrors rename_thread_directory's own atomic-move-plus-refuse-to-
+    overwrite discipline, widened to a DIFFERENT parent directory (not just
+    a new slug under the same parent) and narrowed by NOT renaming the
+    concept file inside -- the directory keeps its own name, only its
+    location moves, so every file inside is moved byte-for-byte in one
+    atomic Path.rename(). Raises FileExistsError on a genuine collision,
+    never silently overwrites."""
+```
+
+`target_parent_directory = settings.vault_path / "Work/Archive/Customers"`
+is already provisioned (`vault_provisioning.provision_vault_base`,
+`REQ-SB-70-US-01`, confirmed live) — no new directory-provisioning code.
+
+### Endpoint & scheduling
+
+`POST /poc/librarian-propose-customer-backfill` (new, `email_poc_router.py`)
+runs `propose_customer_backfill()` then `propose_customer_archival_
+candidates()` in one orchestrating call. Deliberately NOT added to `run_
+housekeeping_pass()`'s own scheduled chain — manually-triggered only, per
+the story's own explicit Constraint (`REQ-SB-70`/`71`'s standing "live/
+ongoing capture stays manual" posture, reaffirmed by the operator).
+
+### Disclosed, not fixed by this pass
+
+A second manual trigger before an already-created batch is approved/
+declined re-proposes the SAME still-`"Unsorted"` Threads into a NEW,
+separate pending batch (`"direct"` trigger, not idempotency-guarded the way
+`"background"` is) — a real, disclosed operational risk, not a defect
+Scenario 9's own locked AC (which only covers already-APPROVED Threads)
+requires fixing. Left to ordinary operator discipline for a one-time,
+manually-triggered backfill. See [ADR-055](ADR.md) Consequences.
+
+**Superseded in practice by "The Librarian — Company Review," below
+(`REQ-SB-76-US-01`, 2026-08-19):** this Job pair, `detect_customer_for_
+thread`, and `POST /poc/librarian-propose-customer-backfill` are left
+byte-for-byte unedited (`Done`, frozen, `Implementation/Pipeline.md` hard
+rule 1) but are no longer the operator's own live mechanism going forward —
+not deleted, not hidden, simply unused. See [ADR-057](ADR.md).
+
+## The Librarian — Company Review (`REQ-SB-76-US-01`, see [ADR-057](ADR.md))
+
+A new, manually-triggered (NOT scheduled) Job pair under the SAME
+already-existing Librarian Section/`librarian-housekeeping` Agent — no new
+Section, no new Agent, mirroring `REQ-SB-74-US-01`'s own precedent exactly.
+Replaces `propose_customer_backfill`'s own direct-routing mechanism going
+forward (left physically unedited, see above) with a two-step extract-
+then-classify flow offering five real outcomes — Customer, Partner,
+Affiliate-of-an-existing-Customer-or-Partner, Merge-into-an-existing-
+Customer-or-Partner, or Decline — batched per company, reusing `ADR-055`'s
+own batched-per-company Pending Approval convention verbatim. Full
+architectural reasoning, every alternative considered, and every
+consequence: [ADR-057](ADR.md).
+
+### Extraction — `compass_client.extract_thread_companies_for_review` (new, boilerplate-aware sibling)
+
+```python
+def extract_thread_companies_for_review(
+    thread_content: str, known_companies: list[str],
+    prompt_override: str | None = None,
+) -> dict:
+    """A new, narrower sibling of detect_mentioned_companies (ADR-049
+    Decision 5's own multi-mention TECHNIQUE), never an edit to the frozen,
+    Done detect_customer_for_thread (ADR-055 Decision 2) -- REQ-SB-76-US-01,
+    ADR-057 Decision 1. Explicitly instructs Compass to DISREGARD any
+    company/product/device name appearing ONLY inside an email-client or
+    device signature line ("Sent from my iPhone," "Get Outlook for
+    Android"), a mailing-list footer, or a legal disclaimer -- these are
+    NOT genuine mentions, the root-cause fix for this requirement's own
+    self-reinforcing-noise finding. Identifies EVERY real company the
+    Thread's own substantive content genuinely relates to (not scoped to
+    "besides an already-known primary Customer" -- detect_mentioned_
+    companies's own different framing), reusing an exact known name from
+    known_companies (the UNION of list_customer_folders() + list_known_
+    partners(), never hardcoded) when it clearly matches one. Returns
+    {"companies": [{"name": str, "confidence": float}, ...]}. Malformed/
+    missing "companies" raises CompassError, mirroring every sibling
+    primitive's own honest-failure contract."""
+```
+
+### `propose_company_review()` / `finalize_company_review()` — the new Job pair
+
+`propose_company_review()` iterates every real Thread (`list_thread_
+notes()`, NOT filtered to `"Unsorted"` only — Scenario 9 needs an
+already-routed Thread considered too), calls the extraction function above
+once per Thread, and skips any returned company mention whose exact
+`customer/<slug>`/`partner/<slug>` tag is already present on that Thread
+(the per-mention idempotency floor, generalizing `propose_customer_
+backfill`'s own per-Thread "already routed" skip). Every remaining mention
+groups into ONE batched Pending Approval per distinct company name:
+
+- `action_id="propose_company_review"`, `trigger="direct"`, `payload =
+  {"company": <name>, "thread_paths": [<str>, ...]}`, `dedupe_key=
+  f"propose_company_review:{company}"` (`ADR-056`'s own target-aware
+  convention, applied from day one).
+
+A single transient `CompassError` for one Thread is recorded in a
+`"failed"` list and skipped, mirroring `propose_customer_backfill`'s own
+`T06`-found honest-failure handling. Returns `{"proposed_batches": [...],
+"failed": [...]}`.
+
+```python
+def finalize_company_review(payload: dict) -> dict:
+    """Called only once the operator approves a propose_company_review
+    Pending Approval, with the operator's own decision (outcome/parent_
+    name/parent_kind) already merged into payload by the router (below) --
+    REQ-SB-76-US-01-T02, ADR-057 Decisions 3/7/8. Branches on payload
+    ["outcome"] ("customer" | "partner" | "affiliate" | "merge") -- ONE
+    registered handler, not four, since exactly one Pending Approval
+    record ever exists per company. A parent_name the server cannot
+    independently confirm is a real, existing Customer/Partner of the
+    claimed parent_kind raises before any write happens -- the existing
+    call order (handler runs BEFORE resolve_pending_approval) already
+    leaves the record "pending", never silently half-applied."""
+```
+
+- **Customer** — `customer_hub_linking.ensure_customer_hub_note(company)`
+  (UNCHANGED), then `_apply_company_to_threads(thread_paths, company,
+  "customer")`.
+- **Partner** — `partner_hub_linking.ensure_partner_hub_note(company)`
+  (UNCHANGED), then `_apply_company_to_threads(thread_paths, company,
+  "partner")`.
+- **Affiliate** — ensures the entity (Customer or Partner, per `payload
+  ["parent_kind"]` naming which NEW-entity kind the operator chose) exactly
+  as above, then `vault_writer.upsert_frontmatter_key(<entity path>,
+  "affiliate_of", payload["parent_name"])` (already-existing generic
+  primitive, zero new write code), then `_apply_company_to_threads`.
+- **Merge** — validates `parent_name`/`parent_kind` are a real, existing
+  entity; `_apply_company_to_threads(thread_paths, parent_name,
+  parent_kind)` routes every batch Thread to the CANONICAL entity (no new
+  entity ever created for `company`); if `company` already has a real prior
+  entity of its own (`customer_concept_file_exists`/`hub_note_exists`/
+  `partner_hub_note_exists`), calls `partner_hub_linking.retarget_company_
+  references(company, <company's own real kind>, parent_name, parent_kind)`
+  (below) to redirect every OTHER vault note's reference, then archives the
+  now-unreferenced duplicate via `vault_writer.move_okf_directory` (OKF-
+  shaped) or `vault_writer.move_note_and_attachments` (legacy-flat-shaped)
+  to `Work/Archive/Customers/` — reusing `finalize_customer_archival`'s own
+  exact call shape as a plain same-module function call (`REQ-SB-74-US-01`'s
+  own archival-candidate mechanism, `ADR-055` Decision 4), never a new
+  archival primitive. **Disclosed, not fixed by this pass:** a Partner-
+  shaped duplicate is correctly retargeted but its own now-unreferenced
+  flat file is left in place, untouched — no `Work/Archive/Partners/` root
+  is provisioned yet. See [ADR-057](ADR.md) Consequences.
+
+### `_apply_company_to_threads(thread_paths, target_name, target_kind)` (new, shared by all four outcomes above)
+
+For each Thread, freshly reads its CURRENT `customer`/`partner`
+frontmatter AT FINALIZE TIME (never snapshotted into the proposal payload
+— `ADR-057` Decision 8): if still unset/`"Unsorted"`, writes `target_name`
+to the primary field plus the `target_kind/<slug>` tag (Scenarios 3-6/10's
+"primary write" path, mirroring `finalize_customer_backfill_routing`'s own
+tag-correction shape); if ALREADY set to a DIFFERENT real company, leaves
+the primary field byte-for-byte untouched and instead adds an ADDITIVE
+`target_kind/<slug>` tag plus regenerates that Thread's own `## Related`
+section via `email_classification.build_thread_related_wikilinks` directly
+(the SAME composition primitive `populate_thread_related_links` itself
+calls — never that whole-vault batch Job, which has no per-Thread entry
+point), written via `vault_writer.replace_body_section(concept_path, "##
+Related", ..., caller="librarian_housekeeping.populate_thread_related_
+links")` — the SAME already-registered `section_ownership.py` caller id
+(Scenario 9).
+
+### `partner_hub_linking._retag_company_references()` / `retarget_company_references()` — generalized retag-scan primitive
+
+`migrate_customer_to_partner`'s own Step 2 (the generic vault-wide retag
+scan, `ADR-009` point 4/`ADR-012`) is extracted into a new, parameterized
+internal helper:
+
+```python
+def _retag_company_references(
+    old_name: str, old_kind: str, new_name: str, new_kind: str,
+) -> list[dict]:
+    """old_kind/new_kind in {"customer", "partner"} -- the SAME two-signal
+    scan (frontmatter-field-equals-old_name / inline **<Old label>:**
+    [[old hub stem]] body wikilink) and the SAME four per-note rewrite
+    primitives (rename_frontmatter_key/remove_frontmatter_key_if_present/
+    swap_tag/replace_body_line) migrate_customer_to_partner already uses,
+    generalized from hardcoded Customer->Partner values to the four
+    parameters -- REQ-SB-76-US-01-T04, ADR-057 Decisions 5/6. The
+    affiliate_of-drop step is REMOVED (Partner now legitimately carries
+    affiliate_of -- ADR-057 Decision 4); an entity's own affiliate_of
+    value, real or empty, always carries forward untouched."""
+```
+
+`migrate_customer_to_partner(customer_name)` becomes a thin wrapper —
+`_retag_company_references(customer_name, "customer", customer_name,
+"partner")` plus its own Step 1 — behaviourally IDENTICAL to today, zero
+external contract change, zero call-site changes. Step 1 itself gains an
+OKF-directory-first branch, tried BEFORE the existing legacy-flat check
+(mirrors `resolve_thread_directory`'s own "directory-shaped scan first,
+flat-note scan second" ordering, `ADR-052`): if `vault_writer.customer_
+concept_file_exists(customer_name)`, the WHOLE OKF directory moves via
+`vault_writer.move_okf_directory(vault_writer.customer_directory_paths
+(customer_name)["directory"], vault_writer.partner_hub_note_path
+(customer_name).parent)` — the exact already-`Accepted` `REQ-SB-74-US-01`
+primitive, reused verbatim. A new, thin, PUBLIC sibling —
+
+```python
+def retarget_company_references(
+    old_name: str, old_kind: str, new_name: str, new_kind: str,
+) -> list[dict]:
+    """One-line pass-through to _retag_company_references -- the Merge
+    outcome's own entry point (ADR-057 Decision 7), supporting a
+    same-kind (Customer->Customer/Partner->Partner) or cross-kind name
+    change alike, never a new, third move/retag primitive."""
+    return _retag_company_references(old_name, old_kind, new_name, new_kind)
+```
+
+### `affiliate_of` — restored onto Customer's current OKF shape, added to Partner's shape
+
+`vault_writer.build_customer_concept_frontmatter` gains `"affiliate_of":
+""` (one additive dict key — flows through `create_customer_directory_
+baseline`/`ensure_customer_directory_baseline` with zero further code
+change, since both already iterate whatever this function returns).
+`vault_writer._PARTNER_HUB_NOTE_BASELINE_KEYS` gains `"affiliate_of"`
+(`("type", "partner", "tags", "affiliate_of")`); `create_partner_hub_note_
+baseline`/`ensure_partner_hub_note_baseline_frontmatter` both gain the same
+`"affiliate_of": ""` default, mirroring the legacy Customer hub note's own
+4-key shape. **Narrowly, additively revises `ADR-009` point 3 only** — see
+[ADR-057](ADR.md) Decision 4 and `ADR-009`'s own updated `**Status:**` line.
+Setting a REAL value reuses the already-existing generic `vault_writer.
+upsert_frontmatter_key`, zero new write primitive.
+
+### Approve endpoint — additive decision body (`pending_approvals_router.py`)
+
+```python
+class CompanyReviewDecisionBody(BaseModel):
+    outcome: str
+    parent_name: str | None = None
+    parent_kind: str | None = None
+
+
+@router.post("/{approval_id}/approve")
+def approve_pending_approval(
+    approval_id: str, decision: CompanyReviewDecisionBody | None = None,
+) -> dict:
+    ...
+    elif record["action_id"] in _APPROVAL_HANDLERS:
+        effective_payload = {**record["payload"], **(decision.model_dump() if decision else {})}
+        result = _APPROVAL_HANDLERS[record["action_id"]](effective_payload)
+    ...
+```
+
+Every one of the other 8 registered handlers keeps its exact existing
+one-argument `(payload: dict) -> dict` signature, completely unaffected —
+`ADR-057` Decision 3. `_APPROVAL_HANDLERS["propose_company_review"] =
+finalize_company_review` (new entry). `Decline` is untouched — `POST
+/pending-approvals/{id}/decline` needs no body for this or any proposal
+kind, since it never invokes a handler (Scenario 7).
+
+### `GET /pending-approvals/known-companies` (new)
+
+`{"customers": [<name>, ...], "partners": [<name>, ...]}`, composed from
+`vault_writer.list_customer_folders()` + `vault_writer.list_known_
+partners()` — both already-existing, vault-derived enumerations, zero new
+`vault_writer.py` code. Called fresh by the frontend on every Approvals
+page load (never baked into a proposal's own stored payload, which would
+go stale the moment any OTHER Company Review batch resolves first).
+
+### Frontend — `MyDayApprovalsPage.tsx` branches on `action_id`, new decision control
+
+`PendingApproval` (`pendingApprovalsApiClient.ts`) gains an additive
+`payload: Record<string, unknown> | null` field (already present on the
+real API response — `pending_approval_registry.py` already stores/returns
+it — simply not yet typed). `approvePendingApproval(id: string, decision?:
+{ outcome: string; parent_name?: string; parent_kind?: string }):
+Promise<PendingApproval>` gains an optional second parameter, POSTed as the
+JSON body only when supplied — every OTHER existing call site (`handleApprove
+(id)`, unchanged) keeps sending no body, zero behavior change. New
+`fetchKnownCompanies(): Promise<{ customers: string[]; partners: string[] }>`
+composes the new endpoint above.
+
+`MyDayApprovalsPage.tsx`'s render loop branches: `item.action_id ===
+"propose_company_review"` renders a NEW decision-control component (five
+buttons — Customer/Partner/Affiliate/Merge/Decline — with the Affiliate
+button revealing a parent picker plus a Customer-or-Partner kind choice,
+and the Merge button revealing a parent picker only, both pickers sourced
+from `fetchKnownCompanies()`, using the app's own existing form/control
+vocabulary per this story's own operator-approved "no `/design` pass, build
+directly" override, see the story's own `## Notes`) in place of the generic
+`.item-row-actions` Approve/Decline pair; every OTHER `action_id` renders
+the EXISTING generic pair completely unchanged (Decline, for THIS proposal
+kind too, reuses the existing `declinePendingApproval(id)` call verbatim —
+no new Decline mechanism).
+
+### Section-ownership, scheduling & endpoint
+
+No new `section_ownership.py` entry — `_apply_company_to_threads`'s own
+`## Related` write registers under the SAME already-existing `librarian_
+housekeeping.populate_thread_related_links` caller id (above). `POST
+/poc/librarian-propose-company-review` (new, `email_poc_router.py`, mirrors
+the existing `/poc/librarian-*` convention) runs `propose_company_review()`.
+Deliberately NOT added to `run_housekeeping_pass()`'s own scheduled chain —
+manually-triggered only, mirroring `ADR-055`'s own explicit precedent.
+
+### Disclosed, not fixed by this pass
+
+Same re-proposal risk `ADR-055`'s own Consequences already disclosed for
+`propose_customer_backfill` (a second manual trigger before an
+already-created batch resolves re-proposes the same still-unconfirmed
+mentions into a new batch) applies identically here, mitigated identically
+by `dedupe_key`. A Partner-shaped Merge duplicate is retargeted but not
+archived (no `Work/Archive/Partners/` root exists yet). See
+[ADR-057](ADR.md) Consequences for both, plus the permanent Partner
+shape asymmetry (natively-created Partner stays flat-file; a migrated-or-
+merged-in Partner is directory-shaped).
+
+## People Notes Retroactively Linked to Company/Partner (`REQ-SB-77-US-01`, no new ADR — composes [ADR-009](ADR.md)/`REQ-SB-10-US-01`)
+
+Closes `ESC-057`'s own real, disclosed gap: the matched-company linking
+mechanism itself (`people_extraction.ensure_person_note`, `Done`,
+`REQ-SB-10`/`ADR-009`) already re-derives a Person's company match on
+EVERY call and already writes the real `**Customer:**`/`**Partner:**
+[[Hub]]` wikilink the moment a match is confirmed — this story closes the
+REACH gap only (the mechanism was reachable exclusively via the
+POC-prefixed `POST /poc/retrofit-people-from-emails`), never rebuilds the
+mechanism itself.
+
+### New: `people_extraction.relink_people_for_thread_paths(thread_paths: list[str]) -> list[dict]`
+
+A bounded, per-Thread sibling of the already-existing whole-vault
+`retrofit_people_from_emails()` — for each given Thread's own
+`messages/*.md` raw notes (the same `sender`/`sender_email` frontmatter
+shape `librarian_housekeeping._thread_full_content` already reads),
+dedupes by email within this one call (mirrors `retrofit_people_from_
+emails`'s own dedup exactly), and calls the existing `ensure_person_note
+(sender_name, sender_email)` — zero new linking primitive. Lives in
+`people_extraction.py` (the composing module), not `librarian_
+housekeeping.py` — mirrors `ensure_person_note_for_captured_email`'s own
+"one bounded per-event wrapper around the same shared operation" shape.
+
+### Two real trigger points (Scenario 6), not one
+
+1. **Instant, on a company's status changing.** `librarian_housekeeping.
+   finalize_company_review` (`Done`, `REQ-SB-76-US-01-T06`) is
+   retargeted: its own existing 4-branch body (Customer/Partner/
+   Affiliate/Merge) is renamed in place to a private `_finalize_company_
+   review_outcome(payload) -> dict` — zero behavior change to any
+   branch — and a new, thin public wrapper composes it:
+
+   ```python
+   def finalize_company_review(payload: dict) -> dict:
+       result = _finalize_company_review_outcome(payload)
+       people_extraction.relink_people_for_thread_paths(payload["thread_paths"])
+       return result
+   ```
+
+   ONE call, not four — `thread_paths` is identical across all four
+   outcomes, and every branch already creates/confirms its own target
+   entity before returning, so by the time this wrapper's second line
+   runs, `find_matching_customer`/`find_matching_partner` can always see
+   the freshly-created/confirmed entity. The existing "raises before any
+   write" honest-failure contract is preserved by construction — an
+   `_finalize_company_review_outcome` raise propagates straight through
+   the wrapper, before the relink call ever runs. `librarian_
+   housekeeping.py` gains one new import, `people_extraction` —
+   business-to-business composition, reusing `people_extraction.py`'s own
+   already-established "intentional, permitted horizontal call within the
+   business layer, not an `ADR-003` boundary violation" precedent a
+   second time.
+2. **Scheduled, self-healing catch-all.** `REQ-SB-79-US-01`'s new `run_
+   company_partner_building_pass()` (below) additionally calls the
+   ALREADY-EXISTING, already-`Done` `people_extraction.retrofit_people_
+   from_emails()` on its own 6-hour default schedule — zero new mechanism
+   for this half, pure wiring.
+
+### Real cross-story dependency (architect finding, for the decomposer)
+
+Trigger point 1 needs nothing from `REQ-SB-79` — `finalize_company_review`
+already exists today (`Done`). Trigger point 2 needs `REQ-SB-79-US-01`'s
+own new `run_company_partner_building_pass()` function to exist FIRST —
+there is no scheduled Company/Partner pipeline capability to hook into
+before that story lands. **The decomposer should split `REQ-SB-77-US-01`'s
+Scenario-6 work into at least two backend tasks: one for the instant hook
+(no cross-story dependency), one for the scheduled self-heal wiring
+(`depends_on` a `REQ-SB-79-US-01` task — specifically the one that creates
+`run_company_partner_building_pass()`), and the product-owner should
+sequence the two stories' sprints accordingly (same sprint, or
+`REQ-SB-79` first with a recorded `depends_on_sprints` edge) — never route
+the scheduled-wiring task around this real dependency.**
+
+### Why no new ADR
+
+Every real decision here is composition of already-`Accepted` patterns:
+`ensure_person_note` (`ADR-009`) is reused verbatim, `relink_people_for_
+thread_paths` introduces no new linking primitive (only a narrower,
+bounded input to the same operation `retrofit_people_from_emails` already
+performs), and both trigger points are plain function calls into
+already-existing (or, for `run_company_partner_building_pass`,
+already-architected-below) capabilities. No new tool, framework, or
+structural module boundary.
+
+## Pending Approvals — Grouped, Color-Coded Review (`REQ-SB-78-US-01`, no new ADR — composes [ADR-018](ADR.md)/[ADR-021](ADR.md)/[ADR-057](ADR.md))
+
+### Grouping key — `action_id`, not `agent_id`
+
+`action_id` is the real "proposal type" the requirement's own language
+("approve all requests for a certain type") asks for — a single agent
+identity (e.g. the pre-`REQ-SB-79` `librarian-housekeeping`, or its two
+post-split successors below) can own several distinct `action_id`s
+(`propose_customer_backfill_routing`, `propose_customer_archival_
+candidate`, `propose_company_review`, `propose_librarian_company_link`),
+so grouping by `action_id` gives a materially finer, more useful sweep
+than grouping by agent alone. No new backend field — `GET
+/pending-approvals` already returns `action_id` on every record.
+
+### Label + color — a new, small, static frontend-only lookup table
+
+```ts
+// src/frontend/src/features/agents-map/pendingApprovalGroups.ts (new)
+const KNOWN_GROUPS: Record<string, { label: string; colorClass: string }> = {
+  propose_company_review:             { label: 'Company Review',         colorClass: 'group-color-1' },
+  propose_customer_backfill_routing:  { label: 'Customer Backfill',      colorClass: 'group-color-2' },
+  propose_customer_archival_candidate:{ label: 'Customer Archival',      colorClass: 'group-color-3' },
+  propose_librarian_company_link:     { label: 'Company Link',           colorClass: 'group-color-4' },
+  route_thread_to_project:            { label: 'Thread Routing',         colorClass: 'group-color-5' },
+  propose_recurring_pipeline:         { label: 'Recurring Pipeline',     colorClass: 'group-color-6' },
+  propose_cross_cutting_update:       { label: 'Cross-Cutting Update',   colorClass: 'group-color-7' },
+  propose_background_amendment:       { label: 'Background Amendment',   colorClass: 'group-color-8' },
+  propose_new_top_level_area:         { label: 'New Top-Level Area',     colorClass: 'group-color-9' },
+  hermes_vault_write:                 { label: 'Hermes Write',           colorClass: 'group-color-10' },
+  acknowledge_classification_failure: { label: 'Classification Failure', colorClass: 'group-color-11' },
+};
+const OTHER_GROUP = { label: 'Other', colorClass: 'group-color-other' };
+```
+
+Every `action_id` NOT in `KNOWN_GROUPS` (including a `null` background-
+trigger `action_id`, and every migrated mutating Skill id —
+`run_capture_now`/`pause_schedule`/`rebuild_person_note`/`build_
+knowledge`/etc. — none named individually here, since a Skill-approval's
+own real "type" is better read from its own `description` text than an
+invented duplicate label) falls into the ONE `OTHER_GROUP` catch-all
+(Scenario 4) — correct and forward-compatible by construction: a
+brand-new `action_id` a future story adds needs no code change here to
+stay visibly, honestly grouped; only an OPTIONAL new `KNOWN_GROUPS` entry
+to earn its own named section. `.group-color-N` classes are new, small,
+`--color-accent`-family CSS custom-property variants added to the
+frontend's own stylesheet (mirrors the existing `--node-color`/`--hub-
+color` per-item CSS-custom-property pattern the Agents Map canvas already
+uses) — never a per-agent `agent_visual_registry` color (that registry
+defaults every agent to `None`/no override, so it cannot structurally
+guarantee a distinct color per GROUP the way a dedicated, complete static
+lookup table can).
+
+### Empty-group suppression / catch-all rendering (Scenarios 3/4)
+
+`MyDayApprovalsPage.tsx`'s render loop groups the already-fetched `items`
+array by `action_id` (via the lookup table above, `Other` for a miss),
+THEN renders only the groups with `items.length > 0` — never a hardcoded
+static group list.
+
+### Bulk-approve eligibility (Scenario 7) — reuses the existing per-item branch condition, generalized
+
+```ts
+const BRANCHING_DECISION_ACTION_IDS = new Set([COMPANY_REVIEW_ACTION_ID]); // today: exactly one
+```
+
+A rendered group offers its own bulk-approve control if and only if EVERY
+item currently inside it has an `action_id` NOT in `BRANCHING_DECISION_
+ACTION_IDS` — computed per rendered group (not per group KEY), so even
+the heterogeneous `Other` catch-all is handled correctly by this same one
+check, with zero special-casing. Bulk-approve itself is a plain frontend
+loop calling the ALREADY-EXISTING `approvePendingApproval(id)` (no
+decision body) once per item in the group, refreshing once at the end —
+zero new backend endpoint, zero new backend capability, mirrors
+`handleApprove`'s own existing per-item call verbatim. A future new
+branching-decision `action_id` needs to be added to BOTH this set AND
+`MyDayApprovalsPage.tsx`'s own existing per-item render branch — the
+same "each new decision control names itself" precedent the Company
+Review control already established, not a new gap this story introduces.
+
+### Why no new ADR
+
+Every mechanism above is a plain composition of already-`Accepted`
+primitives: no new backend field, no new endpoint, no new linking/write
+primitive — bulk-approve loops the existing single-item Approve endpoint
+verbatim, grouping/color reuses fields `GET /pending-approvals` already
+returns plus a new, purely presentational frontend lookup table. No new
+tool, framework, or structural module boundary.
+
+## The Librarian — Two Sub-Pipelines: Threads Cleaning, Company and Partner Building (`REQ-SB-79-US-01`, see [ADR-058](ADR.md))
+
+Splits the single shared `librarian-housekeeping` identity into two real,
+independently-schedulable Agent-tier identities under the SAME
+already-existing "Librarian" Section — no new Section, no new Agent per
+Job (5 agents), per the operator's own explicit "2 Pipelines, not 5"
+direction. Full architectural reasoning, every alternative considered,
+and every consequence: [ADR-058](ADR.md).
+
+### Two new Agent identities, same Section, no new Section
+
+- `agent_registry.create_agent("Threads Cleaning", type="worker",
+  settings=[...])` → id `threads-cleaning`.
+- `agent_registry.create_agent("Company and Partner Building",
+  type="worker", settings=[...])` → id `company-and-partner-building`.
+- Both `section_registry.set_agent_section(<id>, "librarian")` — the SAME
+  already-existing Section (Constraint).
+
+### `agent_registry.py` gains its first "retire without delete" primitive
+
+No rename/delete capability exists for an agent identity today, and
+building one is out of this story's own scope. A CREATED agent's own
+record (never a `_SEED_AGENTS` entry) gains an additive `retired: bool`
+key (default `False`); `retire_agent(agent_id: str) -> bool` sets it
+(idempotent no-op if already retired, `False` for an unknown or
+`_SEED_AGENTS` id — a shipped, static agent can never be retired);
+`list_agents(include_retired: bool = False)` gains the optional filter
+(default excludes retired agents — the shape `GET /agents`/the Agents Map
+already calls); `get_agent(agent_id)` is UNCHANGED — always resolves ANY
+agent regardless of `retired`, so every already-existing Pending Approval/
+Agent History record's own stored `agent_id` keeps resolving a real,
+honest `agent_name` forever (Scenario 6). The already-existing
+`librarian-housekeeping` identity is retired via this new primitive,
+idempotently, at every app start — self-healing, mirroring this
+codebase's own dominant "idempotent startup bootstrap" convention rather
+than a one-off migration script (`MEMORY.md` — API-first, no script
+workarounds).
+
+### Job → new-owning-agent mapping (confirmed by direct reading)
+
+| Job | New owning agent | Pending-Approval `agent_id` change? |
+|---|---|---|
+| `rename_threads` | `threads-cleaning` | none — creates zero Pending Approvals |
+| `link_thread_messages` | `threads-cleaning` | none |
+| `backfill_files` | `threads-cleaning` | none |
+| `populate_thread_related_links` | `threads-cleaning` | none |
+| `backfill_company_folders` (+ `_create_librarian_company_link_proposal`) | `company-and-partner-building` | `"librarian-housekeeping"` → `"company-and-partner-building"` (2 sites: the function's own default `requesting_agent_id` param; the one real call site inside `backfill_company_folders`) |
+| `propose_customer_backfill` | `company-and-partner-building` | same |
+| `propose_customer_archival_candidates` | `company-and-partner-building` | same |
+| `propose_company_review` | `company-and-partner-building` | same |
+| `finalize_company_review` / `finalize_customer_backfill_routing` / `finalize_customer_archival` / `finalize_librarian_company_link` | (no `agent_id` of their own — dispatched by `action_id`) | n/a |
+
+Confirmed by direct reading: ALL FIVE literal
+`agent_id="librarian-housekeeping"`-shaped call sites in `librarian_
+housekeeping.py` belong to Company-and-Partner-Building's own four Jobs
+— the four Threads Cleaning jobs create zero Pending Approvals and need
+no per-call-site identity edit at all, only their new schedule/Skill
+grant (below).
+
+### Orchestrating capability split — `run_housekeeping_pass()` → two siblings
+
+```python
+def run_threads_cleaning_pass() -> dict:
+    """Renamed from run_housekeeping_pass (REQ-SB-79-US-01) -- now chains
+    ONLY the 4 Threads Cleaning jobs, in the SAME fixed order (rename
+    first), on Threads Cleaning's own independent schedule. Behaviourally
+    identical for these 4 jobs (Scenario 2/7) -- backfill_company_folders
+    moves to its own sibling below."""
+    return {
+        "rename_threads": rename_threads(),
+        "link_thread_messages": link_thread_messages(),
+        "backfill_files": backfill_files(),
+        "populate_thread_related_links": populate_thread_related_links(),
+    }
+
+
+def run_company_partner_building_pass() -> dict:
+    """New (REQ-SB-79-US-01) -- Company and Partner Building's own
+    scheduled capability. Wraps backfill_company_folders() (the ONE Job
+    of this pipeline previously on run_housekeeping_pass's shared
+    schedule, Scenario 3) plus people_extraction.retrofit_people_from_
+    emails() (REQ-SB-77-US-01 Scenario 6b's own self-healing catch-all --
+    already-existing, already-Done, zero new mechanism, pure wiring).
+    propose_customer_backfill/propose_customer_archival_candidates/
+    propose_company_review stay individually, manually triggered via
+    their own already-existing /poc/* endpoints -- never folded into
+    this scheduled wrapper (ADR-055/057's own explicit 'manually-
+    triggered only' precedent, untouched)."""
+    return {
+        "backfill_company_folders": backfill_company_folders(),
+        "retrofit_people_from_emails": people_extraction.retrofit_people_from_emails(),
+    }
+```
+
+`librarian_housekeeping.py` gains one new import, `people_extraction`
+(business-to-business composition, see "People Notes Retroactively
+Linked to Company/Partner" above).
+
+### Skill / grant / schedule split (`skill_tools.py`, `skill_registry.py`, `main.py`)
+
+- `skill_tools.SKILLS["run_housekeeping_pass"]` is REPLACED by two catalog
+  entries, `"run_threads_cleaning_pass"` / `"run_company_partner_building_
+  pass"` (same `"mutates": True`, `"tool": "Vault"` shape), each with its
+  own `@mcp_server.tool()` thin wrapper delegating to the two new
+  orchestrators above.
+- `skill_registry._SKILL_HANDLERS` / `_MIGRATION_GRANT_SEED` gain the
+  matching two entries, granted to `threads-cleaning` /
+  `company-and-partner-building` respectively, REPLACING the single
+  `"run_housekeeping_pass": ["librarian-housekeeping"]` line — mirrors
+  this seed dict's own established "reuse this same mechanism for a
+  genuinely new grant" precedent (`ADR-046`/`ADR-049`).
+- `main.py`'s lifespan: `ensure_librarian_agent_and_section()` is renamed/
+  generalized to `ensure_librarian_agents_and_section()` — idempotent-
+  checks and creates BOTH new agents (mirrors the existing per-agent
+  existence-check-first shape, applied twice), and additionally,
+  unconditionally, idempotently RETIRES `"librarian-housekeeping"`
+  (`agent_registry.retire_agent`, a no-op once already retired) and
+  removes its own now-stale schedule entry (`agent_schedule_registry.
+  remove_schedule("librarian-housekeeping", "run_housekeeping_pass")`,
+  already idempotent/safe if absent) — a real, self-healing startup step,
+  never a one-off migration script. `create_or_update_schedule` is called
+  twice, once per new `(agent_id, capability_id)` pair, both defaulting to
+  the SAME 6-hour interval `REQ-SB-72-US-01` originally chose —
+  independently adjustable from the first tick onward (Scenario 3).
+
+### `email_poc_router.py`
+
+`/poc/librarian-run-housekeeping-pass` is REPLACED by `/poc/librarian-run-
+threads-cleaning-pass` / `/poc/librarian-run-company-partner-building-
+pass`. Every per-Job endpoint (`/poc/librarian-rename-threads`,
+`-link-thread-messages`, `-backfill-files`, `-populate-related`,
+`-backfill-company-folders`, `-propose-customer-backfill`,
+`-propose-company-review`) is UNCHANGED — same function, same route.
+
+### Confirmed needing ZERO change
+
+- `section_ownership.py`'s `_CALLER_ALLOW_LISTS` — keyed by dotted
+  FUNCTION name (`"librarian_housekeeping.backfill_files"` etc.), never
+  by agent identity.
+- `email_classification.py` — only a comment references the module; no
+  functional coupling to any agent_id.
+- `pending_approvals_router.py`'s `_APPROVAL_HANDLERS` — dispatches by
+  `action_id`, never `agent_id`; all 4 registered Librarian-family
+  handlers are unaffected.
+
+### Scenario 6 (no orphaned/misattributed historical records) — satisfied by construction, not by rewriting history
+
+`librarian-housekeeping`'s own already-existing Pending Approval/Agent
+History records are NEVER touched or reclassified — `get_agent
+("librarian-housekeeping")` keeps resolving correctly (the `retired` flag
+only affects `list_agents()`'s default listing, never `get_agent()`), so
+`_resolved()` (`pending_approvals_router.py`) and every agent-history-name
+lookup keep returning the real, honest, AT-THE-TIME name for every old
+record, forever.
+
+Full architectural reasoning, every alternative considered, and every
+consequence: [ADR-058](ADR.md).
 
 ## Authentication & Authorisation
 

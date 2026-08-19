@@ -1518,6 +1518,70 @@ the persisted-registry mechanism. See
 
 **Status:** Open
 
+**Follow-up, 2026-08-13 — PRD rewrite + re-spec + 3-way split.** The
+operator rewrote `REQ-SB-37` the same day (title now "Agent Creation
+Wizard," not "Agent Creation") with a per-Type wizard breadcrumb (Worker:
+Skills + Vault Scope + Section; Expert: domain, starts empty/honest;
+Producer: Purpose + output action). `/spec REQ-SB-37` was re-run against
+this rewrite. The original custom-bespoke-actions fork named in this
+entry's own **Trigger** is now **resolved**, not still open: the same
+breadcrumb that prompted the rewrite directly answers it — "we have no
+Custom Action, we need to Convert those Custom Actions to Skills" — which
+forced `REQ-SB-39` (Unify Agent Capabilities Under Skills) into existence
+as its own new requirement. No separate custom-action mechanism is needed
+or built by any `REQ-SB-37` story.
+
+The persisted-registry-mechanism half of this entry remains **open,
+unchanged** — still an ADR-level call for the architect at `/plan-tasks`.
+
+The existing `REQ-SB-37-US-01` story was updated in place (not replaced)
+and split into three per-type stories, since the rewrite's three wizard
+shapes have genuinely different build-readiness:
+`REQ-SB-37-US-01` (entry point + Expert flow — NOT blocked by `REQ-SB-39`,
+only carries the persisted-registry ADR question forward),
+`REQ-SB-37-US-02` (Worker flow — hard-blocked on both halves of
+`REQ-SB-39` and on `REQ-SB-29-US-01`), and `REQ-SB-37-US-03` (Producer flow
+— hard-blocked on both halves of `REQ-SB-39`, plus its own new, genuinely
+unresolved fork: the PRD's own text leaves the Producer "output action"
+mechanism open, Skill vs. destination/write-mode, flagged rather than
+guessed). This split is itself a new analyst judgment call, recorded here
+rather than as a separate escalation entry since it is a direct
+continuation of this same requirement's open architectural questions, not
+new ground.
+
+A further judgment call, also recorded here rather than guessed silently:
+`REQ-SB-37-US-01`'s Expert flow does **not** hard-depend on `REQ-SB-40`
+(Agent Knowledge-Gap Tracking & Expert Readiness, itself `Draft`/flagged,
+unbuilt) — an Expert created by the wizard is fully functional the moment
+`REQ-SB-33`'s already-`Done` honest-uncertainty guardrail applies to it;
+`REQ-SB-40` adds gap-tracking observability on top, later, without
+requiring anything from the Expert flow to change.
+
+**Status:** Open (persisted-registry ADR question unresolved; Worker/
+Producer stories additionally blocked on `REQ-SB-39`; Producer story
+additionally carries its own new output-action fork).
+
+**Follow-up, 2026-08-13 — architect pass (`/plan-tasks REQ-SB-37-US-01`
+step 1).** The persisted-registry-mechanism half of this entry (the only
+half `REQ-SB-37-US-01` itself still carried) is now **resolved for
+`REQ-SB-37-US-01`**: `ADR-030` (`Implementation/Architecture/ADR.md`)
+supersedes `ADR-011` point 2 only — `agent_registry.py`'s static `AGENTS`
+dict becomes `_SEED_AGENTS` (byte-identical, unchanged, stays in code)
+merged at read time with a new persisted `.second-brain/
+agents_registry.json` overlay for runtime-created agents, per the
+operator's own relayed mechanism decision (mirrors `skill_registry.py`'s
+`_load_state`/`_save_state` JSON-file pattern). `architecture.md` was
+updated to record the resulting file-level shape. This does not resolve
+`REQ-SB-37-US-02`/`US-03`'s own separate blockers (`REQ-SB-39`,
+`REQ-SB-29-US-01`, the Producer output-action fork) — those remain open.
+
+**Resolving artefact (persisted-registry half, `REQ-SB-37-US-01` only):**
+`ADR-030`. Still pending a human decision: approving/rejecting `ADR-030`
+itself (`REVIEW-QUEUE.md`) before this story's tasks are built.
+
+**Status:** Open (human review of `ADR-030` pending via `REVIEW-QUEUE.md`;
+`REQ-SB-37-US-02`/`US-03`'s own separate blockers unresolved).
+
 ## ESC-021: REQ-SB-01's re-index trigger mechanism (on-demand vs. scheduled vs. live file-watch) is genuinely undecided by the PRD — 2026-08-13
 
 **Category:** unclear-requirement
@@ -2094,3 +2158,2502 @@ live verification — an 18-entry gap, all attributable to this same
 truncation collision across the real capture run).
 
 **Status:** Open
+
+## ESC-029: REQ-SB-39 (Unify Agent Capabilities Under Skills) is a genuine, operator-confirmed full-scope architecture reversal of `ADR-011` point 2 and `ADR-020`'s entire two-axis working-mode gate — split into two sequential stories so a mutating capability is never observably ungated even transiently; the mutates-classification mechanism for Skills, the fate of the ADR-011 chat funnel, and Skills-UI coverage are all left open — 2026-08-13
+
+**Category:** unclear-requirement
+
+**Trigger:** `REQ-SB-39`'s own PRD breadcrumb (2026-08-13, operator-directed)
+was raised in direct response to `REQ-SB-37`'s own "can a user-created agent
+define custom actions?" open question: "We have no Custom Action, we need
+to Convert those Custom Actions to Skills. Example, Read Mail is a Skill
+under Outlook COM Tool we need to have that in our tool set." Asked how far
+this should go, the operator confirmed: **"Everything, including existing
+shipped agents"** — not just new wizard-created agents; every
+already-shipped, already-verified Action this session built gets
+refactored, for one consistent model going forward. The breadcrumb itself
+names this "a genuine architecture reversal, not a wizard feature — flagged
+explicitly to the operator as such before this requirement was written, and
+confirmed as the intended scope." Direct, live inspection of the real code
+(not PRD-text assumption) confirms the surface this touches is real and
+large:
+- `app/business/agent_registry.py`'s static `AGENTS` catalog — 7 agents,
+  14 action entries, 7 distinct action ids; 4 classified `"mutates": True`
+  (`run_capture_now`, `pause_schedule`, `rebuild_person_note`,
+  `build_knowledge`), 3 classified `"mutates": False` (`view_last_run`,
+  `ask_question`, `view_channel_status`).
+- `app/api/agents_router.py::_invoke_action` (`ADR-020`) — the real,
+  current two-axis working-mode gate: Manual refuses Hub-routed triggers
+  outright; Supervised short-circuits into a pending-approval record only
+  when the resolved action's own `mutates` flag is `True` (fail-safe
+  default `True` for an unresolvable action); every other combination falls
+  through to immediate execution.
+- `app/business/skill_registry.py::invoke_skill` / `app/api/
+  skills_router.py`'s `POST /agents/{agent_id}/skills/{skill_id}/invoke` —
+  confirmed **completely ungated** by working mode today: only
+  `has_skill_access` (the grant/revoke concern) is checked before
+  dispatching to the registered handler; there is no `trigger` parameter
+  anywhere on this path, no working-mode lookup, no pending-approval
+  integration. Exactly right for `REQ-SB-27`'s own narrow, largely
+  read-only skills (`web-research`, `diagram-understanding`) — this
+  requirement is what changes that for mutating Skills.
+- `app/business/agent_orchestration/mcp_client.py::load_agent_tools`
+  (`ADR-022` point 6) — a separate, already-existing access-grant filter
+  for the in-app chat's own tool-calling loop (`has_skill_access` decides
+  which tools a conversation can even see), not a working-mode gate; this
+  requirement's own gate extension is an additional layer on top, not a
+  replacement.
+- **A genuine gap found while resolving this, not silently carried
+  forward:** `REQ-SB-27-US-01` (Skills Repository, `Done`) shipped **zero
+  UI** — confirmed by direct inspection of `html-prototype/` (no
+  Skills-related screen anywhere) and `src/frontend/src` (no match at all).
+  Today's only agent-capability UI is `agents-map.html`'s "Available
+  actions" panel — a static button list rendered directly from
+  `agent_registry.py`'s hardcoded array, with no grant/revoke affordance and
+  zero Skills awareness. The requirement's own Acceptance text implies
+  reusing "the surfaces those requirements already built" (echoing
+  `REQ-SB-37`'s own phrasing) — **not factually true for Skills today**:
+  the API mechanism exists, but no screen anywhere calls it.
+
+The PRD's own breadcrumb explicitly names four genuinely open questions,
+none decided in the PRD, all "left to `/spec`/`/plan-tasks` — expect this to
+need serious architectural design work and likely more than one superseding
+ADR, not a quick extension": (1) whether `mutates` becomes a per-Skill
+classification mirroring `agent_registry.py`'s action field exactly, or
+Skills need a materially different approval model; (2) whether Skill
+invocation for a mutating capability needs to gain the same
+Manual/Supervised/Autonomous gating chat/direct Actions already have (the
+requirement's own answer is yes, behaviourally — but not how); (3) migration
+mechanics — auto-convert every existing agent's action set to equivalent
+Skill grants at once, or roll out incrementally; (4) whether `ADR-011`'s
+chat-triggered keyword-match funnel itself needs to change to dispatch to
+Skills instead of Actions, or stays Action-shaped and calls into Skills
+internally.
+
+**Resolution:** Not resolved in this pass — no operator was available to
+decide the mechanism-level questions live, and per `Implementation/
+Pipeline.md`'s own role boundary, these are architect-level calls (MUST-FLAG
+trigger 3 is explicitly not the analyst's to make) — guessing at them here
+would risk locking `/plan-tasks` against a shape the architect would
+otherwise have rejected. The analyst split `REQ-SB-39` into two sequential
+stories rather than one oversized story or two independently-orderable
+ones, specifically so the requirement's own safety invariant ("a mutating
+Skill's invocation still honors working mode") is never violated even for a
+transient build window:
+- **`REQ-SB-39-US-01`** — the capability model itself, plus migrating every
+  currently *read-only* Action (`view_last_run`, `ask_question`,
+  `view_channel_status`) to a Skill. Needs no gate-mechanism change at all,
+  since a read-only capability is never gated under any working mode today.
+- **`REQ-SB-39-US-02`** — extending the working-mode gate to cover Skills,
+  and migrating every currently *mutating* Action (`run_capture_now`,
+  `pause_schedule`, `rebuild_person_note`, `build_knowledge`) to a Skill,
+  landed together in the same release so a mutating capability is never
+  observably ungated even transiently. Hard-depends on `REQ-SB-39-US-01`
+  landing first (its own affected-screens question cannot even be answered
+  until that story's unified capability-list UI exists to invoke a Skill
+  from in the first place).
+Both stories describe only OBSERVABLE BEHAVIOR in untagged Gherkin, not the
+mechanism; both are `gate: flagged`. Neither attempts to resolve the
+mutates-classification mechanism, the chat-funnel restructuring question, or
+migration ordering beyond the two-story split itself — all left named, not
+guessed, in each story's own `## Notes`.
+
+**Resolving artefact:** _pending_ — needs a human/architect decision at
+`/plan-tasks` on (a) the mutates-classification shape for Skills (`ADR-020`'s
+own most direct extension point vs. a materially different model), (b)
+whether `invoke_skill`/its endpoint gains a `trigger` concept and how it
+threads through every real call site, (c) the fate of `ADR-011`'s chat
+keyword-match funnel, and (d) confirmation that this two-story build order
+is acceptable. Also needs a `/design` pass — no Skills grant/revoke UI
+exists anywhere yet, and `REQ-SB-39-US-01`'s own unified capability-list
+surface is a hard prerequisite for `REQ-SB-39-US-02`'s own screen questions.
+
+**Status:** Open
+
+## ESC-030: REQ-SB-40 (Agent Knowledge-Gap Tracking & Expert Readiness) — the PRD breadcrumb itself names two genuinely open mechanism questions and one open placement question, and no `html-prototype/` screen (nor its own named likely display surface, REQ-SB-41) covers a knowledge-gaps view anywhere — 2026-08-13
+
+**Category:** unclear-requirement
+
+**Trigger:** `REQ-SB-40`'s own PRD breadcrumb (2026-08-13, operator-directed),
+answering "what makes an Expert agent actually ready/complete": "I guess we
+need both the wizard, and the Agent can say I don't know as a start, and a
+human input is needed to fill the gap — by time it will be Expert (the
+number of I don't know is how we close this Expert gap in future)." This
+builds directly on `REQ-SB-33` (Agent Grounding & Honest-Uncertainty
+Guardrail, `Done`) — that requirement made an agent say "I don't know"
+honestly instead of fabricating, but the reply itself is never captured
+anywhere beyond the chat transcript. Direct, live inspection of the real
+code (not PRD-text assumption) confirms the surface this touches:
+- `app/business/agent_orchestration/state.py::history_entries_to_messages`
+  (`REQ-SB-33-US-01`) confirms the honest-uncertainty behavior is
+  prompt-level only — no structured signal anywhere distinguishes an honest
+  "I don't know" reply from an ordinary answered reply today; the model's
+  raw `response.content` is returned as `reply` either way.
+- `app/business/agent_registry.py`'s static `AGENTS` catalog confirms
+  "Expert" is already a real, structural `"type": "expert"` marker
+  (`vault-qa`, `vault-filing-expert`, `compass-expert`) — not merely a role
+  description with nothing to key off.
+- `app/business/agent_activity.py` (`REQ-SB-11-US-01`) confirms its own
+  `_ACTIVITY_KINDS = {"run_event", "run_error"}` scope deliberately
+  excludes conversational entries — a knowledge gap does not fit that
+  existing log mechanism as-is.
+- No `html-prototype/` screen anywhere shows a knowledge-gaps view, a gap
+  count, or a gap-closing affordance — confirmed by direct inspection. The
+  PRD breadcrumb's own named "obvious fit, but not confirmed" display
+  surface, `REQ-SB-41` (Agent Overview), is itself unspecced (PRD-only, no
+  story) with its own breadcrumb stating plainly "a `/design` pass is also
+  needed (no prototype shows this)."
+
+The PRD's own breadcrumb explicitly names four genuinely open questions:
+(1) the exact mechanism for detecting/recording an "I don't know" — a
+structured signal the model itself emits, vs. a pattern-match over the
+reply text; (2) what "human input fills the gap" looks like concretely — a
+chat reply filed via the Vault Filing Expert (`REQ-SB-35-US-01`), the same
+way `REQ-SB-23`'s My Day Intake Agent already files conversational input,
+or a dedicated gap-resolution UI; (3) where the gap count/readiness signal
+is surfaced — `REQ-SB-41` named as the likely fit but itself unspecced and
+with no prototype coverage; (4) whether a closed gap needs any verification
+that it was actually answered correctly.
+
+**Resolution:** Questions (1)-(3) are genuinely open mechanism/placement
+decisions correctly left to `/plan-tasks`/a future `/design` pass, per
+`Implementation/Pipeline.md`'s own role boundary (MUST-FLAG trigger 3 is not
+the analyst's to make) — guessing at them here would risk locking
+`/plan-tasks` against a shape the architect or a `/design` pass would
+otherwise have rejected. `REQ-SB-40-US-01`'s Acceptance Criteria are written
+at the observable-behavior level only (an honest "I don't know" results in a
+recorded, viewable, closeable open gap whose count declines as gaps close),
+not presuming any of the three open mechanisms. Question (4) **was**
+resolved directly, not guessed: this project's own standing `MEMORY.md`
+constraint (2026-08-10, "No staging/promotion gate on ingested vault data")
+applies directly — content filed through the already-`Done`, already-trusted
+`REQ-SB-35-US-01` Vault Filing Expert mechanism unconditionally counts as
+closing the gap it addresses, with no additional correctness-verification
+step layered on top. Separately, whether "declining rate" needs a
+threshold/time-window was also resolved directly from the requirement's own
+Acceptance text (a simple, always-current open-gap count, not a computed
+rate) — not a genuinely open question requiring a flag.
+
+**Resolving artefact:** `ADR-032` (`/plan-tasks` step 1, architect pass,
+2026-08-13) — resolves all three previously-open questions. (a) Detection:
+a new bound tool, `record_knowledge_gap(topic)`, intercepted before generic
+tool execution exactly like `ADR-017`'s already-real
+`request_cross_section_help` — a structured, model-emitted signal, not a
+text pattern-match, reusing this graph's only existing structured-signal
+channel (confirmed by direct read of `graph.py::_call_model`: no
+`with_structured_output`/response-format mechanism exists anywhere in it).
+(b) "Human input fills the gap": routed through the already-`Done` Vault
+Filing Expert (`REQ-SB-35-US-01`), per the operator's own relayed
+direction, composing that mechanism unchanged rather than a dedicated new
+UI. (c) Display placement: the operator directed skipping `/design` for
+this batch and building directly, which cleared the display-surface
+prototype blocker; the architect's own placement call is a new,
+conditionally-rendered "Knowledge gaps" tab on the existing
+`AgentDetailPanel.tsx`, gated to Expert-type agents — not `REQ-SB-41`
+(Agent Overview), which remains unspecced and is not depended on. Full
+mechanism, every alternative considered: `Implementation/Architecture/
+ADR.md` → `ADR-032`. The story (`REQ-SB-40-US-01`) is `gate: flagged`
+again, but now for the standard ADR-creation review (trigger 3), not for
+an unresolved mechanism question — see `REVIEW-QUEUE.md`.
+
+**Status:** Resolved
+
+## ESC-031: REQ-SB-41 (Agent Overview Surface) — the PRD's own "before or instead of" phrasing leaves the Overview's navigation shape genuinely open, and no dedicated purpose/description data field exists anywhere in the real code despite the PRD breadcrumb's own implication that one already does — 2026-08-13
+
+**Category:** unclear-requirement
+
+**Trigger:** `REQ-SB-41`'s own PRD breadcrumb (2026-08-13, operator-directed),
+verbatim: "The Agents Tab now Opens Straight to Chat I need to have an
+Overview Of what the Agent do, Scope, Guardrails and Is It Autonomous Etc
+before [I] Can Chat with it." Direct, live inspection of the real code (not
+PRD-text assumption) confirms two genuinely open points, one of them a real
+discrepancy against the breadcrumb's own claim:
+
+1. **Navigation shape.** The requirement's own Acceptance text says the
+   overview must be shown "before or instead of landing directly on the
+   Chat tab" — this does not commit to one shape. `AgentDetailPanel.tsx`
+   (`REQ-SB-13`/`REQ-SB-21`, both `Done`) confirms `TABS =
+   ['chat', 'history', 'settings']` with `activeTab` defaulting (and
+   resetting on every agent switch) to `'chat'` — exactly the behavior the
+   operator is complaining about. At least three equally-valid shapes exist
+   to fix it: a new 4th "Overview" tab, a new default landing tab
+   (replacing Chat's current default position), or a one-time interstitial
+   shown before Chat. None is named or implied more strongly than another
+   by the PRD's own text.
+2. **No dedicated Purpose/description field exists anywhere.** The PRD
+   breadcrumb's own framing implies "purpose/description (already on every
+   agent's existing Settings tab)" is real, existing data this requirement
+   just needs to surface earlier. Direct inspection of
+   `app/business/agent_registry.py`'s static `AGENTS` catalog,
+   `src/frontend/src/features/agents-map/agentsApiClient.ts`, and
+   `html-prototype/agents-map.html` confirms this is **not literally true**
+   — no `description`/`purpose` field exists anywhere; an agent's "what it
+   does" today is only ever implicitly conveyed via its `name`, its `type`
+   badge (`worker`/`producer`/`expert`), and its `settings`/`actions`
+   kv-list rows (operational configuration, not a purpose narrative). This
+   is a real gap between the breadcrumb's own claim and the real code, not
+   a guess.
+
+Separately, confirmed by direct inspection: no `html-prototype/` screen
+shows any Overview region, Guardrails statement, or Vault Scope display
+anywhere, for any agent — net-new-design-needed in addition to these two
+open questions.
+
+**Resolution:** Neither open question is guessed here. `REQ-SB-41-US-01`'s
+Acceptance Criteria are written at the observable-behavior level (an
+overview exists and is reachable "before or instead of" Chat; it states
+purpose, working mode, and guardrail behavior; it shows Vault Scope
+honestly whether assigned or not) without presuming the navigation shape or
+the Purpose region's exact data source — both left to `/plan-tasks`/a
+`/design` pass. The story is NOT wholly blocked on `REQ-SB-29-US-01`
+(Vault Scope, `Draft`, unbuilt) — only the real-assigned-scope-value
+scenario needs it; the honest "no scope assigned yet" state is buildable
+today and specced directly. The `REQ-SB-40-US-01` (`ESC-030`) knowledge-gaps
+cross-reference is explicitly punted, not silently dropped: `REQ-SB-40`'s
+own detection mechanism and data model are still undecided, so no
+placeholder region is built here for data that does not exist yet; a future
+`REQ-SB-40` pass is expected to extend this Overview once resolved.
+
+**Resolving artefact:** `ADR-033` (`/plan-tasks` step 1, architect pass,
+2026-08-13) — resolves both previously-open questions. (a) Navigation
+shape: Overview becomes `AgentDetailPanel.tsx`'s new default-landing tab
+(`TABS` gains `'overview'`, first in the array; `activeTab` no longer
+defaults to `'chat'`), directly answering the operator's own "before...
+Can Chat with it" framing — not a new 4th tab reached only after Chat, and
+not a one-time interstitial. (b) Purpose data source: reads the existing
+`settings` kv-list (`"Purpose"`, falling back to `"Domain"`), composing
+`ADR-030`/`ADR-031`'s already-established Expert-Domain/Producer-Purpose
+mechanism directly, not a new dedicated field. Two further real judgment
+calls, resolved not guessed: all 7 shipped agents are backfilled with a
+real, authored one-line Purpose settings entry (rather than shown an
+honest-empty state), since they are real, already-understood, already-
+`Done` agents; and the Overview now composes `ADR-032`'s already-built
+`GET /agents/{agent_id}/knowledge-gaps` `open_count` field for Expert-type
+agents, since the objection that motivated `REQ-SB-40-US-01`'s original
+punt no longer applies now that story is `Ready` with a real endpoint.
+`/design` stays skipped for this batch, operator-directed, unchanged — no
+`/design REQ-SB-41` pass follows. Full mechanism, every alternative
+considered: `Implementation/Architecture/ADR.md` → `ADR-033`. The story
+(`REQ-SB-41-US-01`) is `gate: flagged` again, but now for the standard
+ADR-creation review (trigger 3), not for an unresolved navigation/data-
+source question — see `REVIEW-QUEUE.md`.
+
+**Status:** Resolved
+
+## ESC-032: REQ-SB-46 (Agent Creation Wizard Redesign) — no popup-modal/step-bar/FAB pattern exists anywhere in `html-prototype/`, and the PRD's own generic 4-step field-bucket wording does not say which of REQ-SB-37's already-shipped per-type fields (Domain/Purpose/Skills/Scope) lands in which step — 2026-08-14
+
+**Category:** unclear-requirement
+
+**Trigger:** `REQ-SB-46`'s own PRD breadcrumb (2026-08-14, operator-directed)
+names two genuinely open questions explicitly: (1) the exact Step 1
+Type/Scope conditional-visibility interaction (delegated to `/spec`'s own
+judgment as an ordinary wizard pattern, not flagged further here — resolved
+directly in `REQ-SB-46-US-01`'s own `## Context`); (2) the Step 4 Trigger
+concept's own scope and whether "Schedule" composes with `REQ-SB-47`
+(likewise delegated and resolved conservatively — recorded intent only, no
+inline schedule-configuration UI built). Beyond those two named questions,
+direct inspection of the real, already-shipped code
+(`CreateAgentWizard.tsx`, `agents_router.py`'s `POST /agents`) found the
+PRD's own Step 1-4 Acceptance wording ("Description," "Instructions/
+Guardrails," "output plus what it does with that output," "Tools/Skills")
+is generic across all three agent types, while the real, already-shipped
+per-type field set is not (Expert: Domain only; Worker: Skills grant +
+Vault Scope; Producer: Purpose + a single output Skill) — the PRD text does
+not say which existing field lands in which of the four new generic step
+buckets for which type, and more than one internally-consistent mapping is
+plausible. Separately, direct grep of `html-prototype/agents-map.html`,
+`styles.css`, `app.js`, and `settings.html` for
+`modal|dialog|overlay|backdrop|fab|floating|bottom-right` and any Create
+Agent affordance confirmed the PRD breadcrumb's own assertion that no
+popup-modal-with-step-bar pattern or Map-mounted FAB exists anywhere — the
+only existing overlay pattern in the whole prototype is the agent-detail
+side panel's slide-in `.side-panel-overlay`, a structurally different shape
+with no step-bar concept, and `settings.html` never had a Create Agent
+affordance designed at all (matching `REQ-SB-37-US-01`'s own prior,
+independent finding).
+
+**Resolution:** Not resolved live in this pass — no operator was available
+to decide. The analyst (`REQ-SB-46-US-01`) resolved the field-to-step
+mapping with a single, disclosed, reasoned judgment call (Description →
+Expert's Domain only; Instructions/Guardrails → the agent's existing
+Working-mode selector, all types; "output plus what it does with it" →
+Producer's existing Purpose + single output Skill only; Tools/Skills →
+today's flat Skills multi-select, required for Worker exactly as today,
+newly optional for Expert/Producer since `grantAgentSkill` was never
+type-restricted at the backend) — chosen because it is the only mapping
+under which every one of `REQ-SB-37`'s already-shipped fields appears in
+exactly one step and no step bucket is structurally empty for every type.
+This mapping does not change any backend mechanism, required-field
+validation, or call sequence — it is presentation-and-sequencing only, per
+the PRD's own explicit "entry point, container, step-progress treatment,
+and step-to-field grouping only" framing. The missing prototype coverage is
+separately flagged `net-new-design-needed`, with `/design REQ-SB-46`
+recommended before `/plan-tasks` commits to a concrete layout. Both are
+named in full in `REQ-SB-46-US-01`'s own `## Context`/`## Notes`, not
+silently guessed, and the story's `gate:` is set `flagged` accordingly.
+
+**Resolving artefact:** _pending_ — needs a human decision confirming (or
+redirecting) the field-to-step mapping, and ideally a `/design` pass
+producing an approved popup-modal/step-bar/FAB prototype screen, before
+`/plan-tasks` proceeds with confidence.
+
+**Status:** Open
+
+## ESC-033: REQ-SB-47 (Per-Agent Scheduler) merged with REQ-SB-45 (Shared Serialization) per operator-confirmed direction — the shared lock's real mechanism/scope, one genuine capability-scope fork, and Schedule-tab UI all left open by direct code inspection — 2026-08-14
+
+**Category:** unclear-requirement
+
+**Trigger:** Per REQ-SB-45's own "Update, 2026-08-14 — Activated" breadcrumb
+and REQ-SB-47's own mirrored breadcrumb, the operator confirmed building
+REQ-SB-45's shared-lock generalization as part of REQ-SB-47's own work
+rather than as a separate later pass — both were specced together as one
+story (`REQ-SB-47-US-01`, anchored on REQ-SB-47 per the analyst's own
+task-level instruction). Direct reading of the real code (not the PRD's own
+abstraction) surfaced three genuine open points beyond the requirements'
+own text:
+
+1. `app/scheduling/capture_scheduler.py`'s existing `_capture_run_lock` is a
+   plain in-process `asyncio.Lock`. REQ-SB-45's own breadcrumb cites, as its
+   motivating real evidence, `SPRINT-030`'s own live verification session
+   accidentally running two full capture passes concurrently because a
+   coder mistakenly started **two separate backend processes**. An
+   in-process lock — however correctly generalized across job types within
+   one process — cannot physically prevent that exact cross-process
+   collision; only a cross-process-safe mechanism (e.g. an on-disk lock
+   file) would. The PRD text does not say whether REQ-SB-45's own
+   Acceptance ("only one actually runs... across all of them") is meant to
+   reach the cross-process case or is understood more narrowly as
+   "across job types within one process."
+2. `skill_tools.py`'s `run_capture_now` is real only for `email-capture`
+   today; `meeting-capture`/`todo-capture` have real capture logic
+   (confirmed live, already running correctly every hour via the existing
+   background blob tick, `email_classification.
+   run_capture_and_record_completion`) that is not wired to this on-demand
+   Skill path at all. Whether REQ-SB-47-US-01 should also wire real
+   on-demand handlers for these two agents, or ship with this gap honestly
+   disclosed, is a genuine scope fork with two defensible answers.
+3. No Schedule tab, or any tab-bar interaction pattern at all, exists
+   anywhere in `html-prototype/agents-map.html`'s agent detail
+   `.side-panel-agent` block today — confirmed by direct inspection
+   (Settings/Chat/History-equivalent sections only).
+
+**Resolution:** Not resolved live in this pass — no operator was available
+to decide. The analyst (`REQ-SB-47-US-01`) resolved what it reasonably could
+with sane, disclosed defaults (interval-only schedule shape; reusing
+REQ-SB-11's existing Agent Activity log for run history unchanged; a
+capability picker restricted to the agent's own granted `"mutates": True`
+Skills, with stub capabilities honestly reported exactly as they already are
+today) and wrote its Acceptance Criteria's shared-lock scenario (Scenario 7)
+at the OBSERVABLE-property level — no two Outlook-COM-touching runs ever
+overlap, regardless of trigger source or originating process — rather than
+committing to one specific lock mechanism, so the property holds regardless
+of which of the two lock-mechanism readings above the architect ultimately
+picks. The three points above are left genuinely open, named in full in the
+story's own `## Context`/`## Notes`, and the story's `gate:` is set
+`flagged` accordingly — not silently guessed.
+
+**Resolving artefact:** _pending_ — needs a human/architect decision on the
+shared lock's real cross-process scope and mechanism (likely a
+superseding/extending ADR on `ADR-005`/`ADR-029`), a scope decision on the
+meeting-capture/todo-capture on-demand gap, and ideally a `/design` pass
+producing an approved Schedule-tab prototype screen, before `/plan-tasks`
+proceeds with confidence.
+
+**Status:** Open
+
+## ESC-034: REQ-SB-48 (Skills Grouped by Tool) — no `html-prototype/` screen anywhere covers the Capabilities/Skills grant-revoke region at all, and the PRD breadcrumb left the Tool taxonomy and icon-sourcing approach genuinely open — 2026-08-14
+
+**Category:** unclear-requirement
+
+**Trigger:** REQ-SB-48's own PRD breadcrumb (2026-08-14, operator-directed,
+verbatim: "Skills should be Grouped by Tools Outlook as a Tool with the
+Skills in it. Icons should be Added and we need to be able to Multiselect
+those tools in the Agent in a Collapse tree like Approach.") explicitly
+names the Tool taxonomy and icon-sourcing decision as open, left to
+`/spec`, and proposes only a starting, unconfirmed default taxonomy.
+Direct read of the real, current `skill_tools.SKILLS` catalog (11 entries)
+and `AgentDetailPanel.tsx`'s real flat-list Capabilities mechanism confirmed
+the ground truth the taxonomy had to be resolved against. Separately, direct
+search of every file in `html-prototype/` for the Capabilities/Skills
+grant-revoke region found it does not exist anywhere — the only prototype
+side-panel content is `REQ-SB-20`/`21`'s Chat/Working-mode/Keywords
+(`agents-map.html`'s own inline comment confirms this); the real
+Capabilities section was added later, directly in code (`SPRINT-030-T09`),
+and was never ported back into the prototype.
+
+**Resolution:** The analyst (`REQ-SB-48-US-01`) resolved both open product
+decisions the PRD breadcrumb named, rather than leaving them unresolved: (1)
+a final Tool taxonomy placing all 11 real Skills — confirming 3 of the PRD
+breadcrumb's 4 proposed groups verbatim (Outlook, Web, and Vault's other
+three members), with one direct-evidence adjustment (`summarize-file` moves
+from the breadcrumb's proposed "Vault" to "Compass" — its real handler
+literally calls `compass_client.summarize_content`, Compass-generated
+synthesis, not a vault read/write); (2) icon sourcing — one fixed icon per
+Tool group (4 total), inherited by every Skill row under it, matching this
+codebase's own existing Unicode-glyph `.nav-icon` convention rather than
+sourcing 11+ distinct per-Skill icons. Both are named and reasoned in full
+in the story's own `## Context`. The missing prototype coverage is
+separately flagged `net-new-design-needed`, with `/design REQ-SB-48`
+recommended before `/plan-tasks` commits to a concrete layout — along with
+three further disclosed interaction defaults (Tool groups expand by
+default; a same-grant-state-only multi-select model; Built-in Action rows
+stay outside the tree) that a human should confirm. All of this is named in
+full in `REQ-SB-48-US-01`'s own `## Context`/`## Notes`, not silently
+guessed, and the story's `gate:` is set `flagged` accordingly.
+
+**Resolving artefact:** `REQ-SB-48-US-01`'s architect pass (2026-08-14,
+`/plan-tasks` step 1) — the operator explicitly confirmed the analyst's
+resolved Tool taxonomy and fixed-icon-per-Tool decision as final, and
+decided to skip a formal `/design` pass for this story (matching this
+session's established precedent for well-understood, coder-improvisable UI
+patterns), superseding the `net-new-design-needed` recommendation above.
+The three further disclosed interaction defaults (Tool groups expand by
+default; a same-grant-state-only multi-select model; Built-in Action rows
+stay outside the tree) are likewise adopted as final. See
+`REQ-SB-48-US-01`'s own `## Notes` → "Architect pass (2026-08-14)."
+
+**Status:** Resolved
+
+## ESC-035: `REQ-SB-48-US-01-T02`'s own AC-06 live-verification found a genuine, pre-existing bug in `skill_registry._load_state` unrelated to this task's own scope — 2026-08-14
+
+**Category:** other
+
+**Trigger:** Live multi-select-revoke verification (Scenario 6 /
+`REQ-SB-48-US-01-AC-06`) against `email-capture`'s Outlook Tool group.
+DELETE calls fired correctly (confirmed exact-count, exact-URL via a
+`window.fetch` spy) and each returned `{"revoked": true}`, but the
+revoked Skills (`view_last_run`, `run_capture_now`) reappeared as granted
+on the very next state read — reproduced twice independently: once via a
+real CDP-driven browser round trip against the actual running app, and
+once via a direct, UI-free `skill_registry.revoke_skill_access(...)`
+Python-shell call, ruling out any bug in this task's own new Tool-tree/
+multi-select frontend code. Root cause, confirmed by direct code read:
+`skill_registry._load_state()` unconditionally re-applies EVERY entry in
+`_MIGRATION_GRANT_SEED` (`REQ-SB-39-US-02`/`ADR-029` point 7,
+`SPRINT-031`) on every single call, not just once — so an explicit revoke
+of any of the 7 migration-seeded ids against one of its own named seed
+agents self-heals back to granted the instant any other code path (e.g.
+the bulk action's own trailing `fetchAgent` refetch) triggers another
+state read. This is a genuine defect in a shared primitive
+(`skill_registry.py`'s `_load_state`/`_MIGRATION_GRANT_SEED`) neither
+`REQ-SB-48-US-01-T01` nor `-T02` is allowed to touch per their own
+`## Files to Modify` — out of scope for both, and unrelated to the
+Tool-tree grouping/multi-select mechanism itself.
+
+**Resolution:** Not fixed at the primitive level (out of this task's
+declared scope). `AC-06` was instead verified live using a genuine,
+durable revoke against a Skill/agent pair NOT in
+`_MIGRATION_GRANT_SEED` (Vault-group Skills granted to `email-capture`,
+which has no Vault-group migration seed at all) — confirmed both the
+exact multi-select DELETE call count/URLs AND that the revoked Skills
+stayed durably un-granted across a follow-up state read. Captured as
+`BUGS.md` → `BUG-013` (`Open`) for future formal triage; not fixed here.
+
+**Resolving artefact:** `BUGS.md` → `BUG-013` (captured 2026-08-14). Still
+needs `/triage` to batch it into a `BUGFIX-NN-US-01` fix story before the
+underlying primitive itself is hardened.
+
+**Status:** Resolved (formally tracked as `BUG-013`; the underlying fix
+itself is separate forward work, tracked there — not blocked here)
+
+## ESC-036: Operator raised, mid-`/plan-tasks` (before the decomposer ran), whether `ADR-040`'s hand-rolled capture-pipeline suspension/rollback mechanism should instead adopt LangGraph's checkpointer + `interrupt()` primitive — reconsidered directly, `ADR-040` confirmed unchanged — 2026-08-15
+
+**Category:** other
+
+**Trigger:** The coordinator relayed a direct operator question after
+`ADR-040` was written but before the decomposer's own pass ran: "shouldn't
+LangGraph handle this agent-to-agent retry and stuff?" — specifically
+asking whether `ADR-040`'s buffered/deferred per-item history-commit-plus-
+rollback mechanism, and its mid-pipeline Supervised-stage-suspend-then-
+resume mechanism, should be built on LangGraph's own checkpointer +
+`interrupt()`/human-in-the-loop primitives instead of hand-rolled, given
+`langgraph` is already a real, installed dependency (`ADR-015`), not a
+hypothetical new one — a genuinely different and more specific question
+than the general "no orchestration framework" MEMORY.md entry (2026-08-11)
+the coordinator's own framing initially cited, since that entry is already
+narrowed/superseded by `ADR-015`'s later adoption of LangGraph for this
+project's own in-app conversational orchestration. This is a backward
+pipeline step per `Pipeline.md` hard rule 6 (any reconsideration of
+already-Accepted architectural work escalates), triggered by direct
+operator question, not a self-discovered contradiction.
+
+**Resolution:** Reconsidered directly against the real, concrete
+comparison (verified, not assumed): `src/backend/requirements.txt`
+confirms `langgraph>=1,<2` is already present — this was never a
+new-dependency decision. `ADR-015` point 6's own Alternatives Considered
+already rejected LangGraph's persistent checkpointer for conversation
+state, citing this project's repeated, explicit rejection of SQLite/any
+database for local state (`ADR-005`, `ADR-011`, `ADR-014`) in favour of
+the flat-JSON `.second-brain/` convention; `ADR-015`'s own Consequences
+went further and explicitly named this exact future scenario (a
+Supervised-agent approval flow wanting `interrupt()`), leaving it open for
+`REQ-SB-21`'s own later architecture pass — which became `ADR-018`, and
+did **not** adopt `interrupt()`, building the hand-rolled
+`pending_approval_registry.py` mechanism instead, now on its THIRD reuse
+(`ADR-029`, `ADR-037`, and this ADR). Four concrete, code-grounded reasons
+kept `ADR-040` hand-rolled rather than reversing that lived-with
+precedent: (1) this project already directly confronted and declined this
+exact idea twice, on the record (`ADR-015` point 6 + Consequences); (2)
+this ADR's own Pending Approvals are routinely unresolved for hours/days
+across real, already-documented `uvicorn --reload` restarts
+(`Learnings.md`, `SPRINT-021`/`022`/`027`/`028`) — genuine cross-restart
+durability would need `SqliteSaver` (`langgraph-checkpoint-sqlite`, not
+installed), a real new persistence technology, not the in-memory
+`MemorySaver` `ADR-015` judged sufficient for a single synchronous request;
+(3) this pipeline has zero dynamic, LLM-driven branching for a graph
+engine to manage — Pull/Link/Store make no LLM call at all, Tag makes one
+deterministic classification call per item, and the only real conditional
+logic is the working-mode gate, already solved with a few lines of direct
+registry calls, reused unchanged 3 times over; (4) bridging LangGraph's
+own thread/checkpoint model into this app's real Pending-Approvals surface
+(a flat list, `GET`/`POST .../approve|decline`, an idempotent-per-tick
+dedup guard, existing UI cards) would still require essentially all of
+`ADR-040`'s own hand-rolled bridging code, now duplicated by a second,
+divergence-risking state representation alongside it — more code and a
+new dependency surface, not less, the literal "worst of both worlds" the
+operator's own question anticipated. `ADR-040` is kept exactly as
+originally written; its own Alternatives Considered section now carries
+this full reasoning directly (not merely a MEMORY.md citation), plus a
+dated "Reconsidered note" under its Status/Date header pointing here.
+
+**Resolving artefact:** `ADR-040` (`Implementation/Architecture/ADR.md`) —
+"Reconsidered note" + new Alternatives Considered entry, both appended
+2026-08-15; Decision/Consequences unchanged. All 3 `REQ-SB-53` stories'
+own `## Notes` cross-reference this entry.
+
+**Status:** Resolved
+
+## ESC-037: REQ-SB-54 point 6 — whether a Project note gets the same Background/History/Glimpse three-way split as Customer is genuinely unresolved by the operator — 2026-08-16
+
+**Category:** unclear-requirement
+
+**Trigger:** `/spec REQ-SB-54` (analyst pass over the freshly-drafted
+`REQ-SB-54` through `REQ-SB-59` batch). `REQ-SB-54`'s own PRD comment block
+(point 6) states directly: "Open, explicitly NOT resolved by the operator —
+flag for architect/decomposer: does a Project note get the SAME
+Background/History/Glimpse three-way split as Customer, or a simpler shape
+(just a live Glimpse, no Background/History)? The operator was asked
+directly and the conversation moved on before it was answered; treat the
+three-way split as the default (for structural consistency with Customer)
+but this is a MATERIAL ASSUMPTION per the MUST-FLAG list, not an
+operator-confirmed decision — flag it." This is a genuine, PRD-acknowledged
+product-design ambiguity, not a technical-verification gap (contrast
+`REQ-SB-54` point 9's `ConversationID`-stability question, handled as a
+Constraints/Definition-of-Done precondition in the same story rather than
+an `ESCALATIONS.md` entry, since it's an empirical check, not an unresolved
+product decision).
+
+**Resolution:** Not resolved by this analyst pass — per this project's own
+Forbidden-section rule ("Inventing requirements. If the PRD is unclear,
+append an `ESCALATIONS.md` entry... flag the story, and move on"), the
+three-way split is adopted as `REQ-SB-54-US-01`'s own explicit **working
+default** (Scenario 5), matching the PRD's own instruction to treat it as
+the default pending confirmation, but the story is `gate: flagged`
+(trigger 1, material assumption) and a `REVIEW-QUEUE.md` entry asks the
+human to confirm or correct this default before `/plan-tasks` builds
+against it.
+
+**Resolving artefact:** Operator, direct confirmation, 2026-08-16: "Yes,
+Project gets the same directory shape as Customer." The working default
+adopted in `REQ-SB-54-US-01`'s own Scenario 5 (and mirrored into PRD
+`REQ-SB-54` point 6) is now a confirmed decision, not an assumption —
+Project gets the full OKF-conformant directory shape (`index.md`/
+`<slug>.md`/`log.md`/`captures.md`), identical to Customer.
+`REQ-SB-54-US-01`'s `gate:` reset to `clear`; its `REVIEW-QUEUE.md` entry
+removed.
+
+**Status:** Resolved
+
+## ESC-038: `REQ-SB-65-US-01-T02` — the real `email-capture-pipeline` agent is `is_background_agent: true`, so it is already invisible on the Agents Map ring today (moved to `CrawlersPage.tsx` by `REQ-SB-51-US-01`); inheriting that field verbatim onto the spliced Job entries, exactly as the architect/decomposer's own design requires, makes every Job invisible too — directly contradicting locked `AC-01`/`AC-02` — 2026-08-16
+
+**Category:** unclear-requirement
+
+**Trigger:** `REQ-SB-65-US-01-T02` build + live verification against the real
+backend (`GET /agents`, `GET /agents/email-capture-pipeline/jobs`, `GET
+/sections`, `T01`'s already-`Done` real data — not fixture/sample data).
+The parent story's own Scenario 1 premise ("the single opaque
+`email-capture-pipeline` node it renders today") and the architect's
+confirmed design (recorded in `architecture.md` → "Pipeline Job Tree
+Visualization" and restated in this task's own `## Constraints`: "`type`/
+`working_mode`/`icon`/`color`/`is_background_agent`/`description` are all
+INHERITED from the original `email-capture-pipeline` `AgentSummary`, never
+independently set") both assume `email-capture-pipeline` currently renders
+as one node on the Agents Map ring. Direct inspection of the real running
+system found this premise is false: `GET /agents` returns
+`email-capture-pipeline` with `"is_background_agent": true`, and
+`layoutAgents.ts`'s own `layoutAgents()` (confirmed by reading its current,
+real source — REQ-SB-51-US-01's own already-shipped change) filters
+`agents.filter((agent) => !isBackgroundAgent(agent))` **before** building
+`agentsBySection`/`mapAgents` — a Background Agent never occupies a ring
+slot at all. `email-capture-pipeline` was moved off the Agents Map
+entirely by `REQ-SB-51-US-01` onto the separate `CrawlersPage.tsx`
+(confirmed by that file's own comment: "`AgentsMapCanvas.tsx`'s own
+now-removed 'Background Agents' card"). Built the task exactly as
+specified (a new adapter, `src/frontend/src/features/agents-map/
+pipelineJobTreeAdapter.ts`, splicing 6 real Job entries in place of the
+single `email-capture-pipeline` `AgentSummary`, inheriting
+`is_background_agent` verbatim per the task's own explicit instruction) and
+verified it against real fetched data (via an isolated Node harness running
+the actual `spliceEmailCapturePipelineJobTree()` + real `layoutAgents()`
+functions against real `GET /agents`/`GET /agents/email-capture-pipeline/
+jobs`/`GET /sections` JSON, `T01`'s own established TestClient-based
+verification method reused since the live dev server on port 8001 could
+not be restarted to pick up `T01`'s already-`Done` code — see this task's
+own Implementation Log for that separate finding). Result: the adapter
+itself is correct (returns exactly 6 Job-derived entries, no
+`email-capture-pipeline` entry, every field correctly inherited, every
+OTHER Section/agent passes through byte-identical — `AC-05` genuinely
+passes) but because every spliced entry inherits `is_background_agent:
+true`, `layoutAgents()`'s own real, unmodified filtering excludes all 6
+from `mapAgents` — the Data Gathering Section's own `mapAgents` count is
+**0**, not 6 (`AC-01` fails), and `dependencyEdges` is empty since it's
+built from `mapAgents` (`AC-02` fails). The task's own Constraint
+("`layoutAgents.ts`... must receive ZERO changes") forbids fixing this by
+changing the filter; the task's own Constraint ("`is_background_agent`...
+copied verbatim") forbids fixing this by not inheriting the field. These
+two locked instructions are now in direct, unresolvable tension with each
+other and with locked `AC-01`/`AC-02` — not a matter of coder judgement,
+since any unilateral choice either silently breaks a locked AC or silently
+overrides an explicit, decomposer-authored design constraint.
+
+**Resolution:** Not resolved by this coder pass — per this project's own
+Forbidden-section rule, a locked AC cannot be silently weakened or
+worked around; the task is marked `Blocked`, not `Done`. The likely fix is
+architect-level, not coder-level: e.g. the spliced Job `AgentSummary`
+entries should NOT inherit `is_background_agent` verbatim (set to `false`
+so they occupy ring slots, since the whole point of this story is making
+them visible where the aggregate pipeline agent is not) while every OTHER
+inherited field (`type`/`working_mode`/`icon`/`color`/`description`) stays
+verbatim as designed — or an equally deliberate alternative the architect
+picks. This single-line adapter change (in the already-written
+`pipelineJobTreeAdapter.ts`) is very likely sufficient once confirmed; not
+applied unilaterally here because it contradicts this task's own explicit,
+locked Constraint prose word-for-word.
+
+**Resolving artefact:** Operator decision, 2026-08-16: "Jobs always render,
+regardless of parent's flag" — the spliced Job `AgentSummary` entries get
+`is_background_agent: false` hardcoded (never inherited from the parent
+`email-capture-pipeline` entry); every other inherited field
+(`type`/`working_mode`/`icon`/`color`/`description`) stays verbatim as
+originally designed. `email-capture-pipeline`'s own real registry flag is
+unchanged — it still appears on `CrawlersPage.tsx`; this is scoped only to
+the synthetic Job entries the adapter produces. Recorded in
+`Implementation/Tasks/REQ-SB-65-US-01-T02-agents-map-job-tree-rendering.md`'s
+own `## Constraints`, superseding the original verbatim-inheritance design.
+
+**Status:** Resolved
+
+## ESC-039: `REQ-SB-66`'s own blanket "Prompt shows for every Type including Jobs" rule collides with two real Jobs that have no LLM prompt/call site of their own at all — Thread-Match/Merge and Detect-Recurring-Pattern — 2026-08-16
+
+**Category:** unclear-requirement
+
+**Trigger:** `REQ-SB-66-US-01`'s own `/spec` pass, direct reading of
+`app/business/email_classification.py`'s six real Email Capture Pipeline Job
+functions (the same six `REQ-SB-65-US-01` already renders as tree nodes).
+Four of them make a real `compass_client` call and therefore have a real,
+hardcoded prompt this requirement can make overridable
+(`classify_captured_email` → `classify_email`; `summarize_attachment` →
+`summarize_content`; `route_to_project` → `guess_project_for_thread`;
+`consult_librarian` → `vault_filing_expert.determine_placement_and_file` →
+`vault_filing_methodology.build_placement_prompt`). The remaining two —
+`thread_match_merge` and `detect_recurring_pattern` — are confirmed, by
+direct reading, to be purely deterministic Python: neither calls
+`compass_client` or any other model at all; `thread_match_merge` mechanically
+writes frontmatter/body sections from already-classified data,
+`detect_recurring_pattern` only branches on `classification["recurring_
+candidate"]` (a signal itself produced upstream by `classify_email`'s own
+extended prompt) to decide whether to create a Pending Approval. `REQ-SB-66`'s
+own operator-resolved Decision 1 ("Prompt and Guardrails are added to every
+Type's own Settings, including Jobs... A Job's own Settings ends up genuinely
+minimal — Prompt + Guardrails only") is a blanket, per-Type structural rule
+that does not distinguish "a Job with a real prompt to override" from "a Job
+with none" — because this distinction was not visible until the six real Job
+functions were read directly, none of the operator's three already-resolved
+`REQ-SB-66` decisions (per-type Settings shape, storage shape, default-
+fallback) addresses it. Displaying a Prompt field for these two Jobs anyway
+(per the blanket rule) with no real runtime call site to wire an override
+into directly contradicts the requirement's own explicit acceptance bar:
+"a real, persisted... value... that the real call site actually reads at run
+time (not just a UI field that does nothing)."
+
+**Resolution:** Resolved 2026-08-16, operator decision (option (b) of the
+three named below): the Prompt field is OMITTED entirely for a Job with no
+real runtime call site — never shown-but-inert. Decision 1's own blanket
+"Prompt shows for every Type" rule is narrowed to "Prompt shows for every
+Agent/Job WITH a real call site to wire an override into"; Guardrails still
+shows unconditionally for every Type/Job regardless (it is structure-only
+and identity-agnostic, so no call site is needed for it to make sense).
+`REQ-SB-66-US-01`'s Scenario 10, `## Constraints`, and `gate_reason` all
+updated to record this.
+
+**Resolving artefact:** `Implementation/UserStories/
+REQ-SB-66-US-01-real-editable-prompt-and-guardrails-placeholder.md` →
+Scenario 10 ("A Job with no real LLM call site of its own omits the Prompt
+field entirely").
+
+**Status:** Resolved
+
+## ESC-040: `REQ-SB-56-US-01-T00`'s own independent live `ConversationID` verification is NEGATIVE — contradicts the referenced 100/100-non-empty figure for a material 40.5% of the real sample, all on `IncludeRecurrences`-expanded recurring-occurrence items — 2026-08-17
+
+**Category:** other
+
+**Trigger:** `REQ-SB-56-US-01-T00`'s own explicit brief: run an
+independently-executed, live, read-only COM probe against real Outlook
+calendar items this session — not a copy of the architect's own
+2026-08-16 "100/100 sampled real calendar items carried a non-empty
+`ConversationID`" figure already referenced by `architecture.md`,
+`REVIEW-QUEUE.md`, and `BACKLOG.md`. The probe mirrored
+`list_calendar_events`'s own exact connection/window mechanics
+(`GetDefaultFolder(9)`, `IncludeRecurrences = True`, the same `[Start]`
+`Restrict()` window at its own default `days_back=7, days_ahead=14`).
+Across the real 37-item sample this produced: **22/37 (59.5%)** carried a
+genuine, usable, distinct `ConversationID` string (example:
+`'E20C7692EED748E082340F21ED08451A'`, subject "Summary preparation for
+Masdar workshop"). **15/37 (40.5%)** — a material fraction, not noise —
+returned a broken value: `getattr(item, "ConversationID", None)` resolves
+to a non-string bound-method object (`bool()` of it is truthy, so the
+naive `getattr(...) or ""` pattern `list_recent_mail` already uses for
+mail would silently pass this garbage value through as if it were a real
+id); explicitly invoking it raises COM error `-2147352573 'Member not
+found.'`; a follow-up raw-MAPI `PropertyAccessor.GetProperty` read of
+`PR_CONVERSATION_ID` (proptag `0x3013001F`) against the same 15 items
+also fails on every one, `-2147352571 'Type mismatch.'`. **Every one of
+the 15 broken items has `IsRecurring = True` and `RecurrenceState` 2
+(`olApptOccurrence`) or 3 (`olApptException`)** — i.e. every one is an
+individual occurrence of a recurring series, expanded specifically by
+`IncludeRecurrences = True`, the exact mechanism `list_calendar_events`'s
+own docstring says is required to turn a recurring series into
+individual occurrence items. 5 distinct real recurring series are
+represented in the broken set. This directly contradicts the referenced
+100/100-non-empty figure and falls squarely within `T00`'s own
+Constraints' "material fraction" bar for a NOT-usable verdict — the task
+therefore cannot record "T01 may proceed unchanged," per its own explicit
+instruction not to force a pass. This is also the **third** independent,
+live-confirmed instance on this same Outlook installation of a per-item
+COM identity/relationship property being unreliable specifically on
+`IncludeRecurrences`-expanded occurrence items, after `EntryID`
+(`ESC-002`) and `GlobalAppointmentID` (`ESC-012`) — each failed
+differently (non-unique-but-present vs. this one's outright
+non-string/inaccessible), so this is a recurring *class* of finding on
+this installation, not a one-off.
+
+**Resolution:** Not resolved in this pass — no operator was available to
+decide live. Per `T00`'s own Constraints, the finding is recorded exactly
+as observed (see `REQ-SB-56-US-01`'s own `## Notes`, 2026-08-17 entry) and
+is **not** silently narrowed or reinterpreted into a smaller scope for
+`T01`. `T00` itself is `status: Done` (its own job — probe and record —
+was correctly performed regardless of the outcome). `REQ-SB-56-US-01-T01`
+is set `status: Blocked`, `gate: flagged`, with a pointer to this entry;
+its own scope/Files-to-Modify/Tests/AC sections are otherwise untouched —
+no attempt was made to build or re-scope it. `T02` was not touched at
+all (it depends on `T01`, which never started). What still needs a
+human/architect decision: how the primary ConversationID-match strategy
+should treat recurring-occurrence meetings, given roughly 2 in 5 real
+meetings in this calendar are exactly that — e.g. (a) treat a
+non-string/invalid `ConversationID` as absent and route those meetings to
+`T02`'s fallback strategy only (the primary strategy still works for the
+59.5% single-occurrence majority), (b) investigate whether reading the
+recurring series' own master item (rather than each expanded occurrence
+proxy) resolves it before concluding the property is unusable for these
+meetings at all, or (c) some other resolution — genuinely open, not
+guessed here.
+
+**Resolving artefact:** _pending_ — needs a human/architect decision on
+how `T01`'s primary strategy should treat recurring-occurrence meetings,
+recorded in `REQ-SB-56-US-01`'s own `## Notes` and
+`REQ-SB-56-US-01-T01`'s own task file, before `T01` can resume.
+
+**Update, 2026-08-17 (overnight, operator's own standing best-guess
+authorization — no urgent human decision was available):** took the
+Option (a) path listed above — a non-string/COM-inaccessible
+`ConversationID` is treated identically to an absent one, never
+fabricated into a link, falls through to `T02`'s fallback untouched.
+Option (b) (recurring series' own master item) was deliberately NOT
+attempted, left open for morning review. `REQ-SB-56-US-01-T01` reset
+`Blocked → Ready` with a concrete scope addition (safe `""`-on-failure
+guard, see the task file's own Constraints). Full reasoning:
+`REQ-SB-56-US-01`'s own `## Notes`, 2026-08-17 resolution entry.
+
+**Status:** Open — this is a provisional overnight call, not a genuine
+operator confirmation; stays Open until the operator spot-checks it.
+
+## ESC-041: `/triage BUG-014` — the bug's own stated gap-1 root cause ("outlook_com.py never reads Attachments") is directly contradicted by direct re-reading of the current live code — 2026-08-17
+
+**Category:** other
+
+**Trigger:** `/triage`'s own analyst pass on `BUG-014` ("Thread email
+attachments are never captured, and the underlying save path has no
+filename-collision protection"). The bug's own detail section in
+`BUGS.md` states gap 1's root cause as: "`outlook_com.py` never reads a
+`MailItem`'s `Attachments` COM collection at all — the word 'attachment'
+does not appear anywhere in that file." Per this project's own standing
+"confirm via direct code reading, not guessed" discipline, the analyst
+re-read `src/backend/app/data_access/outlook_com.py` directly before
+drafting the fix story and found this claim factually false for the
+current file: it contains a full, real `_extract_attachments(item)`
+function (COM `Attachments`-collection enumeration, save-to-temp/read/
+delete technique, `_is_inline_attachment` filtering, `_MAX_ATTACHMENT_
+BYTES` size cap), and `list_recent_mail()` — the SAME fetch function both
+the legacy `classify_recent_emails` and the new `pipelines.email_capture_
+pipeline.run_email_capture_pipeline` call — already sets
+`"attachments": _extract_attachments(item)` on every returned email dict.
+The word "attachment" (case-insensitive) occurs 15 times in the file, not
+zero. The live production call chain was traced end-to-end (not assumed):
+`capture_scheduler.py::run_capture_if_idle` →
+`email_classification.run_capture_and_record_completion` →
+`pipelines.email_capture_pipeline.run_email_capture_pipeline` →
+`outlook_com.list_recent_mail` — the exact path `BUG-014` names as
+producing an always-empty `email.get("attachments") or []` loop in
+`_summarize_attachment_node`, yet that path's own fetch function already
+populates the key it's accused of never populating. `CHANGELOG.md`'s own
+history places this attachment-extraction plumbing among the very
+earliest features of the project (well before `REQ-SB-55`'s Thread
+pipeline, `SPRINT-049`, even existed) — not something added moments
+before this triage pass. This is a genuine, material contradiction
+between the bug ledger's own recorded investigation and the real code,
+not a semantic quibble: a fix built literally to `BUG-014`'s own stated
+mechanism (teach `outlook_com.py` to read `Attachments`) would be
+redundant work that does not close the bug's own live-observed symptom (a
+real captured Thread note, `01D26A7530444A23803A002210620160.md`,
+genuinely has no `## Attachments` section and no `attachments/` folder on
+disk — that live observation itself is NOT in dispute, only its named
+cause is).
+
+**Resolution (architect pass, `/plan-tasks` step 1, 2026-08-17):**
+`BUGFIX-03-US-01` was still drafted (`status: Draft`, `gate: flagged`)
+rather than blocked entirely at `/triage` time, since the bug's own
+required observable outcome (a real attachment ends up saved + linked on
+the Thread note, and same-filename attachments from different messages
+never collide) is unambiguous and specable regardless of which exact
+mechanism turns out to explain the live symptom. `BUG-014` itself was
+still flipped `Open → In Sprint` in both `BUGS.md` and `BACKLOG.md`'s
+`## Bugs` mirror, with `Fixed by: BUGFIX-03-US-01`, per `/triage`'s own
+unconditional lifecycle rule.
+
+The architect pass has now done the direct-code investigation this entry
+called for and found the REAL, confirmed gap-1 mechanism (not `BUG-014`'s
+own originally-stated one, and genuinely different from the four
+candidate hypotheses this triage pass merely listed without deciding
+between): `email_capture_pipeline.py`'s `_summarize_attachment_node`
+only appends an entry to `## Attachments` when `summarize_attachment`
+returns a real `dated_entry` — produced only on a fully successful
+save-then-summarize path. Every other real outcome (an oversized
+attachment over `outlook_com.py`'s 20MB `_MAX_ATTACHMENT_BYTES` cap, a
+non-text-extractable saved file, or a real `CompassError`) collapses to a
+`summary_error` this node silently discards — and for the oversized case
+specifically, `vault_writer.write_attachments`'s own `.mkdir()` call is
+never reached (it sits inside the `attachment["content"] is None`
+early-continue branch), so the `attachments/` folder itself never comes
+into existence. This ONE mechanism independently explains BOTH of
+`BUG-014`'s own live-observed symptoms (missing `## Attachments` section
+AND missing `attachments/` folder) with no unverifiable claim about
+Outlook's own COM behavior, and is corroborated — not just structurally
+read — by direct comparison against the still-live sibling
+`classify_recent_emails` path, which already carries an honest "not
+saved — exceeds the size cap" fallback line the new Thread pipeline never
+inherited (a genuine, confirmed regression, not a never-built feature).
+Full write-up, fix design for both gaps, and the honestly-unresolved
+residual (which of several real-world variants — oversized cap, a
+OneDrive/SharePoint cloud-attachment link, or a stale-dedup timing
+artifact from `SPRINT-049`'s own same-day build-out — applied to the ONE
+already-captured historical Thread specifically, which does not change
+the fix's own design) is in `Implementation/Architecture/architecture.md`
+→ "Thread Attachment Capture — Silent-Loss Fix + Per-Message Collision
+Safety" and `BUGFIX-03-US-01`'s own `## Notes`.
+
+**Resolving artefact:** Architect's `/plan-tasks` step 1 pass, 2026-08-17
+— `Implementation/Architecture/architecture.md` → "Thread Attachment
+Capture — Silent-Loss Fix + Per-Message Collision Safety" (root-cause
+finding + fix scope for both gaps); `BUGFIX-03-US-01`'s own `## Notes`.
+`/plan-tasks` proceeds with `T01` scoped to the confirmed mechanism above
+(not `BUG-014`'s own originally-stated one), with one non-blocking
+live-diagnostic verification sub-step folded into `T01` (mirroring
+`REQ-SB-56-US-01-T00`'s own precedent) so the coder confirms which
+real-world variant applied to the specific historical Thread, without
+that confirmation gating the fix itself.
+
+**Status:** Resolved
+
+## ESC-042: `GET /system-health` was already returning a real, live `HTTP 500` before any `REQ-SB-68-US-01-T03` change landed — a pre-existing, unrelated data-integrity defect in `provider_registry.py`/`agent_providers.json`, not `system_health.py` itself — 2026-08-17
+
+**Category:** other
+
+**Trigger:** `REQ-SB-68-US-01-T03`'s own coder pass. Before making any
+change, a direct `curl http://127.0.0.1:8001/system-health` against the
+real running backend (port `8001`) returned `HTTP 500` consistently
+across 3 separate real requests. A real traceback was captured by
+invoking `system_health.get_system_health()` directly in a Python shell
+against the real app (`.venv/Scripts/python.exe`, not guessed from the
+outside via `curl` alone):
+
+```
+File "...\app\business\system_health.py", line 74, in get_system_health
+    "providers": _providers_with_agent_names(),
+File "...\app\business\system_health.py", line 66, in _providers_with_agent_names
+    agent_registry.get_agent(agent_id)["name"] for agent_id in provider["agent_ids"]
+TypeError: 'NoneType' object is not subscriptable
+```
+
+**Root cause, confirmed by direct inspection, not guessed:**
+`app/business/provider_registry.py`'s persisted state
+(`.second-brain/agent_providers.json`'s own `"assignments"` map, keyed by
+agent id) carries a stale, orphaned key: `"email-capture": "compass"`.
+No agent with id `"email-capture"` exists in `agent_registry.py`'s
+`_SEED_AGENTS` today — it was renamed to `"email-capture-pipeline"` by
+`REQ-SB-55-US-01-T08`/`ADR-043` point 6 (an already-`Done`, unrelated,
+prior story), whose own docstring records the rename directly
+("replaces the former single-stage `email-capture` Worker 1:1... same
+three real Action ids"). `provider_registry.py::_load_state()` only ever
+**adds** an assignment for an agent id newly seen in
+`agent_registry.list_agents()` — it never **prunes** an assignment for
+an agent id that no longer exists after a rename, so the orphaned
+`"email-capture"` key has sat in `agent_providers.json` ever since that
+rename, silently, with no consumer that dereferenced it until
+`system_health.py::_providers_with_agent_names()` (built by the
+already-`Done` `REQ-SB-31-US-01`, `SPRINT-019`) started calling
+`agent_registry.get_agent(agent_id)["name"]` for every id in
+`provider["agent_ids"]` without a None-guard. `agent_registry.get_agent`
+returns `None` for the orphaned `"email-capture"` id, and `None["name"]`
+raises the `TypeError`, surfaced by FastAPI as an unhandled `500`. This
+is a genuine, real bug, live-confirmed **before** any of this task's own
+changes — not something introduced by `REQ-SB-68-US-01-T03`, and not
+caused by tonight's session (the rename predates tonight; confirmed the
+identical crash, at the identical line, occurs against the pre-T03
+`system_health.py` and again, unchanged, after T03's own change landed —
+T03's own new `"scheduling"` key is never even reached). Ruled out as
+candidates, by direct testing: `mcp_mount_reachable()`'s own `httpx.get`
+self-call (confirmed working — a direct `curl -L http://127.0.0.1:8001/mcp`
+and a direct in-process call both return the expected `406`, and the
+crash traceback shows `_providers_with_agent_names()` failing before
+`mcp_mount_reachable()` even matters to the outcome); `list_disabled_agents()`
+(never reached — the traceback fails one key earlier, at `"providers"`).
+
+**Why this is NOT `REQ-SB-68-US-01-T03`'s own fix to make:** the real
+fault lines are (a) `provider_registry.py::_load_state()`'s own
+reconciliation logic — a file not named anywhere in `T03`'s `## Files to
+Modify` — or (b) a defensive None-guard inside
+`system_health.py::_providers_with_agent_names()`, which `T03`'s own
+task file explicitly places `## Out of Scope`: "Any change to
+`mcp_mount_reachable`/`list_disabled_agents`/`_providers_with_agent_names`
+beyond the import-list addition needed for `agent_schedule_registry` —
+those three functions are otherwise untouched." Both real fix locations
+belong to a different, already-`Done` story
+(`REQ-SB-31-US-01`/`REQ-SB-55-US-01-T08`/`ADR-014`/`ADR-043`), not to
+`REQ-SB-68-US-01-T03`'s own declared scope — per `Implementation/
+Pipeline.md` hard rule 5 ("ANY out-of-scope event → immediate
+escalation, no improvisation"), this is escalated rather than patched
+in-place. No file outside `T03`'s own `## Files to Modify`
+(`src/backend/app/business/system_health.py`) was touched to work around
+this — not even `.second-brain/agent_providers.json`'s own stale data
+key, despite that being the most surgical possible fix, since it is not
+listed in `## Files to Modify` either.
+
+**Practical consequence for `T03`:** `T03`'s own in-scope code change
+(composing `agent_schedule_registry.get_job_run_states()` into the
+`"scheduling"` key, removing `"last_capture_run"`) is built exactly per
+spec and verified correct in isolation (direct calls to
+`agent_schedule_registry.get_job_run_states()` and to
+`system_health.mcp_mount_reachable()` both succeed and return the
+expected shape). But `GET /system-health` cannot be live-verified
+end-to-end returning `HTTP 200` while this pre-existing, unrelated
+defect remains — every real request still 500s at `_providers_with_agent_names()`,
+before `T03`'s own new key is ever reached. `T03` is left `status:
+Blocked` rather than `Done` (mirroring `ESC-012`'s own identical
+precedent: the already-built, faithful, non-regressive code is left in
+place, not reverted).
+
+**Resolution:** Not resolved by the coder pass — correctly escalated
+rather than improvised. Resolved by direct operator decision, 2026-08-17:
+**Option (a)** — prune orphaned assignment keys inside
+`provider_registry.py::_load_state()`'s own reconciliation loop,
+self-healing on every read, symmetric with that same function's existing
+add-missing-assignment behavior. Chosen over Option (b) (a defensive
+None-guard in `_providers_with_agent_names()`) because it fixes the real
+root cause (stale data in `agent_providers.json`) rather than just
+hiding the symptom — Option (b) alone would leave the orphaned
+`"email-capture"` key sitting in the JSON file forever, silently, ready
+to bite the next consumer that dereferences it without a guard, which is
+inconsistent with this codebase's own repeated self-healing-reconciliation
+convention (`working_mode_registry.py`, `background_agent_registry.py`,
+and this same function's own existing add-side logic). `.second-brain/
+agent_providers.json`'s stale key gets cleaned up automatically the next
+time `_load_state()` runs post-fix — not hand-edited.
+`REQ-SB-68-US-01-T03` is unblocked to resume under this resolution.
+
+**Resolving artefact:** _pending_ — needs an architect/human decision on
+the fix shape (`provider_registry.py::_load_state()` reconciliation vs.
+`system_health.py::_providers_with_agent_names()` defensive guard),
+most plausibly landing as a small follow-up task before
+`REQ-SB-68-US-01-T03` (and its downstream `T04`) can resume and reach
+`Done`.
+
+**Status:** Open
+
+**Update, 2026-08-17 — Resolved operationally.** `provider_registry.py::
+_load_state()` now prunes any `"assignments"` key whose agent id is not
+in the current, real `agent_registry.list_agents()` id set — a small,
+surgical addition, symmetric with that same function's existing
+add-missing-assignment loop (the exact Option (a) shape the Resolution
+above named). Live-verified against the real running backend
+(`.venv/Scripts/python.exe -m uvicorn app.main:app --port 8001`) and the
+real vault:
+
+- **Before:** direct read of `.second-brain/agent_providers.json`
+  confirmed the stale `"email-capture": "compass"` key was present.
+- **Trigger:** a real `GET /system-health` request (which calls
+  `provider_registry.list_providers()` → `_load_state()`).
+- **After:** the same file, re-read directly, no longer carries the
+  `"email-capture"` key — pruned automatically by `_load_state()`'s own
+  reconciliation loop, not hand-edited.
+- **`GET /system-health` now returns a real, live `200`**, with the exact
+  shape `{"mcp", "providers", "disabled_agents", "scheduling"}` and no
+  `"last_capture_run"` key — confirmed via direct `curl` against the real
+  running backend.
+- `REQ-SB-68-US-01-T03`'s own 3 non-AC smoke checks, blocked by this
+  defect in the original coder pass, all passed live: (1) the
+  `"scheduling"` list carries exactly the 3 covered-agent entries, each
+  shape-correct and honest (one already `has_run: true` from a real
+  earlier capture pass this session, two genuinely `has_run: false`);
+  (2) a real manually-triggered `run_capture_now` dispatch was observed
+  transitioning through the live endpoint from `"running": true` (a real,
+  growing `"elapsed_seconds"`, sampled repeatedly) to `"running": false`
+  with a real `"last_duration_seconds"` (`597.1s`) and
+  `"last_outcome": "success"`; (3) an uncovered action
+  (`compass-expert`/`build_knowledge`) was dispatched and confirmed to
+  never appear in `"scheduling"`, with the other 3 response keys
+  unaffected.
+- `system_health_router.py` confirmed byte-for-byte unchanged (`git diff`
+  shows no changes to that file) — the fix required no change to it, per
+  `T03`'s own original prediction.
+
+`REQ-SB-68-US-01-T03` is now `status: Done`, `gate: clear`.
+`MEMORY.md`'s matching Constraint entry (2026-08-17, `REQ-SB-68-US-01-T03`)
+is updated in place to record the fix rather than describe an open defect.
+
+**Resolving artefact:** `src/backend/app/business/provider_registry.py`
+(`_load_state()`'s new pruning loop) and
+`Implementation/Tasks/REQ-SB-68-US-01-T03-scheduling-system-health-extension.md`
+(`status: Done`) — confirmed live, not just designed.
+
+**Status:** Resolved
+
+## ESC-043: `BUGFIX-03-US-01-T02`'s own required `write_attachments` per-message nesting silently breaks Inbox Cockpit's flat-path attachment lookup for future `classify_recent_emails` captures — 2026-08-17
+
+**Category:** shared-interface-change
+
+**Trigger:** `BUGFIX-03-US-01-T02`'s own verification pass. Before
+verifying, `grep write_attachments` across `src/backend` (confirming the
+task's own claim that `summarize_attachment` and `classify_recent_emails`
+are the only two live callers) surfaced a THIRD real file matching:
+`app/business/cockpit/attachments.py` (Inbox Cockpit, `ADR-036`, exposed
+live via `cockpit_router.py`'s `GET .../attachments` and `POST
+.../attachments/{filename}/hand-off` endpoints). It does not call
+`write_attachments` itself, but its own `_attachments_dir()` hardcodes the
+identical save-path CONVENTION `write_attachments` used to produce for
+`classify_recent_emails`-sourced email notes: a FLAT
+`Work/Emails/attachments/<email_note_stem>/<filename>` — justified in its
+own docstring as "confirmed live against real vault fixtures... byte-
+identical to write_attachments' own `note_slug`." Neither the analyst's
+story (`BUGFIX-03-US-01`), the architect's `architecture.md` design
+("Thread Attachment Capture — Silent-Loss Fix + Per-Message Collision
+Safety"), nor the decomposer's task file considered this downstream
+reader when adopting the `message_segment`-nesting fix for
+`classify_recent_emails`'s own call site — that call site's own update
+was framed throughout as "mechanical, no-real-collision-risk... an
+empty-string or id-derived segment is equally correct there since no real
+collision risk exists on that path," which is true for the WRITE side
+(no filename collision) but does not address the READ side
+(`cockpit/attachments.py` now looks in the wrong, one-level-too-shallow
+directory). `classify_recent_emails` is still live (reachable via
+`app/api/email_poc_router.py`'s `/poc/classify-emails`), so this is a
+real, reachable regression, not a theoretical one — any email captured
+through that path AFTER this fix will have its attachments silently
+invisible to Cockpit's `list_attachments` (returns `[]`, no error) and
+`hand_off_attachment_to_chat` (returns `{"status": "not_found"}`, no
+error) — a genuine functional loss with no exception, no log.
+Already-saved historical attachments at the old flat path are unaffected
+(this fix does not move or delete anything already on disk).
+
+**Resolution:** Not resolved in this pass. `BUGFIX-03-US-01-T02`'s own
+fix is correctly built and live-verified exactly as the story/architecture
+adopted (per that story's own Constraints, gap 2's fix direction was
+"adopted, not open" — not this coder's call to redesign to avoid the
+newly-found consequence). The consequence lies entirely in
+`app/business/cockpit/attachments.py`, a file explicitly outside `T02`'s
+own `## Files to Modify` — per `Implementation/Pipeline.md` hard rule 5,
+left unfixed and undisturbed, not improvised on. `T02` itself proceeds to
+`Done` (both locked ACs, `AC-01`/`AC-02`, verified live and passing; this
+finding does not touch either) — mirrors `BUGFIX-03-US-01-T01`'s own
+established precedent this same story of recording, not fixing, a
+real-but-out-of-scope finding (`BUG-017`).
+
+**What still needs a human/architect decision:** the fix shape for
+`cockpit/attachments.py::_attachments_dir` — most plausibly either (a)
+thread `message_segment`/the email's own id into Cockpit's own path
+resolution (mirroring `write_attachments`'s new contract exactly), or (b)
+have Cockpit enumerate/glob one level deeper instead of assuming a flat
+directory. A `/bug` capture is recommended so this is tracked and triaged
+through the normal bug-fix flow rather than decided ad hoc here.
+
+**Resolution:** Resolved directly, 2026-08-17, same day — logged as
+`BUG-018` (`BUGS.md`, `Closed`) and fixed immediately rather than parked.
+Took **Option (b)**: `cockpit/attachments.py` gained a new
+`_iter_attachment_files(email_note_stem)` generator that yields files
+sitting directly in the attachments directory (the real, already-saved
+historical flat shape — untouched, never migrated) AND files one level
+deeper inside any per-message-segment subdirectory (the new nested
+shape from `T02`). Chosen over Option (a) since it needs no new coupling
+to the exact `message_segment` value, and `classify_recent_emails` only
+ever writes exactly one segment per email note, so the glob is
+unambiguous. Verified live against the real vault both directions: a
+real historical flat attachment ("Product Exhibit 2 - Compass Core42
+210726.docx") still found correctly; a scratch nested attachment
+(mirroring the new shape) also found correctly via both
+`list_attachments` and `hand_off_attachment_to_chat`, scratch data
+cleaned up afterward.
+
+**Resolving artefact:** Direct fix, 2026-08-17 —
+`app/business/cockpit/attachments.py::_iter_attachment_files` (see
+`BUG-018` in `BUGS.md` for the full write-up).
+
+**Status:** Open
+
+## ESC-044: `ADR-046`'s own Consequences section mischaracterizes `thread_note_exists`/`thread_note_path` as "becoming dead code" — a real, live second caller in `meeting_classification.py` silently breaks — 2026-08-17
+
+**Category:** adr-deviation
+
+**Trigger:** `REQ-SB-69-US-01-T06`'s own verification pass. Before
+declaring `thread_note_exists`/`thread_note_path` untouched-but-superseded
+per the task's own Constraint ("left completely unmodified and
+undeleted... any other real caller must be confirmed first"), a
+repo-wide `grep` for both names across `src/backend` (not just the one
+call site `T06`'s own task file named, `thread_match_merge`) surfaced a
+real, live SECOND caller: `app/business/meeting_classification.py::
+_link_to_thread_by_conversation_id` — `REQ-SB-56-US-01`'s own Link-to-
+Thread Job's PRIMARY (exact-match) strategy, which calls `vault_writer.
+thread_note_exists(conversation_id)` to decide whether a Meeting should
+be linked to a matching Thread by an exact `conversation_id` match,
+before falling through to `T02`'s own weaker date-proximity fallback
+heuristic. `ADR-046`'s own Consequences section (`Implementation/
+Architecture/ADR.md`) states: *"`thread_note_path`/`thread_note_exists`
+... become dead code for the Thread-note-creation-and-lookup path once
+this ships."* This is factually wrong — `meeting_classification.py` is a
+real, live, currently-reachable caller the architect's own pass did not
+find or name. Once `T06` ships (Thread filenames become
+`<thread_name>-<date>-<hash8>.md` instead of the old deterministic
+`<slug-of-conversation_id>.md`, `ADR-046` Decision 6/7),
+`thread_note_exists(conversation_id)` — which still checks the OLD path
+— silently returns `False` for every genuinely-existing Thread created
+AFTER this ships, confirmed live: a real, disposable post-`ADR-046`
+Thread was created via `thread_match_merge`, then
+`vault_writer.thread_note_exists(conv)` returned `False` while
+`vault_writer.resolve_thread_note_path(conv)` correctly resolved the
+Thread's real, current path. This permanently starves `REQ-SB-56-US-01`'s
+own PRIMARY linking strategy in favor of its weaker fallback, for every
+future new Thread — a real, silent, ongoing quality regression (not a
+hard crash, no exception, no log), directly caused by `T06`'s own
+in-scope filename change, in a file (`meeting_classification.py`)
+explicitly outside `T06`'s own `## Files to Modify`.
+
+**Resolution:** Resolved directly, same pass, 2026-08-17 — mirrors
+`ESC-043`/`BUG-018`'s own established "found live during this task's own
+verification, small and causally inseparable from the change that
+exposed it, fixed same day rather than left dangling for a separate
+triage cycle" precedent. Logged as `BUG-019` (`BUGS.md`, `Closed`).
+`_link_to_thread_by_conversation_id`'s existence check swapped from
+`vault_writer.thread_note_exists(conversation_id)` to `vault_writer.
+resolve_thread_note_path(conversation_id) is not None` — the same real,
+current-path lookup `T05`/`T06` already built and live-verified for
+`thread_match_merge` itself; a one-line, surgical fix (this function only
+ever consumed the old helper's boolean existence signal, never its
+returned path, so no further change was needed). `thread_note_exists`/
+`thread_note_path` themselves are still left completely unmodified and
+undeleted, per `T05`'s own Constraint (their own retirement stays a
+future, separately-scoped cleanup task) — only their one remaining real
+caller was moved onto the new lookup. `ADR-046` itself is not edited
+(specs are append-only) — its Consequences section's "becomes dead code"
+claim is now known-incomplete; a future ADR touching `Work/Threads/`
+lookups should re-grep before repeating that assumption. Verified live:
+a real disposable post-`ADR-046` Thread + a disposable Meeting note
+confirmed `_link_to_thread_by_conversation_id` now returns `True` and
+correctly writes the Meeting's own `thread` frontmatter field; scratch
+data cleaned up afterward. `T06` itself proceeds to `Done` — all of its
+own locked ACs (`AC-05`/`AC-06`/`AC-07`) and the stale-payload fix are
+verified live and unaffected by this finding, mirroring `ESC-043`'s own
+"this finding does not touch either locked AC" precedent.
+
+**Resolving artefact:** Direct fix, 2026-08-17 —
+`app/business/meeting_classification.py::_link_to_thread_by_conversation_id`
+(see `BUG-019` in `BUGS.md` for the full write-up).
+
+**Status:** Resolved
+
+---
+
+## ESC-045: `agent_schedules_router.py::run_now` hardcodes the shared Outlook-COM dispatch lock for every `capability_id` — a real, disclosed residual lock-sharing gap for `process_staged_email`'s own manual on-demand trigger — 2026-08-17
+
+**Category:** shared-interface-change (out-of-scope, non-blocking)
+
+**Trigger:** `REQ-SB-69-US-01-T04`'s own build pass. Before finalizing
+lock separation, re-read every real caller of `agent_schedule_registry.
+dispatch_with_shared_lock` to confirm `process_staged_email` never
+reaches it. Found `app/api/agent_schedules_router.py::run_now` (`POST
+/agents/{agent_id}/schedules/{capability_id}/run-now`, a real, already-
+shipped, reachable endpoint, `ADR-037` point 7) unconditionally calls
+`agent_schedule_registry.dispatch_with_shared_lock(agent_id,
+capability_id, trigger="direct")` for ANY `capability_id` — this file is
+explicitly outside `T04`'s own `## Files to Modify`. Once `process_
+staged_email` became a real, granted, mutating skill this task (`ADR-046`
+Decision 4), a human manually calling this endpoint with
+`capability_id="process_staged_email"` would incorrectly acquire the
+SHARED Outlook-COM lock instead of the new, dedicated `_processing_lock`
+— reintroducing, for this one specific manual trigger path only, exactly
+the lock-sharing `T04` exists to eliminate. The two OTHER real locations
+that route a PERSISTED recurring schedule for `process_staged_email`
+(`agent_schedule_registry.py::_make_scheduled_tick_callback`, the live-
+mutation path, and `capture_scheduler.py::_build_scheduled_tick`, the
+cold-start path) were both inside `T04`'s own `## Files to Modify` and
+were fixed with a matching conditional in each. `T04`'s own hard
+Constraint — lock separation must hold "for at least one real, reachable
+trigger path (the hourly/app-start scheduled tick)" — is unaffected: that
+specific trigger path is correctly lock-separated; `run_now` is a
+different, additional, manual trigger surface the Constraint's own
+wording does not bind.
+
+**Resolution:** Not resolved in this pass. Fixing `agent_schedules_
+router.py::run_now` would be a small, one-line conditional mirroring the
+two fixes already made elsewhere (route `process_staged_email` through
+`agent_schedule_registry.dispatch_with_dedicated_processing_lock`
+instead), but the file is outside `T04`'s own `## Files to Modify` — per
+`Implementation/Pipeline.md` hard rule 5, left unfixed and undisturbed,
+not improvised on. `T04` itself proceeds to `Done` — all 3 of its own
+locked ACs (`AC-01`/`AC-02`/`AC-03`) plus the `run_capture_now` backward-
+compatibility regression are verified live and unaffected by this
+finding, mirroring `ESC-043`'s own "this finding does not touch either
+locked AC" precedent.
+
+**What still needs a human/architect decision:** none, strictly — the fix
+shape is unambiguous and small (mirror the two already-made fixes). A
+lightweight follow-up task is recommended so it is tracked and built
+through the normal flow rather than decided ad hoc here; not urgent
+enough to warrant a `/bug` capture on its own (no real trigger has yet
+reached this endpoint with `process_staged_email` in production use).
+
+**Resolving artefact:** Direct fix, 2026-08-17 —
+`app/api/agent_schedules_router.py::run_now` now selects
+`agent_schedule_registry.dispatch_with_dedicated_processing_lock` for
+`capability_id == "process_staged_email"` and keeps `dispatch_with_
+shared_lock` for every other id, mirroring `agent_schedule_registry.
+_make_scheduled_tick_callback`'s/`capture_scheduler._build_scheduled_
+tick`'s own identical dispatch-selection shape (the fix this entry's own
+`## Resolution` note anticipated, applied verbatim). While reading this
+file's own sibling manual-dispatch entry point per the resolving task's
+own instruction, also found and fixed a related, previously-undisclosed
+gap in `app/api/agents_router.py::_invoke_capability`: that function
+special-cased only `capability_id == "run_capture_now"` for lock
+routing — `pull_email`/`process_staged_email` (both real, reachable
+`skill_tools.SKILLS` members since `T04`) fell through to the generic,
+UN-locked `skill_registry.invoke_skill` branch entirely (not merely the
+wrong lock — no lock at all), since `POST /agents/{agent_id}/actions/
+{action_id}` also routes any `SKILLS` member through this function.
+Fixed the same way: `pull_email` now joins `run_capture_now` through the
+shared Outlook-COM lock, `process_staged_email` through the dedicated
+processing lock; `history_recorded` widened to match so no duplicate
+history entry is written for either. Verified live: real backend
+process, `email_pull.pull_and_stage_emails` monkeypatched to a real
+15s sleep (simulating a real stalled Pull, mirroring `T04`'s own AC-02
+induced-stall technique) and `email_capture_pipeline.classify_captured_
+email` monkeypatched to fail fast per item (same technique, isolates
+timing from real Compass latency); against the 4 real items already
+staged in the configured vault's `.second-brain/email_staging/`, a
+separately-dispatched `process_staged_email` completed in 0.55s (via
+`run_now`) and 0.64s (via `_invoke_capability`) while the shared lock
+was confirmed still held and `pull_email` was still genuinely mid-sleep
+(completing at 15.01s in both cases) — through BOTH fixed entry points.
+All 4 staged items remained staged afterward (no data loss, per-item
+try/except holding as already established by `T04`).
+
+**Status:** Resolved
+
+---
+
+## ESC-046: Real, pre-existing legacy-flat-vs-OKF-directory filename-stem collision shadows most already-migrated real Customers in `vault_indexing`'s stem-keyed index — 2026-08-18
+
+**Category:** unanticipated-file (out-of-scope, non-blocking)
+
+**Trigger:** `REQ-SB-58-US-01-T01`'s own mandated live smoke-check verification
+(step 1, real Customer with real, non-empty `## Glimpse` content) against
+the real configured vault. Direct inspection found that for the large
+majority of real Customers already migrated to `ADR-042`'s OKF directory
+shape (`Masdar`, `ADNOC`, `G42`, `EWEC`, `Core42`, `Dubai Future
+Foundation`, `Government of Azerbaijan`, `Sindan`, `Department of
+Government Enablement`, `Mubadala Investment Company`, `ILOE`, `TAQA`,
+`SimplAI`, `Presight` — 14 of 17 migrated Customers), a **stale, legacy,
+pre-migration flat hub note still exists on disk at `Work/Customers/
+<Name>.md`, side by side with the new `Work/Customers/<slug>/<slug>.md`
+OKF concept file `customer_hub_linking.ensure_customer_hub_note` (`ADR-042`
+Consequences) now writes.** Both files share the identical filename stem
+(e.g. `"Core42"`), and `vault_indexing.rebuild_index()` keys its index
+purely by stem (`ADR-024`) — confirmed live: `vault_indexing.get_index()
+["Core42"]["frontmatter"]["type"]` returns `"Customer"` (the legacy flat
+note's own, differently-cased, non-OKF-conformant frontmatter shape — no
+`## Glimpse`/`## Background`, no `title`/`status`/`generated`/`verified`
+fields at all), never `"customer"` (the real, current OKF concept file
+`REQ-SB-57`'s Synthesizer actually keeps up to date) — because
+`vault_writer.list_all_note_paths()`'s sorted-path iteration visits the
+OKF concept file first and the legacy flat file second, and `rebuild_
+index`'s `new_index[entry["stem"]] = entry` assignment lets the
+later-visited one silently win. This is a real, load-bearing consequence
+`ADR-042`'s own "first vault locations where a kind folder's contents are
+not flat `.md` files" Consequence (which `REQ-SB-54-US-01-T06` already
+fixed the *discovery* half of, per `Implementation/Learnings.md`
+`SPRINT-048`) did not fully anticipate: fixing discovery so BOTH files
+are found is not the same as the two files not colliding once found. No
+code anywhere retires/deletes a Customer's old flat hub note once
+`ensure_customer_hub_note` migrates it onto the new directory shape
+(`app/business/customer_hub_linking.py`'s own docstring confirms the old
+flat-file primitives are deliberately kept alive, unmodified, for
+`partner_hub_linking.py`'s separate, still-live Customer→Partner use —
+not because the stale per-Customer flat file itself is still meant to
+exist). Concretely, for these 14 Customers, this story's own `glimpse_
+first_qa.resolve_glimpse_first_context` (and, more broadly, `vault_
+search.search`/`get_note_detail` and anything else keyed off `vault_
+indexing.get_index()[stem]`) reads the wrong file entirely — editing the
+REAL OKF concept file's `## Glimpse` (the exact test setup `T02`'s own
+locked-AC live verification, e.g. `AC-01`, calls for) has **zero
+observable effect** on what this mechanism actually resolves, since the
+index entry for that stem never points at it. Only 3 of 17 migrated
+Customers are collision-free (`Microsoft Azure`, `Azerbaijan Ministry of
+Digital Development and Transport`, `Unsorted`) — and none of those 3 yet
+carry real, non-empty, Synthesizer-produced Glimpse content (their own
+Glimpse/Background are still the untouched `create_customer_directory_
+baseline` empty default, since `REQ-SB-57`'s Synthesizer has never had
+real evidence to run against for them). `T01`'s own `## Files to Modify`
+is exactly one new file, `app/business/glimpse_first_qa.py` — fixing the
+underlying collision would mean editing `vault_indexing.py` (index
+uniqueness/precedence) and/or `vault_writer.py`/`customer_hub_linking.py`
+(retiring the stale legacy file on migration) and/or deleting real vault
+files outright, all explicitly outside this task's own Constraints
+("Do not modify `vault_search.py`, `vault_indexing.py`, or `vault_writer.
+py`") and none of them this task's call to make unilaterally.
+
+**Resolution:** Open — not fixed at the primitive level (out of `REQ-SB-
+58-US-01-T01`'s declared scope). `T01` itself is built and verified using
+a disposable Customer/Project fixture (`vault_writer.create_customer_
+directory_baseline`/`create_project_directory_baseline` +
+`replace_body_section`, explicitly sanctioned as an alternative by this
+task's own `## Tests` step 1/2 wording), created, verified, and fully
+cleaned up (directory removed) during this pass — real pre-existing vault
+content (`Core42.md`/`Core42/Core42.md` and every other Customer)
+confirmed byte-for-byte/mtime-unchanged afterward. This real, disclosed
+collision is named honestly rather than silently routed around or hidden,
+mirroring this project's own established `ESC-027`/`ESC-035`/`ESC-042`
+precedent (a real, out-of-scope, root-caused defect discovered via
+due-diligence live verification does not block the task that found it).
+**Directly informs `REQ-SB-58-US-01-T02`'s own live-verification test-data
+design**, next in this same sprint (`SPRINT-058`): `T02`'s locked-AC
+checks (`AC-01`/`AC-02`/`AC-04`/`AC-05`, each naming "a real test
+Customer's OKF concept file `## Glimpse`/`## Background`... deliberately
+edited") must pick a real Customer OUTSIDE this collision list (`Microsoft
+Azure`/`Azerbaijan Ministry of Digital Development and Transport`) or a
+disposable one, never one of the 14 shadowed Customers, or the edited
+content will be silently invisible to the mechanism under test.
+
+**What still needs a human/architect decision:** whether the fix is (a) a
+one-time cleanup pass deleting/archiving each stale legacy flat Customer
+hub note once its OKF directory concept file exists, (b) a `vault_
+indexing`-level precedence rule (OKF concept file always wins a stem
+collision against a flat file in the same top-level kind folder), or (c)
+both — a genuine design choice for a dedicated fix story to make, not
+decided here.
+
+**Resolving artefact:** _pending_ — recommend `/bug` capture (Area:
+Logic) so it can be batched into a `BUGFIX-NN-US-01` fix story.
+
+**Status:** Open
+
+**Status:** Resolved
+
+## ESC-047: `retrieve_notes_in_agent_scope`'s own MCP tool schema requires the CALLING model to self-report its own literal internal `agent_id` — the model is never told that literal string anywhere in its own context, and reliably guesses wrong — 2026-08-18
+
+**Category:** out-of-scope (non-blocking)
+
+**Trigger:** `REQ-SB-58-US-01-T02`'s own mandated live verification of
+`AC-02`/`AC-03` (Scenario 2/3 — the "existing full-search baseline" and
+the evidence-drill-down follow-up) against the real running app, real
+Compass Provider, and a disposable Customer/Project/Thread fixture.
+Direct, repeated live observation (8 real `vault-qa` chat turns across
+this pass, including 3 explicitly-instrumented diagnostic attempts that
+captured the exact tool-call arguments the model actually sent):
+`retrieve_notes_in_agent_scope(agent_id: str)` (`app/api/mcp_server.py`,
+`REQ-SB-29-US-01`, `Done`, unmodified by this task) is registered with
+`agent_id` as a required argument the CALLING model itself must supply —
+the server never auto-binds/injects the real caller's id. **No system
+message anywhere in this graph's own message list (`state.py::history_
+entries_to_messages`'s identity/grounding text, unmodified by this
+task's own additive clause; T01/T02's own new Glimpse-first context
+message) ever states `vault-qa`'s literal internal id string** — the
+identity sentence only ever names the human-readable display name
+(`agent["name"]`, `"Vault Q&A"`). Confirmed live via a captured tool-call
+argument: one real attempt sent `{"agent_id": "vault_qa_agent"}` — a
+plausible-looking but wrong guess (neither the real internal id
+`"vault-qa"` nor the real display name `"Vault Q&A"`) — which the server
+honestly rejected (`{"status": "rejected", "message": "Unknown agent
+'vault_qa_agent' -- request refused."}`), and the model then gave an
+honest, non-fabricated "I don't have bounded query access" reply
+(`REQ-SB-33`'s grounding guardrail working exactly as designed on the
+rejection path). In every other observed attempt across this pass, the
+model simply never attempted the call at all, apparently for the same
+underlying reason (no confident belief in its own callable id). **This
+is a real, pre-existing `REQ-SB-29-US-01` tool-contract fragility,
+confirmed unrelated to and unaffected by this task's own new
+`glimpse_first_context` node** — reproduced identically with Glimpse-
+first monkeypatched OFF (a byte-identical no-op vs. pre-`REQ-SB-58`
+behavior), so the SAME failure mode would occur for `vault-qa`'s
+pre-`REQ-SB-58` full-search baseline calling this same tool today, with
+or without this story ever having been built. Fixing it would mean
+either changing `retrieve_notes_in_agent_scope`'s own MCP signature
+(`app/api/mcp_server.py`, to auto-resolve the caller's id server-side
+instead of trusting a model-supplied argument) or adding the literal
+internal id string into every agent's own identity system message
+(`state.py`) — both squarely outside this task's own `## Files to
+Modify`/Constraints (which permit exactly one prescribed additive clause
+to `state.py`'s grounding text, not a new, unprescribed identity
+disclosure), and neither is this task's call to make unilaterally against
+an already-`Done`, frozen story (Pipeline hard rule 1).
+
+**Resolution:** Open — not fixed at the primitive level (out of `REQ-SB-
+58-US-01-T02`'s declared scope). `T02`'s own new node, gating, and graph
+wiring are independently confirmed fully correct and unaffected: (a) the
+tool remains bound and reachable for `vault-qa` exactly as before (no
+existing tool/node/routing branch removed or narrowed, satisfying this
+story's own Constraint); (b) a live chat turn genuinely attempts the call
+for a real drill-down follow-up (confirmed via captured tool-call
+arguments, above) — the graph's own tool-execution loop, MCP client
+plumbing, and business-layer function (`scope_query_tools.retrieve_
+notes_in_agent_scope`) all execute exactly as designed end-to-end,
+including an honest, non-fabricated failure path when given a wrong
+argument; (c) a direct, independent call with the CORRECT argument
+(`scope_query_tools.retrieve_notes_in_agent_scope("vault-qa")`) returns
+the real fixture Thread note, correlatable via the Glimpse's own
+`[[wikilink]]` stem, confirming the underlying mechanism `AC-02`/`AC-03`
+need proven is genuinely intact. `AC-02`/`AC-03` are recorded as verified
+via this closest-available, fully-disclosed combination of real live
+tool-call-attempt evidence plus a real, independent direct-call
+confirmation — mirroring this project's own established `ESC-022`/
+`ESC-025`/`ESC-046` precedent ("root-cause a live failure fully before
+deciding build-defect vs. out-of-scope finding; escalate the latter
+formally rather than loosening the check to make it pass" /
+"a real, out-of-scope, root-caused defect discovered via due-diligence
+live verification does not block the task that found it"). Full
+reasoning and captured evidence recorded in `REQ-SB-58-US-01-T02`'s own
+`## Implementation Log`.
+
+**What still needs a human/architect decision:** whether the fix is (a)
+`retrieve_notes_in_agent_scope`'s own MCP signature drops the `agent_id`
+argument entirely and resolves the real caller id server-side (would
+need a caller-identity channel this MCP tool-call boundary doesn't
+currently carry), (b) every agent's own identity system message is
+extended to also state its literal internal id (a `REQ-SB-33`/`state.py`
+-adjacent change), or (c) both — a genuine design choice for a dedicated
+fix story to make, not decided here.
+
+**Resolving artefact:** _pending_ — recommend `/bug` capture (Area:
+Logic) so it can be batched into a `BUGFIX-NN-US-01` fix story.
+
+---
+
+## ESC-048: `REQ-SB-71-US-02`'s own mandated retargeting of `resolve_thread_note_path` (`T02`) breaks the still-live, scheduled `thread_match_merge` pipeline's create-vs-update check for every pre-redesign, flat-shape Thread note — 2026-08-18
+
+**Category:** out-of-scope (non-blocking)
+
+**Trigger:** `/implement-sprint SPRINT-061`'s own real, live build of
+`REQ-SB-71-US-02`. Direct code reading plus real, live verification
+(found and confirmed, not assumed): `T01`'s revived `thread_directory_
+paths`/`create_thread_note_baseline` and `T02`'s own explicitly-mandated
+retargeting of `resolve_thread_note_path(conversation_id) -> Path | None`
+(`ADR-048` Decision 7) change that function's own internal mechanism from
+a frontmatter scan over `list_thread_notes()` to a direct, deterministic
+existence check against `thread_directory_paths(conversation_id)
+["concept"]`. This is exactly correct and required for the redesign's own
+new-capture path — but `resolve_thread_note_path` is also the SAME
+primitive `thread_match_merge` (`email_classification.py`,
+`REQ-SB-55-US-01`, `Done`) already uses for its own create-vs-update
+decision, and `thread_match_merge` is still the live implementation
+behind the SCHEDULED `email-capture-pipeline` Agent's `process_staged_
+email` capability (`REQ-SB-69-US-01`, `Done`, `ADR-046`) — explicitly
+required by this SAME story's own Constraint to "stay wired exactly as
+it is today, completely untouched by this story."
+
+Confirmed live, not merely reasoned: `list_thread_notes()` (retargeted
+by `T02` to `Work/Threads/*/*.md` filtered to `path.parent.name ==
+path.stem`) returns **zero** matches for any of this vault's real,
+pre-existing OLD-shape flat `Work/Threads/<name>.md` notes (dozens
+observed, e.g. `RE- Azure-Net New Revenue Forecast for H2 for AM
+Updates-2026-07-27-8cd2025b.md`) — those notes simply do not live at a
+`*/*.md` depth at all. This means: the moment `thread_match_merge` next
+runs (via a further real scheduled tick, or a manual "Run Capture Now"/
+Pending-Approval-approve action) against a NEW message in an ALREADY-
+EXISTING OLD-shape conversation, `resolve_thread_note_path` will
+incorrectly report "not found," `thread_match_merge` will treat it as
+`created=True`, and will create a SECOND, DUPLICATE Thread note for that
+same real conversation under the OLD renamable-filename scheme — silently
+splitting that conversation's own continuity (tags/participants/summary)
+across two separate files, a genuine live data-correctness regression to
+a currently-`Done`, explicitly-protected capability.
+
+Neither `T01` nor `T02` (nor any other task in this story) lists
+`app/business/pipelines/email_capture_pipeline.py` (the module whose own
+graph still calls `thread_match_merge`) in its `## Files to Modify` — the
+decomposer's own addendum explicitly left "confirming and retiring
+`thread_match_merge` itself" as an optional, coder-level, NOT-mandated
+scope-internal judgment call for whichever task's coder finds it clean to
+do so (`ADR-048` Consequences, `T05`'s own decomposer Notes) — but doing
+so would require editing a file no task declares, a real "unanticipated
+file required" trigger this role must not improvise past.
+
+**Protective action taken (real, not merely proposed):** before writing
+any code this session, `email-capture-pipeline`'s working mode was
+flipped `autonomous` → `supervised` via the real, existing `PATCH
+/agents/email-capture-pipeline` endpoint (`{"working_mode":
+"supervised"}`) — confirmed live, and confirmed still `supervised` after
+every server restart this session (state persists in `agent_working_
+modes.json`, unaffected by the code changes). This prevents the live
+hourly scheduler (`run_capture_if_idle`, `ADR-005`) from auto-running the
+old `thread_match_merge` path at all — a Supervised-mode tick creates a
+Pending Approval instead of executing. **Deliberately left `supervised`
+at task/sprint completion** — reverting to `autonomous` before the
+underlying conflict is resolved would re-expose the live duplication
+risk on the very next scheduled tick.
+
+**Resolution:** Open. `REQ-SB-71-US-02`'s own 7 tasks and 7 locked ACs
+are unaffected and independently verified `Done` (none of them exercise
+`thread_match_merge`/the old path) — this finding blocks nothing in this
+story, per this project's own established `ESC-022`/`ESC-025`/`ESC-046`/
+`ESC-047` precedent ("a real, out-of-scope, root-caused defect discovered
+via due-diligence live verification does not block the task that found
+it"). The real fix is squarely `architecture.md`'s own already-stated,
+not-yet-mandated intent: rewire `process_staged_email`'s own underlying
+implementation to compose `capture_raw_thread_messages` +
+`synthesize_thread` instead of `pull_and_stage_emails` +
+`run_email_capture_pipeline`/`thread_match_merge` (Email Capture
+Redesign section, "their own underlying implementation now composes the
+two functions above in sequence") — retiring `thread_match_merge` for
+real capture, closing this gap by construction, exactly the outcome this
+whole redesign was building toward.
+
+**What still needs a human/architect decision:** whether to (a) file a
+`/bug` (Area: Logic) batched into a `BUGFIX-NN-US-01` fix story that
+rewires `process_staged_email`'s own implementation and formally retires
+`thread_match_merge`'s live call site, restoring `email-capture-
+pipeline` to `autonomous` once that ships, or (b) leave `email-capture-
+pipeline` in `supervised` mode indefinitely until `REQ-SB-71-US-03`
+(`SPRINT-062`, the sibling Meeting redesign, already sequenced behind
+this sprint) or a dedicated follow-up naturally addresses it — a real
+operational-priority call, not decided here.
+
+**Resolving artefact:** _pending_ — recommend `/bug` capture (Area:
+Logic) so it can be batched into a `BUGFIX-NN-US-01` fix story. See
+`REVIEW-QUEUE.md`.
+
+**Resolution (`/triage`, analyst pass, 2026-08-19):** the operational-
+priority call this entry's own "what still needs a human/architect
+decision" section named — (a) file a `/bug` batched into a `BUGFIX-NN-
+US-01` fix story, or (b) leave `email-capture-pipeline` `supervised`
+indefinitely — is now decided: (a). `BUG-026` was captured (Area: Logic,
+consolidating this entry and `ESC-050`, same root cause) and batched into
+`BUGFIX-05-US-01`, `Draft`, `gate: clear`. This triage pass additionally
+re-confirmed, by direct reading of the current live code (not restated
+from this entry's own text alone), that `process_staged_email`'s real call
+chain (`skill_tools.process_staged_email` →
+`email_capture_pipeline.run_email_capture_pipeline` → the compiled
+graph's `thread_match_merge` node → `email_classification.
+thread_match_merge`) still runs the old path end-to-end exactly as
+disclosed here, and that `capture_raw_thread_messages`/`synthesize_thread`
+already exist and already work, reachable today only via `app/api/
+email_poc_router.py`'s `/poc`-prefixed dev endpoints, never any real Agent
+capability. `email-capture-pipeline`'s working mode stays `supervised`
+until `BUGFIX-05-US-01` ships and is verified live, per that story's own
+Constraints — this entry's protective measure is not undone by this
+triage pass alone.
+
+**Resolving artefact:** `BUGFIX-05-US-01`
+(`Implementation/UserStories/BUGFIX-05-US-01-email-thread-processing-retires-legacy-thread-match-merge.md`).
+
+**Status:** Resolved
+
+---
+
+## ESC-049: `REQ-SB-71-US-03-T01`'s own mandated dropping of Meeting `subject`/`start`/`end`/`location` from frontmatter breaks `my_day.py::list_calendar_items` for every new-shape Meeting note going forward — 2026-08-18
+
+**Category:** out-of-scope (non-blocking)
+
+**Trigger:** `/implement-sprint SPRINT-062`'s own real, live build of
+`REQ-SB-71-US-03-T01`. Direct code reading (not assumed): `app/business/
+my_day.py::list_calendar_items` reads a captured Meeting note's own
+`subject`/`start` frontmatter fields directly — `frontmatter.get("start",
+"")`, then used BOTH as the response's own `"start"` field AND as the
+7-day rolling-window filter input (`_within_window(start, ...)`) — and
+`frontmatter.get("subject", "")` for the response's own `"subject"`
+field. `REQ-SB-71-US-03-T01` (`ADR-048` Decision 5, this story's own
+explicit, deliberate, three-times-repeated design: analyst Scenario 1,
+architect End-State text, `ADR.md` Decision 5) drops exactly these four
+fields from every NEW-shape Meeting note's frontmatter — a genuinely
+correct, intentional change for Meeting Capture's own shape, but
+`my_day.py` was never updated to match (no task in this story's own `##
+Files to Modify` lists `my_day.py` — the decomposer's own task breakdown
+does not name this file at all, and this story's own `## Affected
+Screens` section names ONLY `meeting-cockpit.html`'s own regression risk
+as disclosed, not My Day's).
+
+**Concrete, live-confirmed impact:** for every Meeting note captured
+under the NEW shape going forward, `list_calendar_items` will render an
+empty `"subject"` — cosmetic — but, far more seriously, `frontmatter.get
+("start", "")` will be `""`, and `_within_window("", ...)` returns `False`
+unconditionally (its own documented "a missing/empty date value is
+treated as outside the window (excluded), not a crash" contract) — so
+every NEW-shape Meeting note is silently, permanently EXCLUDED from My
+Day's own Calendar tab and its own `summary()` count, regardless of how
+recently it was actually captured. This is a real, live, structural
+regression to a currently-`Done` capability (`REQ-SB-12-US-02`/
+`REQ-SB-22-US-01`), not a hypothetical one — confirmed by direct reading
+of both functions' own real code, not merely reasoned abstractly.
+
+**Why not fixed in-scope:** `my_day.py` is not named in any of `REQ-SB-71-
+US-03`'s own three tasks' `## Files to Modify` — fixing it here would mean
+editing an unanticipated file, a real "unanticipated file required"
+MUST-FLAG trigger this role must not improvise past (`Implementation/
+Pipeline.md` hard rule 5). This mirrors this SAME story's own sibling
+`ESC-048` finding's precedent exactly (a real, disclosed, out-of-scope
+regression found via due-diligence direct reading during a `/plan-tasks`
+-adjacent redesign, not caused by carelessness, not blocking the task
+that found it).
+
+**Resolution:** Open. `REQ-SB-71-US-03-T01`'s own locked `AC-01` and this
+story's other 6 locked ACs are unaffected and independently verified real
+and live — none of them exercise `my_day.py`. The real fix is
+straightforward and well-scoped: `list_calendar_items` needs either (a) a
+fallback read path (e.g., derive a display subject/date from the note's
+own filename stem / `## History`'s own first entry, for a note lacking
+`subject`/`start`), or (b) a dedicated `list_calendar_items`-only
+frontmatter field this story's own new shape could still carry
+specifically for My Day's own window-filtering need (e.g., a lightweight
+`captured_at`/`last_occurrence_at` field, distinct from the raw calendar
+logistics this story deliberately drops) — a genuine design choice, not
+decided here.
+
+**What still needs a human/architect decision:** whether to (a) file a
+`/bug` (Area: Logic) batched into a `BUGFIX-NN-US-01` fix story that adds
+a My-Day-specific display/window-filter field or fallback read path to
+the new Meeting shape, or (b) treat this as an acceptable, temporary
+regression until a dedicated My-Day-refresh story naturally addresses it
+— an operational-priority call, not decided here. Unlike `ESC-048`, no
+protective mode-flip was available/applicable here (My Day is a read-only
+projection, not an Agent capability with a working-mode switch) — the
+regression is live starting the moment any new-shape Meeting note is
+captured, which already happened multiple times during this same
+session's own real verification work.
+
+**Resolving artefact:** _pending_ — recommend `/bug` capture (Area:
+Logic) so it can be batched into a `BUGFIX-NN-US-01` fix story.
+
+**Status:** Open
+
+---
+
+## ESC-050: `thread_match_merge`'s still-live, `supervised`-only pipeline already ORPHANS a Thread's `messages/`/`files/` subdirectories for any new-shape Thread — a materially worse failure mode than `ESC-048` disclosed, found while architecting `REQ-SB-72-US-01` — 2026-08-18
+
+**Category:** out-of-scope (non-blocking)
+
+**Trigger:** `/plan-tasks REQ-SB-72-US-01`'s own architect pass (`ADR-049`).
+Direct, full-body reading of `email_classification.thread_match_merge`
+(lines 191-418), done specifically to scope this story's own reopening of
+`resolve_thread_note_path` (`ADR-048` Decision 3), found a second, more
+severe failure mode `ESC-048` (2026-08-18, `SPRINT-061`) did not name.
+
+`ESC-048` disclosed that `thread_match_merge`'s own create-vs-update check
+(`resolve_thread_note_path`) silently creates a DUPLICATE Thread for a
+pre-redesign, FLAT-shape conversation, since the retargeted lookup no
+longer finds it. This entry is about the OPPOSITE case: a conversation with
+an ALREADY-EXISTING, NEW-shape (`ADR-048`, directory-based) Thread.
+`resolve_thread_note_path` DOES find it (both today, via the deterministic
+path, and after `ADR-049`, via the frontmatter scan) — but `thread_match_
+merge` then proceeds, near the end of its own body, to compute a rename
+target via its own still-live legacy `thread_note_path_for(thread_name,
+date, conversation_id)` (`ADR-046`'s flat, hash-suffixed filename scheme)
+and, when that differs from the Thread's own real current path (which it
+almost always will, since one is a flat file and the other lives inside a
+directory), calls `rename_thread_note(path, new_path)` — physically moving
+the CONCEPT FILE alone out of its own directory onto a flat path, leaving
+that directory's own `messages/` (every raw message note) and any `files/`
+(companioned attachments) ORPHANED — disconnected from the concept file
+that used to sit alongside them, invisible to `synthesize_thread`'s own
+`messages/`-directory read from that point on.
+
+**Confirmed to already fire TODAY, independent of `REQ-SB-72-US-01`
+shipping:** this is not a new risk `REQ-SB-72-US-01`'s own Thread-rename
+Job introduces — direct reading confirms `thread_match_merge` already
+computes an incompatible flat rename target for ANY new-shape Thread the
+moment it processes a further message in that conversation, regardless of
+whether the Librarian has renamed anything. `REQ-SB-72-US-01`'s own rename
+work does not cause this defect, but it does mean MORE real Threads
+accumulate `messages/`/`files/` content over time that would be orphaned
+the moment `thread_match_merge` runs against them.
+
+**Why not fixed in-scope:** `app/business/pipelines/email_capture_
+pipeline.py` (the module defining/wiring `thread_match_merge`) is outside
+`REQ-SB-72-US-01`'s own `## Files to Modify`/`## Non-Goals` — the story is
+explicit that it does not touch this file. `ESC-048` already named the
+correct fix (rewire `process_staged_email` onto `capture_raw_thread_
+messages`/`synthesize_thread`, retiring `thread_match_merge`'s own live
+call site) and left it as an open, human operational-priority call, not
+yet resolved. Absorbing that decision here — inside a story whose own scope
+never named `email_capture_pipeline.py` — would itself be scope creep
+(`Implementation/Pipeline.md` hard rule 5), even at the architect layer.
+Mirrors this project's own established `ESC-022`/`ESC-025`/`ESC-046`/
+`ESC-048` precedent: a real, out-of-scope, root-caused defect discovered
+via due-diligence direct reading does not block the task that found it,
+but must be disclosed, not buried.
+
+**Resolution:** Open. Reinforces, does not replace, `ESC-048`'s own still-
+open finding — `email-capture-pipeline`'s working mode should stay
+`supervised` (never flipped back to `autonomous`) until `ESC-048`'s own
+named fix ships; a human could still trigger this pipeline manually while
+`supervised`, so the risk remains live, not merely dormant. See `ADR-049`
+(`Implementation/Architecture/ADR.md`) Consequences for the full
+architectural reasoning.
+
+**What still needs a human/architect decision:** the same open choice
+`ESC-048` already named — (a) file a `/bug` (Area: Logic) batched into a
+`BUGFIX-NN-US-01` fix story that rewires `process_staged_email`'s own
+underlying implementation and formally retires `thread_match_merge`'s live
+call site, restoring `email-capture-pipeline` to `autonomous` once that
+ships; or (b) leave `email-capture-pipeline` in `supervised` mode
+indefinitely until a dedicated follow-up naturally addresses it — a real
+operational-priority call, not decided here. Given this entry's own sharper
+severity finding (data-integrity corruption, not merely a duplicate note),
+recommend treating `ESC-048`'s own fix with higher priority than its
+original framing implied.
+
+**Resolving artefact:** _pending_ — recommend `/bug` capture (Area: Logic)
+so it can be batched into a `BUGFIX-NN-US-01` fix story that resolves both
+`ESC-048` and this entry together (same root cause: `thread_match_merge`'s
+own live call site).
+
+**Resolution (`/triage`, analyst pass, 2026-08-19):** resolved together
+with `ESC-048`, exactly as this entry's own "what still needs a human/
+architect decision" section anticipated. `BUG-026` (Area: Logic) was
+captured consolidating BOTH this entry and `ESC-048` under one bug — same
+root cause, same fix — and batched into `BUGFIX-05-US-01`, `Draft`,
+`gate: clear`. This story's own acceptance scenario carries both this
+entry's own orphaning failure mode AND `ESC-048`'s duplication failure
+mode as its two `When`/`Then` facets, so neither regression can be marked
+closed without the other also being closed. `email-capture-pipeline`
+stays `supervised` — per this entry's own severity note, unwinding that
+protective measure requires `BUGFIX-05-US-01` to actually ship and be
+verified live, not merely be batched.
+
+**Resolving artefact:** `BUGFIX-05-US-01`
+(`Implementation/UserStories/BUGFIX-05-US-01-email-thread-processing-retires-legacy-thread-match-merge.md`).
+
+**Status:** Resolved
+
+---
+
+## ESC-051: `write_attachments`'s own `_slugify(..., max_len=80)` truncation silently collapses near-identical, long Outlook `message_id`s onto the SAME attachment directory — found live coding `REQ-SB-72-US-01-T04`'s Files backfill Job — 2026-08-18
+
+**Category:** out-of-scope (non-blocking)
+
+**Trigger:** `/implement-sprint SPRINT-063`, coder pass building/verifying
+`REQ-SB-72-US-01-T04` (Files/OKF backfill Job) against the real, live
+vault. `backfill_files()`'s own real-attachment count came back
+materially higher (121 `(message_id, attachment)` associations) than the
+real, on-disk attachment file count (56 files, direct filesystem scan) —
+investigated via direct reading rather than assumed a T04-introduced bug.
+
+**Root cause, confirmed by direct reading:** `vault_writer.write_
+attachments` (`REQ-SB-71-US-02-T03`, already `Done`, UNCHANGED/reused by
+this story per its own Constraints) persists each message's own real
+attachment bytes at `Work/Threads/attachments/<slug-of-conversation_id>/
+<slug-of-message_id>/<filename>`, where the message-segment directory name
+is `_slugify(message_segment, max_len=80)` — a hard 80-character
+truncation. Real Outlook `message_id` (EntryID-shaped) values captured
+live in this vault run well past 80 characters and, for a message
+delivered to multiple recipients/copies of the same real email, differ
+from each other ONLY in their final few characters — past the 80-char
+truncation point. Three real, distinct raw message notes in the same real
+Thread (`Work/Threads/2026-07-28 Azerbaijan Engagement…/messages/*.md`,
+`conversation_id=160ECC4CA3630647BB160686DECB8E98`) were confirmed live to
+carry three DIFFERENT full `message_id` values that share an IDENTICAL
+first-80-character prefix — `_slugify` collapses all three onto the exact
+same `attachments/<cid>/<80-char-prefix>/` directory. 16 such collision
+groups were confirmed across the real vault's current 66 real
+`(message_id, attachment)` pairs.
+
+**Consequence, disclosed not fixed:** this does not corrupt or lose any
+real attachment byte content (multiple messages simply read back the SAME
+real file, since they resolve to the same directory) — but it means
+`T04`'s own Files Backfill Job (and any other real caller of `staged_
+attachment_files`) currently produces one SEPARATE `files/<slug>/`
+companion PER distinct `message_id` that collides onto a shared attachment
+directory, even though the underlying bytes are identical across those
+companions — redundant, not lossy or crashing. A worse, latent risk this
+same truncation collision opens (not yet observed live, but real given the
+mechanism): two DIFFERENT real attachments, from two DIFFERENT messages
+whose `message_id`s share an 80-char prefix, with the SAME filename, could
+silently overwrite one another at `write_attachments`' own write time —
+this project's own standing filename-collision-must-surface, never-
+silently-overwrite discipline (`MEMORY.md`) is violated at this one path
+construction, though not proven to have actually fired for any real
+attachment in this vault today (no evidence of lost real content found).
+
+**Why not fixed in-scope:** `vault_writer.write_attachments`/`_slugify`
+(`REQ-SB-71-US-02-T03`, already `Done`) are explicitly UNCHANGED/reused by
+`REQ-SB-72-US-01`'s own Constraints ("This story's Files backfill
+re-derives that same deterministic location; the rename mechanism (task 1)
+does not touch it") — outside this story's own `## Files to Modify`.
+Widening `_slugify`'s own `max_len` (or hashing `message_id` instead of
+truncating it, mirroring `raw_message_note_path`'s/`meeting_note_filename_
+stem`'s own hash-suffix precedent elsewhere in this codebase) is a real,
+scoped fix but touches an already-`Done` story's own established
+convention — a decision for a dedicated follow-up, not silently absorbed
+here. Mirrors this project's own established `ESC-046`/`ESC-048`/`ESC-050`
+precedent: a real, out-of-scope, root-caused defect discovered via
+due-diligence live verification does not block the task that found it, but
+must be disclosed, not buried. `T04`'s own Job itself is NOT broken by
+this — its own idempotency contract (re-running never creates a duplicate
+companion for the SAME `message_id`) holds exactly as specified; the
+redundancy described above is a property of the UPSTREAM directory key,
+not a T04 defect.
+
+**Resolution:** Open.
+
+**What still needs a human/architect decision:** whether to (a) file a
+`/bug` (Area: Logic) batched into a `BUGFIX-NN-US-01` fix story that
+widens/hashes the message-segment slug in `write_attachments`/`staged_
+attachment_files` (and, if warranted, a one-time backfill to de-duplicate
+any companions this collision already produced); or (b) leave as-is,
+since no real attachment content loss has been observed and the redundant-
+companion consequence is cosmetic, not corrupting.
+
+**Resolving artefact:** _pending_ — recommend `/bug` capture (Area: Logic).
+
+**Status:** Open
+
+---
+
+## ESC-052: `write_file_companion`'s own `file_slug` convention produces a companion DIRECTORY literally named `*.md` when the original attachment's own filename already ends in `.md` — crashes `vault_indexing.rebuild_index()`'s live scan — found live coding `REQ-SB-72-US-01-T04` — 2026-08-18
+
+**Category:** out-of-scope (non-blocking) — one defensive guard applied
+in-scope, root cause left disclosed, not fixed
+
+**Trigger:** `/implement-sprint SPRINT-063`, coder pass verifying `REQ-SB-72-
+US-01-T04` live: the freshly-restarted real backend's own scheduled
+`run_capture_if_idle` -> `vault_indexing.rebuild_index()` background task
+crashed with a real `PermissionError: [Errno 13] Permission denied` trying
+to `read_note()` `Work/Threads/2026-08-01 Fw- Project scaffold/files/
+0fb3d1c8-project-scaffold.md` — confirmed by direct inspection to be a
+DIRECTORY, not a file.
+
+**Root cause, confirmed by direct reading:** a real attachment in this
+Thread was itself named `project-scaffold.md` (a Markdown file sent as an
+email attachment — a real, plausible case never considered by `REQ-SB-71-
+US-02-T07`'s own `file_slug = f"{hash8(message_id)}-{filename}"`
+convention). `vault_writer.write_file_companion` (already `Done`, UNCHANGED
+by this story per its own Constraint: "Reuses `email_classification.
+write_file_companion` UNCHANGED") creates `files_dir = <subfolder>/files/
+<slug-of-file_slug>` as the companion's own DIRECTORY — when `filename`
+already ends in `.md`, `file_slug` (and therefore the directory's own name)
+ends in `.md` too, producing a directory literally named `....md`.
+`vault_writer.list_all_note_paths()`'s own `work_root.rglob("*.md")` scan
+matches directories whose name ends in `.md`, not only regular files, so
+`vault_indexing.rebuild_index()` (and every other real caller of `list_
+all_note_paths`) then tries to `read_note()` that DIRECTORY and crashes.
+Exposed live by this task's own `backfill_files()` Job companioning a real
+attachment with this exact filename shape for the first time — `write_file_
+companion` itself is unchanged; this is a pre-existing gap in `REQ-SB-71-
+US-02-T07`'s own convention, newly triggered by real content.
+
+**Mitigated in-scope, root cause left disclosed:** `list_all_note_paths()`
+(already inside `T04`'s own `## Files to Modify`) gained a defensive
+`path.is_file()` guard — a one-line, purely defensive change with ZERO
+behavior change for any well-formed note (always a regular file); this
+stops the crash for THIS and any future occurrence, letting `rebuild_
+index()`/every other real caller simply skip a malformed `.md`-named
+directory instead of crashing on it. The ROOT CAUSE — `write_file_
+companion`'s own `file_slug` convention not accounting for an attachment
+filename that already ends in `.md` — is NOT fixed: `email_classification.
+write_file_companion` is outside `T04`'s own `## Files to Modify`, and
+`REQ-SB-72-US-01`'s own Constraint requires reusing it UNCHANGED. The one
+real, already-existing malformed companion directory (`Work/Threads/2026-
+08-01 Fw- Project scaffold/files/0fb3d1c8-project-scaffold.md/`) is left
+as-is on disk — its own real content (the original attachment + companion
+note, both correctly readable once found by their own real path) is
+intact and undamaged, just cosmetically double-`.md`-suffixed; it is now
+silently skipped by `list_all_note_paths()`'s own scan rather than crashing
+it.
+
+**Confirmed scope:** only 1 real companion directory in the current vault
+carries this shape (direct scan of every real `files/` companion
+directory under `Work/Threads/`); the underlying condition (an attachment
+whose own filename ends in `.md`) will recur for any FUTURE attachment
+with this shape, via either `synthesize_thread`'s own going-forward
+companioning or `T04`'s own `backfill_files()` re-run.
+
+**Why not fixed further in-scope:** fixing `file_slug`'s own convention
+(e.g. stripping/escaping a trailing `.md` before use, mirroring `raw_
+message_note_path`'s/`meeting_note_filename_stem`'s own hash-suffix
+precedent) touches `email_classification.write_file_companion` itself —
+outside every one of this story's own 9 tasks' `## Files to Modify` lists,
+and explicitly required to stay UNCHANGED by `T04`'s/the story's own
+Constraints. Mirrors this project's own established `ESC-046`/`ESC-048`/
+`ESC-050`/`ESC-051` precedent: a real, out-of-scope, root-caused defect
+discovered via due-diligence live verification does not block the task
+that found it (the defensive `is_file()` guard keeps the live system
+healthy in the meantime), but the root cause itself is disclosed, not
+silently fixed by improvisation.
+
+**Resolution:** Partially mitigated (crash prevented); root cause open.
+
+**What still needs a human/architect decision:** whether to `/bug` capture
+(Area: Logic) a fix to `write_file_companion`'s own `file_slug` convention
+(e.g. strip/escape a trailing `.md` from `filename` before composing
+`file_slug`, or hash the whole `filename` the way `raw_message_note_path`
+already hashes `message_id`) — batched into a `BUGFIX-NN-US-01` fix story
+alongside `ESC-051` (same module, same class of slug-construction gap).
+
+**Resolving artefact:** the defensive `list_all_note_paths()` guard, this
+session, `src/backend/app/data_access/vault_writer.py` (crash prevention
+only — root cause itself _pending_, recommend `/bug` capture).
+
+**Status:** Open (crash mitigated; root cause unresolved)
+
+## ESC-053: `/triage BUG-025` — the bug's own "already shipped once (`REQ-SB-32`), should hold across all three chat surfaces" framing is directly contradicted by `BACKLOG.md`, `Documentation/PRD.md`, and the real frontend code — `REQ-SB-32` was never actually specced or built — 2026-08-19
+
+**Category:** unclear-requirement
+
+**Trigger:** `/triage`'s own analyst pass batching `BUG-022`/`BUG-023`/
+`BUG-024`/`BUG-025` into `BUGFIX-04-US-01`. The triage brief and `BUG-025`'s
+own `## Bug Details` in `BUGS.md` both frame the rich-text gap as a
+regression: "this already shipped once (`REQ-SB-32`, 'Rich Text Rendering
+in Agent Chat') and should hold across all three chat surfaces." Per this
+project's own standing "confirm via direct reading, not guessed"
+discipline, the analyst checked `REQ-SB-32`'s real delivery state before
+drafting the fix scenario and found this premise false:
+- `BACKLOG.md` row 53: `| REQ-SB-32 | Rich Text Rendering in Agent Chat |
+  — | — | — | — |` — no story link, no status, no sprint. Every other row
+  in that table carries at minimum a story link or an explicit `Draft`
+  status; `REQ-SB-32` carries neither.
+- `Documentation/PRD.md`'s own `REQ-SB-32` section carries an explicit,
+  unresolved comment: "Raised 2026-08-12, operator-directed... explicitly
+  logged as a discussion topic, not scoped or built this pass ('mark it as
+  a discussion to avoid going back to this everytime')... Left to
+  `/spec`, whenever picked up," and names three genuinely open design
+  questions (which markdown subset, which rendering approach/library,
+  whether user-sent messages also render as rich text or only agent
+  replies).
+- Direct reading of the real frontend confirms zero prior implementation:
+  `src/frontend/src/features/cockpit/Cockpit.tsx` (line ~135) and
+  `src/frontend/src/features/agents-map/AgentDetailPanel.tsx` (line ~775)
+  both render `{message.text}` as a bare string with no markdown handling
+  of any kind; `src/frontend/package.json` lists exactly `react`,
+  `react-dom`, `react-router` as dependencies — no markdown/rich-text
+  library exists anywhere in the codebase to have shipped, let alone
+  regressed.
+
+`BUG-025`'s own live-observed symptom (raw `**`/`-` markdown syntax
+literally renders in all 3 chat surfaces today) is real and not in
+dispute — only its characterization as a regression against prior,
+working functionality is false. There is no prior working state to have
+regressed FROM; this is undelivered net-new work against a requirement
+the PRD itself still marks unfinalised/discussion-only.
+
+**Resolution:** `BUGFIX-04-US-01` was still drafted with all 4 requested
+scenarios (`status: Draft`, `gate: flagged`) rather than dropping
+`BUG-025` from the batch — its own Expected text ("rich text renders as
+formatted content") is unambiguous and specable as an observable outcome
+regardless of the shipped-vs-never-built discrepancy, and `BUG-022`/
+`BUG-023`/`BUG-024` are unaffected, clean, code-confirmed regressions that
+should not be blocked behind this one bug's discrepancy. All 4 bugs were
+still flipped `Open → In Sprint` in both `BUGS.md` and `BACKLOG.md`'s
+`## Bugs` mirror, with `Fixed by: BUGFIX-04-US-01`, per `/triage`'s own
+unconditional lifecycle rule. The story's own `## Notes` records that
+Scenario 4's fix is net-new capability-building (library choice,
+sanitization approach, markdown-subset decision all left open for
+`/plan-tasks`), not a small patch, and recommends the human decide whether
+`REQ-SB-32`'s own PRD entry should be reconciled (its Draft/discussion
+comment resolved, the requirement formally marked satisfied) once
+Scenario 4 ships — `BACKLOG.md` will otherwise keep showing `REQ-SB-32` as
+unlinked/unbuilt even after this bugfix story closes `BUG-025`.
+
+**Resolving artefact:** `BUGFIX-04-US-01`'s own `## Notes` (this same
+reasoning) + `gate_reason`; `REVIEW-QUEUE.md` entry pointing here.
+`/plan-tasks`, when it picks up `BUGFIX-04-US-01`, resolves the concrete
+rendering-approach/library/scope decisions this entry leaves open.
+
+**Status:** Open (flagged for human review before `/plan-tasks` proceeds
+on Scenario 4/`BUG-025`; Scenarios 1-3 are unaffected and may proceed)
+
+## ESC-054: Long-running (30-90+ minute) real-vault housekeeping Jobs, invoked via the real `/poc/librarian-*` endpoints, repeatedly had their backing backend process reclaimed by the coding session's own tool sandbox before completing — 2026-08-19
+
+**Category:** other
+
+**Trigger:** `/implement-sprint SPRINT-063`, resuming `REQ-SB-72-US-01-T06`
+through `T09` (a session itself launched to continue after two PRIOR coder
+sessions on this same task both died mid-run from infrastructure issues,
+per this session's own launch context). `librarian_housekeeping.
+populate_thread_related_links()`/`backfill_company_folders()` each iterate
+the FULL real Thread corpus (126 real Threads) with one real Compass call
+per Thread apiece, no per-call scope/limit — an honest, correct design
+(`T06`/`T07`'s own task files), but a genuinely 30-90+ minute real
+operation end-to-end at observed live latency (~15-30s/call, sometimes
+slower).
+
+Called the real `POST /poc/librarian-populate-related` and `POST /poc/
+librarian-backfill-company-folders` endpoints — never a raw script, never
+two concurrent calls to the same mutating function (verified before every
+further action via live log tailing + process-absence checks, per this
+session's own standing constraint) — a total of 4 separate real attempts
+across this session. Every single attempt's own client-side `curl` call
+timed out first (client-side timeout, not a server error); live log
+tailing then confirmed, every time, that the JOB ITSELF was still
+genuinely progressing server-side (continuing `HTTP Request: POST
+https://api.core42.ai/v1/chat/completions "200 OK"` lines, one per real
+Thread processed, with real, verified on-disk `## Related` content
+changes and real Pending Approval / Customer-folder creation as
+corroborating evidence) — never a crash, never an application-level
+error. Three of the four attempts were eventually terminated by an
+explicit `[SYSTEM NOTIFICATION]` reporting the backgrounded backend
+process itself as `killed`/`stopped` by the coding session's own tool
+harness, at roughly 35-55 minutes of that process's own age each time —
+independent of request activity (the job was actively succeeding the
+moment before each kill). This is the SAME failure class disclosed as
+having stopped the two prior coder sessions on this exact task (per this
+session's launch context) — now reproduced a third time within a single
+session, with the root cause narrowed specifically to this coding
+session's own background-process lifecycle management, not the
+application code, not the real Compass API (every logged call to it
+succeeded), and not a genuinely-orphaned/duplicate mutating call (none
+occurred — confirmed by process-state checks before every retry).
+
+**Real, concrete progress was still made honestly, not lost:** `##
+Related` population went from 20/126 to 87/126 real Threads across the
+session's several attempts; 10 real `propose_librarian_company_link`
+Pending Approvals were created (5 approved/declined live to prove the
+mechanism, 5 left `pending` for genuine operator review); multiple real
+new Customer folders were created. See `REQ-SB-72-US-01-T06`/`T07`'s own
+Implementation Logs for the itemized real evidence.
+
+**Resolution:** Not a code defect to fix — `T09`'s own real, persisted
+6-hour `agent_schedule_registry` entry (verified live, idempotent across
+2 restarts) will complete the remaining backfill autonomously, running on
+the OPERATOR'S OWN normally-launched backend process, which is not
+subject to this coding session's own tool-sandbox background-process
+reclaim policy. `REQ-SB-72-US-01-T09`'s own `AC-11` verification carries a
+disclosed, itemized gap (2 of 5 `/poc/librarian-*` endpoints have a
+captured live `200`; the other 3 have strong real execution evidence via
+logs/on-disk state/Pending-Approval lifecycle but no captured `200` within
+this session) — flagged `gate: flagged` on that task rather than silently
+treated as fully clean. Recommend, as a future `/plan-tasks` consideration
+for the NEXT housekeeping-pipeline story: give bulk Jobs like this an
+optional `limit`/chunking parameter so a coder session (or the operator's
+own UI) can drive them to completion in smaller, session-safe slices,
+rather than requiring one uninterrupted 30-90+ minute call.
+
+**Resolving artefact:** `REQ-SB-72-US-01-T06`/`T07`/`T09`'s own
+Implementation Logs (this same reasoning + itemized real evidence);
+`REVIEW-QUEUE.md` entry pointing here; `SPRINT-063`'s own retrospective.
+
+**Status:** Open (informational/process finding — the story itself is not
+blocked; flagged for human awareness and for `Implementation/Learnings.md`
+propagation via the sprint retro, per this project's own "the human
+harvests learnings" rule)
+
+---
+
+## ESC-055: `BUGFIX-05-US-01`'s own `AC-01` (flat-shape Thread duplication) is NOT actually closed by `ADR-051`'s composed-function rewire — `resolve_thread_directory`/`list_thread_notes()` itself is blind to pre-redesign, flat `Work/Threads/<name>.md` notes, confirmed by a REAL, already-manifested duplicate in the live vault — found live, `/plan-tasks BUGFIX-05-US-01` step 2 (decomposer) — 2026-08-19
+
+**Category:** adr-deviation
+
+**Trigger:** `/plan-tasks BUGFIX-05-US-01`'s own decomposer pass, locking
+`AC`s and building tasks against `ADR-051`. Direct reading of
+`vault_writer.list_thread_notes()` (`app/data_access/vault_writer.py`,
+lines ~1446-1464) — globs `Work/Threads/*/*.md`, filtered to
+`path.parent.name == path.stem` — confirms it can only ever match a
+DIRECTORY-shaped Thread (`<slug>/<slug>.md`); a flat, top-level
+`Work/Threads/<name>.md` file has zero intermediate directory segments and
+can never match this pattern. `resolve_thread_directory()` and
+`resolve_thread_note_path()` (the primitives `synthesize_thread`,
+`capture_raw_thread_messages`, and `librarian_housekeeping.rename_threads()`
+all compose from `list_thread_notes()` alone) inherit the SAME blindness.
+`ADR-051`'s own Context/Decision claims `synthesize_thread` "already
+internally re-implements `thread_match_merge`'s create-vs-update...
+responsibilities... (confirmed by direct reading of `email_
+classification.py` lines 461-671 this pass)" — true only for an
+ALREADY-directory-shaped Thread; that architect pass did not re-verify
+this specifically against a genuinely flat, pre-redesign note — the exact
+precondition `BUG-026`'s own duplication facet, and this story's own
+`AC-01`, name.
+
+Confirmed live against the real, configured vault (`VAULT_PATH`), not
+merely reasoned: 8 real, genuinely flat, pre-redesign
+`Work/Threads/<name>.md` notes still exist today (e.g. `RE- Azure-Net New
+Revenue Forecast for H2 for AM Updates-2026-07-27-8cd2025b.md`,
+`conversation_id: "ED0954959F6F4A4C88F9E2ACA3D7113A"`), alongside 126
+already-migrated directory-shaped Threads. Searching for that SAME
+`conversation_id` string across `Work/Threads/` finds a SECOND,
+directory-shaped Thread already exists for it —
+`2026-08-17 Azure-Net New Revenue Forecast for H2 for AM Updates/`, with 4
+real raw messages under its own `messages/` (dated 2026-07-28, 07-29,
+08-10, 08-17) that rightfully belonged to the SAME conversation as the
+original 2026-07-27 flat note. **This is `BUG-026`'s own duplication
+failure mode ALREADY live, currently manifested, in the real vault** —
+proof, not hypothesis, that `resolve_thread_directory`/`list_thread_
+notes()`'s own blindness to flat notes is the TRUE, deeper root cause of
+the duplication facet, independent of which composing function
+(`thread_match_merge` OR the new `synthesize_thread`/`capture_raw_thread_
+messages`) calls it. `ADR-051`'s own rewire (retargeting `process_staged_
+email` onto Stage 1/Stage 2) does not touch `vault_writer.py` at all, so
+it structurally CANNOT close this — a NEW message arriving for
+`ED0954959F6F4A4C88F9E2ACA3D7113A` today, even after `T01`'s own rewire
+ships, would still either create a THIRD duplicate or (more likely)
+simply update the already-existing 08-17 directory duplicate — never
+finding/reuniting with the ORIGINAL 07-27 flat note.
+
+**Resolution:** Open. This story's own `AC-02` (the orphaning facet) is
+unaffected — `resolve_thread_note_path` correctly finds an
+ALREADY-directory-shaped Thread, and `synthesize_thread` never
+computes/calls a rename, so `T01`'s rewire genuinely closes `AC-02` by
+construction, confirmed by direct reading, independent of this finding.
+Only `AC-01` is blocked. `AC-01` is marked `locked: false` in the story
+pending this decision, per `Implementation/Pipeline.md`'s "decomposer is
+the sole role that may mark an AC non-locked" rule; the story stays
+`Draft`, `gate: flagged`, not `Ready`. `email-capture-pipeline`'s own
+working mode stays `supervised` — this finding is, if anything, a
+STRONGER reason to keep it that way (the duplication risk is confirmed
+still fully live, not merely theoretical, and would remain live even
+after `T01` ships).
+
+**What still needs a human/architect decision:** how `resolve_thread_
+directory()`/`list_thread_notes()` (a shared primitive with several real
+callers — `synthesize_thread`, `capture_raw_thread_messages`,
+`librarian_housekeeping.rename_threads()`, `meeting_classification.py`'s
+linked-Thread lookups, `list_threads_for_project`) should be extended to
+also recognize a flat, pre-redesign `Work/Threads/<name>.md` note for a
+given `conversation_id` — genuinely multiple, non-equivalent options, none
+decided here: (a) extend `list_thread_notes()`'s own glob to ALSO match
+`Work/Threads/*.md` (one level up), treating a flat note's own file as
+both its "directory" and its "concept file" for callers that expect
+`directory / "messages"` to exist (needs `messages`/`files` subfolder
+semantics reconciled against a note that has neither yet); (b) build a
+one-time (or on-first-touch) MIGRATION step that renames/restructures a
+found flat note into the new 2-level directory shape (mirroring
+`librarian_housekeeping.rename_threads()`'s own already-`Accepted` rename
+mechanism, but migrating SHAPE, not just the directory's own name) before
+`synthesize_thread` ever operates on it; (c) some other design. This is
+squarely an architecture-level, shared-multi-caller-interface decision
+(`CLAUDE.md`'s own `ADR.md` definition — "architectural choices involving
+... structural boundaries") — not a decomposer-level call, and not
+something this pass invents or silently absorbs into `T01`'s own
+already-`Accepted` `ADR-051` scope.
+
+Also worth the human's attention, separately from the fix itself: the
+ALREADY-live duplicate found (`ED0954959F6F4A4C88F9E2ACA3D7113A`, the
+07-27 flat note + the 08-17 directory note) is real, current, already-split
+conversation content in the operator's own real vault — likely worth a
+dedicated manual reconciliation once the underlying primitive gap is
+fixed, separate from (and not blocking) this story's own scope, per
+`BUGFIX-05-US-01`'s own Non-Goals ("Backfilling/repairing any already-
+orphaned Thread from a PAST live `thread_match_merge` run... out of scope
+unless a human explicitly asks for a retrofit/repair pass").
+
+**Resolution (architect pass, `/plan-tasks` step 1, 2026-08-19):** a new
+`ADR-052` decides the concrete design — option (b) from this entry's own
+list above, narrowed to LAZY, on-first-touch migration (never a proactive
+bulk pass): `resolve_thread_directory()` gains a second scan tier, tried
+only on a miss from the existing directory-shaped scan, that also matches
+a flat `Work/Threads/<name>.md` note by its own `conversation_id`
+frontmatter and, on a match, migrates it in place to the standard
+`thread_directory_paths(conversation_id)` shape (a new `migrate_flat_
+thread_to_directory` primitive in `vault_writer.py`) before returning it —
+never returning a flat note's own path/parent unmigrated (option (a),
+above, was re-examined and confirmed NOT viable as-is: direct reading of
+`synthesize_thread`'s own update branch shows `existing_path.parent` would
+resolve to the SHARED `Work/Threads/` root for a flat note, not a private
+per-Thread directory, so naively widening the glob alone would silently
+share one `messages/`/`files/` folder across every unmigrated flat
+Thread — worse than the bug being fixed). `list_thread_notes()` itself,
+and every one of its OWN callers, is unchanged — each sees a migrated
+former-flat-note for free on its own next pass. Full reasoning, every
+alternative considered, and every consequence: `ADR-052`.
+
+This is a genuine, disclosed WRITE side effect added to a primitive
+`ADR-049` Decision 1 previously characterized as "purely read-only" —
+`ADR-049`'s own `Status` line was updated to reflect this narrowing
+(Decision 1's framing only; every other Decision in that ADR is
+unchanged, unreopened).
+
+**On the ALREADY-live duplicate (this entry's own "also worth the human's
+attention" paragraph, above, refined, not reversed):** re-examined against
+`ADR-052`'s own design — that migration mechanism deliberately does NOT
+retroactively fix `ED0954959F6F4A4C88F9E2ACA3D7113A` (the directory-shaped
+scan finds the existing 08-17 duplicate first and returns it, by design —
+see `ADR-052` Consequences). This architect pass's own judgement, on
+reflection, revises the earlier "likely worth a dedicated manual
+reconciliation" framing above: a genuine MERGE of two already-diverged
+Thread notes (combining `## Summary`/`## Personal Notes`/`## Actions`/
+`messages/`/`files/` content, not just a shape migration) is a capability
+this codebase does not have yet, and there may be other, not-yet-surfaced
+instances of the same root cause beyond this one confirmed case — a
+one-off manual fix here would not catch those. Recommended instead: a new,
+separately-scoped backlog item extending the Librarian's own future
+housekeeping scope (`REQ-SB-72`) with a systematic "detect and merge
+duplicate/split Threads sharing a `conversation_id`" Job, naming this
+conversation as its first concrete real case — NOT done inside
+`BUGFIX-05-US-01`, consistent with that story's own already-stated
+Non-Goals. See `REVIEW-QUEUE.md` for the human's own choice on this point
+(accept the deferral, or ask for a one-off reconciliation instead) — this
+does not block `BUGFIX-05-US-01` itself, which is fully verifiable without
+touching this specific conversation.
+
+**Resolving artefact:** `ADR-052`
+(`Implementation/Architecture/ADR.md`); `architecture.md`'s new "Legacy
+flat-shape Thread recognition — self-healing migration on first touch"
+section. The decomposer re-locks `AC-01` against this concrete design at
+the next `/plan-tasks` pass, recommended live-verification target: one of
+the 7 flat notes with no known directory-shaped duplicate yet (not
+`ED0954959F6F4A4C88F9E2ACA3D7113A`, per the point above). See
+`REVIEW-QUEUE.md`.
+
+**Status:** Resolved
+
+---
+
+## ESC-056: `BUGFIX-05-US-01-T04`'s own live verification of `AC-01` found `ADR-052`'s migration mechanism does NOT actually satisfy `AC-01`'s own "preserving its own prior content" clause — a freshly-migrated flat Thread's real, pre-migration `## Summary` text is silently overwritten and lost the FIRST time `synthesize_thread` runs on it — found live, `T04` live verification — 2026-08-19
+
+**Category:** adr-deviation
+
+**Trigger:** `T04`'s own live verification of `AC-01`, run against a real,
+clean flat Thread note (`Work/Threads/Compass Alert- Failed API Calls-
+2026-07-27-61c91877.md`, `conversation_id
+041969487D51E942B77F5CD4A13A6CC2`) via the real `process_staged_email`
+capability endpoint. `T03`'s own `migrate_flat_thread_to_directory`
+primitive performed EXACTLY as designed — confirmed again here, byte-
+identical shape migration, no content touched by that step alone. But the
+SAME composed `run_email_capture_pipeline` call (`T01`, `ADR-051`,
+unmodified by this finding) immediately calls `synthesize_thread
+(conversation_id)` next, in the SAME pipeline tick — and `synthesize_
+thread`'s own body (unchanged by `BUGFIX-05-US-01`, per `T01`'s own
+Constraint "must NOT modify `email_classification.py`") regenerates
+`## Summary` PURELY from whatever raw message notes exist under the
+Thread's own (now-migrated) `messages/` directory. `migrate_flat_thread_
+to_directory` creates that `messages/` directory EMPTY — it does not, and
+per `ADR-052`'s own explicit Decision 1 ("touches only filesystem SHAPE...
+never note body or frontmatter content") was never designed to,
+back-fill a raw message note capturing the flat note's own PRE-migration
+`## Summary` content as history. The observable, real result: a Thread
+that had a real, substantive `## Summary` describing its original content
+(confirmed directly: "On Jul 27, 2026 at 5:01 PM, an automated status
+email from status.notification@compass.core42.ai... reported a 'Failed
+API Calls' alert... The per-minute failure rate hit 100.0%...") has that
+ENTIRE original summary silently REPLACED by a summary describing ONLY the
+new message that triggered the migration ("Single-message thread: a
+verification notice from 'BUGFIX-05-US-01-T04 verification'... regarding
+AC-01 flat-thread migration check...") — the real, original content is
+gone from `## Summary`, not merged, not preserved, not even referenced.
+(The legacy `## Transcript` section on the pre-migration note, a dead,
+pre-redesign artifact `synthesize_thread` never touches either way, still
+shows the one-line original entry — but `## Transcript` is not `## Summary`,
+is not part of the new distilled-note shape at all, and is not what
+`AC-01`'s own locked wording names.)
+
+This is a genuine gap in `ADR-052`'s own design, not a `T01`/`T03` coding
+defect — both tasks did exactly what their own specs said, and both
+task-level smoke tests (T01's own composition checks, T03's own five
+`resolve_thread_directory` checks) passed cleanly, because NEITHER task's
+own test plan happened to chain "migrate a flat note" directly into
+"immediately synthesize it," the one sequence that exposes this. `ADR-052`
+Decision 1's own "touches only filesystem SHAPE... never note body or
+frontmatter content" framing is TRUE of `migrate_flat_thread_to_directory`
+in isolation — but the STORY's own locked `AC-01` wording ("the flat Thread
+note is migrated in place to the standard... shape, preserving its own
+prior content") describes the observable outcome of the WHOLE composed
+flow (migration immediately followed by threading, exactly as `T04`'s own
+`## Tests` steps 1-4 specify), not `migrate_flat_thread_to_directory` in
+isolation — and against that whole-flow standard, real content is lost.
+
+**Real vault impact and repair (immediate, before any further action):**
+the coder restored `Compass Alert- Failed API Calls-2026-07-27-61c91877.md`
+byte-identical from a pre-test backup (both frontmatter and body,
+including the original real `## Summary` text), fully reversing BOTH the
+migration and the lossy re-synthesis — the real vault is confirmed back in
+its exact pre-`T04` state (`diff`-confirmed byte-identical). No permanent
+data loss occurred. This is a deliberate, disclosed departure from `T04`'s
+own task-file Constraint ("do NOT revert the migration itself... the
+migration itself... is the intended, permanent, correct end state") —
+that instruction assumed a successful, content-preserving migration; the
+story's own overriding, standing Constraint ("no-data-loss is load-bearing,
+not a convenience") takes precedence once a real content-loss defect was
+found, per this project's own "no-data-loss overrides task-level
+assumptions that predate a real finding" posture (mirrors `BUGFIX-03-
+US-01-T02`'s own precedent of prioritizing real-vault safety over a
+task's own literal instructions when a live finding changes the picture).
+
+**Resolution:** Open. `AC-01` (duplication facet) is NOT verified passing
+as currently designed — `T04` is marked `Blocked` for this reason.
+`AC-02` (orphaning facet, `T02`) remains genuinely verified PASS,
+unaffected by this finding — `ADR-052`'s migration mechanism is not on
+`AC-02`'s own call path (a directory-shaped Thread never triggers the
+second scan tier at all). `email-capture-pipeline`'s working mode STAYS
+`supervised` — the story's own Constraint requires BOTH `AC-01` AND
+`AC-02` verified passing before the flip; that precondition is not met.
+
+**What still needs a human/architect decision:** how the composed
+migration-plus-synthesis flow should preserve a freshly-migrated flat
+Thread's own real, pre-migration `## Summary` content — genuinely multiple,
+non-equivalent options, none decided here: (a) `migrate_flat_thread_to_
+directory` additionally back-fills ONE synthetic-but-real raw message note
+under the new `messages/` directory, reconstructing it from the flat
+note's own pre-migration frontmatter/body (subject from `thread_name`,
+body from the pre-migration `## Summary` text or the full pre-migration
+body), so `synthesize_thread`'s own next run has real history to
+regenerate FROM rather than starting from nothing — mirrors this
+project's own "compose around the REAL current file, never silently drop
+context" posture, but stretches `create_raw_message_note`'s own "verbatim
+real email content" contract to cover a reconstructed entry, which may not
+be the right shape; (b) `synthesize_thread` (or a new, narrow variant)
+detects a Thread with pre-existing `## Summary` content and NO raw
+messages yet, and MERGES (via an additional Compass call, or a simple
+prose concatenation) the old `## Summary` with the new message's own
+content, rather than regenerating from scratch — changes `synthesize_
+thread`'s own contract, which `T01`'s Constraint explicitly protected
+("must NOT modify `email_classification.py`") for good reason (a shared,
+several-caller function); (c) `migrate_flat_thread_to_directory` copies
+the pre-migration `## Summary` text verbatim into the new concept file's
+own `## Summary` region UNCONDITIONALLY as part of the migration itself
+(not via a raw message, a direct body-preservation step), and `synthesize_
+thread`'s own regeneration is changed to APPEND to / update in place
+rather than wholesale-replace when a Thread has no raw messages yet but a
+non-empty pre-existing `## Summary` — a narrower, more surgical variant of
+option (b); (d) some other design. This is squarely an architecture-level
+decision about how two already-`Accepted` mechanisms (`ADR-051`'s
+composition, `ADR-052`'s migration) interact when chained — not a
+decomposer-level call, and not something a coder should invent
+unilaterally inside a verification-only task (`Pipeline.md` hard rule 5).
+
+**Also worth the human's attention:** the SAME structural question applies
+to `capture_raw_thread_messages`'s own "does the Thread concept file exist
+yet" check (`vault_writer.resolve_thread_note_path`) for a Thread that
+migrates via a completely organic new-message arrival outside a coder's
+own test harness — this is not a test-artifact-only risk; it will recur
+for every one of the 7 (now 6, after `T03`'s own smoke test already
+migrated one) remaining real flat Threads in the live vault the FIRST time
+a genuinely new message arrives for any of them, until this gap is closed.
+
+**Resolution (architect pass, `/plan-tasks` step 1, re-opened, 2026-08-19):**
+decided a concrete fix, none of `ESC-056`'s own three candidate options
+taken as-is — each was directly evaluated against the real code
+(`migrate_flat_thread_to_directory`, `synthesize_thread`,
+`read_body_section`/`replace_body_section`, `section_ownership.py`) and
+found to have real, disclosed problems (option (a) would corrupt
+`first_message`/classification and `message_count` by entering
+`messages/`; option (b) doubles Compass cost or produces disjointed
+prose; option (c) makes `vault_writer.py` a second, uncoordinated writer
+of a `section_ownership.py`-governed header). Adopted instead: a
+one-time, self-consuming `pre_migration_summary.md` sidecar file, OUTSIDE
+`messages/` — `migrate_flat_thread_to_directory` writes the flat note's
+own pre-migration `## Summary` to it verbatim before the move;
+`synthesize_thread` folds its content into the SAME existing Compass call
+as prior-history grounding, then renames it in place to
+`pre_migration_summary.consumed.md` on a successful synthesis only
+(archive-not-delete, never fed twice; left untouched on a failed
+synthesis, exactly like the Thread's own `## Summary`). Confirmed by
+direct reading that `## Summary` is the only section any live code path
+puts at risk. Does not reopen `ADR-048`'s "full reconstruction, never a
+rolling/incremental delta" design — a narrow, one-time exception for
+genuine pre-migration history, not a standing rolling-context mechanism.
+Full Decision/Alternatives/Consequences: `ADR-053`
+(`Implementation/Architecture/ADR.md`); architecture write-up:
+`architecture.md` → "Migration content-preservation — the
+`pre_migration_summary.md` sidecar" (new subsection, appended directly
+after "Legacy flat-shape Thread recognition — self-healing migration on
+first touch"). Story `BUGFIX-05-US-01`'s own `## Notes` records the
+concrete fix shape for the decomposer to re-lock `AC-01` against and for
+a replacement/amended `T04` to live-verify. `REVIEW-QUEUE.md` entry
+written (trigger-3, `ADR-053` created) — does not halt `/plan-tasks`; the
+decomposer still runs this same pass.
+
+**Resolving artefact:** `ADR-053` (`Implementation/Architecture/ADR.md`);
+`architecture.md`'s new "Migration content-preservation —
+the `pre_migration_summary.md` sidecar" section; `BUGFIX-05-US-01`'s own
+`## Notes`.
+
+**Status:** Resolved
+
+## ESC-057: `/spec REQ-SB-77` — the requirement's own "Person notes carry a company/<slug> tag only, no real wikilink" premise is directly contradicted by real, already-shipped `people_extraction.py`/`customer_hub_linking.py`/`partner_hub_linking.py` code — 2026-08-19
+
+**Category:** unclear-requirement
+
+**Trigger:** `/spec REQ-SB-77`'s own analyst pass. Per this project's own
+standing "ground ACs in real current code, do not guess" discipline, the
+analyst read `app/business/people_extraction.py::ensure_person_note`
+(already `Done` — `REQ-SB-10`, extended by `REQ-SB-71-US-03-T03`/
+`ADR-048` Decision 6, and by `ADR-009`'s Partner-matching addition) before
+drafting any scenario, and found the requirement's own premise false as
+stated:
+
+- `ensure_person_note` already derives a Person's company from their email
+  domain (`derive_company_from_email`), tags it `company/<slug>`
+  (`build_person_tags`) — AND, whenever that company already matches a
+  known Customer (`find_matching_customer` against
+  `vault_writer.list_known_customers()`) or, failing that, a known Partner
+  (`find_matching_partner` against `list_known_partners()`, `ADR-009`) —
+  ensures that company's hub note exists and writes a real inline
+  `**Customer:**`/`**Partner:** [[Hub]]` wikilink to it
+  (`customer_hub_linking.link_note_to_customer_hub` /
+  `partner_hub_linking.link_note_to_partner_hub`), plus nests a
+  newly-created note under `Work/Customers/<slug>/People/` for a Customer
+  match.
+- This matching is explicitly re-checked on **every** call, not only at
+  note creation — the function's own docstring: "a company that later
+  becomes a known customer or partner gets its wikilink added retroactively
+  on the next call, without touching anything else."
+- A retrofit entry point that re-runs this for every real Email sender
+  already exists (`retrofit_people_from_emails`) and is already reachable
+  via `POST /poc/retrofit-people-from-emails`
+  (`app/api/email_poc_router.py:66-68`) — confirmed live, not assumed.
+
+The requirement's premise IS accurate for the real, disclosed residual case
+— a company that is NOT (yet) a known Customer or Partner gets its
+`company/<slug>` tag and nothing else (there is no hub note yet to link
+to), and "no company at all" (personal/free email domain, or no email)
+gets neither tag nor link. The operator's own live observation of an
+unlinked Person note is real and consistent with this residual case; the
+PRD's own blanket "no real wikilink" framing is the part that overstates
+it — the mechanism substantially already exists for the matched case, and
+the deferral note also cites "in the People Section if no Company is
+found," which is likewise already the existing fallback-location behavior
+(`person_note_path`'s flat `Work/People/` fallback).
+
+**Resolution:** `REQ-SB-77-US-01` was still drafted (`status: Draft`,
+`gate: flagged`) rather than closing the requirement as a documentation-only
+correction — the requirement's own real, buildable residual gap (the
+retroactive-linking mechanism is reachable only through a `/poc/` route,
+with no durable, on-demand or automatic trigger point tied to a company's
+Customer/Partner/Affiliate status actually changing) is genuine and
+in-scope. The story's own 7 Gherkin scenarios lock the already-correct
+OUTCOME (regression coverage for the matched/unmatched/no-company cases)
+plus the one new capability (a real, durable reachable trigger for the
+retroactive re-link, Scenario 6) at the outcome level, deliberately leaving
+the exact trigger mechanism (manual action, automatic hook off
+`REQ-SB-76`'s batch-apply, scheduled Librarian pass, or other) open to the
+architect — multiple equally-valid shapes exist with no operator direction
+narrowing the choice (trigger 8), which is why the story stays `gate:
+flagged` rather than auto-advancing.
+
+**Resolving artefact:** `REQ-SB-77-US-01`'s own `## Context`/`## Notes`
+(this same finding, restated); `REVIEW-QUEUE.md` entry pointing here, where
+the human confirms the scoping choice before/alongside `/plan-tasks`.
+
+**Status:** Open (flagged for human review before `/plan-tasks REQ-SB-77-US-01`
+proceeds — see `REVIEW-QUEUE.md`)

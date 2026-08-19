@@ -656,3 +656,538 @@ equivalent-weight to a harvested retro.
   production (two same-day duplicate notifications overwrote each other).
   Always include a genuinely unique identifier (e.g. source system ID) in
   any generated filename/key, even when a collision seems unlikely.
+
+## 2026-08-14 — SPRINT-030
+
+### Patterns (do more of this)
+
+- **Trace a task's own illustrative sample code's real call graph before
+  running it, not just after a crash** — caught a genuine infinite-
+  recursion bug (`_load_state()` calling `grant_skill_access()`, which
+  itself calls `_load_state()`) before it ever executed. Also caught a
+  `KeyError`-on-success bug in a different task's sample the same way.
+  Both were shipped-looking illustrative code, not obviously wrong on a
+  read-through alone.
+- **`TestClient` (fast, no full app-start) plus a real `curl` against a
+  fully-started server (slow, real side effects) are not either/or** —
+  run both when a real app-start side effect makes the full server slow
+  to bring up; the fast layer gives immediate real evidence, the slow
+  layer is free bonus rigor once it finishes in the background.
+- **Back up real production state, run a deliberate clean-slate test,
+  then restore it** — reused for `.second-brain/agent_skills.json`
+  around a migration-seed verification; correctly distinguished
+  real pre-existing production grants from the task's own new output
+  before restoring.
+
+### Antipatterns (avoid this)
+
+- **Assuming a git worktree's checked-out state matches the main
+  checkout's real current working tree** — true only for files the main
+  checkout's own `git status` reports clean. Every `M`/`??` file (a large
+  set on an actively-developed repo) needs an explicit sync before a
+  worktree's copy can be trusted for reading OR appending. Also:
+  `tools/node/` (like `.env`/`.venv`) is gitignored and therefore also
+  absent from a fresh worktree — a worktree-run coder's own "X is not
+  installed on this host" claim should be read as "X was not reachable
+  from this isolated worktree," not trusted as a host-wide fact (the main
+  checkout had a working portable Node the whole time). See `MEMORY.md`
+  for the full correction.
+- **Triggering a real Outlook/Compass app-start capture pass just for an
+  HTTP-routing confirmation, when a lighter technique (`TestClient`)
+  already gives equivalent real evidence** — valuable as bonus
+  confirmation, but shouldn't be the first or only attempted route when
+  time is scarce.
+
+### Sizing calibration
+
+- **Estimated:** ~9 tasks, L — **Actual:** 9 tasks, L — matched exactly.
+  The heaviest tasks were heaviest by real verification cost, not code
+  volume — each surfaced a genuine correctness bug in its own sample
+  code that only a real live run found.
+
+## 2026-08-14 — SPRINT-031
+
+### Patterns (do more of this)
+
+- **Independently test an operator-named "single highest-risk check" as
+  its own small, fast, isolated probe FIRST, using a different agent/
+  input than any slower, already-planned end-to-end test** — de-risked
+  the sprint's single most safety-critical property (a real migrated
+  mutating Skill under Supervised mode defers rather than executes) in
+  0.008s, without making its confirmation depend on a much slower
+  real-world call succeeding.
+- **Live CPU-accumulation + active-TCP-connection checks as a genuine
+  "still working, not hung" control** — used across a multi-hour real
+  background run (a full, unbounded, on-demand real Meetings-backlog
+  capture) to distinguish real bounded progress from a true hang without
+  ever needing to kill and restart.
+
+### Antipatterns (avoid this)
+
+- **Assuming an "S"-sized task's real-world verification cost scales
+  with its code volume** — this sprint's code diff was genuinely small,
+  but one single mandated live check (an unbounded, on-demand real-
+  pipeline invocation against a large real backlog) dominated the
+  sprint's actual wall-clock cost by orders of magnitude. Flag this
+  explicitly whenever a task's Tests block names an unbounded, on-demand
+  real-pipeline invocation as its verification method.
+- **Not proactively checking for a stray, already-running dev-server
+  process sharing the same real vault/working-mode state before starting
+  a live Supervised-mode test** — a real, unattended background-scheduler
+  tick from a process running since before the session started created
+  its own real pending-approval record mid-test. A quick
+  `Get-NetTCPConnection -LocalPort 8000,8001` at the START of live
+  verification would have surfaced this proactively instead of mid-test.
+
+### Sizing calibration
+
+- **Estimated:** ~4 tasks, S — **Actual:** 4 tasks, S in code volume, but
+  real verification cost was well outside the "S" envelope — one manual
+  test step against a large real backlog took several real-world hours.
+  No prior Learnings entry's documented latency range (90s–7min, for a
+  scheduled tick) anticipated a full on-demand backlog run being this
+  much larger. Consider flagging "unbounded real-pipeline invocation" as
+  its own wall-clock-risk sizing dimension, separate from code volume.
+
+## 2026-08-14 — SPRINT-032
+
+### Patterns (do more of this)
+
+- **Verify a retrieval mechanism honestly against the vault's OWN real
+  current content, never fabricate a positive result for a schema with
+  no real data yet** — confirmed `Work/Pipeline`/`Agreements`/
+  `Consumption` don't exist in the real vault at all, used the closest
+  real substitute (the `customer/<slug>` tag) for the positive case,
+  and independently confirmed the literal empty-schema case honestly
+  returns `"empty"`. Disclosed directly in the task/story, not glossed
+  over.
+- **A minimal Python `websockets` CDP driver (no `node`/`npx`/Playwright
+  needed) combined with the React-controlled-input Fiber-props direct-
+  invoke technique** — drove a real click → tab-switch → type-and-commit
+  → close/reopen-persistence round trip against the real running
+  frontend with zero extra dependencies.
+
+### Antipatterns (avoid this)
+
+- **Fire-and-forget `Start-Process` for a headless-browser launch meant
+  to be debugged** — silently exited within ~1s with no diagnostic;
+  switch to a foregrounded, output-redirected invocation first when a
+  headless launch needs debugging.
+- **Sharing one CDP WebSocket connection for both synchronous
+  request/response RPC and event-stream listening** — hit a
+  `ConcurrencyError` from two coroutines both calling `recv()`. Open a
+  second WebSocket connection to the same target for event listening.
+
+### Sizing calibration
+
+- **Estimated:** ~5 tasks, S — **Actual:** 5 tasks, S — matched exactly.
+  The two heaviest tasks were heaviest by which live-verification
+  technique they demanded (CDP round trip; honest real-vs-schema
+  finding), not code volume — both built in under 40 lines.
+
+## 2026-08-14 — SPRINT-033
+
+### Patterns (do more of this)
+
+- **When a task's own informal verification-step prose names a URL that
+  isn't quoted from a locked AC, verify the real route from the router's
+  own source file before trusting it** — one task's prose named
+  `/agents-map`; the real mounted route was `/` (root). Cheap to catch
+  with a `grep`, cheaper than debugging a blank-page screenshot after.
+- **A CDP WebSocket driver (own `Runtime.evaluate`/`Page.navigate`/
+  exception listener against a dedicated `--remote-debugging-port` +
+  `--user-data-dir` headless profile) proves exact interaction
+  sequencing/network-call-count**, not just "does it look right" — a
+  `window.fetch` spy confirmed zero calls on an empty-submission path
+  and exactly the wizard's own two-call sequence, in order, on real
+  submission.
+- **Run one extra, sprint-level (not task-level) end-to-end pass before
+  closing a sprint that introduces a genuinely new mechanism class** —
+  here, the first-ever runtime-created agent. A fresh agent's real
+  Chat/History/Settings tabs and the honest-uncertainty guardrail were
+  all directly exercised, plus a before/after reconfirmation that the 7
+  static agents stayed byte-identical — cheap, and turned "the individual
+  ACs all passed" into directly-observed "the whole feature genuinely
+  works."
+
+### Antipatterns (avoid this)
+
+- **Assuming a bash-emulated PID from a command this same task launched
+  (`nohup ... &`, `echo $!`) is a real, killable Windows PID** —
+  reconfirmed again; always resolve the real PID via
+  `Get-NetTCPConnection`/`Get-CimInstance Win32_Process` before
+  `Stop-Process`/`taskkill`.
+
+### Sizing calibration
+
+- **Estimated:** ~4 tasks, S — **Actual:** 4 tasks, S — matched exactly.
+  `ADR-030`'s own predicted mechanism ("zero code changes needed in any
+  of the five self-healing per-agent registries") held up exactly as
+  designed on first try, independently reconfirmed live, not just
+  trusted.
+
+## 2026-08-14 — SPRINT-034
+
+### Patterns (do more of this)
+
+- **Cross-check a freshly-created agent's behavior against an existing,
+  already-shipped agent's own identical call, live, in the same
+  session** — turned "the gate probably behaves the same for a new
+  agent" into a directly-observed, byte-identical confirmation. Applies
+  this project's own cross-check pattern one layer up, at the
+  agent-creation layer.
+- **After ANY edit to a file a running `--reload` server is watching,
+  re-confirm the new behavior with one cheap real request before running
+  a task's full Tests sequence against it** — a rapid two-file edit
+  sequence (~1 minute apart) caused `WatchFiles` to silently miss the
+  second file's change; caught early because a smoke check ran first.
+
+### Antipatterns (avoid this)
+
+- **`taskkill /IM msedge.exe /T` for CDP-launched-browser cleanup** —
+  this project's own Learnings already name the specific-PID form as
+  required (`SPRINT-026`); the `/IM` form was used once out of habit
+  before self-correcting. No observed harm this time, but the risk
+  (killing an unrelated session's own browser instance) is real —
+  follow the documented technique from the first launch, not after a
+  reminder.
+- **Checking `.second-brain/` state-file cleanliness at
+  `src/backend/.second-brain` instead of the real, `.env`-configured
+  `VAULT_PATH`** — cost an avoidable investigation cycle. This project's
+  vault is *always* external to `src/`; any "delete leftover state files
+  first" instruction means the real `VAULT_PATH`, never a guessed
+  in-repo path.
+
+### Sizing calibration
+
+- **Estimated:** ~5 tasks, S — **Actual:** 5 tasks, S — matched exactly,
+  zero mid-build reconciliation surprises beyond ordinary file-drift
+  checks.
+
+## 2026-08-14 — SPRINT-035
+
+### Patterns (do more of this)
+
+- **When a locked AC needs a real positive outcome from a multi-hop
+  composed chain the real vault's current configuration can't reach
+  as-is, temporarily reconfigure real state through the app's own
+  already-`Done` APIs (a skill grant, a Provider swap, a Section
+  reassignment), verify, then revert and independently reconfirm the
+  revert** — stronger evidence than a mock, bounded and reversible since
+  it goes through real, already-trusted endpoints. Extends the
+  "closest-to-real substitute" precedent to a multi-step Hub-routing
+  scenario.
+- **Read the turn's real `HumanMessage` instead of trusting a tool-call
+  argument the model itself generated** — directly confirmed live: the
+  recorded value was the full real question, not the model's short
+  paraphrase.
+
+### Antipatterns (avoid this)
+
+- **`uvicorn --reload`'s `WatchFiles`-triggered restart can silently
+  keep serving the OLD worker's routes for an extended period when a
+  long-running background asyncio task is in flight at the moment of
+  reload** — a newly-added route returned a bare `404` against the still-
+  old worker for several interleaved requests. Fix: kill both the
+  reloader parent and its child worker PID, start one fresh
+  non-`--reload` instance for the rest of the session.
+- **Assuming an established "obscure/nonsensical subject" no-results
+  test technique still reliably produces an honest `"no_results"` once a
+  real web-search Provider is genuinely reachable** — a real privacy-
+  refusal reply from the model was itself treated by the composed chain
+  as a "found" result and filed. Not a defect in the new sprint's own
+  code — a real, disclosed finding about the already-shipped chain's own
+  behavior. "The model declines to answer" and "genuinely no relevant
+  content exists" are two different real conditions one obscure prompt
+  can hit.
+- **Edge's own CDP `/json/new` endpoint requires `PUT`, not `GET`, on
+  newer installed versions** — a real, version-specific break from
+  older example code; check directly (`curl -X PUT`) rather than
+  assuming GET still works.
+
+### Sizing calibration
+
+- **Estimated:** ~8 tasks, L — **Actual:** 8 tasks, L — matched exactly.
+  Extending an already-proven tool-interception pattern a second time
+  took little code; genuinely proving it live, plus proving the shared
+  conversation graph's ordinary-chat behavior was unaffected on 2
+  separate agents, was the real cost.
+
+## 2026-08-14 — SPRINT-036
+
+### Patterns (do more of this)
+
+- **A minimal Node+native-`fetch`+native-`WebSocket` CDP client (no
+  `puppeteer`/`playwright`/`ws` package) is a fully adequate substitute
+  for a proper e2e harness** — real browser, real DOM, real network
+  calls, real React state, verified two genuine state mutations
+  end-to-end including server-side persistence across a panel
+  close/reopen.
+- **Locate a project's own bundled Node install via the actual running
+  dev-server process's own executable path**
+  (`Get-Process -Id <pid> | .Path`), not just a registry lookup — faster
+  and more direct than the previously-documented technique.
+
+### Antipatterns (avoid this)
+
+- **Reading a `<select>`/`<input>`'s value in the SAME synchronous CDP
+  `Runtime.evaluate` call as the click/dispatch that changes it** — races
+  ahead of React's state-flush-then-rerender cycle, producing a false-
+  negative stale read. Extends the already-documented `onBlur`-commit
+  precedent: add a short (~500-1000ms) real wait between ANY
+  CDP-dispatched state change (including plain `onClick` tab switches)
+  and reading the resulting DOM back — not just synthetic-event edge
+  cases.
+
+### Sizing calibration
+
+- **Estimated:** ~2 tasks, S — **Actual:** 2 tasks, S — matched exactly.
+  The frontend task's real diff was small, but proving all 7 locked ACs
+  live across 3 different agent-type spot checks needed a genuinely
+  non-trivial CDP session — verification cost, not code volume, drove
+  the real effort.
+
+## 2026-08-14 — SPRINT-037
+
+### Patterns (do more of this)
+
+- **Design a data-model split (e.g. "overview shows less than
+  everything") to structurally guarantee an AC by construction, not an
+  added runtime check** — grouping by `(sectionId, agentType)` made
+  "a cluster marker never mixes Types" true by construction; zero extra
+  defensive code needed, held up exactly as predicted.
+- **When a task's Objective can only be achieved by touching a file one
+  layer up the component tree that no task declared, and the fix is a
+  mechanical, same-pattern extension of that file's own already-
+  established shape (zero new business logic, no new interface for any
+  other consumer) — implement it, log it explicitly as a scope-internal
+  judgement call, flag the task's gate for human spot-check.** Neither
+  silently expand scope unflagged, nor block an otherwise-complete,
+  locked story on a plumbing-only gap.
+
+### Antipatterns (avoid this)
+
+- **A decomposer's per-task `## Files to Modify` list, even when each
+  task is individually correct and passes its own tests in isolation,
+  can still miss a cross-file integration consequence of an earlier,
+  already-frozen task's own locked design choice** — specifically,
+  wherever an earlier task *reduces* a shared data shape (here,
+  `mapAgents`) ahead of a later task that *reuses* the old, larger
+  shape. Worth an explicit "does this reduction alter what flows through
+  to an unlisted, up-the-tree caller" question during future
+  decomposition passes for any "overview shows less, but a drill-down
+  still needs everything" shape.
+- **Verify a locked AC's own "must not narrow existing behavior"
+  Constraint live, before assuming the straightforward wiring is
+  sufficient** — reading the code alone made this look like a one-file
+  task; only the live full-drilldown check surfaced the gap above.
+
+### Sizing calibration
+
+- **Estimated:** ~4 tasks, S — **Actual:** 4 tasks, S — task count
+  matched; the heaviest task's real cost was an only-discoverable-at-
+  integration-time gap (above) plus live-clustering verification against
+  real, disposable test agents.
+
+## 2026-08-14 — SPRINT-038
+
+### Patterns (do more of this)
+
+- **`httpx.ASGITransport(app=app)` against the real, unmodified `app`
+  object, combined with a scoped in-process monkeypatch, induces a real
+  failure for one specific HTTP call with no permanent code edit** —
+  genuinely drives the real app through a real HTTP request/response
+  cycle, not a mock. Reusable for any future business-logic
+  failure-induction need.
+- **`DOM.setFileInputFiles` is the correct CDP primitive for real
+  file-input interaction** — a native-setter/`dispatchEvent` technique
+  cannot set `.files` on a file input at all (browsers block it).
+- **Directly `await import(...)`-ing the real, served frontend module
+  from the browser's own JS console tests a code path the UI's own
+  client-side pre-check structurally prevents from ever being reached
+  through ordinary interaction** — exercises the real, unmodified module
+  function against the real server, distinct from and complementary to
+  the UI-level rendering confirmation for the same server-side branch.
+
+### Antipatterns (avoid this)
+
+- **Assuming a project's default CORS allow-list "just works" against a
+  freshly-started dev-server instance on a non-default port** — the
+  backend's `CORSMiddleware` only allows `5173`/`5174`; a frontend
+  started on `5180` silently failed with no visible error beyond an
+  empty "No agents connected yet." state. Check the allow-list BEFORE
+  picking a verification port, not after hitting the confusing
+  empty-state symptom.
+- **Hand-building a minimal real PDF byte-by-byte (raw object/xref/
+  trailer structure) when no PDF-authoring library is installed** —
+  worked, but is fragile and easy to get wrong; worth naming explicitly
+  as the fallback technique rather than reinventing it next time.
+- **Windows console codepage (`cp1252`) can silently mangle non-ASCII
+  script output** (em-dashes, emoji) — looked like data corruption until
+  a UTF-8 file round-trip confirmed the underlying data was always
+  correct. Wrap `sys.stdout` in a UTF-8 `TextIOWrapper` (or write to a
+  file) by default for any verification script expected to print
+  non-ASCII content.
+
+### Sizing calibration
+
+- **Estimated:** ~5 tasks, S — **Actual:** 5 tasks, S — matched exactly.
+  Every locked AC across all 10 story-level scenarios was verified live
+  with a real positive result — no environment-blocked/deferred half,
+  unlike several recent prior sprints.
+
+## 2026-08-16 — SPRINT-048
+
+### Patterns (do more of this)
+
+- **Generic-primitive-first, kind-specific-wrapper-second, for any story
+  introducing 2+ structurally-identical note/entity kinds in sequence** —
+  build the shared mechanism once against the FIRST concrete kind
+  (`replace_body_section`; the `okf_directory_*` directory family), then
+  apply it to every subsequent kind as thin wrappers only (Project's five
+  one-line-bodied functions, reusing Customer's own generic mechanism
+  verbatim, zero duplicated 4-file-creation logic). Found live,
+  `REQ-SB-54-US-01-T01`/`T04`/`T05`.
+- **A one-level discovery glob is a real, structural blind spot the moment
+  ANY note kind gains a directory shape — make the fix its own explicit
+  task, not an assumed side effect of the kind-adding task.** Naming
+  `list_all_note_paths()`'s gap explicitly (rather than letting the
+  directory-adding tasks silently absorb it) turned it into a real,
+  separately-verified task instead of a latent bug a future search/
+  indexing pass would have silently hit. Apply whenever a future story
+  adds a note kind whose files don't all live at the same folder depth as
+  every existing kind. Found live, `REQ-SB-54-US-01-T06`.
+- **When restructuring a function's internals that has multiple real
+  external call sites, preserve the external contract exactly and verify
+  every call site is unaffected, rather than touching the call sites
+  too** — `customer_hub_linking.ensure_customer_hub_note`'s restructure
+  kept its exact return shape and all 5 real callers working with zero
+  changes to any of them, confirmed live-by-reasoning against each one.
+  Found live, `REQ-SB-54-US-01-T04`.
+
+### Antipatterns (avoid this)
+
+- **Nesting a real, specific disclosed risk inside a broader, more-
+  easily-resolved `REVIEW-QUEUE.md` entry (e.g. "and also, separately,
+  X").** When the broader entry is cleared, the nested disclosure
+  disappears with it even though it was never itself resolved — a real
+  gap (`migrate_customer_to_partner` silently no-op-ing for any Customer
+  created under the new OKF directory shape) was lost this way when the
+  broader `ADR-042` review item was cleared, and had to be re-filed as
+  its own standalone item. Give any genuinely separate, future-relevant
+  risk its OWN `REVIEW-QUEUE.md` line item, even when it surfaces
+  mid-discussion of a larger one. Found live, `SPRINT-048`.
+
+### Sizing calibration
+
+- **Estimated:** ~6 tasks, M — **Actual:** 6 tasks, M — matched exactly,
+  extending the same precedent already noted for `SPRINT-020`/
+  `SPRINT-022`/`SPRINT-028` (all exactly-6-task sprints sized M that
+  matched at retro). The heaviest task (the OKF directory family plus a
+  live-internals restructure preserving 5 real call sites) was correctly
+  predicted at sizing time by its live-verification complexity, not code
+  volume; the lightest task (closing the sprint) was a direct, literal
+  implementation of its own illustrative code with zero deviation.
+
+## 2026-08-16 — SPRINT-049
+
+### Patterns (do more of this)
+
+- **Sequence a downstream story strictly behind its upstream one via
+  `depends_on_sprints`, rather than combining into one oversized sprint,
+  when the downstream story's own Tests block requires the REAL, running
+  output of the upstream story** — confirmed a further time
+  (`SPRINT-011`→`012`, `025`→`026`, now `049`→`050`): `REQ-SB-63-US-01-T02`
+  could not have been built or verified against a stub, since its own
+  Tests required a real `thread_result` from a real, compiled
+  `email_capture_pipeline.py` graph. Building the downstream sprint only
+  after the upstream one closes means the downstream task never has to
+  improvise a divergent shape against an imagined interface.
+- **A single story's own dependency chain, even when it fans out into a
+  diamond (two independent roots converging through several branches into
+  one assembly task), stays one sprint** — `REQ-SB-55-US-01`'s 8-task
+  chain (`T01`/`T02` independent roots → `T03` → `T04`/`T05` → `T06` →
+  `T07` assembly → `T08` retirement) built cleanly end-to-end with zero
+  reordering once the graph was correctly recorded at `/plan-tasks`.
+- **Verify a "structural, not hardcoded" detection requirement against a
+  GENUINELY unrelated real test case** (a different, fictitious customer,
+  different structural shape) as the actual load-bearing AC check, not
+  just a second example of the same known shape — this is what actually
+  proves the mechanism generalizes rather than memorizing one customer's
+  format. Found live, `REQ-SB-55-US-01-T02`/`T06`.
+- **When a task's own Constraints wording and its End-State/illustrative
+  text disagree on a narrow mechanical point (e.g. exactly which module an
+  import may live in), reconcile by following the End-State text and
+  log the reconciliation as a scope-internal judgement call** — do not
+  silently pick one without disclosure, and do not treat the disagreement
+  itself as a blocking escalation when the two are reconcilable by reading
+  both carefully. Found live, `REQ-SB-55-US-01-T07`.
+
+### Antipatterns (avoid this)
+
+- Nothing sprint-blocking this sprint. Worth naming: a genuinely large
+  (8-task) single-story sprint is buildable in one continuous session
+  without reordering ONLY when the decomposer's own dependency graph was
+  read correctly the first time — any task built out of its recorded
+  `depends_on` order against a still-forming shared module risks a
+  conflicting edit that a strict sequential build order avoids entirely.
+
+### Sizing calibration
+
+- **Estimated:** ~8 tasks, L — **Actual:** 8 tasks, L — matched exactly,
+  extending the `SPRINT-010`/`SPRINT-039` 8-task/L precedent and sitting
+  just under this project's own largest confirmed-accurate ceiling
+  (`SPRINT-021`/`SPRINT-030`, 9 tasks/L). `T07` (pipeline assembly) and
+  `T08` (retirement + the mandatory real, live Outlook-backed end-to-end
+  run) were, as predicted, the heaviest by live-verification effort, not
+  code volume — `T08`'s real run produced a genuine new Thread note and a
+  genuine new Pending Approval in the real, configured vault.
+
+## 2026-08-16 — SPRINT-050
+
+### Patterns (do more of this)
+
+- **"Propose in the Expert's own module, finalize in the router's dispatch
+  table" (`_create_X_proposal` + `finalize_X`, registered in
+  `_APPROVAL_HANDLERS`) is now a 3x-confirmed canonical shape for any new
+  Pending-Approval kind** (`ADR-021`'s original Tier-2 proposal,
+  `SPRINT-049`'s `route_thread_to_project`/`propose_recurring_pipeline`,
+  `SPRINT-050`'s `propose_cross_cutting_update`) — default to this shape
+  for any future new approval kind without re-deriving it.
+- **When adding an unconditional additional branch alongside an existing
+  single-choice conditional edge from the same `StateGraph` source node,
+  convert the routing function to return a LIST (`"always this" +
+  conditionally "also that"`), mirroring the existing "always this,
+  additionally that" shape** — do not invent a second, parallel wiring
+  mechanism for the same node. This made a "never gates the existing
+  branch" Constraint a structural graph-topology property (two independent
+  destinations, each with its own fixed edge to `END`) instead of
+  something enforced only by code review.
+- **A Job-tier caller consulting an Agent-tier Expert should ALWAYS wrap
+  the call in its own `try/except`, even when the Expert itself already
+  returns an honest `{"status": "unavailable", ...}` dict on its own known
+  failure mode** — the wrapper's job is guaranteeing the PIPELINE never
+  crashes on ANY exception the Expert might raise, not just the one
+  failure mode the Expert already handles gracefully itself.
+- **A scoped, disclosed monkeypatch-of-the-model-factory stub (engineered
+  JSON replies) proved directly reusable a second time** (first
+  `REQ-SB-63-US-01-T01`, then `T02`) for deterministically engineering a
+  specific Expert decision outcome without depending on a real model's own
+  non-deterministic phrasing.
+
+### Antipatterns (avoid this)
+
+- **Do not assume a task file's own illustrative example values (a `kind`
+  name, a customer name) are literally present in a fresh scratch vault**
+  — verify what the scratch vault's own seeded state actually contains
+  before engineering a test decision against it. A fresh scratch vault's
+  `known_kinds` is whatever the test itself has created so far, not
+  whatever a task's prose happens to name as an example.
+
+### Sizing calibration
+
+- **Estimated:** ~3 tasks, S — **Actual:** 3 tasks, S — exact match, the
+  THIRD consecutive time this "~3 tasks, S, generalize/extend an
+  already-Done Expert module" shape has landed precisely on estimate
+  (`SPRINT-023`, `SPRINT-024`, now `SPRINT-050`) — a reliable sizing
+  anchor for future single-Expert-generalization stories.

@@ -4,12 +4,12 @@ title: Agent-to-tag/folder vault scoping — assignment on the Agent Settings su
 requirement_ids: [REQ-SB-29]
 requirement_section: "REQ-SB-29: Agent-to-Tag/Folder Scoping"
 phase: P1
-status: Draft
+status: Done
 gate: clear
-gate_reason: "Resolved 2026-08-12 — operator decided the retrieval mechanism: a narrower, story-scoped ad hoc primitive now, matching existing precedent, not a wait on REQ-SB-01/02 (see Notes). Still net-new-design-needed — run /design REQ-SB-29 before /plan-tasks."
-sprint: ""
+gate_reason: "Resolved 2026-08-12 — operator decided the retrieval mechanism: a narrower, story-scoped ad hoc primitive now, matching existing precedent, not a wait on REQ-SB-01/02 (see Notes). 2026-08-13 — operator explicitly decided to skip /design for this batch; architect confirmed no new ADR needed (see Notes). 2026-08-13 — decomposer locked all 6 ACs, wrote 5 flat-root tasks (T01-T05), acyclic depends_on; no new MUST-FLAG trigger fired this pass. Story advanced Draft -> Ready. 2026-08-14 — coder built and verified all 5 tasks; all 6 locked ACs verified live (see each task's own Implementation Log); story advanced Ready -> Done."
+sprint: SPRINT-032
 created: 2026-08-11
-updated: 2026-08-11
+updated: 2026-08-14
 ---
 
 # REQ-SB-29-US-01 — Agent-to-tag/folder vault scoping — assignment on the Agent Settings surface, and scope-bounded retrieval on request
@@ -109,6 +109,7 @@ When the user assigns a vault tag (e.g. "customer/masdar") to that agent as
     its scope
 Then the agent's assigned scope is shown on its Agent Settings surface
 ```
+<!-- AC-ID: REQ-SB-29-US-01-AC-01 -->
 
 ### Scenario 2: An agent can be assigned more than one scope
 
@@ -119,6 +120,7 @@ When the user assigns a second, different vault tag or folder to that agent
 Then both scopes are shown as assigned to that agent
   And neither the first nor the second assignment is lost
 ```
+<!-- AC-ID: REQ-SB-29-US-01-AC-02 -->
 
 ### Scenario 3: Retrieving notes matching an agent's assigned scope on request
 
@@ -130,6 +132,7 @@ Then the agent returns the actual Masdar Pipeline notes from the vault
   And the returned notes are limited to ones matching the agent's assigned
     scope
 ```
+<!-- AC-ID: REQ-SB-29-US-01-AC-03 -->
 
 ### Scenario 4: A request outside an agent's assigned scope does not return unrelated vault content
 
@@ -142,6 +145,7 @@ Then the agent does not return notes outside its assigned scope
     rather than fabricating a response or silently searching the whole
     vault
 ```
+<!-- AC-ID: REQ-SB-29-US-01-AC-04 -->
 
 ### Scenario 5: A request within an agent's scope with no matching notes returns an honest empty result
 
@@ -152,6 +156,7 @@ When the user asks that agent to retrieve notes from its assigned scope
 Then the agent honestly reports that nothing matching was found, rather
     than fabricating a response
 ```
+<!-- AC-ID: REQ-SB-29-US-01-AC-05 -->
 
 ### Scenario 6: An agent with no assigned scope has no bounded vault query access
 
@@ -162,6 +167,7 @@ Then the agent has no bounded vault query access to use
   And the agent does not silently search the whole vault in place of a
     scope
 ```
+<!-- AC-ID: REQ-SB-29-US-01-AC-06 -->
 
 ## Affected Screens
 
@@ -222,17 +228,22 @@ Then the agent has no bounded vault query access to use
 
 ## Implementation Tasks
 
-<!-- Left for the architect/decomposer at /plan-tasks, once the flagged
-retrieval-mechanism question (ESC-008) is resolved. -->
+| ID | Type | Task | Files / Area | Task File |
+|---|---|---|---|---|
+| `REQ-SB-29-US-01-T01` | backend | `agent_scopes.json` load/save/load-all primitives + `list_notes_matching_scope(scope)` retrieval primitive | `app/data_access/vault_writer.py` | `Implementation/Tasks/REQ-SB-29-US-01-T01-vault-writer-scope-primitives.md` |
+| `REQ-SB-29-US-01-T02` | backend | `scope_registry.py` — get/set agent scope | `app/business/scope_registry.py` (new) | `Implementation/Tasks/REQ-SB-29-US-01-T02-scope-registry-business-module.md` |
+| `REQ-SB-29-US-01-T03` | backend | `PATCH`/`GET /agents/{agent_id}` gain `scope` | `app/api/agents_router.py` | `Implementation/Tasks/REQ-SB-29-US-01-T03-agents-router-scope-field.md` |
+| `REQ-SB-29-US-01-T04` | backend | Scope-aware `retrieve_notes_in_agent_scope` MCP tool | `app/business/scope_query_tools.py` (new), `app/api/mcp_server.py` | `Implementation/Tasks/REQ-SB-29-US-01-T04-scope-aware-mcp-tool.md` |
+| `REQ-SB-29-US-01-T05` | frontend | "Vault scope" kv-row + API client extension | `AgentDetailPanel.tsx`, `agentsApiClient.ts` | `Implementation/Tasks/REQ-SB-29-US-01-T05-agent-detail-panel-vault-scope-row.md` |
 
 ## Definition of Done
 
-- [ ] All acceptance-criteria scenarios pass
-- [ ] Every Implementation Task above is complete (or explicitly dropped with reason)
-- [ ] All Constraints respected
-- [ ] Automated tests added/updated and passing (once test tooling exists)
-- [ ] `MEMORY.md` updated with any new decisions / patterns / constraints
-- [ ] `CHANGELOG.md` entry appended
+- [x] All acceptance-criteria scenarios pass
+- [x] Every Implementation Task above is complete (or explicitly dropped with reason)
+- [x] All Constraints respected
+- [x] Automated tests added/updated and passing (once test tooling exists) — `n/a`, manual verification mode still the live default project-wide
+- [x] `MEMORY.md` updated with any new decisions / patterns / constraints
+- [x] `CHANGELOG.md` entry appended
 
 ## Non-Goals / Out of Scope
 
@@ -309,3 +320,134 @@ flipped to `Resolved`, naming this update as the resolving artefact.
 **Next step: this story is still net-new-design-needed** (no Vault-scope
 row exists on the Agent Settings surface in any `html-prototype/` screen)
 — run `/design REQ-SB-29` before `/plan-tasks`.
+
+**Update, 2026-08-13 — Architect pass (`/plan-tasks` step 1).** Operator
+explicitly decided to SKIP the `/design` pass for this batch and build
+directly — the coder is bounded instead to matching `AgentDetailPanel.tsx`'s
+already-built Section/Provider/Keywords/Working-mode row language
+(`REQ-SB-18/19/20/21`), not inventing a new visual shape. **No new ADR** —
+this is additive: one new `vault_writer`/`scope_registry` primitive pair
+matching already-`Accepted` precedent (`ADR-017`'s per-agent-list keyword
+shape for storage; `list_known_customers`/`list_notes_in_kind_folder`'s
+shape for retrieval; `ADR-015` point 9's "register on the same shared MCP
+server" rule, following `vault_write_tools.propose_vault_write`'s
+agent_id-explicit/server-resolved shape for the new tool), and one new
+frontend kv-row matching the Keywords row's existing pattern. Full
+reasoning: `Implementation/Architecture/architecture.md` → "Agent-to-Tag/
+Folder Vault Scoping — assignment & scope-bounded retrieval."
+
+**Architecture scope:** `Implementation/Architecture/architecture.md` →
+"Agent-to-Tag/Folder Vault Scoping — assignment & scope-bounded retrieval"
+(the section directly following the `REQ-SB-04-US-01`/`ADR-025` addendum).
+The coder is bounded to:
+- `app/data_access/vault_writer.py` — new `load_agent_scope`/
+  `save_agent_scope`/`load_all_agent_scopes` (mirroring
+  `load_agent_keywords`/`save_agent_keywords`/`load_all_agent_keywords`)
+  and new `list_notes_matching_scope(scope: list[str]) -> list` (mirroring
+  `list_known_customers`/`list_notes_in_kind_folder`; must NOT compose
+  `vault_indexing.get_index()`/`vault_search.py`, `ADR-024`/`ADR-026` —
+  stays independent of `REQ-SB-01`/`REQ-SB-02` per this story's own
+  Constraints).
+- `app/business/scope_registry.py` (new) — `get_agent_scope`/
+  `set_agent_scope`, mirroring `agent_keywords.py`.
+- A new scope-aware `@mcp_server.tool()` (new sibling module or an
+  addition to `vault_query_tools.py`, decomposer/coder latitude) — takes
+  an explicit `agent_id`, resolves scope server-side via
+  `scope_registry.get_agent_scope`, never accepts freeform tags from the
+  model; registered on the existing shared MCP server in
+  `app/api/mcp_server.py` (`ADR-015` point 9). `scope_registry.
+  get_agent_scope` is the real per-agent scope lookup `ADR-025` point 6's
+  fail-closed seam (`app/business/vault_write_tools.py::
+  _is_within_assigned_scope`, `ESC-026`) needs — expose it as a stable
+  contract, but do NOT wire or close that seam yourself; that is a
+  separate, still-blocked `REQ-SB-04-US-01` task.
+- `app/api/agents_router.py` — `AgentAssignmentUpdateBody` and `GET
+  /agents/{agent_id}` gain an additive `scope: list[str]` field, mirroring
+  how `keywords` was added; no new endpoint/sub-resource.
+- `src/frontend/src/features/agents-map/AgentDetailPanel.tsx` — new "Vault
+  scope" kv-row, following the Keywords row's exact free-text/comma-
+  separated/`onBlur`-commit pattern (not the Section/Provider `<select>`
+  pattern). `agentsApiClient.ts`'s `AgentDetail`/`updateAgentAssignment`
+  gain an additive `scope: string[]` field.
+
+`gate: clear` 2026-08-13 — no ADR trigger fired (confirmed no new ADR
+needed, reasoning above), no material assumption made beyond ordinary
+shape-matching against already-`Accepted` precedent, no contradiction of
+any `Accepted` ADR/PRD/`MEMORY.md` constraint found. Hands off to the
+decomposer.
+
+**Update, 2026-08-13 — Decomposer pass (`/plan-tasks` step 2).** All 6
+Gherkin scenarios locked as `REQ-SB-29-US-01-AC-01` through `AC-06`
+(tightened wording only where needed for buildability; no scenario
+weakened or dropped). 5 flat-root tasks written (`T01`-`T05`), `depends_on`
+acyclic (`T01` -> `T02` -> `T03` -> `T05`; `T04` depends on `[T01, T02]`).
+Every locked AC has at least one AC-tagged verification step: `AC-01`/
+`AC-02` at `T05` (the kv-row, mirroring `REQ-SB-20-US-01-T06`'s exact
+precedent); `AC-03`-`AC-06` at `T04` (direct calls to the new
+`scope_query_tools.retrieve_notes_in_agent_scope` business function —
+deterministic, real code this task itself builds — plus one additional,
+non-AC-tagged live chat round-trip for end-to-end confidence, per this
+project's own "closest-to-real substitute" Learnings pattern). `T01`-`T03`
+carry no locked AC of their own (internal `data_access`/business-layer
+primitives with no directly observable outcome by themselves — the same
+placement rule `REQ-SB-20-US-01-T01`-`T03` already established), verified
+via non-AC smoke checks instead.
+
+**Module-naming call (decomposer/coder latitude, per the architect's own
+note above):** the new tool lives in a new sibling module,
+`app/business/scope_query_tools.py`, not a passthrough addition inside
+`vault_query_tools.py` — because it must itself enforce a business rule
+(server-side agent_id resolution, unknown-agent rejection, honest
+empty/no-scope results), the same reasoning that put `propose_vault_write`
+in its own `vault_write_tools.py` sibling rather than
+`vault_query_tools.py`'s thin 1:1 passthrough shape. Not flagged — a single
+defensible option with direct, already-`Accepted` precedent, not a
+genuinely unclear or multiply-valid call.
+
+**No new MUST-FLAG trigger fired this pass** (decomposer's own
+scope): no material assumption beyond ordinary implementation-latitude the
+architect explicitly delegated (tag-vs-folder disambiguation, exact
+module placement); requirement text finalized, not `Draft`; no ADR
+touched; no `ESCALATIONS.md` entry written by this pass; decomposition
+sized consistently with this codebase's own comparable-shape story
+(`REQ-SB-20-US-01`, 6 tasks) — 5 tasks here, each a single-session unit;
+every locked AC has a real, verifiable observable outcome; no
+contradictory inputs; no genuinely unclear/multiply-valid task split
+found. `gate: clear` carried forward. **Status: `Draft` -> `Ready`**; all
+5 tasks written at `status: Ready` (lockstep with the story, per the
+decomposer's own mandatory-behaviour rule). Eligible for
+`/plan-sprints`.
+
+**Update, 2026-08-14 — Coder pass (`SPRINT-032`, `/implement-sprint`).**
+All 5 tasks built and verified `Done` in dependency order (`T01` -> `T02`
+-> `T03` -> `T05`; `T04` after `T01`/`T02`). All 6 locked ACs verified
+live: `AC-01`/`AC-02` (assignment) at `T05`, via a real headless-browser/
+CDP-driven round trip against the real running frontend/backend; `AC-03`-
+`AC-06` (retrieval) at `T04`, via direct calls to the real, unmocked
+`scope_query_tools.retrieve_notes_in_agent_scope`, plus one additional
+non-AC-tagged live chat round-trip.
+
+**Honest finding on Scenarios 3-6 vs. the Customer/Pipeline/Agreements/
+Consumption schema, recorded per explicit instruction, not silently
+omitted:** the real configured vault has **zero** notes under
+`Work/Pipeline`, `Work/Agreements`, or `Work/Consumption` — those
+subfolders do not exist at all — consistent with `MEMORY.md`'s
+2026-08-10 "structure only, no ingestion/agent code" entry, still true
+today. `AC-03`'s own "produces a real positive result" half was
+therefore verified against the closest real substitute the vault
+actually has — the `customer/<slug>` tag dimension of the same schema
+(`customer/adnoc`, `customer/masdar`, etc.), which the retrieval
+primitive treats identically to a `Pipeline`/`Agreements`/`Consumption`
+folder-scope value; a scope of `["Pipeline"]` alone was independently
+confirmed to correctly produce the honest `"status": "empty"` result,
+not a fabricated positive, proving the mechanism behaves correctly for
+that still-empty schema slice exactly as it will once real Pipeline/
+Agreements/Consumption notes exist. Full detail: `T04`'s own
+Implementation Log.
+
+No new `ESCALATIONS.md`/`REVIEW-QUEUE.md` entry from this pass — no
+locked AC was blocked, no out-of-scope event occurred beyond ordinary
+real-file-drift reconciliation (`agents_router.py`,
+`AgentDetailPanel.tsx`/`agentsApiClient.ts`, all additive against their
+real current state). `gate: clear` carried forward. **Status: `Ready` ->
+`Done`.**
