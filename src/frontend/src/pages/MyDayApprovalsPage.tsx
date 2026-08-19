@@ -9,8 +9,37 @@ import {
   type CompanyReviewDecision,
   type KnownCompanies,
 } from '../features/agents-map/pendingApprovalsApiClient';
+import { resolveGroup, BRANCHING_DECISION_ACTION_IDS } from '../features/agents-map/pendingApprovalGroups';
 
 const COMPANY_REVIEW_ACTION_ID = 'propose_company_review';
+
+// Grouped, color-coded rendering (REQ-SB-78-US-01-T02) -- groups the
+// already-fetched items array by resolveGroup(action_id).key, in
+// FIRST-APPEARANCE order (not a fixed KNOWN_GROUPS-key iteration), so an
+// empty group is structurally impossible to produce: only action_ids that
+// actually appear in `items` ever create a group entry (Scenario 3).
+interface PendingApprovalGroup {
+  key: string;
+  label: string;
+  colorClass: string;
+  items: PendingApproval[];
+}
+
+function groupPendingApprovals(items: PendingApproval[]): PendingApprovalGroup[] {
+  const order: string[] = [];
+  const groupsByKey = new Map<string, PendingApprovalGroup>();
+  for (const item of items) {
+    const resolved = resolveGroup(item.action_id);
+    let group = groupsByKey.get(resolved.key);
+    if (!group) {
+      group = { key: resolved.key, label: resolved.label, colorClass: resolved.colorClass, items: [] };
+      groupsByKey.set(resolved.key, group);
+      order.push(resolved.key);
+    }
+    group.items.push(item);
+  }
+  return order.map((key) => groupsByKey.get(key)!);
+}
 
 export function MyDayApprovalsPage() {
   const [items, setItems] = useState<PendingApproval[] | null>(null);
@@ -43,6 +72,24 @@ export function MyDayApprovalsPage() {
     refresh();
   }
 
+  // Bulk-approve per eligible group (REQ-SB-78-US-01-T03) -- loops the
+  // ALREADY-EXISTING single-item approvePendingApproval(id) once per item
+  // (no decision body, mirrors handleApprove's own per-item call shape
+  // verbatim), refreshing the list ONCE at the end rather than once per
+  // item to avoid N redundant re-fetches on an N-item bulk action.
+  // SEQUENTIAL (awaited one at a time), not Promise.all -- live-verified
+  // this task, T03 Implementation Log: the backend's pending-approvals
+  // state file (vault_writer.save_pending_approvals_state) has no
+  // concurrent-write locking, so N simultaneous approve calls silently
+  // clobber each other's writes (only the last to finish survives).
+  // Sequential calls avoid that race entirely.
+  async function handleBulkApprove(groupItems: PendingApproval[]) {
+    for (const item of groupItems) {
+      await approvePendingApproval(item.id);
+    }
+    refresh();
+  }
+
   return (
     <>
       <p className="text-muted"><Link className="text-muted" to="/my-day">&larr; My Day</Link></p>
@@ -57,35 +104,55 @@ export function MyDayApprovalsPage() {
       </p>
       <div className="card">
         {items && items.length > 0 ? (
-          <div className="item-list">
-            {items.map((item) => (
-              <div className="item-row" key={item.id}>
-                <div className="item-row-main">
-                  <span className="item-row-title">
-                    {item.agent_name} <span className="badge badge-warning">Awaiting approval</span>
-                  </span>
-                  <span className="item-row-meta">{item.description}</span>
-                </div>
-                {item.action_id === COMPANY_REVIEW_ACTION_ID ? (
-                  <CompanyReviewDecisionControl
-                    item={item}
-                    knownCompanies={knownCompanies}
-                    onDecide={handleCompanyReviewDecision}
-                    onDecline={handleDecline}
-                  />
-                ) : (
-                  <div className="item-row-actions">
-                    <button type="button" className="btn btn-primary" onClick={() => handleApprove(item.id)}>
-                      Approve
-                    </button>
-                    <button type="button" className="btn btn-danger" onClick={() => handleDecline(item.id)}>
-                      Decline
-                    </button>
-                  </div>
+          groupPendingApprovals(items).map((group) => (
+            <section
+              key={group.key}
+              className={`pending-approval-group ${group.colorClass}`}
+              data-group-key={group.key}
+            >
+              <div className="pending-approval-group-heading">
+                <span className="pending-approval-group-label">{group.label}</span>
+                {group.items.every((item) => !BRANCHING_DECISION_ACTION_IDS.has(item.action_id ?? '')) && (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => handleBulkApprove(group.items)}
+                  >
+                    Bulk approve ({group.items.length})
+                  </button>
                 )}
               </div>
-            ))}
-          </div>
+              <div className="item-list">
+                {group.items.map((item) => (
+                  <div className="item-row" key={item.id}>
+                    <div className="item-row-main">
+                      <span className="item-row-title">
+                        {item.agent_name} <span className="badge badge-warning">Awaiting approval</span>
+                      </span>
+                      <span className="item-row-meta">{item.description}</span>
+                    </div>
+                    {item.action_id === COMPANY_REVIEW_ACTION_ID ? (
+                      <CompanyReviewDecisionControl
+                        item={item}
+                        knownCompanies={knownCompanies}
+                        onDecide={handleCompanyReviewDecision}
+                        onDecline={handleDecline}
+                      />
+                    ) : (
+                      <div className="item-row-actions">
+                        <button type="button" className="btn btn-primary" onClick={() => handleApprove(item.id)}>
+                          Approve
+                        </button>
+                        <button type="button" className="btn btn-danger" onClick={() => handleDecline(item.id)}>
+                          Decline
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))
         ) : (
           items && (
             <div className="empty-state">

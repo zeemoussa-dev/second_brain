@@ -83,3 +83,48 @@
 .item-row-main { display: flex; flex-direction: column; gap: 2px; }
 .item-row-title { font-weight: 600; }
 .item-row-meta { font-size: var(--font-size-sm); color: var(--color-text-muted); }
+
+/* ==========================================================================
+   Pending Approvals — grouped, color-coded sections (REQ-SB-78-US-01-T01)
+   -- wraps the existing .item-list/.item-row vocabulary above, never
+   replaces it. Each .pending-approval-group section sets its own
+   --group-accent from one .group-color-N class (pendingApprovalGroups.ts's
+   own colorClass), mirroring the existing --node-color/--hub-color
+   per-item CSS-custom-property pattern the Agents Map canvas already uses
+   (a class sets the custom property, the block below reads it with a
+   var()-with-fallback).
+   ========================================================================== */
+
+.pending-approval-group {
+  border-left: 3px solid var(--group-accent, var(--color-border));
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+  background: var(--color-surface);
+}
+
+.pending-approval-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.pending-approval-group-label {
+  font-weight: 600;
+  color: var(--group-accent, var(--color-text));
+}
+
+.group-color-1       { --group-accent: var(--group-color-1); }
+.group-color-2       { --group-accent: var(--group-color-2); }
+.group-color-3       { --group-accent: var(--group-color-3); }
+.group-color-4       { --group-accent: var(--group-color-4); }
+.group-color-5       { --group-accent: var(--group-color-5); }
+.group-color-6       { --group-accent: var(--group-color-6); }
+.group-color-7       { --group-accent: var(--group-color-7); }
+.group-color-8       { --group-accent: var(--group-color-8); }
+.group-color-9       { --group-accent: var(--group-color-9); }
+.group-color-10      { --group-accent: var(--group-color-10); }
+.group-color-11      { --group-accent: var(--group-color-11); }
+.group-color-other   { --group-accent: var(--group-color-other); }

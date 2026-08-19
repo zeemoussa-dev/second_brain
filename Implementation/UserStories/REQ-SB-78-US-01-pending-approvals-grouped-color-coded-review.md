@@ -4,7 +4,7 @@ title: Pending Approvals — Grouped, Color-Coded Review
 requirement_ids: [REQ-SB-78]
 requirement_section: "REQ-SB-78: Pending Approvals — Grouped, Color-Coded Review"
 phase: P2
-status: Ready
+status: Done
 gate: clear
 gate_reason: "was flagged net-new-design-needed (approved prototype predates REQ-SB-76's decision control AND any grouping/color treatment). Resolved by precedent, not a fresh confirmation this specific instance — the operator has now given the identical resolution twice this session, in these exact words, for REQ-SB-75 ('No Straight No Designer we will handle the Design Later') and REQ-SB-76 ('No Need for Designer What we have is amazing'). Applying the same resolution a third time rather than re-asking a settled question — flag this explicitly to the operator so they can redirect if this one is actually different. The coder builds the grouping/color treatment directly using the app's existing token/component vocabulary; a later design pass may restyle it."
 sprint: "SPRINT-075"
@@ -257,12 +257,12 @@ the app's own existing token/component vocabulary. -->
 
 ## Definition of Done
 
-- [ ] All acceptance-criteria scenarios pass
-- [ ] Every Implementation Task above is complete (or explicitly dropped with reason)
-- [ ] All Constraints respected
-- [ ] Automated tests added/updated and passing (once test tooling exists)
-- [ ] `MEMORY.md` updated with any new decisions / patterns / constraints
-- [ ] `CHANGELOG.md` entry appended
+- [x] All acceptance-criteria scenarios pass
+- [x] Every Implementation Task above is complete (or explicitly dropped with reason)
+- [x] All Constraints respected
+- [x] Automated tests added/updated and passing (once test tooling exists) — n/a, test tooling still pending project-wide; manual/live-browser verification mode used throughout, per every task's own Tests block
+- [x] `MEMORY.md` updated with any new decisions / patterns / constraints
+- [x] `CHANGELOG.md` entry appended
 
 ## Non-Goals / Out of Scope
 
@@ -397,3 +397,43 @@ AC-tagged verification step, and `depends_on` is acyclic. Story advances
 gate: clear 2026-08-19 — no new MUST-FLAG trigger fired at this step; the
 `/design` question was already resolved by precedent at the architect
 step, not re-opened here.
+
+---
+
+## Coder pass, 2026-08-19 (`/implement-sprint`, `SPRINT-075`)
+
+All 4 tasks built and independently live-verified, in dependency order
+(`T01` → `T02` → `T03` → `T04`), against the real running app and real
+backend/vault data (headless-Edge CDP; no test-stack ADR exists yet, so
+this remains manual/live-browser verification mode per every task's own
+Tests block). All 7 locked ACs (`AC-01`-`AC-07`) confirmed live at least
+twice each (once by the task that first delivers the mechanism, once more
+independently by `T04`'s own end-to-end pass) — full detail in each task
+file's own `## Implementation Log`.
+
+**One real, load-bearing finding, in-scope-resolved:** `T03`'s own
+live verification of `AC-06` (bulk-approve) found `vault_writer.py`'s
+pending-approvals JSON state file has no concurrent-write locking — firing
+concurrent approve calls (`Promise.all`) silently lost data (only the last
+writer survived). Resolved in-scope by looping sequentially instead
+(already within `T03`'s own explicit "sequential or `Promise.all` —
+coder's own choice" latitude, not a scope deviation); `AC-06` passes,
+live-verified with zero data loss. The underlying `vault_writer.py`
+primitive gap itself is out of this story's own frontend-only scope — not
+fixed here, logged as `ESC-058` (`ESCALATIONS.md`), `REVIEW-QUEUE.md`
+(recommends a future `/bug` capture), and a new standing Constraint in
+`MEMORY.md`.
+
+Every disposable test artefact created during verification (real
+`pending_approval_registry.create_pending_approval()` calls — no
+public "create arbitrary" HTTP endpoint exists — since none of this
+story's needed test conditions, e.g. an unmapped `action_id` or a 2+-item
+non-branching group, currently occur naturally in the real, live pending
+queue) was resolved via the real `POST /pending-approvals/{id}/approve`
+or `/decline` endpoints before the task that created it closed — never a
+raw store mutation, per this project's archive-not-delete/API-first
+standing constraint. Zero real, operator-owned pending records were
+mutated.
+
+**Status:** every task `Done`, every locked AC verified live and passing,
+nothing `Blocked`. Story advances **`Ready` → `Done`**.

@@ -4,7 +4,7 @@ title: pendingApprovalGroups.ts lookup table + group-color CSS classes
 parent_story: REQ-SB-78-US-01
 requirement_id: REQ-SB-78
 type: frontend
-status: Ready
+status: Done
 gate: clear
 gate_reason: ""
 phase: P2
@@ -107,11 +107,11 @@ Add the new, purely-presentational `pendingApprovalGroups.ts` module (label/colo
 
 ## Acceptance Criteria
 
-- [ ] `pendingApprovalGroups.ts` exports `KNOWN_GROUPS`/`OTHER_GROUP`/`BRANCHING_DECISION_ACTION_IDS`, every known `action_id` from the architecture's own lookup table present
-- [ ] Unmapped/null `action_id` resolves to the one `Other` catch-all
-- [ ] New `.group-color-N`/`.group-color-other` CSS classes exist and are visually distinct by custom-property value
-- [ ] `MEMORY.md` updated if this task produced a new decision / pattern / constraint
-- [ ] `CHANGELOG.md` entry appended
+- [x] `pendingApprovalGroups.ts` exports `KNOWN_GROUPS`/`OTHER_GROUP`/`BRANCHING_DECISION_ACTION_IDS`, every known `action_id` from the architecture's own lookup table present
+- [x] Unmapped/null `action_id` resolves to the one `Other` catch-all
+- [x] New `.group-color-N`/`.group-color-other` CSS classes exist and are visually distinct by custom-property value
+- [x] `MEMORY.md` updated if this task produced a new decision / pattern / constraint (n/a — no new decision/pattern/constraint; pure composition of already-established tokens/CSS-custom-property conventions per architecture.md)
+- [x] `CHANGELOG.md` entry appended
 
 ---
 
@@ -130,5 +130,74 @@ None beyond the architecture reference above.
 
 ## Implementation Log
 
-_(Filled in by the coder during implementation: what was changed, any deviations
-from the plan, observed verification outcomes keyed by AC-ID.)_
+**2026-08-19, coder.** Built exactly per the task's own illustrative sample and
+architecture.md's own "Label + color" section, with zero deviation to the data
+shape:
+
+- New `src/frontend/src/features/agents-map/pendingApprovalGroups.ts` —
+  `KNOWN_GROUPS` (11 entries), `OTHER_GROUP`, `BRANCHING_DECISION_ACTION_IDS`
+  (`Set(['propose_company_review'])`), `resolveGroup(actionId)`.
+- `src/frontend/src/styles/tokens.css` — new `--group-color-1` … `-11` plus
+  `--group-color-other` custom properties inside `:root`, reusing already-
+  curated tokens where available (`--color-accent`/`--color-success`/
+  `--color-warning`/`--color-danger`/`--agent-color-producer`, matching the
+  existing `--graph-kind-color-N` reuse-first precedent) and 3 new hex values
+  (`#db2777`/`#ca8a04`/`#64748b`) for the remaining named groups; `--group-
+  color-other` reuses `--color-text-muted` (deliberately neutral, never
+  competing visually with a real named group).
+- `src/frontend/src/styles/my-day.css` — new `.pending-approval-group`/
+  `.pending-approval-group-heading`/`.pending-approval-group-label` wrapper
+  block plus `.group-color-1` … `-11`/`.group-color-other`, each setting
+  `--group-accent` from its own token (mirrors the existing `--node-color`/
+  `--hub-color` per-item CSS-custom-property pattern in `agents-map.css`).
+
+**Verification (manual mode, this project's test tooling is still pending):**
+
+- **Steps 1-3 (module logic).** No `tsx`/`ts-node` available in
+  `node_modules/.bin`; used the running Vite dev server's own real
+  on-the-fly TS→JS transform instead — fetched
+  `http://127.0.0.1:5174/src/features/agents-map/pendingApprovalGroups.ts`
+  (Vite dev server started for this worktree on port 5174, since 5173 was
+  already bound by a concurrent session; 5174 is already in the backend's
+  CORS allow-list, `main.py`), re-imported the transformed source as a
+  `data:` URL from a throwaway Node script
+  (`.scratch/t01-verify.mjs`, deleted after use), and ran real assertions
+  against the REAL exported module (not a re-typed copy):
+  - `resolveGroup('propose_company_review')` → `{key:
+    'propose_company_review', label: 'Company Review', colorClass:
+    'group-color-1'}` — matches exactly. **Confirmed.**
+  - `resolveGroup('some_future_unmapped_action_id')` and
+    `resolveGroup(null)` both → `{key: 'other', label: 'Other', colorClass:
+    'group-color-other'}`. **Confirmed.**
+  - `BRANCHING_DECISION_ACTION_IDS.has('propose_company_review')` → `true`;
+    `.has('route_thread_to_project')` → `false`. **Confirmed.**
+- **Step 4 (CSS).** Fetched the dev server's own served
+  `/src/styles/my-day.css` — confirmed all 12 `.group-color-N`/
+  `.group-color-other` classes present, each setting a distinct
+  `--group-accent` value from `tokens.css`'s own distinct
+  `--group-color-N` custom properties (read directly, not assumed).
+  **Confirmed.**
+
+**Environment note (not a product decision, not filed to `MEMORY.md`):** this
+worktree had no `node_modules` and was several commits behind the shared
+checkout's own uncommitted in-flight state (missing `SPRINT-072`'s already-
+shipped Company Review control in `MyDayApprovalsPage.tsx`, and the sprint/
+story/task files themselves). Synced the exact current content of every
+file this story reads or writes from the shared checkout into this worktree
+before starting (task/story/sprint files, `MEMORY.md`/`CHANGELOG.md`/
+`BACKLOG.md`/`REVIEW-QUEUE.md`/`ESCALATIONS.md`, and the 4 real frontend
+files this story's tasks touch), and junctioned `node_modules` from the
+shared checkout rather than a full reinstall (same lockfile/commit, zero
+version drift risk). Started this worktree's own Vite dev server on port
+5174 against the shared, already-running real backend on port 8000 (real
+vault data, confirmed live — the `~39` real `propose_company_review`
+records the operator described are present).
+
+**Gate: clear 2026-08-19** — no MUST-FLAG trigger fired: no new
+assumption beyond the environment-sync note above (a scope-internal,
+mechanical, zero-judgement sync, not a product decision); `REQ-SB-78` is
+not `Draft`; no ADR created/changed; no `ESCALATIONS.md` entry; not
+oversized; every locked AC this task owns (none — `T01` carries no
+AC-tagged Gherkin scenario of its own, only the module/CSS Tests above)
+independently confirmed; no contradictory inputs; nothing genuinely
+ambiguous.

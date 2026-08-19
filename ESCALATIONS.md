@@ -4657,3 +4657,58 @@ the human confirms the scoping choice before/alongside `/plan-tasks`.
 
 **Status:** Open (flagged for human review before `/plan-tasks REQ-SB-77-US-01`
 proceeds — see `REVIEW-QUEUE.md`)
+
+## ESC-058: Pending Approvals state file has no concurrent-write locking — N simultaneous `POST /pending-approvals/{id}/approve` calls silently clobber each other (only the last writer survives) — found live, `REQ-SB-78-US-01-T03` live verification — 2026-08-19
+
+**Category:** out-of-scope
+
+**Trigger:** `REQ-SB-78-US-01-T03`'s own live verification of `AC-06`
+(bulk-approve). The task's own Tests/Constraints text explicitly allowed
+either "sequential or `Promise.all`" for looping the existing single-item
+`approvePendingApproval(id)` call across a group's items — the initial
+implementation used `Promise.all` (N concurrent HTTP requests). Live
+verification against 2 disposable test Pending Approvals sharing one
+`action_id` found only ONE of the two records actually resolved to
+`approved`; the other stayed `pending` with no error surfaced to the
+frontend. Root-caused directly (not assumed): `pending_approval_registry.
+create_pending_approval`/`resolve_pending_approval` both call
+`vault_writer.save_pending_approvals_state`, a plain
+`path.write_text(json.dumps(state))` with no file lock and no
+read-modify-write atomicity — under FastAPI/uvicorn's default sync-endpoint
+threadpool, two concurrent Approve requests each read the SAME starting
+state, mutate their own in-memory copy, then write it back; whichever
+request's write lands last silently overwrites the other's mutation. This
+is a genuine, pre-existing structural gap in `vault_writer.py`'s own
+pending-approvals persistence (not introduced by this story, not specific
+to `route_thread_to_project` or any one `action_id`) — reproduced a second
+time independently with a wholly different, unmapped `action_id`, ruling
+out any per-handler cause.
+
+**Resolution (in-scope, within this task's own explicit "coder's own
+implementation choice" latitude):** `REQ-SB-78-US-01-T03`'s own
+`handleBulkApprove` was built/kept SEQUENTIAL (`for...of` + `await`, never
+`Promise.all`) specifically because of this finding — the task's own
+Tests/Constraints already permitted this choice; switching to it is not a
+scope deviation, and the live-verified sequential version correctly
+resolved 2/2 real disposable test records with zero data loss. The
+underlying `vault_writer.py` concurrency gap itself is NOT fixed here — out
+of this story's own `## Files to Modify` (a data_access-layer primitive,
+not this story's own frontend scope), and every existing single-item
+Approve/Decline call site already only ever issues one write at a time
+today, so this story's own bulk-approve feature is the FIRST caller in
+this codebase that could have exercised the race at all; building it
+sequentially removes that risk for this feature without touching the
+shared primitive.
+
+**Resolving artefact:** `REQ-SB-78-US-01-T03`'s own Implementation Log
+(this same finding, restated, plus the sequential-loop code comment);
+`REVIEW-QUEUE.md` entry recommending `/bug` capture for the underlying
+`vault_writer.py` primitive gap, since ANY future caller that fires
+concurrent writes against the same state-file family (not just Pending
+Approvals — the same `path.write_text(json.dumps(...))`-with-no-lock shape
+appears across most of `vault_writer.py`'s other state files too) would hit
+the identical race.
+
+**Status:** Open (recommend `/bug` capture of the underlying
+`vault_writer.py` no-locking primitive gap; this story's own `AC-06` is
+unaffected/passing via the sequential-loop choice — see `REVIEW-QUEUE.md`)

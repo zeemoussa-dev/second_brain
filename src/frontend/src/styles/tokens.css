@@ -141,6 +141,29 @@
   --graph-kind-color-7: #7c3aed;
   --graph-kind-color-8: #0891b2;
   --graph-edge-color: rgba(233, 228, 214, 0.25);
+
+  /* Pending Approvals — group-color palette (REQ-SB-78-US-01-T01) — one
+     slot per KNOWN_GROUPS entry (pendingApprovalGroups.ts), keyed by
+     action_id, plus one dedicated --group-color-other for the Other
+     catch-all. Mirrors the existing "reuse curated tokens first, extend
+     with a few new hues only where the palette runs out" precedent
+     already established by --graph-kind-color-N above — the first 7 slots
+     reuse already-curated tokens/hex values, the remaining 3 are new,
+     visually distinct hues, and --group-color-other is a deliberately
+     muted/neutral tone so the miscellaneous catch-all never competes
+     visually with a real, named group. */
+  --group-color-1: var(--color-accent);
+  --group-color-2: var(--color-success);
+  --group-color-3: var(--color-warning);
+  --group-color-4: var(--color-danger);
+  --group-color-5: #2563eb;
+  --group-color-6: #7c3aed;
+  --group-color-7: #0891b2;
+  --group-color-8: var(--agent-color-producer);
+  --group-color-9: #db2777;
+  --group-color-10: #ca8a04;
+  --group-color-11: #64748b;
+  --group-color-other: var(--color-text-muted);
 }
 
 * { box-sizing: border-box; }

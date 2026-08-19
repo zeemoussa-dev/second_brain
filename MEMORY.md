@@ -3866,6 +3866,24 @@ across sessions.
   expect this exact class of stall to recur roughly every time the
   access grant lapses during a long-running/overnight session.
 
+- **`vault_writer.py`'s JSON state-file writers (e.g.
+  `save_pending_approvals_state`, and the same `path.write_text(json.
+  dumps(state))` shape across most of its other state files) have NO
+  concurrent-write locking or read-modify-write atomicity.** Firing 2+
+  simultaneous HTTP calls that each read-modify-write the SAME state
+  file silently clobbers all but the last writer's mutation — no error
+  is raised, no exception surfaces to the caller. Found live 2026-08-19,
+  `REQ-SB-78-US-01-T03` (bulk-approve): 2 concurrent `Promise.all`-fired
+  `POST /pending-approvals/{id}/approve` calls left only 1 of 2 records
+  actually `approved`, reproduced with two independent, unrelated
+  `action_id`s (ruling out a per-handler cause). **Any future feature
+  that fires N concurrent writes against a shared `vault_writer.py`
+  state file must loop sequentially (`await` each call before firing
+  the next) instead of `Promise.all`/concurrent dispatch, until the
+  underlying primitive gains real locking.** Logged as `ESC-058`/
+  `REVIEW-QUEUE.md` (recommends `/bug` capture); not fixed at the
+  primitive level by this task (out of its own frontend-only scope).
+
 - **When the operator asks Claude to DO something in the running app
   (create/rename/move/delete a real entity — a Section, an Agent, a
   vault note, etc.), always go through the app's own real surface —

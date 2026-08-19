@@ -12,6 +12,43 @@ All notable changes to Second Brain.
 
 ## [Unreleased]
 
+- docs: `SPRINT-075` / `REQ-SB-78-US-01-T04` — real-browser end-to-end
+  live re-verification of all 7 locked ACs for the Pending Approvals
+  grouping/color-coding/bulk-approve story, independently against the
+  real running app (headless-Edge CDP), including the Company Review
+  5-way control's own "Affiliate" picker reveal and a real 3-item bulk
+  approve. `REQ-SB-78-US-01` and `SPRINT-075` both close `Done`.
+- feat: `SPRINT-075` / `REQ-SB-78-US-01-T03` — Pending Approvals: each
+  rendered group whose items are all non-branching-decision now gets a
+  `Bulk approve (<N>)` control (`MyDayApprovalsPage.tsx`), looping the
+  existing single-item approve endpoint **sequentially** (never
+  concurrently — see `ESC-058`), refreshing once at the end; the Company
+  Review group renders no bulk-approve control. Live-verified against the
+  real running app (real backend, disposable test records only).
+- fix: found live during `REQ-SB-78-US-01-T03` verification, logged as
+  `ESC-058` (`ESCALATIONS.md`/`MEMORY.md`) — `vault_writer.py`'s JSON
+  state-file writers have no concurrent-write locking; N simultaneous
+  writes to the same state file silently clobber all but the last one.
+  Not fixed at the primitive level (out of this story's frontend-only
+  scope) — recommended for a future `/bug` capture.
+- feat: `SPRINT-075` / `REQ-SB-78-US-01-T02` — Pending Approvals now render
+  grouped into `[data-group-key]` sections by `action_id`
+  (`MyDayApprovalsPage.tsx`), color-coded via `T01`'s
+  `.group-color-N`/`.group-color-other` classes; empty groups never
+  render, an unmapped `action_id` falls into a visible `Other` catch-all,
+  the Company Review 5-way decision control and the empty state both keep
+  working unchanged, now nested one level deeper inside their own group.
+  Live-verified against the real vault (80 real pending items across 3
+  real `action_id`s, including 73 real Company Review records) via
+  headless-Edge CDP; one disposable test record seeded/declined for the
+  `Other`-catch-all check.
+- feat: `SPRINT-075` / `REQ-SB-78-US-01-T01` — Pending Approvals grouping:
+  new `src/frontend/src/features/agents-map/pendingApprovalGroups.ts`
+  (`KNOWN_GROUPS`/`OTHER_GROUP`/`BRANCHING_DECISION_ACTION_IDS`/
+  `resolveGroup`), plus new `.group-color-1`…`-11`/`.group-color-other`
+  CSS classes (`tokens.css`/`my-day.css`) — purely presentational, zero
+  backend change; not yet wired into `MyDayApprovalsPage.tsx`'s own
+  rendering (`T02`).
 - feat: `SPRINT-072` / `REQ-SB-76-US-01` — Company Review: boilerplate-aware
   company extraction replaces direct Thread→Customer routing; one batched
   Pending Approval per company with a real 5-way outcome (Customer / Partner
