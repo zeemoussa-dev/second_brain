@@ -1,0 +1,467 @@
+INFO:     127.0.0.1:58599 - "GET /agents/compass-expert HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59627 - "OPTIONS /agents/vault-qa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59776 - "OPTIONS /agents/vault-qa/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49673 - "OPTIONS /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49675 - "OPTIONS /providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54329 - "OPTIONS /skills HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49673 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64011 - "GET /agents/vault-qa/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54329 - "GET /skills HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62561 - "GET /providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50952 - "GET /agents/vault-qa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49673 - "GET /skills HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62561 - "GET /agents/vault-qa/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64011 - "GET /providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54329 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50952 - "GET /agents/vault-qa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50952 - "OPTIONS /agents/vault-qa/knowledge-gaps HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50952 - "GET /agents/vault-qa/knowledge-gaps HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53312 - "OPTIONS /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62445 - "OPTIONS /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64709 - "OPTIONS /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53295 - "OPTIONS /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64709 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64709 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53295 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53295 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53295 - "OPTIONS /agents/vault-qa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64709 - "OPTIONS /agents/vault-qa/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64709 - "OPTIONS /providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53312 - "OPTIONS /skills HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62445 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62990 - "GET /agents/vault-qa/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53312 - "GET /skills HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64709 - "GET /providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62445 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53312 - "GET /skills HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49723 - "GET /agents/vault-qa/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64709 - "GET /providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53295 - "GET /agents/vault-qa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53295 - "GET /agents/vault-qa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53295 - "OPTIONS /agents/vault-qa/knowledge-gaps HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53295 - "GET /agents/vault-qa/knowledge-gaps HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53295 - "OPTIONS /agents/todo-capture HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64709 - "OPTIONS /agents/todo-capture/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62445 - "GET /skills HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62990 - "GET /agents/todo-capture/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62445 - "GET /skills HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53312 - "GET /providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49723 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53312 - "OPTIONS /pending-approvals/74f6e700ec8b HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62990 - "GET /agents/todo-capture/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64709 - "GET /providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49723 - "GET /pending-approvals/74f6e700ec8b HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53312 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53295 - "GET /agents/todo-capture HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53312 - "GET /pending-approvals/74f6e700ec8b HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53295 - "GET /agents/todo-capture HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61001 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61001 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54577 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54577 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61001 - "GET /agents/vault-qa/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52125 - "GET /skills HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55739 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52125 - "GET /skills HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61001 - "GET /agents/vault-qa/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59597 - "GET /providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55739 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54577 - "GET /agents/vault-qa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59597 - "GET /providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59597 - "GET /agents/vault-qa/knowledge-gaps HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54577 - "GET /agents/vault-qa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54577 - "PATCH /agents/vault-qa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54577 - "GET /agents/vault-qa/knowledge-gaps HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54577 - "PATCH /agents/vault-qa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54577 - "PATCH /agents/vault-qa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54577 - "GET /agents/vault-qa/knowledge-gaps HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52349 - "GET /agents/vault-qa/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57017 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51114 - "GET /skills HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59857 - "GET /providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59857 - "GET /skills HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52349 - "GET /agents/vault-qa/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59263 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57017 - "GET /providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54577 - "GET /agents/vault-qa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57017 - "GET /agents/vault-qa/knowledge-gaps HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54577 - "GET /agents/vault-qa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54577 - "GET /agents/vault-qa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63894 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63894 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63265 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63265 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63894 - "GET /agents/vault-qa/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49230 - "GET /skills HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61263 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64882 - "GET /providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49230 - "GET /skills HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63894 - "GET /agents/vault-qa/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61263 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64882 - "GET /providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63265 - "GET /agents/vault-qa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63265 - "GET /agents/vault-qa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64882 - "GET /agents/vault-qa/knowledge-gaps HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64882 - "PATCH /agents/vault-qa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64882 - "GET /agents/vault-qa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64882 - "GET /agents/vault-qa/knowledge-gaps HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52364 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52364 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59332 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59332 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52364 - "GET /agents/vault-qa/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58314 - "GET /skills HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53195 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62863 - "GET /providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58314 - "GET /skills HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52364 - "GET /agents/vault-qa/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53195 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62863 - "GET /providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59332 - "GET /agents/vault-qa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62863 - "GET /agents/vault-qa/knowledge-gaps HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59332 - "GET /agents/vault-qa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59332 - "GET /agents/vault-qa/knowledge-gaps HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54551 - "PATCH /agents/vault-qa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58540 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58540 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54519 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54519 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58540 - "GET /agents/vault-qa/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55959 - "GET /skills HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55084 - "GET /providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56518 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58540 - "GET /agents/vault-qa/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55959 - "GET /skills HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55084 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58530 - "GET /providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54519 - "GET /agents/vault-qa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58530 - "GET /agents/vault-qa/knowledge-gaps HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54519 - "GET /agents/vault-qa HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58540 - "GET /skills HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58530 - "GET /agents/todo-capture/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55959 - "GET /providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55084 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56518 - "GET /skills HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58530 - "GET /agents/todo-capture/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55084 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58540 - "GET /pending-approvals/74f6e700ec8b HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55959 - "GET /providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58530 - "GET /pending-approvals/74f6e700ec8b HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54519 - "GET /agents/todo-capture HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54519 - "GET /agents/todo-capture HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54519 - "OPTIONS /agents/people-producer HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58530 - "OPTIONS /agents/people-producer/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55084 - "GET /skills HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58530 - "GET /agents/people-producer/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55959 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58540 - "GET /providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55084 - "GET /skills HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56518 - "OPTIONS /pending-approvals/3919778c8c69 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58530 - "GET /agents/people-producer/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55084 - "GET /pending-approvals/3919778c8c69 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55959 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58540 - "GET /providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58530 - "GET /pending-approvals/3919778c8c69 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54519 - "GET /agents/people-producer HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54519 - "GET /agents/people-producer HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55760 - "OPTIONS /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60679 - "OPTIONS /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60679 - "OPTIONS /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60586 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60679 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55760 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56193 - "OPTIONS /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61569 - "OPTIONS /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61569 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61569 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60679 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56193 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56193 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61445 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61445 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50784 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53938 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61629 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59384 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61629 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53938 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61445 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61445 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59384 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50683 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61629 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53938 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61629 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50683 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61445 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61445 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53938 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59384 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61629 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50683 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61629 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59384 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61686 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61686 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53439 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55992 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64867 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60419 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64867 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55992 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56015 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56072 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59747 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59749 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60364 - "POST /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60366 - "POST /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60375 - "POST /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60377 - "POST /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60379 - "POST /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56808 - "POST /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56810 - "POST /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56812 - "POST /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60216 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60226 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60261 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53394 - "OPTIONS /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57593 - "OPTIONS /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54676 - "OPTIONS /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58213 - "OPTIONS /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54676 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54676 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58213 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58213 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57226 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57226 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57401 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57401 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49884 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49884 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56309 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56309 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58760 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58760 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58171 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58171 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65202 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65202 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60688 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60688 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58857 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58857 - "GET /sections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53117 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53117 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61136 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52945 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62796 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62796 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62797 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62798 - "GET /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62797 - "POST /mcp/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:62798 - "GET /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62799 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62799 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62800 - "DELETE /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62800 - "DELETE /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62809 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62809 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62810 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62811 - "GET /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62810 - "POST /mcp/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:62811 - "GET /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62812 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62812 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62813 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62813 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62814 - "DELETE /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62814 - "DELETE /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62815 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62815 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62816 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62817 - "GET /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62816 - "POST /mcp/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:62817 - "GET /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62820 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62820 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62823 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62823 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62824 - "DELETE /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62824 - "DELETE /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62833 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62833 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62840 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62841 - "GET /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62840 - "POST /mcp/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:62841 - "GET /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62842 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62842 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62843 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62843 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62846 - "DELETE /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62846 - "DELETE /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62851 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62851 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62852 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62853 - "GET /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62852 - "POST /mcp/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:62853 - "GET /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62854 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62854 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62855 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62855 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62856 - "DELETE /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62856 - "DELETE /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62857 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62857 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62858 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62859 - "GET /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62858 - "POST /mcp/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:62859 - "GET /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62860 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62860 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62861 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62861 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62862 - "DELETE /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62862 - "DELETE /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59634 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:59634 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59635 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:59636 - "GET /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:59635 - "POST /mcp/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:59636 - "GET /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59637 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:59637 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59638 - "DELETE /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:59638 - "DELETE /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64221 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64221 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64222 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64223 - "GET /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64222 - "POST /mcp/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:64223 - "GET /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64224 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64224 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64225 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64225 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64226 - "DELETE /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64226 - "DELETE /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64227 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64227 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64228 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64229 - "GET /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64228 - "POST /mcp/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:64229 - "GET /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64230 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64230 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64231 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64231 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64232 - "DELETE /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64232 - "DELETE /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64233 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64233 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64234 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64235 - "GET /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64234 - "POST /mcp/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:64235 - "GET /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64236 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64236 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64237 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64237 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64238 - "DELETE /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64238 - "DELETE /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64248 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64248 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64249 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64250 - "GET /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64249 - "POST /mcp/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:64250 - "GET /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64251 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64251 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64252 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64252 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64253 - "DELETE /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64253 - "DELETE /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64262 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64262 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64263 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64264 - "GET /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64263 - "POST /mcp/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:64264 - "GET /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64265 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64265 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64266 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64266 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64267 - "DELETE /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64267 - "DELETE /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64268 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64268 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64269 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64270 - "GET /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64269 - "POST /mcp/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:64270 - "GET /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64271 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64271 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64272 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64272 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64273 - "DELETE /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64273 - "DELETE /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64274 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64274 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64275 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64276 - "GET /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64275 - "POST /mcp/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:64276 - "GET /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64277 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64277 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64278 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64278 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64279 - "DELETE /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64279 - "DELETE /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64280 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64280 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64281 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64282 - "GET /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64281 - "POST /mcp/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:64282 - "GET /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64283 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64283 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64284 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64284 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64285 - "DELETE /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64285 - "DELETE /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61759 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:61759 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61760 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:61761 - "GET /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:61760 - "POST /mcp/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:61761 - "GET /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61762 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:61762 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61763 - "DELETE /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:61763 - "DELETE /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61805 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:61805 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61806 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:61807 - "GET /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:61806 - "POST /mcp/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:61807 - "GET /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61808 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:61808 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61809 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:61809 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61810 - "DELETE /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:61810 - "DELETE /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61830 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:61830 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61831 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:61832 - "GET /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:61831 - "POST /mcp/ HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:61832 - "GET /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61833 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:61833 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61834 - "POST /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:61834 - "POST /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61835 - "DELETE /mcp HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:61835 - "DELETE /mcp/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58415 - "GET /my-day/calendar HTTP/1.1" 200 OK

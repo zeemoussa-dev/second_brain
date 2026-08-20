@@ -1,0 +1,146 @@
+﻿C:\myWorx\Moussa MD\Moussa Brain\Work\Archive
+C:\myWorx\Moussa MD\Moussa Brain\Work\Archive\Customers
+C:\myWorx\Moussa MD\Moussa Brain\Work\Archive\Opportunities
+C:\myWorx\Moussa MD\Moussa Brain\Work\Archive\Resources
+C:\myWorx\Moussa MD\Moussa Brain\Work\Customers
+C:\myWorx\Moussa MD\Moussa Brain\Work\Customers\Unsorted
+C:\myWorx\Moussa MD\Moussa Brain\Work\Customers\Unsorted\captures.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Customers\Unsorted\index.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Customers\Unsorted\log.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Customers\Unsorted\projects
+C:\myWorx\Moussa MD\Moussa Brain\Work\Customers\Unsorted\projects\Azure Demo Account Request
+C:\myWorx\Moussa MD\Moussa Brain\Work\Customers\Unsorted\projects\Azure Demo Account Request\Azure Demo Account Request.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Customers\Unsorted\projects\Azure Demo Account Request\captures.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Customers\Unsorted\projects\Azure Demo Account Request\index.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Customers\Unsorted\projects\Azure Demo Account Request\log.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Customers\Unsorted\Unsorted.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\[TBC] ADNOC Insight Deployemnt-2026-08-19-a4cf04f4.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Alignment Mubadala-2026-08-17-a4737bc4.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Azure Foundation -2026-08-25-c6cd0331.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Building the Infra Foundation for Masdar Data Lake-2026-08-12-5cc869ae.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Canceled- Discuss with Mousa-2026-08-24-b1351fed.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Claire-Moussa - Catch-up Masdar Data Platform-2026-08-18-714fe9f3.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Core Account Team Weekly Cadenace (ADNOC - EDGE - POM Holding)-2026-08-19-8e499d.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Core Account Team Weekly Cadenace (ADNOC - EDGE - POM Holding)-2026-08-26-3476d3.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Core42 Soverigin Cloud - Insight Platform - Technical Discussion-2026-08-19-9e3c.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Data Platform Catch-up-2026-08-13-9067c276.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Discuss with Mousa-2026-08-17-5e973fa7.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Discuss with Mousa-2026-08-31-55abb797.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Ewec Discussion (Compass - AI) online -2026-08-13-9a5dfa45.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Following- Weekly Steering of Activities - [Core42]-2026-08-13-ad061c5f.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Infra foundation provisioning for azure data lake-2026-08-13-90afaf43.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Invest Bank - Core42 (Sovereign Public Cloud & Compass)-2026-08-20-191dc596.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Kimi 3 - Foundry PoC - Integration CORE42-Weekly Checkpoints-2026-08-12-ec98ff14.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Kimi 3 - Foundry PoC - Integration CORE42-Weekly Checkpoints-2026-08-19-df7b09a4.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Kimi 3 - Foundry PoC - Integration CORE42-Weekly Checkpoints-2026-08-26-7804d0eb.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Mid-Year Review - Moussa-2026-08-12-c865595c.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Naima Pipeline Review-2026-08-18-029d8ca3.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\NetApp Introduction-2026-08-12-9d4d5ca0.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Oracle ExaCC Future in TAQA-2026-08-14-aeed50c4.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\PSS Team Get together -2026-08-18-3ff26891.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\PSS Team Get together -2026-09-01-6e8f23b4.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\PSS Team Weekly Meeting-2026-08-18-47a72b70.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Re- OpenAI engagement with ADNOC-2026-08-12-cbf0abb9.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Re- Tadweer Group - Core42 Azure Services-2026-08-13-ba780b45.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Standup - AZDL Readiness-2026-08-14-89865572.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Standup - AZDL Readiness-2026-08-21-53daaff7.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Standup - AZDL Readiness-2026-08-28-43393af6.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Tadweer Discussion - Placeholder-2026-08-13-36d21ffd.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\TAQA - Mubadala _ Forecast - Weekly connect -2026-08-12-986eee44.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\TAQA Licenses to MACC-2026-08-13-a423b77d.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Weekly Forecast l Major Clients-2026-08-17-862f796d.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Weekly Forecast l Major Clients-2026-08-24-f1de088f.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Weekly Forecast l Major Clients-2026-08-31-7cf2ae20.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Weekly Forecast l Strategic Clients-2026-08-17-733126dd.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Weekly Forecast l Strategic Clients-2026-08-24-122553c7.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Meetings\Weekly Forecast l Strategic Clients-2026-08-31-99e11c5a.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Partners
+C:\myWorx\Moussa MD\Moussa Brain\Work\Partners\Core42.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\a.tuffaha@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\aalkindi@adnoc.ae.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\adithya.srinivasan1@g42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\ahmad.hamzeh@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\ahmed.assem@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\ahmed.labib@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\ajay.malik@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\amit.sansi@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\amr.monib@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\anna.dubovik@inceptionai.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\arun.kalathil@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\asif.ayaz@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\awalia@masdar.ae.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\cpritchard@masdar.ae.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\dalbir.maan@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\dario.dilelio@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\dileep.gogula@dge.gov.ae.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\emma.cloney@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\eyad.alsahli@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\faalmansoori@masdar.ae.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\fatma.hady@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\fouad.nassif@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\ghalia.mahbouli@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\hanish.arora@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\hasan.hashmi@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\husam.tahir@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\imad.albadawi@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\imtiaz.ahmed@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\jaafar.alhashmi@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\jahanzeb.siddiqui@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\kalmaskari@masdar.ae.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\kapil.jalasutram@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\karthick.subburam@inb.ae.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\khurram.hasan@core42.ae.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\khurram.hasan@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\kriti.makker@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\kwu@masdar.ae.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\maik.kurz@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\maiyas.hammadi@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\majid.farid@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\maryam.alshehhi@ewec.ae.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\mobaidat@masdar.ae.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\mohamed.eltanany@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\mohammad.hadidi@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\mohammad.hussain@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\muhammed.rafeeque@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\mukesh.sinha@investbank.ae.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\mustafa.ibrahim@dge.gov.ae.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\naima.bikbi@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\nalsulaimani@masdar.ae.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\nezzat@masdar.ae.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\nishen.roy@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\noha.mohamed@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\-o=exchangelabs-ou=exchange administrative group (fydibohf23spdlt)-cn=recipients.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\praveen.u@investbank.ae.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\rahil.shaikh@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\rajesh.rajan@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\reghu.nair@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\rudra.potturu@tadweer.ae.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\salah.elatawneh@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\saleem.amaireh@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\samer.shaat@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\samia.benyahia@inceptionai.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\samir.elnabawy@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\sandeep.penumadu@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\sara.moukabari@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\shadi.shaat@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\spillai@masdar.ae.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\tamer.farouk@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\tanvi.batra@investbank.ae.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\tareq.altwal@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\timofei.portnoi@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\venkata.anugolu@dge.gov.ae.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\wail.bouziane@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\walaa.khamis@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\will.badr@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\People\zishan.naviwala@core42.ai.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Resources
+C:\myWorx\Moussa MD\Moussa Brain\Work\Threads
+C:\myWorx\Moussa MD\Moussa Brain\Work\Threads\-Account Plans Core42 Template July-26- has been shared with you-2026-07-27-7c74.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Threads\Compass Alert- Failed API Calls-2026-07-27-61c91877.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Threads\Re- [ Core42 @UAE ] SimplAI Agentic AI Operating System - Demo (deep dive)-2026-.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Threads\RE- Azure-Net New Revenue Forecast for H2 for AM Updates-2026-07-27-8cd2025b.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Threads\Requested Item RITM0108464 has been updated-2026-07-27-025663bd.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Threads\Your Core42 Compass Portal account verification code-2026-07-27-ba8f5c76.md
+C:\myWorx\Moussa MD\Moussa Brain\Work\Threads\🔑 New API Key Created — Core42-Compass - 2026-07-27 15-45-32 (UAE Time)-2026-07-.md

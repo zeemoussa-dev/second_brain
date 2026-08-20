@@ -1,0 +1,25 @@
+C:\myWorx\Projects\Second Brain\src\backend\.venv\Lib\site-packages\pydantic_settings\sources\utils.py:47: IncompleteFieldDefinitionWarning: Field 'lifespan' has an incomplete definition: its annotation contains an unresolved forward reference, so settings sources may fail to correctly resolve its value. Call `model_rebuild()` on the model where the field is defined, once all the referenced types are defined.
+  warnings.warn(
+INFO:     Started server process [44432]
+INFO:     Waiting for application startup.
+StreamableHTTP session manager started
+Adding job tentatively -- it will be properly scheduled when the scheduler starts
+Adding job tentatively -- it will be properly scheduled when the scheduler starts
+Adding job tentatively -- it will be properly scheduled when the scheduler starts
+Adding job tentatively -- it will be properly scheduled when the scheduler starts
+Added job "run_capture_if_idle" to job store "default"
+Added job "_build_scheduled_tick.<locals>._tick" to job store "default"
+Added job "_build_scheduled_tick.<locals>._tick" to job store "default"
+Added job "_build_scheduled_tick.<locals>._tick" to job store "default"
+Scheduler started
+Added job "_make_scheduled_tick_callback.<locals>._tick" to job store "default"
+Added job "_make_scheduled_tick_callback.<locals>._tick" to job store "default"
+Added job "_make_scheduled_tick_callback.<locals>._tick" to job store "default"
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+INFO:     127.0.0.1:58163 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58165 - "GET /hermes/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58167 - "GET /system-health HTTP/1.1" 200 OK
+HTTP Request: POST https://api.core42.ai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:58184 - "GET /health HTTP/1.1" 200 OK
+HTTP Request: POST https://api.core42.ai/v1/chat/completions "HTTP/1.1 200 OK"
