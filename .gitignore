@@ -21,3 +21,15 @@ Thumbs.db
 # local dev-server launch config) — machine/session-specific, not committed
 .claude/worktrees/
 .claude/launch.json
+
+# Dev-session scratch/log output (ad hoc restart/capture/verify logs and
+# one-off debug scripts, not real app code or docs)
+/.backend_restart*.log
+/.baseline_outlook_before.json
+/.customer_bodies_with_content.txt
+/.recapture_stdout.log
+/uvicorn_*.log
+/scratchpad/
+src/backend/.scratch/
+src/backend/*.log
+src/backend/_run_full_capture.py
