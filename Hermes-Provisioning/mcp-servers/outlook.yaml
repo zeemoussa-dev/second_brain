@@ -1,0 +1,28 @@
+# Registers Second Brain's own Outlook Tool as an MCP server Hermes can
+# call. Apply via:
+#
+#   hermes mcp add outlook --url http://127.0.0.1:8000/tools/outlook
+#
+# Requires Second Brain's own backend (src/backend) to actually be running
+# on port 8000 first -- this MCP server is Second Brain's own live process,
+# not a separate service. Confirmed live 2026-08-20: appears in
+# `hermes mcp catalog` as "outlook  custom — enabled".
+#
+# Current real Actions this exposes (Outlook Tool -> Email Category, see
+# src/backend/app/data_access/system/tools/registry.json):
+#   - gather_emails: fetch + stage (bundled, has side effects -- for
+#     capture_scheduler.py's own routine local pull, not agent-facing)
+#
+# 2026-08-21 -- list_recent_emails (the one Action here that WAS
+# agent-facing) moved to the email-thread-capture Skill's own
+# scripts/list_recent_emails.py (Hermes-native, no MCP) -- see
+# Implementation/Plans/2026-08-20-backend-architecture-redesign.md, "MCP
+# server vs. Hermes-native Skill scripts." gather_emails is Second
+# Brain's own internal capture_scheduler.py pull, called as a direct
+# Python function, never over MCP -- meaning nothing left actually calls
+# this MCP registration from the Hermes side. Left registered rather than
+# torn down unilaterally; flagged to the operator as possibly ready for
+# `hermes mcp remove outlook` if no future use turns up.
+
+name: outlook
+url: http://127.0.0.1:8000/tools/outlook

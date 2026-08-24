@@ -1,0 +1,27 @@
+# Compass custom provider entry for Hermes' own config.yaml.
+#
+# Merge this under Hermes' top-level `custom_providers:` list. The
+# base_url here is the CORRECT, verified form -- confirmed live 2026-08-20
+# via Hermes' own automatic request debug dumps (agent.logs_dir/
+# request_dump_*.json): Hermes' request-building code
+# (agent_runtime_helpers.py) always appends "/chat/completions" to
+# whatever base_url is configured
+# (f"{agent.base_url.rstrip('/')}/chat/completions"). The FULL completions
+# URL (ending in /chat/completions, the same value Second Brain's own
+# app/config.py::compass_base_url uses) causes a real, confirmed 404 from
+# double-appending -- do NOT copy Second Brain's own COMPASS_BASE_URL
+# value here verbatim.
+#
+# Also real and confirmed: there are TWO base_url fields in Hermes'
+# config.yaml for the same logical provider (top-level `model.base_url`
+# AND this `custom_providers[].base_url` entry) -- only the
+# custom_providers one is actually read when building requests
+# (auth_commands.py::_provider_base_url reads cp_config.get("base_url")).
+# Keep both in sync if editing manually; this file only covers the one
+# that actually matters.
+
+custom_providers:
+  - name: compass
+    base_url: https://api.core42.ai/v1
+    key_env: HERMES_CUSTOM_API_CORE42_AI_API_KEY
+    model: gpt-5
