@@ -3,6 +3,7 @@ import {
   fetchSystemHealth,
   type SystemHealthResponse,
 } from '../features/system-health/client';
+import { fetchHermesStatus, type HermesServerStatus } from '../features/hermes-ops/client';
 
 function formatDuration(seconds: number | null): string {
   if (seconds === null) return 'an unknown duration';
@@ -13,35 +14,11 @@ function formatDuration(seconds: number | null): string {
   return `${minutes}m ${remainingSeconds}s`;
 }
 
-export function SystemHealthPage() {
-  const [health, setHealth] = useState<SystemHealthResponse | null>(null);
-
-  const load = () => {
-    fetchSystemHealth().then(setHealth);
-  };
-
-  useEffect(load, []);
-
-  if (!health) {
-    return (
-      <>
-        <h1>System Health</h1>
-        <p className="text-muted">Loading...</p>
-      </>
-    );
-  }
-
+function AppStatusTab({ health, onRefresh }: { health: SystemHealthResponse; onRefresh: () => void }) {
   const hasIssues = !health.mcp.reachable || health.disabled_agents.length > 0;
 
   return (
     <>
-      <h1>System Health</h1>
-      <p className="text-muted">
-        Whether Second Brain's own moving pieces are genuinely working — not
-        just "the process is up" — so a real failure is visible at a glance
-        instead of discovered by symptom-chasing through individual features
-        or digging through raw server logs (REQ-SB-31).
-      </p>
       <p className="text-muted" style={{ fontSize: 'var(--font-size-sm)' }}>
         <button
           type="button"
@@ -51,7 +28,7 @@ export function SystemHealthPage() {
             fontSize: 'var(--font-size-sm)',
             marginRight: 'var(--space-2)',
           }}
-          onClick={load}
+          onClick={onRefresh}
         >
           &#8635; Refresh
         </button>
@@ -200,6 +177,96 @@ export function SystemHealthPage() {
           ))}
         </div>
       </div>
+    </>
+  );
+}
+
+function HermesStatusTab({ status, onRefresh }: { status: HermesServerStatus; onRefresh: () => void }) {
+  return (
+    <div className="card">
+      <h2>Hermes Server Status</h2>
+      <div className="kv-list">
+        <div className="kv-row">
+          <span className="kv-key">Gateway</span>
+          <span className={`badge ${status.reachable ? 'badge-success' : 'badge-danger'}`}>
+            {status.reachable ? 'Reachable' : 'Unreachable'}
+          </span>
+        </div>
+        {!status.reachable && status.error && (
+          <div className="kv-row">
+            <span className="kv-key">Error</span>
+            <span className="mono" style={{ fontSize: 'var(--font-size-sm)' }}>{status.error}</span>
+          </div>
+        )}
+        {status.reachable &&
+          Object.entries(status)
+            .filter(([key]) => key !== 'reachable' && typeof status[key] !== 'object')
+            .map(([key, value]) => (
+              <div className="kv-row" key={key}>
+                <span className="kv-key">{key}</span>
+                <span className="mono">{String(value)}</span>
+              </div>
+            ))}
+      </div>
+      <button type="button" className="btn" style={{ marginTop: 'var(--space-2)' }} onClick={onRefresh}>
+        &#8635; Refresh
+      </button>
+    </div>
+  );
+}
+
+const TABS = ['app', 'hermes'] as const;
+type Tab = (typeof TABS)[number];
+const TAB_LABELS: Record<Tab, string> = { app: 'App Status', hermes: 'Hermes Status' };
+
+export function SystemHealthPage() {
+  const [activeTab, setActiveTab] = useState<Tab>('app');
+  const [health, setHealth] = useState<SystemHealthResponse | null>(null);
+  const [hermesStatus, setHermesStatus] = useState<HermesServerStatus | null>(null);
+
+  const loadHealth = () => {
+    fetchSystemHealth().then(setHealth);
+  };
+  const loadHermesStatus = () => {
+    fetchHermesStatus().then(setHermesStatus);
+  };
+
+  useEffect(loadHealth, []);
+  useEffect(loadHermesStatus, []);
+
+  return (
+    <>
+      <h1>System Health</h1>
+      <p className="text-muted">
+        Whether Second Brain's own moving pieces are genuinely working — not
+        just "the process is up" — so a real failure is visible at a glance
+        instead of discovered by symptom-chasing through individual features
+        or digging through raw server logs (REQ-SB-31).
+      </p>
+
+      <div className="page-tabs" role="tablist">
+        {TABS.map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab}
+            className={`page-tab${activeTab === tab ? ' page-tab--active' : ''}`}
+            onClick={() => setActiveTab(tab)}
+          >
+            {TAB_LABELS[tab]}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'app' &&
+        (health ? <AppStatusTab health={health} onRefresh={loadHealth} /> : <p className="text-muted">Loading...</p>)}
+      {activeTab === 'hermes' &&
+        (hermesStatus ? (
+          <HermesStatusTab status={hermesStatus} onRefresh={loadHermesStatus} />
+        ) : (
+          <p className="text-muted">Loading...</p>
+        ))}
     </>
   );
 }

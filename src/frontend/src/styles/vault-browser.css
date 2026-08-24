@@ -19,3 +19,194 @@ button.item-row:hover {
   font-size: var(--font-size-sm);
   padding: 2px var(--space-3);
 }
+
+/* Real note markdown body (2026-08-23) -- NoteBody.tsx's own
+   react-markdown output. No global heading/list reset exists
+   (tokens.css only zeroes body's own margin), so browser defaults
+   already give real spacing/list-style out of the box; this just reins
+   heading sizes into the app's own existing type scale and keeps links/
+   code visually consistent with the rest of the UI, matching REQ-SB-02's
+   "nice HTML formatting" framing. */
+.note-body {
+  max-width: 72ch;
+  line-height: 1.6;
+}
+
+/* h1/h2/h3's own size + bottom margin already come from tokens.css's
+   global rule -- this just adds top spacing (that rule sets bottom only)
+   and covers h4-h6, which have no existing app-wide styling at all. */
+.note-body h1,
+.note-body h2,
+.note-body h3 { margin-top: var(--space-6); }
+.note-body h4,
+.note-body h5,
+.note-body h6 { font-size: var(--font-size-base); font-weight: 700; margin: var(--space-3) 0 var(--space-2); }
+
+/* 2026-08-24 (operator: "The md file viewer looks bad very bad
+   Structure... I need this Page to be Beautiful and readable with Jumps
+   to section") -- a real captured note (`## Summary`, `## Details`, etc.)
+   is genuinely a sequence of distinct chapters, often each several
+   paragraphs/a long nested list long; a bare heading with no visual
+   break reads as one undifferentiated wall of text. A rule below the
+   text, plus real breathing room above, is what actually reads as
+   "structured" rather than "dumped." Also the jump target for the ToC's
+   own anchor links (NoteDetailPage.tsx) -- scroll-margin-top keeps a
+   jumped-to heading from landing flush against the card's own top edge. */
+.note-body h2 {
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  scroll-margin-top: var(--space-4);
+}
+.note-body h3 { scroll-margin-top: var(--space-4); }
+
+/* Nested bullets (a real "Core components: Edge/IoT: ..., Data layer:
+   ..." breakdown, not a hypothetical) need their own visible rhythm --
+   the flat --space-6 padding-left below already indents them, this adds
+   the vertical breathing room browser defaults don't give a nested list
+   on its own. */
+.note-body li > ul,
+.note-body li > ol { margin-top: var(--space-2); }
+.note-body li { margin-bottom: var(--space-1); }
+
+/* Real captured images (`![[slide-14.png]]` embeds, resolved to actual
+   <img> tags by NoteBody.tsx's own resolver) -- these are often full
+   slide/screenshot exports, easily 1500px+ wide; capping height keeps
+   one image from dominating the whole page while `object-fit: contain`
+   never crops it. Centered with a card-like border/shadow so it reads
+   as a distinct figure, not body text that happens to be an image. */
+.note-body-image {
+  display: block;
+  max-width: 100%;
+  max-height: 480px;
+  width: auto;
+  object-fit: contain;
+  margin: var(--space-3) auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px color-mix(in srgb, black 25%, transparent);
+}
+
+/* A caption paragraph immediately following an image (this vault's own
+   real capture convention -- "![[slide-14.png]]" on its own line, then
+   "Slide 14: ..." as the very next line) reads as a figure caption once
+   set apart from ordinary body text, not just another paragraph. */
+.note-body p:has(> .note-body-image) + p {
+  margin-top: calc(-1 * var(--space-2));
+  text-align: center;
+  font-size: var(--font-size-sm);
+  font-style: italic;
+  color: var(--color-text-muted);
+}
+
+/* ==========================================================================
+   Note detail page layout (2026-08-24) -- a sticky jump-to-section rail
+   alongside the note's own body, instead of the previous single flat
+   column of stacked .card sections with no way to navigate a long note
+   short of scrolling. Collapses to one column under 960px -- the rail
+   moves above the body instead (order swapped, not hidden -- still real,
+   still useful on a narrower window, just not worth pinning sticky at
+   that width).
+   ========================================================================== */
+
+.note-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.note-detail-main { min-width: 0; }
+
+.note-detail-toc {
+  position: sticky;
+  top: var(--space-4);
+}
+
+.note-detail-toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+}
+
+.note-detail-toc-list a {
+  display: block;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+  border-left: 2px solid transparent;
+}
+
+.note-detail-toc-list a:hover {
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+}
+
+.note-detail-toc-list a[data-level="3"] {
+  padding-left: var(--space-4);
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 960px) {
+  .note-detail-layout {
+    grid-template-columns: 1fr;
+  }
+  .note-detail-toc {
+    position: static;
+    order: -1;
+  }
+  .note-detail-toc-list {
+    max-height: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
+
+.note-body p,
+.note-body ul,
+.note-body ol,
+.note-body blockquote { margin: 0 0 var(--space-3); }
+
+.note-body ul,
+.note-body ol { padding-left: var(--space-6); }
+
+.note-body a { color: var(--color-accent); }
+
+.note-body blockquote {
+  border-left: 3px solid var(--color-border);
+  padding-left: var(--space-3);
+  color: var(--color-text-muted);
+}
+
+.note-body code {
+  background: var(--color-surface-raised);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  font-size: 0.9em;
+}
+
+.note-body pre {
+  background: var(--color-surface-raised);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  overflow-x: auto;
+  margin: 0 0 var(--space-3);
+}
+
+.note-body pre code {
+  background: none;
+  padding: 0;
+}
+
+.note-body hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: var(--space-4) 0;
+}

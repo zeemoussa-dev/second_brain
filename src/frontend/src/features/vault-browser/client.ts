@@ -61,6 +61,11 @@ export function search(query: string, limit = 20): Promise<SearchResponse> {
 
 export interface NoteDetail extends NoteSummary {
   frontmatter: Record<string, unknown>;
+  // Real markdown body text (2026-08-23) -- read fresh from disk, never
+  // cached in the index (vault_indexing.py's own established reasoning,
+  // ADR-026). Raw, wikilinks and all -- NoteDetailPage.tsx does the
+  // wikilink -> real note / markdown -> HTML rendering.
+  body: string;
   forward_links: NoteSummary[];
   backlinks: NoteSummary[];
 }

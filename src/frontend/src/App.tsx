@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router';
 import { AppShell } from './components/shell/AppShell';
 import { AgentsMapPage } from './pages/AgentsMapPage';
+import { ChatPage } from './pages/ChatPage';
 import { CrawlersPage } from './pages/CrawlersPage';
 import { MyDayPage } from './pages/MyDayPage';
 import { MyDayEmailsPage } from './pages/MyDayEmailsPage';
@@ -22,6 +23,7 @@ function App() {
       <Routes>
         <Route element={<AppShell />}>
           <Route path="/" element={<AgentsMapPage />} />
+          <Route path="/chat" element={<ChatPage />} />
           <Route path="/crawlers" element={<CrawlersPage />} />
           <Route path="/my-day" element={<MyDayPage />} />
           <Route path="/my-day/emails" element={<MyDayEmailsPage />} />

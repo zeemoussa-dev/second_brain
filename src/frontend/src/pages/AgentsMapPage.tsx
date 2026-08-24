@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AgentsMapCanvas } from '../features/agents-map/AgentsMapCanvas';
 import { AgentDetailPanel } from '../features/agents-map/AgentDetailPanel';
+import { SectionDetailPanel } from '../features/agents-map/SectionDetailPanel';
 import { JobSettingsPanel } from '../features/agents-map/JobSettingsPanel';
 import { AgentsMapSearchPalette } from '../features/agents-map/AgentsMapSearchPalette';
 import { AgentsMapAboutPanel } from '../features/agents-map/AgentsMapAboutPanel';
 import { CreateAgentWizardModal } from '../features/agents-map/CreateAgentWizardModal';
-import { fetchAgentList, fetchAgentJobs, type AgentDetail, type JobTreeEntry } from '../features/agents-map/agentsApiClient';
+import { fetchAgentList, type AgentDetail, type JobTreeEntry } from '../features/agents-map/agentsApiClient';
 import { fetchSections } from '../features/settings/settingsApiClient';
 import { layoutAgents, type ClusterMarker, type DependencyEdge } from '../features/agents-map/layoutAgents';
-import { spliceEmailCapturePipelineJobTree, EMAIL_CAPTURE_PIPELINE_AGENT_ID } from '../features/agents-map/pipelineJobTreeAdapter';
+import { spliceAllPipelineJobTrees, fetchAllPipelineJobTrees } from '../features/agents-map/pipelineJobTreeAdapter';
 import type { AgentSection, MockAgent } from '../features/agents-map/mockAgents';
 
 export function AgentsMapPage() {
@@ -23,14 +24,26 @@ export function AgentsMapPage() {
   const [fullAgents, setFullAgents] = useState<MockAgent[]>([]);
   const [clusters, setClusters] = useState<ClusterMarker[]>([]);
   const [dependencyEdges, setDependencyEdges] = useState<DependencyEdge[]>([]);
-  // REQ-SB-66-US-01-T07 -- the SAME fetchAgentJobs(EMAIL_CAPTURE_PIPELINE_
-  // AGENT_ID) list spliceEmailCapturePipelineJobTree already consumes below,
-  // now also stored here (no new fetch) so a later click can be resolved
-  // against real Job ids without asking the backend a second time
-  // (ADR-044 Decision 3).
+  // REQ-SB-66-US-01-T07 -- the SAME per-pipeline Job trees
+  // spliceAllPipelineJobTrees already consumes below, flattened and also
+  // stored here (no new fetch) so a later click can be resolved against
+  // real Job ids without asking the backend a second time (ADR-044
+  // Decision 3). Generalized 2026-08-22 from one hardcoded pipeline to
+  // every real Pipeline (ADR-004) -- flat, since a Job is looked up by id
+  // alone regardless of which Pipeline it came from.
   const [jobs, setJobs] = useState<JobTreeEntry[]>([]);
+  // Job id -> its own real parent Pipeline id -- a flattened `jobs` array
+  // alone loses this once there's more than one Pipeline (2026-08-22);
+  // JobSettingsPanel needs the REAL parent, not a hardcoded one, to ask
+  // the right /agents/{id}/jobs/{jobId}/settings endpoint.
+  const [jobPipelineIds, setJobPipelineIds] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  // 2026-08-23 -- SectionDetailPanel's own id, independent of
+  // selectedAgentId (a Section Hub and an Agent node are never the same
+  // click target, so no id-collision handling is needed the way
+  // selectedJob below disambiguates within selectedAgentId).
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   // REQ-SB-46-US-01-T01 — the popup wizard's own open/closed flag; the
   // conditional mount below (`{isWizardOpen && <CreateAgentWizardModal .../>}`)
   // is what makes Scenario 11's "closing discards the draft" true by
@@ -46,21 +59,27 @@ export function AgentsMapPage() {
     Promise.all([
       fetchAgentList(),
       fetchSections(),
-      // Caught locally, not left to the Promise.all's own rejection --
-      // a failed /jobs fetch must degrade to today's existing single-
-      // email-capture-pipeline-node rendering, never the full blank-map
+      // fetchAllPipelineJobTrees already degrades per-pipeline internally
+      // (a failed /pipelines or individual /jobs fetch just means that
+      // Pipeline's single summary node stays unspliced) -- never left to
+      // this Promise.all's own rejection, never the full blank-map
       // fallback below (REQ-SB-65-US-01-T02's own degrade constraint).
-      fetchAgentJobs(EMAIL_CAPTURE_PIPELINE_AGENT_ID).catch(() => [] as JobTreeEntry[]),
+      fetchAllPipelineJobTrees(),
     ])
-      .then(([agentList, sectionList, jobList]) => {
+      .then(([agentList, sectionList, pipelineJobTrees]) => {
         if (cancelled) return;
-        const adaptedAgentList = spliceEmailCapturePipelineJobTree(agentList, jobList);
+        const adaptedAgentList = spliceAllPipelineJobTrees(agentList, pipelineJobTrees);
         const layout = layoutAgents(adaptedAgentList, sectionList);
         setSections(layout.sections);
         setAgents(layout.mapAgents);
         setClusters(layout.clusters);
         setDependencyEdges(layout.dependencyEdges);
-        setJobs(jobList);
+        setJobs(Array.from(pipelineJobTrees.values()).flat());
+        const pipelineIdByJobId = new Map<string, string>();
+        for (const [pipelineId, jobList] of pipelineJobTrees) {
+          for (const job of jobList) pipelineIdByJobId.set(job.id, pipelineId);
+        }
+        setJobPipelineIds(pipelineIdByJobId);
         // Was a manually-built placeholder array (angleDeg:0, radius:0 —
         // "recomputed by layoutSectionDrilldown() inside every drill-down
         // consumer, never rendered"). That comment stopped being true once
@@ -153,6 +172,7 @@ export function AgentsMapPage() {
         dependencyEdges={dependencyEdges}
         selectedAgentId={selectedAgentId}
         onSelectAgent={setSelectedAgentId}
+        onSelectSection={setSelectedSectionId}
       />
       {!loading && !hasAgents && (
         <div className="empty-state">
@@ -167,13 +187,24 @@ export function AgentsMapPage() {
       )}
       {selectedAgentId && selectedJob && (
         <JobSettingsPanel
-          agentId={EMAIL_CAPTURE_PIPELINE_AGENT_ID}
+          agentId={jobPipelineIds.get(selectedJob.id) ?? selectedJob.id}
           jobId={selectedJob.id}
           onClose={() => setSelectedAgentId(null)}
         />
       )}
       {selectedAgentId && !selectedJob && (
-        <AgentDetailPanel agentId={selectedAgentId} onClose={() => setSelectedAgentId(null)} />
+        <AgentDetailPanel
+          agentId={selectedAgentId}
+          onClose={() => setSelectedAgentId(null)}
+          onAgentUpdated={refreshAgents}
+        />
+      )}
+      {selectedSectionId && (
+        <SectionDetailPanel
+          sectionId={selectedSectionId}
+          onClose={() => setSelectedSectionId(null)}
+          onSectionUpdated={refreshAgents}
+        />
       )}
       <button
         type="button"

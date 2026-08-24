@@ -383,6 +383,28 @@
      than stretching that shape to fit itself (operator, 2026-08-15:
      "the Hubs in the main Screen is not Circluar any more"). */
   overflow: hidden;
+  /* 2026-08-23 (operator: "the Icon Size is Clipped not visible fully")
+     -- confirmed by rasterizing the actual glyph to a canvas and reading
+     back non-transparent pixel bounds: Material Symbols Outlined's own
+     "hub" glyph paints ~16x16px of real ink at this 14px (0.875rem) font
+     size (font-metrics ascent+descent alone sum to 16px, more than the
+     14px a bare `line-height: 1` box provides) -- wider AND taller than
+     the plain 14x14 box `line-height: 1` alone produces at this
+     font-size, so `overflow: hidden` immediately above (needed for the
+     circularity fix, untouched) was silently slicing a couple pixels off
+     every edge. Explicit width/height bigger than the glyph's own
+     measured ink, flex-centered, gives that ink real room WITHOUT
+     touching `.hub-node`'s own aspect-ratio/overflow mechanics at all --
+     `overflow: hidden` on an element with an explicit size still
+     resolves that element's own automatic minimum size to 0 regardless
+     of the size given (same CSS mechanism the fix above already relies
+     on), so this can't reintroduce the oval/non-circular bug that fix
+     exists to prevent. */
+  width: 1.3em;
+  height: 1.3em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Hover glow (operator, 2026-08-15: "Bring the Hover Effect of the
@@ -703,6 +725,31 @@
      drill-down shows an icon on EVERY Agent via its own Section-icon
      fallback, not just the ones with an icon of their own). */
   overflow: hidden;
+  /* 2026-08-23 (operator: "The Map Main still have the icons clipped" —
+     same root cause as `.hub-node-icon`'s own identical fix, applied
+     here too): confirmed live by rasterizing each real glyph used here
+     (hub/conveyor_belt/smart_toy/mail) to a canvas at this exact 6px
+     font-size and reading back non-transparent ink bounds — most fit a
+     bare 6x6 box, but "hub" (Primary's own icon) paints ~8x6px of real
+     ink, wider than the box `line-height: 1` alone provides, so this
+     span's own `overflow: hidden` above was slicing it. */
+  width: 1.3em;
+  height: 1.3em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Without this, the explicit `height: 1.3em` above measured live at
+     only 4.36px, not the requested 7.79px — `.agent-node` is a COLUMN
+     flex container with THREE stacked children (this icon, then
+     `.agent-node-label`, then `.agent-node-type`), all sharing that
+     one ~7.7px-tall overview node; default `flex-shrink: 1` let the
+     icon get squeezed down to make room for its siblings on the shared
+     main (vertical) axis, even though those siblings already render at
+     an unreadable ~1x1px at this same overview scale (their own text
+     is functionally invisible regardless). `flex-shrink: 0` keeps the
+     icon at its own real requested size and lets the siblings (which
+     lose nothing visible) absorb the space deficit instead. */
+  flex-shrink: 0;
 }
 
 .agent-node .agent-node-type {
@@ -775,7 +822,15 @@
    dark canvas background instead — a dark color there would just
    trade one invisible-text bug for another. */
 .agent-node--autonomous .agent-node-icon {
-  color: var(--color-on-accent);
+  /* --node-icon-color (AgentNode.tsx) is only ever set alongside a
+     CUSTOM --node-color -- computed per-color contrast (2026-08-22,
+     operator: "the Icon Colors should be Smart to go between dark and
+     light based on the color"), since the single hardcoded
+     --color-on-accent below only ever suited the 3 original Type
+     colors, not the full 10-swatch custom palette (some of which are
+     genuinely dark). Falls back to --color-on-accent, unchanged, for
+     every node still on its Type default. */
+  color: var(--node-icon-color, var(--color-on-accent));
 }
 
 .agent-node--assisted {
@@ -1552,7 +1607,7 @@ g.is-dimmed { opacity: 0.32; }
   background: transparent;
   color: var(--color-text);
   font-size: var(--font-size-lg);
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-4) var(--space-6);
   border-bottom: 1px solid var(--color-border);
   outline: none;
 }
@@ -1590,7 +1645,7 @@ g.is-dimmed { opacity: 0.32; }
 }
 
 .map-search-empty {
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-4) var(--space-6);
   color: var(--color-text-muted);
   margin: 0;
 }

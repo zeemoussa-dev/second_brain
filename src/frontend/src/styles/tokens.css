@@ -131,7 +131,12 @@
      tokens), not new arbitrary hues — an ordinary extension of the
      "Agent-type colors" rotating-token-per-category pattern above.
      --graph-edge-color is a dedicated, slightly-more-visible-than-border
-     stroke color for edge lines on the dark canvas background. */
+     stroke color for edge lines on the dark canvas background. Kept
+     fully opaque (2026-08-23) -- VaultGraphCanvas.tsx now controls edge
+     opacity itself, per-frame, via canvas globalAlpha (EDGE_ALPHA_BASE/
+     DIMMED/HIGHLIGHT -- the density/hover-highlight solution), so a
+     second, baked-in alpha here would just silently multiply against
+     that and make every edge fainter than the JS constants intend. */
   --graph-kind-color-1: var(--color-accent);
   --graph-kind-color-2: var(--agent-color-producer);
   --graph-kind-color-3: var(--color-success);
@@ -140,7 +145,7 @@
   --graph-kind-color-6: #2563eb;
   --graph-kind-color-7: #7c3aed;
   --graph-kind-color-8: #0891b2;
-  --graph-edge-color: rgba(233, 228, 214, 0.25);
+  --graph-edge-color: rgb(233, 228, 214);
 
   /* Pending Approvals — group-color palette (REQ-SB-78-US-01-T01) — one
      slot per KNOWN_GROUPS entry (pendingApprovalGroups.ts), keyed by

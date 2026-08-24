@@ -21,6 +21,21 @@ export function renameSection(sectionId: string, name: string): Promise<SectionS
   });
 }
 
+// 2026-08-23 -- the Section detail panel's own Settings tab (operator:
+// "the Hub can be clicked and has its own Settings... Section Color and
+// Icon, Description and Name"). Each field: omit = leave unchanged,
+// "" = clear back to unset (same convention as updateAgentAssignment's
+// icon/color).
+export function updateSection(
+  sectionId: string,
+  fields: { name?: string; icon?: string; color?: string; description?: string },
+): Promise<SectionSummary> {
+  return apiFetch<SectionSummary>(`/sections/${sectionId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(fields),
+  });
+}
+
 export type DeleteResult = { ok: true } | { ok: false; message: string };
 
 export async function deleteSection(sectionId: string): Promise<DeleteResult> {

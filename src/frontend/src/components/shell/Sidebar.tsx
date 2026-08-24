@@ -29,6 +29,13 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         <span className="nav-label">Agents Map</span>
       </NavLink>
       <NavLink
+        to="/chat"
+        className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
+      >
+        <span className="nav-icon">&#128172;</span>
+        <span className="nav-label">Chat</span>
+      </NavLink>
+      <NavLink
         to="/crawlers"
         className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
       >

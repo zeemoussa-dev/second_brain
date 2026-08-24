@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import {
   fetchVaultSearchStatus,
   fetchNotes,
@@ -14,9 +14,16 @@ import {
 const PAGE_SIZE = 20;
 
 export function VaultBrowserPage() {
+  // Pre-selects the tag chip when arriving via a real "?tag=X" link
+  // (2026-08-23, NoteDetailPage.tsx's own now-clickable tag badges —
+  // operator: "links to the Files and Tags etc") — read once on mount,
+  // same as every other piece of this page's own state; the URL is not
+  // kept in sync on later in-page tag clicks (setActiveTag below stays
+  // plain useState), matching this page's existing behavior.
+  const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<VaultSearchStatus | null>(null);
   const [tags, setTags] = useState<TagCount[]>([]);
-  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [activeTag, setActiveTag] = useState<string | null>(searchParams.get('tag'));
   const [page, setPage] = useState(1);
   const [browse, setBrowse] = useState<BrowseResponse | null>(null);
   const [queryInput, setQueryInput] = useState('');

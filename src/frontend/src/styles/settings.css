@@ -18,6 +18,36 @@
 .badge-warning { background: color-mix(in srgb, var(--color-warning) 20%, transparent); color: var(--color-warning); }
 .badge-danger  { background: color-mix(in srgb, var(--color-danger) 20%, transparent); color: var(--color-danger); }
 
+/* Page-level section tabs (e.g. System Health's App Status / Hermes
+   Status split) -- same underlying visual language as
+   agent-panel.css's .side-panel-tab*, kept as its own generic rule set
+   since a whole page's top-level tabs aren't semantically a side panel. */
+.page-tabs {
+  display: flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.page-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: var(--space-2) var(--space-4);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+
+.page-tab:hover { color: var(--color-text); }
+
+.page-tab--active {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+}
+
 .btn {
   display: inline-block;
   padding: var(--space-2) var(--space-4);
