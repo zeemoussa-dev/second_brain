@@ -3986,3 +3986,57 @@ Building" — this IS the requirement's own scope now, not a suggestion
 layered on top of a more open "one per job" design. -->
 
 **Acceptance:** Not yet specced — placeholder reserving the capability.
+
+### REQ-SB-80: Create Agent — Provisioning a New Hermes Agent From Second Brain
+
+Second Brain today has no real capability to create a new Hermes agent —
+`ADR-003`'s own "view only" scope, and `agents_router.py`'s own current
+surface (list/detail/chat/schedules), are both silent on
+creation/provisioning; it was never built. Confirmed live this session:
+standing up a real, working specialist agent (Azure Calculator — prices
+Azure infrastructure against the live Azure Retail Prices API) required
+going entirely outside this repo and this app — `hermes profile create
+<name> --clone`, by hand, directly against the real Hermes CLI, followed
+by hand-writing a new SOUL.md and Skill directly under the profile's own
+real `skills/` folder. It worked, and the new agent was correctly
+auto-discovered by Second Brain's existing read-only mirror the moment it
+existed (`hermes_definitions.py` reads every real `profiles/*` dir
+dynamically — confirmed live via `GET /hermes/agents`) — but getting
+there took direct filesystem/CLI access, not anything Second Brain itself
+offers.
+
+**Agent-agnostic, on purpose** — Second Brain's own role (`ADR-003`) is to
+mirror whatever real agents exist in Hermes, never to own their content.
+A real "Create Agent" capability here means driving Hermes' own real
+provisioning mechanism (shell out to the real `hermes` CLI, the same way
+this session's manual build did it by hand) — not inventing a second,
+parallel, hand-maintained agent-definition format that duplicates what
+`hermes profile create` already does.
+
+**Scope, not yet sized:** likely a form/wizard reachable from the Agents
+Map (name, purpose/description, starting Skill(s) if any) that shells out
+to `hermes profile create --clone --description ...`, writes a real
+SOUL.md from the given purpose, and refreshes the map — making this
+session's manual Azure Calculator steps repeatable from inside the app
+instead of requiring direct filesystem/CLI access every time.
+
+<!-- Raised 2026-08-23, operator: "I want to Create an Agent to be my
+Azure Calculator Helper" then "and it need to be simple and very smart,
+Ask the right Questions to get based on the Solution" — the Azure
+Calculator agent itself was then built and fully verified working
+(Hermes-side only, per `ADR-003`, no Second Brain code changes needed).
+When it was first logged only as a CHANGELOG.md entry, the operator
+corrected: "This is not a change log this is an app Agent should go to
+the second Brain Framework." Clarifying which part that meant: "We didn't
+go to Create Agents Yet, This is a Pure Agent to be created in Hermes Has
+Nothing to do with Second Brain Project as its Agents Agnostic[.]
+Separate between we need the Funcationality (Create Agent I know we don't
+have that yet[)] and Create azure Agent which is a business need)." Two
+genuinely separate things per the operator's own explicit split: the
+Azure Calculator agent is a fulfilled, Hermes-side business need, complete
+(see CHANGELOG.md, 2026-08-23) — this requirement tracks the SEPARATE,
+still-missing "Create Agent" capability as its own real, backlogged item
+in the Second Brain Framework itself, not left as a CHANGELOG-only mention
+that would otherwise be easy to lose track of. -->
+
+**Acceptance:** Not yet specced — placeholder reserving the capability.

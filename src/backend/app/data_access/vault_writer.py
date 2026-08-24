@@ -656,6 +656,8 @@ def write_file_companion(
     original_filename: str,
     content: bytes,
     summary: str,
+    source_thread: str | None = None,
+    source_email: str | None = None,
 ) -> dict:
     """Generic Files/OKF-companion primitive (`REQ-SB-71-US-02-T07`,
     `ADR-048` Decision 4) -- `<subfolder>/files/<slug-of-file_slug>/
@@ -686,19 +688,69 @@ def write_file_companion(
     file_path = files_dir / original_filename
     file_path.write_bytes(content)
     companion_path = files_dir / f"{slug}.md"
+    frontmatter = {
+        "type": "File",
+        "file_slug": file_slug,
+        "original_filename": original_filename,
+    }
+    if source_thread is not None:
+        # 2026-08-21, additive -- operator: "create a file.md next to it
+        # with the Source Thread." A wikilink string, same convention as
+        # ingest_email.py's own participant_links.
+        frontmatter["source_thread"] = source_thread
+    if source_email is not None:
+        # 2026-08-21, additive -- operator: "Link the file to the email
+        # it came from as well." A wikilink to the specific message note,
+        # not just its Thread.
+        frontmatter["source_email"] = source_email
     _write_frontmatter_note(
         companion_path,
-        {
-            "type": "File",
-            "file_slug": file_slug,
-            "original_filename": original_filename,
-        },
+        frontmatter,
         f"## Summary\n\n{summary}\n\n## Personal Notes\n",
     )
     return {
         "file_path": str(file_path),
         "companion_path": str(companion_path),
     }
+
+
+def write_file_link_companion(
+    subfolder: str,
+    file_slug: str,
+    url: str,
+    source_thread: str | None = None,
+    source_email: str | None = None,
+) -> dict:
+    """Sibling to `write_file_companion` (2026-08-21, operator: "files
+    that are not in the email as attachment but a link to the file
+    somewhere ... create an MD for this file that will contain the link
+    to it and summary I will provide later") -- for a file referenced
+    ONLY by URL (e.g. a SharePoint/OneDrive "shared with you" link),
+    never a real attachment's bytes. Writes JUST the companion note --
+    `<subfolder>/files/<slug-of-file_slug>/<slug-of-file_slug>.md` -- no
+    sibling raw-bytes file, since there are no bytes to save. Same
+    baseline body shape as `write_file_companion` (`## Summary` empty,
+    `## Personal Notes`) -- the empty Summary is deliberate, per the
+    operator's own "summary I will provide later," not an oversight."""
+    slug = _slugify(file_slug)
+    files_dir = settings.vault_path / subfolder / "files" / slug
+    files_dir.mkdir(parents=True, exist_ok=True)
+    companion_path = files_dir / f"{slug}.md"
+    frontmatter = {
+        "type": "File",
+        "file_slug": file_slug,
+        "url": url,
+    }
+    if source_thread is not None:
+        frontmatter["source_thread"] = source_thread
+    if source_email is not None:
+        frontmatter["source_email"] = source_email
+    _write_frontmatter_note(
+        companion_path,
+        frontmatter,
+        f"[{url}]({url})\n\n## Summary\n\n\n\n## Personal Notes\n",
+    )
+    return {"companion_path": str(companion_path)}
 
 
 def move_note_and_attachments(note_path, target_dir) -> str:
@@ -1443,7 +1495,9 @@ def create_thread_note_baseline(
     return str(paths["concept"])
 
 
-def raw_message_note_path(conversation_id: str, message_id: str, received: str) -> Path:
+def raw_message_note_path(
+    conversation_id: str, message_id: str, received: str, readable_name: str | None = None,
+) -> Path:
     """Resolves the vault-absolute path one raw message note lives (or
     would live) at — `<thread's own current messages/ directory>/
     "<received[:10]>-<hash8(message_id)>.md"` (`REQ-SB-71-US-02`, `ADR-048`
@@ -1459,24 +1513,75 @@ def raw_message_note_path(conversation_id: str, message_id: str, received: str) 
     `messages/`; only for a genuinely brand-new Thread (no directory yet)
     does this fall back to the deterministic `thread_directory_paths(
     conversation_id)["messages"]` path, the directory `create_thread_note_
-    baseline` is about to create it at."""
-    suffix = hashlib.sha256(message_id.encode("utf-8")).hexdigest()[:8]
-    filename = f"{received[:10]}-{suffix}.md"
+    baseline` is about to create it at.
+
+    `readable_name` (2026-08-21, additive, operator: "messages inside the
+    thread same title issue") — when given (e.g. the sender's own name),
+    the filename becomes `"<received[:10]> <slug-of-readable_name>.md"`
+    instead of the hash-suffixed form, unless that exact path is already
+    taken by a DIFFERENT message (a genuine same-day-same-sender
+    collision — checked by reading the existing candidate's own
+    `message_id` frontmatter and comparing, not just path existence; a
+    real bug found live, 2026-08-21: re-resolving a message's OWN already-
+    written path via this same readable-name branch, e.g. to build a
+    cross-link elsewhere, was wrongly treating "a file already exists
+    here" as a collision even when it was this exact message's own note,
+    silently shifting the resolved path to the hash-suffixed form),
+    in which case the hash suffix is appended to the readable stem rather
+    than silently colliding. Every existing caller that passes nothing
+    (raw_message_capture.py's own Stage 1) sees zero behavior change —
+    purely additive, same discipline as `list_recent_mail`'s own `since`/
+    `before` parameters."""
     directory = resolve_thread_directory(conversation_id)
     messages_dir = (
         directory / "messages" if directory is not None
         else thread_directory_paths(conversation_id)["messages"]
     )
+    if readable_name is not None:
+        # 2026-08-21 bug fix: date-only + sender name collapses back into
+        # indistinguishable filenames whenever the SAME sender posts more
+        # than once in a thread on the same day (the common back-and-forth
+        # case) -- both land on the same stem, and the hash-suffix
+        # fallback below then makes the second one "Name-a1b2c3d4.md",
+        # which in Obsidian's file view still just reads "Name" -- no way
+        # to tell them apart or that there are two (found live against the
+        # Hermes-native port of this same function, `Hermes-Provisioning/
+        # skills/vault-rebuild/email-thread-capture/scripts/vault_lib.py`,
+        # ported back here for consistency). Including time-of-day (HH:MM,
+        # almost always unique per message) fixes this directly and is
+        # more informative than a hash ever was. The hash-suffix fallback
+        # stays as a safety net for a genuine same-minute tie, now a rare
+        # edge case instead of the common one.
+        time_of_day = received[11:16].replace(":", "")
+        parts = [received[:10]]
+        if time_of_day:
+            parts.append(time_of_day)
+        parts.append(_slugify(readable_name))
+        stem = " ".join(parts)
+        candidate = messages_dir / f"{stem}.md"
+        if not candidate.exists():
+            return candidate
+        existing_frontmatter, _ = read_note(candidate)
+        if existing_frontmatter.get("message_id") == message_id:
+            return candidate
+        suffix = hashlib.sha256(message_id.encode("utf-8")).hexdigest()[:8]
+        return messages_dir / f"{stem}-{suffix}.md"
+    suffix = hashlib.sha256(message_id.encode("utf-8")).hexdigest()[:8]
+    filename = f"{received[:10]}-{suffix}.md"
     return messages_dir / filename
 
 
-def raw_message_note_exists(conversation_id: str, message_id: str, received: str) -> bool:
+def raw_message_note_exists(
+    conversation_id: str, message_id: str, received: str, readable_name: str | None = None,
+) -> bool:
     """Existence check the caller (Stage 1) MUST call before ever calling
     `create_raw_message_note` — mirrors `person_note_exists`'s own
     "callers must check first" contract; enforces the write-once
     guarantee by caller discipline, since `create_raw_message_note`
-    itself does not defensively re-check."""
-    return raw_message_note_path(conversation_id, message_id, received).exists()
+    itself does not defensively re-check. `readable_name` must match
+    whatever `create_raw_message_note` will be called with, or this check
+    resolves a different candidate path than the write will actually use."""
+    return raw_message_note_path(conversation_id, message_id, received, readable_name).exists()
 
 
 def create_raw_message_note(
@@ -1487,6 +1592,8 @@ def create_raw_message_note(
     sender_email: str,
     subject: str,
     body: str,
+    readable_name: str | None = None,
+    participant_links: list[str] | None = None,
 ) -> str:
     """Writes ONE immutable, verbatim raw message note (`REQ-SB-71-US-02`,
     `ADR-048` Decision 3) — the operator's own root pain (losing real
@@ -1501,21 +1608,31 @@ def create_raw_message_note(
     "always writes unconditionally, caller checks first" contract. Never
     edited again once written by any caller in this codebase — write-once
     is a contract enforced by caller discipline, not a file-permission
-    mechanism."""
-    path = raw_message_note_path(conversation_id, message_id, received)
-    _write_frontmatter_note(
-        path,
-        {
-            "type": "RawMessage",
-            "conversation_id": conversation_id,
-            "message_id": message_id,
-            "sender": sender,
-            "sender_email": sender_email,
-            "subject": subject,
-            "received": received,
-        },
-        body,
-    )
+    mechanism.
+
+    `participant_links` (2026-08-21, additive, operator: "like the People
+    to Emails as well not only thread" then "not only Sender everyone in
+    the email") — a list of already-formed wikilink strings (e.g.
+    `["[[shadi.shaat@core42.ai]]", "[[mohammed.retmi@core42.ai]]"]`) to
+    every participant's own Person note (sender AND every recipient),
+    added to frontmatter as `participant_links` when given. MUST be
+    embedded here, at creation time — this note is write-once, so there
+    is no later "patch in the link" step the way `## Related` on a
+    Thread note can be. Every existing caller that passes nothing
+    (`raw_message_capture.py`'s own Stage 1) sees zero behavior change."""
+    path = raw_message_note_path(conversation_id, message_id, received, readable_name)
+    frontmatter = {
+        "type": "RawMessage",
+        "conversation_id": conversation_id,
+        "message_id": message_id,
+        "sender": sender,
+        "sender_email": sender_email,
+        "subject": subject,
+        "received": received,
+    }
+    if participant_links is not None:
+        frontmatter["participant_links"] = participant_links
+    _write_frontmatter_note(path, frontmatter, body)
     return str(path)
 
 

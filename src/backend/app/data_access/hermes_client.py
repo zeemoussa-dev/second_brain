@@ -1,32 +1,78 @@
-"""Client for Hermes' own REST API gateway
-(https://github.com/nousresearch/hermes-agent) -- the real, documented
-`hermes gateway` server (default `127.0.0.1:8642`, `Authorization: Bearer
-<key>`), Second Brain's own agent/skill/schedule/approval runtime as of the
-2026-08-20 architecture pivot (`MEMORY.md` "Decisions"). Mirrors compass_
-client.py's own shape: plain httpx over a documented HTTP API, no SDK.
+"""Client for Hermes' own real local backend (`hermes serve`,
+https://github.com/nousresearch/hermes-agent) -- REBUILT 2026-08-20
+against the actual, live-verified protocol, replacing an earlier version
+built from research that did not match this installed version at all
+(wrong port, wrong auth shape, wrong endpoint paths -- none of it
+verified against a real running instance until today).
 
-No Hermes gateway is deployed yet -- every call here can fail with a
-connection error today, by design (`HermesUnavailableError` wraps that
-honestly rather than crashing the caller), until a real instance is
-configured via `HERMES_BASE_URL`/`HERMES_API_KEY`."""
+Real, confirmed protocol (verified live, 2026-08-20, against a real
+running `hermes serve` process):
+- Base URL: http://127.0.0.1:9119 (NOT 8642 -- that was never real).
+- Auth: a per-install access token, embedded server-side in `GET /`'s own
+  HTML as `window.__HERMES_SESSION_TOKEN__ = "..."`, sent back on every
+  subsequent call as the `x-hermes-session-token` header. Not a
+  pre-issued API key -- fetched and cached on first use. Confirmed by
+  directly inspecting a real browser session's own network requests
+  (captured via a monkey-patched window.fetch) and independently
+  replaying the same header from a plain `curl` outside the browser --
+  both succeeded against real endpoints returning real data.
+- `/api/status` is deliberately public (`auth_required: false`) -- works
+  with no token at all. Every other `/api/*` endpoint below requires the
+  token.
+"""
 from __future__ import annotations
+
+import re
 
 import httpx
 
 from app.config import settings
 
+_TOKEN_RE = re.compile(r"window\.__HERMES_SESSION_TOKEN__\s*=\s*\"([^\"]+)\"")
+
+# Cached after first fetch -- confirmed live to be stable across requests
+# within one `hermes serve` process lifetime (the same value came back
+# from a real browser session AND a fresh, independent curl call). Not
+# confirmed to survive a `hermes serve` restart; a stale cached token
+# would surface as a real 401/403 from the endpoints below, at which
+# point re-fetching is the correct fix -- not yet wired as an automatic
+# retry, since no restart has been observed to actually rotate it yet.
+_cached_token: str | None = None
+
 
 class HermesUnavailableError(Exception):
-    """Hermes' gateway did not respond, or responded with an error -- never
+    """Hermes' backend did not respond, or responded with an error -- never
     raised for "the feature doesn't exist yet"; only for a real, attempted
     call that failed."""
 
 
-def _headers() -> dict[str, str]:
-    headers = {"Content-Type": "application/json"}
+def _fetch_session_token() -> str:
+    global _cached_token
+    if _cached_token is not None:
+        return _cached_token
     if settings.hermes_api_key:
-        headers["Authorization"] = f"Bearer {settings.hermes_api_key}"
-    return headers
+        # Manual override, e.g. for a Hermes instance this process can't
+        # reach directly to scrape `GET /` from. Not the default path --
+        # the real mechanism below is what this server actually uses.
+        _cached_token = settings.hermes_api_key
+        return _cached_token
+    try:
+        response = httpx.get(settings.hermes_base_url.rstrip("/") + "/", timeout=10.0)
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise HermesUnavailableError(f"Hermes call failed (GET /, fetching session token): {exc}") from exc
+    match = _TOKEN_RE.search(response.text)
+    if not match:
+        raise HermesUnavailableError(
+            "Hermes call failed: GET / did not contain window.__HERMES_SESSION_TOKEN__ "
+            "-- the real page shape may have changed."
+        )
+    _cached_token = match.group(1)
+    return _cached_token
+
+
+def _headers() -> dict[str, str]:
+    return {"x-hermes-session-token": _fetch_session_token()}
 
 
 def _request(method: str, path: str, **kwargs) -> dict:
@@ -41,79 +87,39 @@ def _request(method: str, path: str, **kwargs) -> dict:
     return response.json()
 
 
-def health() -> dict:
-    """GET /health -- the cheapest real signal of whether a Hermes gateway
-    is reachable at all. Callers wanting the fuller diagnostic should call
-    detailed_health() instead."""
-    return _request("GET", "/health")
+def get_status() -> dict:
+    """GET /api/status -- deliberately public, no token required. Real
+    version/health/gateway-state info, e.g. {"version", "gateway_running",
+    "active_agents", "active_sessions", "nous_session_valid", ...}."""
+    return _request("GET", "/api/status")
 
 
-def detailed_health() -> dict:
-    """GET /health/detailed."""
-    return _request("GET", "/health/detailed")
+def list_sessions(limit: int = 50, offset: int = 0, profile: str | None = None) -> dict:
+    """GET /api/sessions -- Hermes' own real Agent/session activity: id,
+    source, model, message_count, token/cost accounting, timestamps.
+    Requires the session token. `profile` is a real server-side filter
+    (confirmed live, 2026-08-23 -- comparing an unfiltered call's own
+    `total` against `profile=opp-manager`'s dropped it from every session
+    to only that profile's own 6, every returned row's own `profile` field
+    matching) -- omitted entirely (not sent as an empty string) when the
+    caller wants every session, matching every other optional-filter
+    convention already used across this file."""
+    params: dict = {"limit": limit, "offset": offset, "order": "created"}
+    if profile:
+        params["profile"] = profile
+    return _request("GET", "/api/sessions", params=params)
 
 
-def list_capabilities() -> dict:
-    """GET /v1/capabilities -- what this Hermes instance actually supports
-    (models, tools, skill/job features enabled). The nearest real
-    replacement for the archived agents_router's own "what agent types/
-    skills exist" surface."""
-    return _request("GET", "/v1/capabilities")
+def get_session_stats() -> dict:
+    """GET /api/sessions/stats."""
+    return _request("GET", "/api/sessions/stats")
 
 
-def list_models() -> dict:
-    """GET /v1/models."""
-    return _request("GET", "/v1/models")
+def get_config() -> dict:
+    """GET /api/config."""
+    return _request("GET", "/api/config")
 
 
-def list_jobs() -> dict:
-    """GET /api/jobs -- Hermes' own cron/scheduled-job registry, the real
-    replacement for the archived agent_schedules_router.py's surface."""
-    return _request("GET", "/api/jobs")
-
-
-def create_job(spec: dict) -> dict:
-    """POST /api/jobs."""
-    return _request("POST", "/api/jobs", json=spec)
-
-
-def run_job_now(job_id: str) -> dict:
-    """POST /api/jobs/{job_id}/run."""
-    return _request("POST", f"/api/jobs/{job_id}/run")
-
-
-def pause_job(job_id: str) -> dict:
-    """POST /api/jobs/{job_id}/pause."""
-    return _request("POST", f"/api/jobs/{job_id}/pause")
-
-
-def resume_job(job_id: str) -> dict:
-    """POST /api/jobs/{job_id}/resume."""
-    return _request("POST", f"/api/jobs/{job_id}/resume")
-
-
-def list_sessions() -> dict:
-    """GET /api/sessions -- the real replacement for the archived
-    agents_router.py's own agent-chat surface (cockpit_router.py's
-    person/research chat flows, agent_chat.py)."""
-    return _request("GET", "/api/sessions")
-
-
-def create_session(spec: dict | None = None) -> dict:
-    """POST /api/sessions."""
-    return _request("POST", "/api/sessions", json=spec or {})
-
-
-def send_chat_message(session_id: str, message: str) -> dict:
-    """POST /api/sessions/{session_id}/chat (non-streaming). Streaming
-    (/chat/stream, SSE) is not wrapped here -- no caller needs it yet."""
-    return _request("POST", f"/api/sessions/{session_id}/chat", json={"message": message})
-
-
-def list_skills() -> dict:
-    """GET /v1/skills -- Hermes' own Skill registry, the real replacement
-    for the archived skill_registry.py/skills_router.py's HTTP surface.
-    Second Brain's own MCP-registered tools (app/api/mcp_server.py) are
-    what a Hermes Skill would actually call INTO -- this lists Hermes'
-    side of that boundary, not Second Brain's."""
-    return _request("GET", "/v1/skills")
+def get_active_profile() -> dict:
+    """GET /api/profiles/active."""
+    return _request("GET", "/api/profiles/active")

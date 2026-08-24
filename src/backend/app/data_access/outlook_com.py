@@ -248,6 +248,8 @@ def list_recent_mail(
     limit: int = 10,
     unread_only: bool = False,
     on_item_fetched: Callable[[dict], None] | None = None,
+    since: str | None = None,
+    before: str | None = None,
 ) -> list[dict]:
     """on_item_fetched (ADR-046 Decision 2, REQ-SB-69-US-01-T02) is an
     optional, additive callback fired once per item, immediately after
@@ -259,13 +261,35 @@ def list_recent_mail(
     leaves every already-fetched item durably staged via the callback
     that already fired for it. Every existing caller that passes nothing
     (classify_recent_emails, email_poc_router.py's POC endpoint) sees
-    zero behavior change -- this parameter is purely additive."""
+    zero behavior change -- this parameter is purely additive.
+
+    `since`/`before` (2026-08-20, additive) -- ISO 8601 datetime strings;
+    when given, only items received at/after `since` and/or before
+    `before` are considered, via `items.Restrict()` (server/COM-side
+    filtering, matching this same file's own `list_upcoming_meetings`
+    precedent for date-range filtering -- never a Python-side loop-break,
+    which would still walk every older item just to discard it). Combines
+    with `limit` as an independent cap -- whichever is hit first stops the
+    loop. `before` is what makes a full historical walk possible: page
+    backward through time by repeatedly calling with `before` set to the
+    oldest `received` timestamp seen in the previous page (an agent-driven
+    cron job, not a loop inside this function -- this function itself
+    stays one bounded page, per the Bulk data principle)."""
     pythoncom.CoInitialize()
     try:
         ns = _connect_namespace()
         inbox = ns.GetDefaultFolder(_OL_FOLDER_INBOX)
         items = inbox.Items
         items.Sort("[ReceivedTime]", True)
+        restrictions = []
+        if since is not None:
+            since_dt = datetime.fromisoformat(since)
+            restrictions.append(f"[ReceivedTime] >= '{since_dt.strftime('%m/%d/%Y %H:%M %p')}'")
+        if before is not None:
+            before_dt = datetime.fromisoformat(before)
+            restrictions.append(f"[ReceivedTime] < '{before_dt.strftime('%m/%d/%Y %H:%M %p')}'")
+        if restrictions:
+            items = items.Restrict(" AND ".join(restrictions))
         results: list[dict] = []
         for item in items:
             if unread_only and not getattr(item, "UnRead", False):

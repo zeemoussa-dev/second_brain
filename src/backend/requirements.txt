@@ -12,3 +12,5 @@ langchain-mcp-adapters
 anthropic
 pypdf
 python-multipart
+pyyaml
+websockets>=13

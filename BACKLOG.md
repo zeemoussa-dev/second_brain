@@ -104,6 +104,7 @@ the analyst at `/spec` and by the product-owner at `/plan-sprints`.
 | REQ-SB-77 | People Notes Linked to Their Real Company/Partner Note | [REQ-SB-77-US-01](Implementation/UserStories/REQ-SB-77-US-01-people-notes-linked-to-company-partner-note.md) | Done (gate: clear — ESC-057 stays Open as a standing log entry, resolved by this story's own build, see REVIEW-QUEUE.md) | [SPRINT-074](Implementation/Sprints/SPRINT-074-people-notes-linked-to-company-partner-note.md) | Done |
 | REQ-SB-78 | Pending Approvals — Grouped, Color-Coded Review | [REQ-SB-78-US-01](Implementation/UserStories/REQ-SB-78-US-01-pending-approvals-grouped-color-coded-review.md) | Ready (gate: clear — /design resolved by precedent, see story's own gate_reason) | [SPRINT-075](Implementation/Sprints/SPRINT-075-pending-approvals-grouped-color-coded-review.md) | Ready |
 | REQ-SB-79 | The Librarian — Two Sub-Pipelines (Threads Cleaning, Company & Partner Building) | [REQ-SB-79-US-01](Implementation/UserStories/REQ-SB-79-US-01-librarian-two-sub-pipelines.md) | Done (gate: flagged — standing ADR-058 human-review flag, see REVIEW-QUEUE.md) | [SPRINT-073](Implementation/Sprints/SPRINT-073-librarian-two-sub-pipelines.md) | Done |
+| REQ-SB-80 | Create Agent — Provisioning a New Hermes Agent From Second Brain | — | Placeholder — do not `/spec` until the provisioning workflow (form fields, SOUL.md generation approach) is designed | — | — |
 
 ---
 
@@ -233,3 +234,9 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 | BUG-031 | Company Review "Customer" approval creates the Customer note but does not tag the source Threads with it (real example: Masdar) | Logic | Closed | Direct fix, 2026-08-19 |
 | BUG-032 | Company Review proposes companies that already exist as real Partner notes (Core42, G42) as NEW "Customer" candidates, and clicking Approve on them silently does nothing | Logic | Open | — |
 | BUG-033 | Agents Map / Job Tree still render `threads-cleaning` and `company-and-partner-building` as one collapsed agent node each, not their individual internal jobs | UI | Open | — |
+| BUG-034 | Agent detail panel's Schedule tab 404s on every real Hermes-sourced agent (`/agents/{id}/schedules` never rebuilt against the Hermes retrofit) | Logic | Open | — |
+| BUG-035 | Settings page's Providers card 404s entirely — full `/providers` CRUD was never rebuilt against the Hermes retrofit | Logic | Open | — |
+| BUG-036 | Some Meeting-series and Person notes are filed under a raw Outlook internal identifier as their own filename, even though a real human-readable name is already known in the same note's frontmatter | Logic | Open | Partial fix, 2026-08-24 |
+| BUG-037 | Cockpit (Inbox/Meeting) 404s entirely — archived router never rebuilt against the Hermes pivot | Logic | Open | — |
+| BUG-038 | BUG-036's raw-ID/DN naming produced full duplicate Meeting notes (7 recurring series + 17 one-time meetings each existed twice) | Logic | Closed | Direct fix, 2026-08-24 |
+| BUG-039 | Agents Map: `compass-solutions` not visually linked to `compass-expert` (a 2-outgoing-edge cap meant for pipeline Jobs also silently applied to agents) | UI | Closed | Direct fix, 2026-08-24 |

@@ -106,10 +106,12 @@ def _resolve_forward_links(entry: dict, index: dict[str, dict]) -> list[dict]:
     backlink derivation, not a new rule."""
     stems_by_lower_stem = {stem.lower(): stem for stem in index}
     resolved = []
+    seen_stems: set[str] = set()
     for target in entry["outgoing_wikilinks"]:
         matched_stem = stems_by_lower_stem.get(target.lower())
-        if matched_stem is None or matched_stem == entry["stem"]:
+        if matched_stem is None or matched_stem == entry["stem"] or matched_stem in seen_stems:
             continue
+        seen_stems.add(matched_stem)
         resolved.append(_summary(index[matched_stem]))
     return resolved
 
@@ -157,22 +159,55 @@ def get_graph() -> dict:
 
 
 def get_note_detail(stem: str) -> dict | None:
-    """Scenario 3 -- one note's frontmatter/tags plus its resolved
-    forward-link/backlink lists. None for an unknown stem -- T03's
-    router translates this to a 404."""
+    """Scenario 3 -- one note's frontmatter/tags/real body text plus its
+    resolved forward-link/backlink lists. None for an unknown stem --
+    T03's router translates this to a 404. `body` is read fresh from disk
+    (vault_indexing's own index entries never store it, same reasoning as
+    search()'s own identical read -- ADR-026) -- 2026-08-23, operator:
+    "when I click on a node The Next View should be the MD file it self
+    displayed in a nice HTML formatting"."""
     index = vault_indexing.get_index()
     entry = index.get(stem)
     if entry is None:
         return None
+    body = vault_writer.read_note(Path(entry["path"]))[1]
     return {
         "stem": entry["stem"],
         "title": _title_for(entry),
         "kind": _kind_for(entry),
         "frontmatter": entry["frontmatter"],
         "tags": entry["tags"],
+        "body": body,
         "forward_links": _resolve_forward_links(entry, index),
         "backlinks": _resolve_backlinks(entry, index),
     }
+
+
+def resolve_asset_path(stem: str, filename: str) -> Path | None:
+    """Resolves a real, co-located asset file (image, etc.) sitting next
+    to a note's own .md on disk -- confirmed live (2026-08-24, operator:
+    "Images are not shown") this is exactly how a File note's own
+    Obsidian-style `![[slide-14.png]]` embeds actually resolve: capture
+    writes the note AND its referenced images into the SAME folder
+    (`Work/Files/<date>/<name>/<name>.md` + sibling `slide-N.png`), and
+    nothing in this codebase served them over HTTP before now -- there
+    was no broken reference, just no serving route at all.
+
+    None for an unknown stem, a filename that isn't a real file in that
+    EXACT folder, or (defense in depth against a crafted `filename` path
+    segment, even though FastAPI's own routing already forbids a literal
+    `/` in a single path segment) one that would resolve outside the
+    note's own folder -- never serves an arbitrary vault path, only a
+    real sibling of a real, already-indexed note."""
+    index = vault_indexing.get_index()
+    entry = index.get(stem)
+    if entry is None:
+        return None
+    note_dir = Path(entry["path"]).resolve().parent
+    candidate = (note_dir / filename).resolve()
+    if candidate.parent != note_dir or not candidate.is_file():
+        return None
+    return candidate
 
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")

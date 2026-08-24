@@ -5,6 +5,7 @@ own (ADR-003)."""
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 
 from app.business import vault_indexing, vault_search
 
@@ -34,6 +35,18 @@ def get_note(stem: str) -> dict:
     if detail is None:
         raise HTTPException(status_code=404, detail=f"No indexed note with stem '{stem}'")
     return detail
+
+
+@router.get("/notes/{stem}/assets/{filename}")
+def get_note_asset(stem: str, filename: str) -> FileResponse:
+    """Serves a real, co-located asset (an image referenced via a File
+    note's own Obsidian-style `![[filename]]` embed) as raw bytes --
+    2026-08-24, operator: "Images are not shown." `FileResponse` infers
+    the response's own media type from the real file's extension."""
+    path = vault_search.resolve_asset_path(stem, filename)
+    if path is None:
+        raise HTTPException(status_code=404, detail=f"No asset {filename!r} for note '{stem}'")
+    return FileResponse(path)
 
 
 @router.get("/search")

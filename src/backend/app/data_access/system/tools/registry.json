@@ -1,0 +1,28 @@
+{
+  "tools": [
+    {
+      "id": "outlook",
+      "name": "Outlook",
+      "description": "Real Outlook capture, over local desktop Outlook via COM automation.",
+      "icon": "mail",
+      "mount_path": "/tools/outlook",
+      "categories": [
+        {
+          "id": "email",
+          "name": "Email",
+          "description": "Gather email from Outlook into the vault's staging area.",
+          "icon": "mail",
+          "actions": [
+            {
+              "id": "gather_emails",
+              "name": "Gather Emails",
+              "description": "Fetch recent Outlook email and durably stage every genuinely new item.",
+              "icon": "download",
+              "handler": "app.business.logic.gather_emails:gather_emails"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

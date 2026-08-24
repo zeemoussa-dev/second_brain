@@ -62,6 +62,12 @@ is a thin status mirror of the index table below.
 | BUG-031 | Company Review "Customer" approval creates the Customer note but does not tag the source Threads with it (real example: Masdar) | Logic | Major | Closed | 2026-08-19 | Direct fix, 2026-08-19 |
 | BUG-032 | Company Review proposes companies that already exist as real Partner notes (Core42, G42) as NEW "Customer" candidates, and clicking Approve on them silently does nothing | Logic | Blocker | Open | 2026-08-19 | — |
 | BUG-033 | Agents Map / Job Tree still render `threads-cleaning` and `company-and-partner-building` as one collapsed agent node each, not their individual internal jobs | UI | Major | Open | 2026-08-19 | — |
+| BUG-034 | Agent detail panel's Schedule tab 404s on every real Hermes-sourced agent (`GET /agents/{id}/schedules` never rebuilt against the Hermes retrofit) | Logic | Major | Open | 2026-08-23 | — |
+| BUG-035 | Settings page's Providers card 404s entirely — full `/providers` CRUD was never rebuilt against the Hermes retrofit | Logic | Major | Open | 2026-08-23 | — |
+| BUG-036 | Some Meeting-series and Person notes are filed under a raw Outlook internal identifier (`calendar_series_id`/LegacyExchangeDN) as their own filename/stem, even though a real human-readable name is already known and stored right in the same note's own frontmatter | Logic | Major | Open | 2026-08-23 | Partial fix, 2026-08-24 |
+| BUG-037 | Cockpit (Inbox/Meeting) 404s entirely — `cockpit_router.py` was archived during the Hermes pivot and never rebuilt, so clicking any Email/Meeting from My Day dead-ends | Logic | Major | Open | 2026-08-24 | — |
+| BUG-038 | BUG-036's raw-ID/DN naming produced full duplicate Meeting notes, not just bad names — 7 recurring series and 17 one-time meetings each existed twice (an old pre-`2026-08-21`-rewrite flat/raw-ID copy invisible to the current dedup scan, alongside a correctly-named replacement) | Logic | Major | Closed | 2026-08-24 | Direct fix, 2026-08-24 |
+| BUG-039 | Agents Map: `compass-solutions` not visually linked to `compass-expert`, even though its real `depends_on` is correct | UI | Minor | Closed | 2026-08-24 | Direct fix, 2026-08-24 |
 
 ---
 
@@ -1548,3 +1554,319 @@ is a thin status mirror of the index table below.
   wiring fix.
   `→ src/frontend/src/features/agents-map/pipelineJobTreeAdapter.ts`,
   `→ src/backend/app/business/pipelines/librarian_housekeeping.py`
+
+### BUG-034 — Agent detail panel's Schedule tab 404s on every real Hermes-sourced agent (`GET /agents/{id}/schedules` never rebuilt against the Hermes retrofit)
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-08-23 (found live while fixing BUG-035's own sibling
+  404s — `/providers` and `/agents/{id}/history` on the same panel,
+  fixed directly the same day)
+- **Screen \ route:** Agents Map → any real agent's detail panel →
+  Schedule tab.
+- **Repro steps:**
+  1. Open the Agents Map, click any real Hermes-sourced agent (e.g.
+     Primary/`default`) to open its detail panel.
+  2. Click the Schedule tab.
+  3. Open the browser's own network tab.
+- **Expected:** The Schedule tab loads this agent's real schedule data
+  (or, if Hermes has no honest equivalent, an explicit disabled/empty
+  state — matching `agents_router.py`'s own established "AgentDetail
+  Panel.tsx shows those tabs disabled for a Hermes-sourced agent rather
+  than this router faking support for them" convention, ADR-004).
+- **Actual:** `GET /agents/{agent_id}/schedules` returns a real `404
+  Not Found` (confirmed live, e.g. `GET /agents/default/schedules`).
+  `src/backend/app/api/
+  agents_router.py` (the current, real router serving `/agents/*`,
+  rebuilt this session against the Hermes mirror per ADR-003/ADR-004)
+  has no `/schedules` endpoint at all — only `GET ""`, `GET
+  "/{agent_id}"`, `PATCH "/{agent_id}"`, `POST "/{agent_id}/chat"`,
+  `GET "/{agent_id}/jobs"`, `GET "/{agent_id}/history"`. The frontend
+  caller (`agentSchedulesApiClient.ts`'s `fetchSchedules`/
+  `createSchedule`/`updateSchedule`/`removeSchedule`/`runScheduleNow`)
+  still points at the old, archived shape.
+- **Screenshot:** N/A
+- **Note:** Same "backend route archived/never rebuilt after the Hermes
+  retrofit but the frontend still calls it" pattern already fixed twice
+  this same session (`POST /agents/{id}/chat`, the old `/agent-activity`
+  route) and once more alongside this bug's own sibling (`/providers`,
+  `/agents/{id}/history`) — this one was flagged rather than fixed in
+  the same pass, since deciding what "Schedule" should even mean for a
+  Hermes-sourced agent (Hermes has its own real cron/schedule system
+  now — see `hermes_cron.py` and the `/crawlers` page built this same
+  session — Schedule may need to point at THAT instead of a
+  Second-Brain-native scheduling concept that no longer applies) is a
+  real design decision, not a quick wiring fix.
+  `→ src/frontend/src/features/agents-map/AgentDetailPanel.tsx`,
+  `→ src/frontend/src/features/agents-map/agentSchedulesApiClient.ts`,
+  `→ src/backend/app/api/agents_router.py`
+
+### BUG-035 — Settings page's Providers card 404s entirely — full `/providers` CRUD was never rebuilt against the Hermes retrofit
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-08-23 (found live while fixing the Agent detail
+  panel's own `/providers` 404 — that one was fixed directly by removing
+  the dead call and showing the agent's real `provider_name` as
+  read-only text instead; this is a SEPARATE, still-broken caller)
+- **Screen \ route:** Settings page → Providers card.
+- **Repro steps:**
+  1. Open the Settings page.
+  2. Observe the Providers card.
+  3. Open the browser's own network tab.
+- **Expected:** The Providers card loads and lets the operator manage
+  real Provider records, or — if this Second-Brain-native "Provider"
+  concept no longer has a real purpose post-Hermes-retrofit (a Hermes
+  agent's own real provider now comes straight from its `config.yaml`,
+  already surfaced read-only elsewhere) — is removed from the page
+  rather than left calling a dead endpoint.
+- **Actual:** `GET /providers` returns a real `404 Not Found` — no
+  providers router is imported or wired in `src/backend/app/main.py`.
+  `ProvidersCard.tsx`'s full CRUD (`fetchProviders`/`createProvider`/
+  `updateProvider`/`removeProvider` in `settingsApiClient.ts`) all point
+  at this same missing router.
+- **Screenshot:** N/A
+- **Note:** Same pattern as BUG-034 and this session's other archived-
+  route fixes. Deciding whether to restore a real providers backend or
+  retire the whole card is a real design decision (see BUG-034's own
+  note) — flagged, not fixed, in the same pass that fixed the narrower
+  Agent-detail-panel instance of this same missing router.
+  `→ src/frontend/src/features/settings/ProvidersCard.tsx`,
+  `→ src/frontend/src/features/settings/settingsApiClient.ts`,
+  `→ src/backend/app/main.py`
+
+### BUG-036 — Some Meeting-series and Person notes are filed under a raw Outlook internal identifier (`calendar_series_id`/LegacyExchangeDN) as their own filename/stem, even though a real human-readable name is already known and stored right in the same note's own frontmatter
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-08-23 (operator's own manual testing: "The Vault
+  Browser page shows the wrong notes" — root-caused by opening the
+  Vault Browser's default, unfiltered page 1, which sorts by stem and
+  so surfaces every one of these malformed entries first, since they
+  sort ahead of every normal `2026-...`-prefixed stem)
+- **Screen \ route:** Browse & Search (`/browse`), default view (no tag
+  filter, page 1) — but the bug itself is in the vault's own real note
+  files, not the browse UI, which is faithfully showing what's actually
+  there.
+- **Repro steps:**
+  1. Open `/browse` with no tag filter.
+  2. Observe the first several entries on page 1.
+- **Expected:** Every note's own title/filename is a real, readable
+  name — a meeting subject, a person's name — matching every other note
+  in the vault.
+- **Actual:** Confirmed two concrete, real instances on disk:
+  1. `Work/Meetings/040000008200E00074C5B7101A82E0080000000000BCF1EFF4
+     24DD01000000000000000010000000/...md` — a real recurring Masdar
+     meeting whose own `## History` section literally names it
+     "Discuss with Mousa" twice, and links to its own real per-occurrence
+     notes as `[[2026-08-17 1500 Discuss with Mousa]]` / `[[2026-08-31
+     1500 Discuss with Mousa]]` — but the SERIES note's own folder+file
+     name is the raw `calendar_series_id` value instead.
+  2. `Work/People/-o=exchangelabs-ou=exchange administrative group
+     (fydibohf23spdlt)-cn=recipients.md` — frontmatter has a real, usable
+     `name: "nalsulaimani"` field, but the note's own filename uses the
+     raw LegacyExchangeDN `email` field value instead.
+     Multiple further instances of the same Meeting-series pattern exist
+     (7 total seen on the Browse page's own first 20 results alone).
+- **Screenshot:** N/A
+- **Note:** Same general "LegacyExchangeDN is a known messy edge case in
+  this Outlook integration" territory as `BUG-016` (which is about a
+  crash in `classify_recent_meetings`), but this is a different,
+  silent-bad-data symptom, not a crash — filed separately.
+  `→` the real fix belongs in whichever capture script builds a Meeting-
+  series/Person note's own filename (Hermes' own self-hosted
+  `meeting-capture`/`email-thread-capture` skill scripts, now outside
+  this repo per the 2026-08-21 self-hosting rewrite — NOT
+  `src/backend/`), not in Second Brain's own read-only
+  `vault_search.py`/`vault_indexing.py`, which are correctly reflecting
+  real vault content.
+- **Resolution (2026-08-24, operator: "We didn't pull the outbox to the
+  threads... and I can See some meetings are pulled but their titles
+  hasn't been updated"):**
+  - Root cause for the Person-note half: `_resolve_attendees()`
+    (meeting-capture's own `outlook_lib.py`) falls back to the raw
+    `recipient.Address` when `GetExchangeUser()` fails to resolve an
+    attendee — for an EX-type recipient that raw value is the
+    LegacyExchangeDN itself, not an SMTP address. `ensure_bare_person_note`/
+    `person_note_dedup_key` (both `meeting-capture/scripts/vault_lib.py`
+    and `email-thread-capture/scripts/vault_lib.py`, kept in sync by
+    hand) trusted it at face value. Added `_looks_like_real_email()` — a
+    DN-shaped value ("no `@`, starts with `/`") is now detected and the
+    note falls back to a name-based dedup key/filename instead, and is
+    never written into the note's own `email` frontmatter field.
+  - Root cause for the Meeting-series half: no self-healing rename
+    existed for a series once its own concept folder was created under a
+    raw id — `resolve_meeting_directory`'s scan-and-reuse logic kept
+    topping up that same badly-named folder forever. Added
+    `rename_meeting_series_if_needed()` (`meeting-capture/scripts/
+    vault_lib.py`), mirroring `rename_thread.py`'s already-proven
+    pattern, called on every `ingest_meeting.py` run (idempotent no-op
+    once correct, collision-safe hash-suffix fallback if two distinct
+    series ever share a subject).
+  - See `BUG-038` for the separate, larger duplicate-data issue this
+    investigation surfaced live, and its own resolution.
+  - **Follow-up correction (same day):** `rename_meeting_series_if_needed()`
+    is correct and unit-tested in isolation, but wiring it into every
+    `ingest_meeting.py` run repeatedly recreated hash-suffixed duplicate
+    folders during live verification — root cause not conclusively
+    pinned down (working theory: something re-materializes an old raw-
+    id-named folder between runs; this vault path is not under OneDrive
+    and is not itself a git repo, so the exact mechanism is still open).
+    Reverted the automatic call before finishing — `ingest_meeting.py`'s
+    recurring branch is back to plain resolve-or-create, matching its
+    pre-fix behavior, with the rename function left defined but unused
+    (call manually if a series is found stuck on a raw id again). All
+    duplicate folders this produced during testing were archived, never
+    deleted, alongside the rest of `BUG-038`'s cleanup.
+
+### BUG-037 — Cockpit (Inbox/Meeting) 404s entirely — `cockpit_router.py` was archived during the Hermes pivot and never rebuilt, so clicking any Email/Meeting from My Day dead-ends
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-08-24, working autonomously on "bring My Day back
+  smarter" (operator: "The API is Missing I know lets bring it back
+  smarter") — after fixing `my_day.py`'s own stale data model (see
+  CHANGELOG.md/MEMORY.md, same date), clicking through into a real,
+  now-correctly-listed Email confirmed a second, separate, pre-existing
+  gap.
+- **Screen \ route:** `/inbox-cockpit/:stem` (from My Day → Emails) and
+  `/meeting-cockpit/:stem` (from My Day → Calendar) — both routes share
+  the same generic `Cockpit` component (`features/cockpit/Cockpit.tsx`),
+  which calls `GET /cockpit/{subject_kind}/{stem}`.
+- **Repro steps:**
+  1. Open `/my-day/emails?day=2026-08-20` (or any day with real items,
+     post the `my_day.py` fix).
+  2. Click any email row.
+- **Expected:** The Inbox Cockpit loads that email's real subject,
+  received/customer fields, and people chips.
+- **Actual:** `GET /cockpit/email/{stem}` returns `404 Not Found`. The
+  page still partially renders (Available Agents panel, empty chat) since
+  those come from other, still-working endpoints, but the "Received"/
+  "Customer" fields at the bottom render blank — confirmed live via
+  direct network inspection, not just a UI guess.
+- **Screenshot:** N/A
+- **Note:** Root cause confirmed by reading the source directly: the
+  entire `cockpit_router.py` lives at `app/_archive/api/cockpit_router.py`
+  — archived, never re-registered in `main.py`, same fate as
+  `pending_approvals_router.py` (see `BUG-034`/`BUG-035`'s own sibling
+  archived-router pattern). NOT a quick "just un-archive it" fix, though:
+  its own `get_cockpit`/`bring_in_agent`/`send_user_message` handlers
+  depend on `app.business.cockpit.{people,threads,research,
+  person_note_proposals,attachments}`, and `threads.bring_in_agent`/
+  `send_user_message` almost certainly still assume the OLD, now-fully-
+  retired Second-Brain-native agent/chat model (`agent_registry.py`,
+  emptied 2026-08-22) rather than the new `HermesChatSession`-based chat
+  rebuild (`agents_router.py`, 2026-08-23) — reviving this properly means
+  rewiring that whole chat/bring-in-agent flow onto Hermes, the same
+  scale of work as this session's `POST /agents/{id}/chat` rebuild, not
+  a contained fix. Logged rather than attempted autonomously overnight —
+  real risk of a half-working revival being worse than the current
+  honest 404 if `app.business.cockpit`'s own imports don't even resolve
+  cleanly against the post-pivot codebase (not yet checked).
+
+### BUG-038 — BUG-036's raw-ID/DN naming produced full duplicate Meeting notes, not just bad names — 7 recurring series and 17 one-time meetings each existed twice
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Closed
+- **Found:** 2026-08-24, live-testing `BUG-036`'s own meeting-series
+  rename fix: the fix's collision-safe hash-suffix path fired on the very
+  first real folder tested ("Discuss with Mousa"), which turned out to
+  already exist under its correct name — revealing the raw-ID folder and
+  the correctly-named one were the SAME real recurring series, fully
+  duplicated (identical `calendar_series_id`, identical occurrence dates
+  and filenames), not two different meetings that happened to collide.
+- **Screen \ route:** `Work/Meetings/` directly on disk (Vault Browse
+  page shows both copies as separate notes).
+- **Repro steps:**
+  1. Compare a raw-ID-named Meeting-series folder's own
+     `calendar_series_id` against every correctly-named series folder's
+     own.
+  2. Separately, list every `.md` file sitting directly in
+     `Work/Meetings/` (not inside its own folder) and compare its
+     `calendar_event_id` against every properly-foldered one-time
+     Meeting note's own.
+- **Expected:** One real note per real calendar event/series.
+- **Actual:** Confirmed live, all 24 real instances:
+  - 7 recurring series each had a raw-`calendar_series_id`-named folder
+    AND a correctly-named folder, both with the identical, complete
+    occurrence file set (e.g. "Discuss with Mousa", "PSS Team Get
+    together", "Weekly Forecast l Strategic/Major Clients", "Standup -
+    AZDL Readiness", "Kimi 3 - Foundry PoC...", "Core Account Team Weekly
+    Cadenace...").
+  - 17 one-time meetings each had a flat `<subject>-<date>-<hash>.md`
+    file sitting directly in `Work/Meetings/` (the OLD, pre-`2026-08-21`
+    flat-file shape this Skill used before its folder-per-concept
+    rewrite — see `vault_lib.py`'s own module docstring) AND a properly
+    foldered `<date> <subject>/<date> <subject>.md` replacement, both
+    confirmed via matching `calendar_event_id`.
+- **Screenshot:** N/A
+- **Note:** Root cause: `resolve_meeting_directory`'s own dedup scan
+  (`list_meeting_concept_notes`) only ever globs `*/*.md` (a folder whose
+  name matches its own file's stem) — structurally blind to the old flat
+  one-time-meeting files, which have no parent folder at all. So a fresh
+  capture pass after the rewrite could never find the old flat file, and
+  created a second, correctly-shaped note for the same real event instead
+  of topping up the old one. The raw-ID recurring-series folders are a
+  variant of the same story: the rewrite's own dedup-by-id scan DOES see
+  them (they do have the folder-per-concept shape), which is exactly why
+  they kept getting silently topped up forever rather than ever being
+  recreated fresh under the right name — until `BUG-036`'s own rename fix
+  gave them a way to self-correct.
+  **Resolution (2026-08-24, same session as `BUG-036`):** operator chose
+  "archive the raw-ID/stray-file side now" over a full content-merge —
+  all 7 raw-ID series folders and all 17 stray flat files moved intact
+  (never deleted) to `Work/Meetings/_Archived Duplicates (2026-08-24)/`
+  (two subfolders: `recurring-series-raw-id/`, `one-time-stray-flat-
+  files/`), leaving the correctly-named/foldered copy as the sole live
+  note in each pair. The one broken-DN Person note `BUG-036` found
+  (`-o=exchangelabs-...-cn=recipients.md`) was archived the same way, to
+  `Work/People/_Archived Duplicates (2026-08-24)/` — it had no correctly-
+  named sibling to consolidate into, so this is a straight relocation,
+  not a merge. This closes the LIVE-DATA half of both `BUG-036` and
+  `BUG-038`; the CODE-level fixes (see `BUG-036`'s own Resolution note)
+  are what stop it recurring going forward. No content was deleted in
+  either bug's resolution — every archived note is fully intact at its
+  new path for manual review/recovery if anything turns out to be
+  needed.
+
+### BUG-039 — Agents Map: `compass-solutions` not visually linked to `compass-expert`, even though its real `depends_on` is correct
+
+- **Area:** UI
+- **Severity:** Minor
+- **Status:** Closed
+- **Found:** 2026-08-24 (operator: "Solutions Experts in Compass not
+  linked to Compass Expert in Agentic Map")
+- **Screen \ route:** Agents Map (`/`) → Technology section drilldown.
+- **Repro steps:**
+  1. Open the Agents Map, drill into the Technology section.
+  2. Look at the tree under `compass-expert`.
+- **Expected:** All 3 of `compass-expert`'s own real sub-specialists
+  (`compass-pricing-expert`, `compass-solutions`, `compass-models-
+  expert`) show a connecting line down from it.
+- **Actual:** Confirmed live via the real `GET /agents` response that
+  `compass-solutions`'s own `depends_on: ["compass-expert"]` was already
+  correct — the bug was purely in rendering. Inspected the drilldown's
+  own SVG directly (line endpoints vs. each node's real on-screen
+  position): `compass-pricing-expert` and `compass-models-expert` each
+  got a real line from `compass-expert`; `compass-solutions` got none,
+  instead floating with only a hub-level "cluster-line" like a root node.
+- **Screenshot:** N/A
+- **Note:** Root cause: `layoutAgents.ts`'s own `buildDependencyEdges`
+  enforces `MAX_OUTGOING_CONNECTIONS = 2` per node — a real, deliberate
+  2026-08-15 product decision, but scoped at the time to PIPELINE JOBS
+  ("Jobs will have only 2 Dependencies in and out"). `compass-expert` is
+  the first individual AGENT to have 3 real dependents (by explicit
+  design, see MEMORY.md's own "two-level specialist chain" entry), and
+  the same cap silently applied to it too, dropping whichever dependent
+  edge iterated third with no visual indication anything was missing.
+  **Resolution:** raised `MAX_OUTGOING_CONNECTIONS` to 3 — safe for real
+  pipeline Jobs (which the cap's own docstring says never exceed 2
+  anyway, so their rendering is unaffected) and fixes `compass-expert`'s
+  real case. Verified live: the drilldown's own SVG now shows a third
+  line from `compass-expert` down to `compass-solutions`, confirmed both
+  by re-reading the line/node coordinates directly and by screenshot.

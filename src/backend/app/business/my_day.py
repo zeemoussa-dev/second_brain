@@ -2,11 +2,28 @@
 REQ-SB-22-US-01 for rolling 7-day window date-filtering) — projects
 captured Email/Meeting notes down to the fields My Day's dashboard and
 drill-down pages need. No writes; api -> business -> data_access
-layering (ADR-003)."""
+layering (ADR-003).
+
+Emails/Calendar read via `vault_indexing.get_index()` (2026-08-24 fix),
+NOT `vault_writer.list_notes_in_kind_folder()` — confirmed live against
+the real vault: `list_notes_in_kind_folder` is a flat, non-recursive
+`glob("*.md")` (data_access/vault_writer.py), so it silently sees zero
+of the real, dated Meeting occurrences (`Work/Meetings/<series_id>/
+occurrences/*.md` — only the top-level, undated series-container note)
+and zero of the real Thread notes (which moved to `Work/Threads/
+<thread>/<thread>.md` once the Threads Builder pipeline replaced the
+old flat `Work/Emails/` model this module was originally written
+against — that folder no longer exists). `vault_indexing.get_index()`
+already walks `list_all_note_paths()`, the SAME bounded-recursive scan
+ADR-048 introduced for this exact "nested note kind" blind spot
+elsewhere — reusing it here closes the same gap rather than
+re-deriving a second recursive walk."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from pathlib import Path
 
+from app.business import vault_indexing
 from app.data_access import vault_writer
 
 _WINDOW_DAYS_BEFORE = 3
@@ -22,6 +39,83 @@ def _customer_or_null(frontmatter: dict) -> str | None:
     if not customer:
         return None
     return customer
+
+
+def _customer_name_by_tag() -> dict[str, str]:
+    """`customer/<slug>` tag -> the real Customer/Partner hub note's own
+    `name` field (e.g. "customer/adnoc" -> "Adnoc") — resolved from the
+    ALREADY-real, already-indexed hub note rather than reconstructing a
+    display name by reversing the slug (title-casing "al-ain" back to
+    "Al Ain" is not always correct; the hub note's own `name` always is).
+    Built fresh from the live index on every call, matching this
+    module's existing no-caching convention (index rebuilds are cheap
+    and already handled by vault_indexing's own trigger)."""
+    mapping: dict[str, str] = {}
+    for entry in vault_indexing.get_index().values():
+        if entry["frontmatter"].get("type") not in ("Customer", "Partner"):
+            continue
+        name = entry["frontmatter"].get("name")
+        if not name:
+            continue
+        for tag in entry["tags"]:
+            mapping.setdefault(tag, name)
+    return mapping
+
+
+def _customer_from_tags(tags: list[str], lookup: dict[str, str]) -> str | None:
+    for tag in tags:
+        if tag in lookup:
+            return lookup[tag]
+    return None
+
+
+def _latest_sender_by_conversation() -> dict[str, str]:
+    """conversation_id -> the sender of that Thread's own most recent
+    RawMessage — a Thread note itself has no single "sender" (it's a
+    distilled summary of a whole conversation, potentially many senders),
+    but My Day's own existing UI contract (MyDayEmailsPage.tsx's "from
+    {sender}") expects one, so this surfaces the most RECENT real
+    sender as a reasonable, honest best-effort answer rather than
+    fabricating one or leaving the field permanently blank."""
+    latest: dict[str, tuple[str, str]] = {}
+    for entry in vault_indexing.get_index().values():
+        frontmatter = entry["frontmatter"]
+        if frontmatter.get("type") != "RawMessage":
+            continue
+        conversation_id = frontmatter.get("conversation_id")
+        if not conversation_id:
+            continue
+        received = frontmatter.get("received", "")
+        current = latest.get(conversation_id)
+        if current is None or received > current[0]:
+            latest[conversation_id] = (received, frontmatter.get("sender", ""))
+    return {conversation_id: sender for conversation_id, (_, sender) in latest.items()}
+
+
+def _meeting_series_lookup() -> dict[str, dict]:
+    """Series-folder name -> that series' own top-level Meeting note's
+    frontmatter — a real, dated Meeting OCCURRENCE note (`Work/Meetings/
+    <series>/occurrences/*.md`) carries none of its own series'
+    `customer`/tags (confirmed live: a real occurrence's own frontmatter
+    is logistics-only — start/end/location/organizer/attendees — with
+    no customer tag at all), while the series' own top-level note
+    (`Work/Meetings/<series>/<series>.md`) DOES. Keyed by the series
+    note's own real stem, which is exactly the occurrence's own parent
+    folder name on disk (`_series_folder_name_for` below) — this is a
+    structural filesystem relationship, not a shared id field, since the
+    series folder name is a truncated prefix of the full
+    `calendar_series_id` frontmatter value, not an exact match to it."""
+    lookup: dict[str, dict] = {}
+    for entry in vault_indexing.get_index().values():
+        frontmatter = entry["frontmatter"]
+        if frontmatter.get("type") != "Meeting" or frontmatter.get("start"):
+            continue  # only the undated series-container note, never an occurrence
+        lookup[entry["stem"]] = frontmatter
+    return lookup
+
+
+def _series_folder_name_for(path_str: str) -> str:
+    return Path(path_str).parent.parent.name
 
 
 def _compute_window() -> tuple[str, str]:
@@ -68,50 +162,78 @@ def _resolve_day_bounds(day: str | None) -> tuple[str, str]:
 
 
 def list_email_items(day: str | None = None) -> list[dict]:
-    """[{"subject", "sender", "customer", "received", "stem"}] for notes
-    under Work/Emails/ whose `received` date falls inside the current
-    7-day window (Scenarios 1, 3, 5), or inside just `day` when provided
-    (the My Day day-navigator). `received` is now surfaced for the first
-    time — an existing captured frontmatter field the projection
-    previously omitted, not a new data source. `stem` (REQ-SB-44-US-01-T02)
-    mirrors `list_calendar_items`'s own `"stem"` field exactly — the note
-    identity the Inbox Cockpit route needs."""
+    """[{"subject", "sender", "customer", "received", "stem"}] for real
+    Thread notes (`type: "Thread"`, `Work/Threads/<thread>/<thread>.md`)
+    whose `last_message_at` falls inside the current 7-day window
+    (Scenarios 1, 3, 5), or inside just `day` when provided (the My Day
+    day-navigator). "subject"/"received" are this projection's own
+    stable field names, kept unchanged for the frontend even though the
+    real underlying Thread fields are `thread_name`/`last_message_at` —
+    `Work/Emails/` (this function's original 2026-08-07 data source) no
+    longer exists; email capture moved to the Threads Builder pipeline
+    (2026-08-21) and this projection was never updated to follow it
+    (2026-08-24 fix, see module docstring). "sender" is a best-effort
+    "most recent real sender on this conversation" (`_latest_sender_by_
+    conversation`), since a Thread itself has no single sender of its
+    own. `stem` (REQ-SB-44-US-01-T02) mirrors `list_calendar_items`'s
+    own `"stem"` field exactly — the note identity the Inbox Cockpit
+    route needs."""
     range_start, range_end = _resolve_day_bounds(day)
+    customer_lookup = _customer_name_by_tag()
+    sender_lookup = _latest_sender_by_conversation()
     items = []
-    for path in vault_writer.list_notes_in_kind_folder("Emails"):
-        frontmatter, _ = vault_writer.read_note(path)
-        received = frontmatter.get("received", "")
+    for entry in vault_indexing.get_index().values():
+        frontmatter = entry["frontmatter"]
+        if frontmatter.get("type") != "Thread":
+            continue
+        received = frontmatter.get("last_message_at", "")
         if not _within_window(received, range_start, range_end):
             continue
         items.append({
-            "subject": frontmatter.get("subject", ""),
-            "sender": frontmatter.get("sender", ""),
-            "customer": _customer_or_null(frontmatter),
+            "subject": frontmatter.get("thread_name", ""),
+            "sender": sender_lookup.get(frontmatter.get("conversation_id"), ""),
+            "customer": _customer_from_tags(entry["tags"], customer_lookup),
             "received": received,
-            "stem": path.stem,
+            "stem": entry["stem"],
         })
     items.sort(key=lambda item: item["received"])
     return items
 
 
 def list_calendar_items(day: str | None = None) -> list[dict]:
-    """[{"subject", "start", "customer"}] for notes under Work/Meetings/
-    whose `start` date falls inside the current 7-day window (Scenarios
-    2, 3, 5), or inside just `day` when provided (the My Day
-    day-navigator). Response shape unchanged from REQ-SB-12-US-02 —
-    Calendar already surfaced `start`."""
+    """[{"subject", "start", "customer"}] for real, dated Meeting
+    OCCURRENCE notes (`Work/Meetings/<series>/occurrences/*.md` —
+    `type: "Meeting"` with a real `start`; the series' own top-level
+    note is `type: "Meeting"` too but carries no `start` of its own, so
+    it's excluded here, never double-counted) whose `start` falls inside
+    the current 7-day window (Scenarios 2, 3, 5), or inside just `day`
+    when provided. Response shape unchanged from REQ-SB-12-US-02.
+    `customer` is inherited from the occurrence's own parent series note
+    (`_meeting_series_lookup`) — confirmed live that a real occurrence's
+    own frontmatter carries no customer tag of its own at all, only the
+    series-level note does (2026-08-24 fix, see module docstring)."""
     range_start, range_end = _resolve_day_bounds(day)
+    customer_lookup = _customer_name_by_tag()
+    series_lookup = _meeting_series_lookup()
     items = []
-    for path in vault_writer.list_notes_in_kind_folder("Meetings"):
-        frontmatter, _ = vault_writer.read_note(path)
+    for entry in vault_indexing.get_index().values():
+        frontmatter = entry["frontmatter"]
+        if frontmatter.get("type") != "Meeting":
+            continue
         start = frontmatter.get("start", "")
+        if not start:
+            continue  # the series-container note itself, not a real occurrence
         if not _within_window(start, range_start, range_end):
             continue
+        series = series_lookup.get(_series_folder_name_for(entry["path"])) or {}
+        customer = _customer_from_tags(entry["tags"], customer_lookup) or _customer_from_tags(
+            series.get("tags") or [], customer_lookup
+        )
         items.append({
-            "subject": frontmatter.get("subject", ""),
+            "subject": frontmatter.get("subject") or series.get("subject") or entry["stem"],
             "start": start,
-            "customer": _customer_or_null(frontmatter),
-            "stem": path.stem,
+            "customer": customer,
+            "stem": entry["stem"],
         })
     items.sort(key=lambda item: item["start"])
     return items

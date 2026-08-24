@@ -7,11 +7,20 @@ identity/type/actions stay hardcoded" reasoning is untouched).
 from app.business import agent_registry
 from app.data_access import vault_writer
 
-_STARTING_SECTION_NAMES = ["Technical", "Sales", "Productivity", "Customers", "Products"]
+# 2026-08-22 (operator's own real taxonomy, verbatim): "Our Sections will
+# be (Customer, Liberian, Industry, Technology, Data Gatherer, Sales)" --
+# replaces the earlier placeholder starting-5 set. "Data Gatherer" is
+# where the real Hermes-mirrored agents (ADR-003) are shown on the map;
+# the rest start empty, real groupings for agents not built yet, not
+# placeholders to be renamed later.
+_STARTING_SECTION_NAMES = ["Customer", "Librarian", "Industry", "Technology", "Data Gatherer", "Sales"]
 
 
 def _seed_state() -> dict:
-    sections = [{"id": vault_writer.tag_slug(name), "name": name} for name in _STARTING_SECTION_NAMES]
+    sections = [
+        {"id": vault_writer.tag_slug(name), "name": name, "icon": None, "color": None, "subtitle": None, "description": None}
+        for name in _STARTING_SECTION_NAMES
+    ]
     state = {"sections": sections, "assignments": {}}
     vault_writer.save_sections_state(state)
     return state
@@ -46,7 +55,12 @@ def list_sections() -> list[dict]:
     for agent_id, section_id in state["assignments"].items():
         agent_ids_by_section.setdefault(section_id, []).append(agent_id)
     return [
-        {"id": s["id"], "name": s["name"], "agent_ids": agent_ids_by_section.get(s["id"], [])}
+        {
+            "id": s["id"], "name": s["name"],
+            "icon": s.get("icon"), "color": s.get("color"), "subtitle": s.get("subtitle"),
+            "description": s.get("description"),
+            "agent_ids": agent_ids_by_section.get(s["id"], []),
+        }
         for s in state["sections"]
     ]
 
@@ -59,21 +73,49 @@ def create_section(name: str) -> dict:
         # Same normalized name already exists — return it rather than
         # duplicating (tag_slug collisions collapse to the same section).
         return existing
-    section = {"id": section_id, "name": name}
+    section = {"id": section_id, "name": name, "icon": None, "color": None, "subtitle": None, "description": None}
     state["sections"].append(section)
     vault_writer.save_sections_state(state)
     return section
 
 
-def rename_section(section_id: str, name: str) -> dict | None:
-    """Updates name in place only — section_id (the slug) is fixed at
-    creation and never regenerated on rename (ADR-014 point 1), which is
-    what makes every existing assignments entry stay correct
-    automatically."""
+def update_section(
+    section_id: str,
+    *,
+    name: str | None = None,
+    icon: str | None = None,
+    color: str | None = None,
+    subtitle: str | None = None,
+    description: str | None = None,
+) -> dict | None:
+    """General Section update (2026-08-23, operator: "the Hub can be
+    clicked and has its own Settings... Section Color and Icon,
+    Description and Name") — replaces the earlier name-only
+    `rename_section`. `section_id` (the slug) is fixed at creation and
+    never regenerated here (ADR-014 point 1), which is what keeps every
+    existing assignments entry correct automatically across a rename.
+    `description` is the real field layoutAgents.ts's own SectionSummary
+    interface has been typing since 2026-08-15 ("The Description will be
+    used later") without any backend field ever actually backing it —
+    this is that "later". Each of icon/color/subtitle/description follows
+    the same omitted-vs-empty-string convention as
+    agent_visual_registry.py: the router only ever passes a field here
+    when the caller actually sent it, so `None` always means "leave
+    unchanged" and `""` always means "clear back to unset" — never
+    ambiguous at this layer."""
     state = _load_state()
     for section in state["sections"]:
         if section["id"] == section_id:
-            section["name"] = name
+            if name is not None:
+                section["name"] = name
+            if icon is not None:
+                section["icon"] = icon or None
+            if color is not None:
+                section["color"] = color or None
+            if subtitle is not None:
+                section["subtitle"] = subtitle or None
+            if description is not None:
+                section["description"] = description or None
             vault_writer.save_sections_state(state)
             return section
     return None

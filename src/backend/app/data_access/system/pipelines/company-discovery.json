@@ -1,0 +1,33 @@
+{
+  "id": "company-discovery",
+  "name": "Company Discovery",
+  "description": "Recurring scan that finds new company domains in Threads/Meetings and adds them to Entities.md for review -- the real Hermes cron job behind this is new-company-discovery (every 24 hours), running the new-company-discovery Skill. Classification (Customer/Partner/Affiliate/Ignore) happens separately, conversationally, when the operator reviews an entry -- not on this recurring schedule.",
+  "section": "Librarian",
+  "steps": [
+    {
+      "id": "scan-threads",
+      "name": "Scan Threads for Domains",
+      "description": "Extracts participant email domains from every Thread not yet resolved to a known company.",
+      "depends_on": []
+    },
+    {
+      "id": "scan-meetings",
+      "name": "Scan Meetings for Domains",
+      "description": "Extracts attendee email domains from every Meeting not yet resolved to a known company.",
+      "depends_on": []
+    },
+    {
+      "id": "filter-known-domains",
+      "name": "Filter Known Domains",
+      "description": "Drops any domain already resolved to an existing Customer/Partner/Affiliate hub note.",
+      "depends_on": ["scan-threads", "scan-meetings"]
+    },
+    {
+      "id": "add-to-entities",
+      "name": "Add to Entities.md",
+      "description": "Appends each genuinely new domain to Work/Entities.md as a pending review entry -- never auto-classified.",
+      "depends_on": ["filter-known-domains"],
+      "type": "producer"
+    }
+  ]
+}
