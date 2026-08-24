@@ -1,0 +1,691 @@
+# Architecture Decision Records
+
+Append-only log of architectural decisions. One ADR per decision, numbered
+sequentially from ADR-001.
+
+**Never edit an accepted ADR.** A change of mind is a new superseding ADR (linked
+both ways). Status enum: `Proposed | Accepted | Rejected | Deprecated | Superseded by ADR-XXX`.
+
+**Alternatives Considered is mandatory** on every ADR.
+
+**2026-08-20:** Numbering restarts at ADR-001 alongside the backend
+architecture redesign (`Implementation/Plans/2026-08-20-backend-
+architecture-redesign.md`). The prior sequence (ADR-001 through ADR-058)
+is archived, not deleted — see `Documentation-Archive-2026-08-20/
+Implementation/Architecture/ADR.md`. ADR-001 below is the one entry
+carried forward unchanged in substance (originally ADR-059 in the archived
+sequence) — it's the founding decision this whole redesign executes, not
+legacy history.
+
+<!-- ADR format:
+## ADR-001: [Short title]
+**Status:** Accepted
+**Date:** YYYY-MM-DD
+**Context:** Why this decision was needed — the forces at play.
+**Decision:** What was decided and why.
+**Alternatives Considered:** Other options evaluated (mandatory field).
+**Consequences:** Trade-offs, implications, and future considerations.
+---
+-->
+
+## ADR-001: Hermes becomes the agent/skill/schedule/approval runtime; Second Brain's backend narrows to a data layer of Tools/Skills - first step (router archive + Hermes REST client scaffold) landed, business-layer split deferred
+
+**Status:** Accepted
+**Date:** 2026-08-20
+**Originally recorded as:** ADR-059 in the archived pre-2026-08-20 sequence
+(`Documentation-Archive-2026-08-20/Implementation/Architecture/ADR.md`).
+
+**Context:** A rapid, cascading sequence of real, live-discovered
+data-quality incidents (BUG-031/032/033, a Partner-vs-Customer OKF
+directory-shape asymmetry the codebase had never disclosed, a full
+Customer/Partner tag revert across the real vault) led the operator to call
+a full stop on the hand-built Agent/Skill/Schedule machinery and reassess
+from first principles. A direct challenge -- "why are you editing code to
+put a schedule?" -- surfaced that most of that machinery (default
+schedules, per-agent scheduling, Skill grants) had been hand-written where
+a declarative or platform-native mechanism would have served, prompting
+"we are building a framework, this is not acceptable." Research into this
+codebase's own already-present dependencies (`langgraph>=1,<2`, used only
+for the in-app chat loop at the time) and into Hermes (previously
+described in `CLAUDE.md` only as "an MCP-based multi-channel communication
+tool," https://github.com/nousresearch/hermes-agent) found Hermes to be a
+full, substantial agent framework: subagent spawning, a self-improvement
+loop, a natural-language cron scheduler, Honcho-based memory, 40+ tools,
+MCP client/server integration, a 25+-platform multi-channel gateway, and,
+critically, a real, documented REST API gateway (`hermes gateway`, default
+`127.0.0.1:8642`, bearer-token auth) exposing chat/completions, runs (with
+SSE events), jobs (full CRUD, the real schedule-management surface),
+sessions, skills, and toolsets.
+
+**Decision:** Hermes replaces Second Brain's own hand-built Agent/Skill/
+Schedule/Approval orchestration layer as the agent runtime. LangGraph's
+role narrows to an execution engine usable *within* a task (Second Brain's
+own remaining use, or something Hermes itself invokes) rather than the
+orchestration layer itself -- no change to `langgraph`'s pin, only to what
+calls it. Second Brain's own web UI stays the PRIMARY frontend (Hermes is
+consumed as a backend, not a UI replacement); extra channels (chat, other
+platforms) run through Hermes' own gateway instead. Second Brain's backend
+narrows to a "data layer": vault capture/indexing, Outlook, and vault
+read/write, organized as discrete Tools (Outlook, Housekeeping, Vault,
+Vault Write, Company/Partner, People, Vault Admin) each exposing
+individually-callable Skills -- consumed both by Second Brain's own
+narrowed LangGraph use and by Hermes' external orchestration, over the
+existing shared `/mcp` mount.
+
+First concrete step, taken the same night as this decision (autonomous
+session, operator asleep, explicit instruction to proceed): archived the 9
+now-dead orchestration-layer HTTP routers (`agents_router`, `agent_
+schedules_router`, `agent_activity_router`, `cockpit_router`, `demo_
+taxonomy_router`, `pending_approvals_router`, `providers_router`,
+`sections_router`, `skills_router` -- moved to `src/backend/app/_archive/
+api/`, not deleted) and added a real, structurally sound Hermes REST
+client (`data_access/hermes_client.py`) plus a thin status router mounted
+at `/hermes/*` (`business/hermes_status.py`, `api/hermes_router.py`) --
+honestly "unreachable" until a real Hermes gateway is configured, never a
+fabricated response. Verified live: the backend imports and boots cleanly,
+answers `/health`/`/system-health`/`/hermes/health`, and the capture
+scheduler's own jobs still register exactly as before.
+
+Second concrete step (2026-08-20, same day, collaborative session): began
+a full backend architecture redesign with the operator acting as Architect
++ Business Analyst together -- see `Implementation/Plans/2026-08-20-
+backend-architecture-redesign.md` for the block-by-block working log
+(Data Access layer split into Vault/System, Business layer split into
+logic/vault/core/hermes/langgraph, API layer confirmed to need no
+restructuring). That document is the live source of truth for this
+redesign's progress; this ADR is not updated play-by-play as it proceeds.
+
+**Deliberately NOT done in the first step** -- archiving the underlying
+business-layer registries (`agent_registry`, `agent_schedule_registry`,
+`skill_registry`, `skill_tools`, `pending_approval_registry`, `working_
+mode_registry`, `provider_registry`, `section_registry`, `scope_registry`/
+`scope_query_tools`, `agent_prompts`, `agent_orchestration/`, `cockpit/`)
+and splitting `librarian_housekeeping.py`/`vault_filing_expert.py` into
+the confirmed Tool/Skill grouping. Real, live dependents were found by
+tracing actual imports (not the original file-classification list alone):
+`capture_scheduler.py`'s hourly Outlook pull and `mcp_server.py`'s own
+tool-registration chain both run through `agent_schedule_registry`/`skill_
+tools`; `vault_write_tools.py`'s write-approval safety gate (every
+Hermes-triggered write proposal is unconditionally gated behind a Pending
+Approval) depends on `agent_registry`/`pending_approval_registry`; and
+`librarian_housekeeping.py`'s Company Review pipeline has real, unresolved
+Pending Approvals awaiting the operator's own review (BUG-032). This split
+also depends on an explicitly still-open question this ADR does NOT
+resolve: does Hermes' own run-approval mechanism replace `pending_
+approval_registry`/`working_mode_registry` outright, or does Second Brain
+keep its own write-approval gate regardless of trigger source? Tracked as
+an open question in the 2026-08-20 architecture redesign plan doc above,
+not resolved here.
+
+**Alternatives Considered:** (1) Delete the whole existing orchestration
+layer immediately and rebuild from a clean slate, as the operator's own
+first framing floated -- rejected in favor of the narrower "keep the data
+layer, archive the orchestration layer" scope the operator settled on
+after discussion, since the data layer (vault capture/indexing, real
+Outlook integration, Company/Partner/People business logic) represents
+most of this codebase's real, hard-won value and has no Hermes equivalent
+to replace it with. (2) Archive the full business-layer registry set in
+the same first step, accepting the risk -- rejected: several of those
+registries are load-bearing for live, currently-running functionality
+(Outlook capture, the MCP tool surface, the write-approval gate) with no
+tested Hermes-side replacement deployed yet, and breaking any of them
+unsupervised while the operator slept was judged an unacceptable risk
+relative to the value of finishing the split one night sooner. (3) Leave
+the dead routers in place until the full business-layer split is ready,
+doing everything in one pass -- rejected: the routers are provably dead
+(no other module imports a router file, confirmed by grep) and their own
+frontend surface is already gone in practice once Hermes is the intended
+runtime, so archiving them was low-risk, real progress that did not need
+to wait on the harder, higher-risk decision.
+
+**Consequences:** The frontend (Agents Map, Cockpit, Skills Tree, the
+agent-creation wizard, the Pending Approvals UI) now calls 9 dead
+endpoints and will 404 until that surface is either rebuilt against Hermes
+or retired -- not addressed by this ADR, tracked in the architecture
+redesign plan doc. `CLAUDE.md`'s own description of Hermes as "an
+MCP-based multi-channel communication tool" is now known to be a
+significant understatement and should be corrected once the fuller
+integration shape is settled. No Hermes gateway is deployed yet --
+`hermes_client.py`'s callers all degrade to an honest "unreachable" result
+today, by design, not a defect.
+
+---
+
+## ADR-002: The email-thread-capture pipeline is Hermes-native (standalone scripts in the Skill's own folder) -- no MCP server, no Second Brain backend dependency
+
+**Status:** Accepted
+**Date:** 2026-08-21
+
+**Context:** ADR-001 established Second Brain's data layer as Tools/
+Categories/Actions exposed to Hermes over MCP -- the `outlook` and `vault`
+Tools built for the vault-rebuild pipeline (`ingest_email`, `rename_
+thread`, `link_person_to_thread`, `capture_attachments`, `capture_file_
+link`, `list_recent_emails`) were the first real instance of this
+pattern. Operator, live: "In the skills folder we can add the Python
+file, why do we need our MCP Server?", then, after pushback, "I don't
+need MCP Server, I think Hermes will pull the dependencies of the Py file
+when needed, try that" -- backed by a real observation: "When I sent a
+file to WhatsApp, Hermes pulled a library to read the file. I want our
+Skills to be the same, fully hosted in Hermes, no use of our venv."
+
+Investigated two real Hermes-agent source files before answering:
+`tools/code_execution_tool.py` (the `terminal`/code-execution tool's
+child-Python resolution uses whatever `VIRTUAL_ENV` is already active on
+Hermes' own process, never auto-discovers a project's own `.venv`) and
+`tools/lazy_deps.py` (a closed allowlist -- `LAZY_DEPS` -- of Hermes' own
+known built-in features mapped to exact pip specs, auto-installed into
+Hermes' own venv the first time that *specific, already-registered*
+feature is used; this is what actually fired for the WhatsApp file, e.g.
+`tool.doc_extract` -> `firecrawl-anydoc`). Initial conclusion: this
+explains the observation but doesn't generalize -- arbitrary packages
+like `pywin32` aren't in the allowlist, and Second Brain's own private
+`app.business.logic.*` modules were never pip packages at all, so
+`lazy_deps.py` alone couldn't make a Hermes-native script self-sufficient.
+
+Operator pushed further: "So apparently you can tell the skill.md to
+install the required python libraries before running the py file, check
+that." Verified against Hermes' own bundled skill-authoring guide
+(`skills/software-development/hermes-agent-skill-authoring/SKILL.md`):
+the standard SKILL.md body includes a documented `## Prerequisites`
+section ("exact env vars, installs, API key sourcing") and `## How to
+Run` ("canonical invocation through the `terminal` tool") -- meaning a
+Skill can simply instruct the agent to run `terminal(command="pip
+install pywin32")` as an explicit step. This is real, standard, and
+unrestricted (no allowlist, unlike `lazy_deps.py`) -- it fully resolves
+the third-party-dependency half of the objection. It does nothing for the
+second half: Second Brain's own business-logic code still isn't
+pip-installable, so "fully hosted in Hermes" still requires either
+duplicating that code into the Skill's own files or wiring `sys.path`
+into `src/backend` (pulling in FastAPI/pydantic and the rest of that
+dependency chain, plus importing code that assumes it's running inside
+the app's own context).
+
+Porting the actual dependency chain surfaced a real scope finding:
+`link_person_to_thread`'s Person-note creation doesn't just write a bare
+note -- it drags in Second Brain's full company/Customer/Partner matching
+and hub-linking system (`people_extraction.py` 356 lines, `customer_hub_
+linking.py` 98, `partner_hub_linking.py` 184; ~640 lines beyond `vault_
+writer.py` itself).
+
+**Decision:** Duplicate, not wire -- Option 1. The 5 vault-rebuild
+Actions plus the Outlook fetch are reimplemented as 8 standalone,
+stdlib-plus-pywin32-only Python files living directly in the Skill's own
+`scripts/` folder (`Hermes-Provisioning/skills/vault-rebuild/email-
+thread-capture/scripts/`, mirrored at `<hermes_home>/skills/vault-
+rebuild/email-thread-capture/scripts/`): `vault_lib.py`, `outlook_lib.py`,
+and one CLI entry point per Action, each invoked through the `terminal`
+tool per the SKILL.md's own rewritten Procedure. No MCP server, no
+Second Brain backend process involved in running this pipeline at all.
+
+Scope, per two explicit operator decisions during this same session:
+
+1. **Old code removed, not kept in parallel** (not "keep both as a
+   fallback") -- the 6 ported source files, the `vault` Tool's entire
+   registry.json entry, and `list_recent_emails` from the `outlook` Tool
+   were deleted from Second Brain's backend once the ported scripts were
+   verified working end-to-end (idempotency, rename fan-out, participant
+   links, bare Person-note dedup -- all smoke-tested against a scratch
+   vault before deletion). Single source of truth is now the Skill's own
+   `scripts/` folder; the old MCP-based code is not preserved anywhere as
+   a fallback.
+2. **Person-note creation is deliberately trimmed, not fully ported**
+   (operator: "one simple task, we didn't start the process of Enriching
+   data yet") -- `vault_lib.ensure_bare_person_note` creates/tops-up a
+   bare name+email Person note only, with NO company derivation or
+   Customer/Partner matching/hub-linking. That ~640-line system stays
+   Second Brain-only, run later as a separate whole-vault pass via the
+   backend's own already-existing `retrofit_people_from_emails()` job --
+   never duplicated into Hermes.
+
+Binary attachment content can't cross a `terminal`-tool subprocess
+boundary as an in-memory Python object the way it could inside one
+shared MCP-server process -- `outlook_lib.py`'s own `_extract_attachments`
+now saves each real attachment to a durable OS temp file and returns its
+path (never deletes it immediately, unlike the source it was ported
+from); `capture_attachments.py` reads the bytes back from that path and
+deletes it once written into the vault. Large payloads (email bodies up
+to 50,000 chars, an email's full attachments array) are handed to
+`ingest_email.py`/`capture_attachments.py` via `--input-file <path>`
+(the agent `write_file`s a scratch JSON file first) rather than as CLI
+arguments, to stay well clear of shell command-line length limits; short
+scalar fields (conversation_id, sender name/email, a URL) stay plain CLI
+flags for readability in the SKILL.md's own Quick Reference.
+
+**Alternatives Considered:** (1) Keep the MCP server (ADR-001's original
+shape) -- rejected once the `terminal`-tool pip-install path closed the
+dependency-install gap that was the strongest argument for it; an extra
+backend process and MCP transport add real operational surface (a port,
+a running FastAPI process, MCP session-manager lifespan wiring already
+bug-prone once this session, see the architecture redesign plan doc's
+own "MCP server session_manager never initialized" entry) for no
+remaining benefit specific to this one pipeline. (2) `sys.path`-wire the
+Hermes script directly into `src/backend` and import `app.business.
+logic.*` unmodified -- rejected: still needs `pywin32` installed via the
+same `terminal`-tool step, ADDITIONALLY needs FastAPI/pydantic/the rest
+of `app/`'s own dependency chain installed into Hermes' environment for
+no benefit (this pipeline needs none of what FastAPI provides), and ties
+a Hermes-hosted script to Second Brain's own on-disk repo layout as an
+implicit, easily-broken contract. (3) Full-fidelity Person-note porting
+(company match + hub-linking, ~640 lines) -- rejected for Capture-phase
+scope reasons (operator's own "we didn't start the process of Enriching
+data yet"), not a technical blocker; the code could be ported later if
+the operator decides Capture-time enrichment is actually wanted.
+
+**Consequences:** The vault-rebuild pipeline has zero runtime dependency
+on Second Brain's backend being up at all -- Outlook desktop + Hermes +
+`pywin32` is the complete requirement set. Person notes this pipeline
+creates carry no company/Customer/Partner linkage until `retrofit_people_
+from_emails()` is run afterward as a separate pass -- a real, deliberate
+gap during Capture, not a bug. The `outlook` MCP Tool registration
+(`mcp-servers/outlook.yaml`) now exposes only `gather_emails`, which
+nothing actually calls over MCP (it's Second Brain's own internal
+`capture_scheduler.py` pull, a direct Python call) -- flagged to the
+operator as possibly ready for `hermes mcp remove outlook`, not removed
+unilaterally since removing a live Hermes registration is a different
+class of action than editing this repo's own files. `vault_lib.py`/
+`outlook_lib.py` are now a second, independent copy of vault-writing/
+Outlook-reading logic (the Skill's own, separate from Second Brain's
+`app.data_access.vault_writer`/`outlook_com`) -- an accepted, disclosed
+duplication per Decision 1 above, not an oversight; a future bugfix to
+either copy's shared logic (e.g. `raw_message_note_path`'s collision
+handling) must be applied to both by hand, since nothing keeps them in
+sync automatically.
+
+---
+
+## ADR-003: A view-only, live-read mirror of Hermes' real Agent/Skill definitions is a scoped exception to ADR-001's "not ours to own" principle -- display only, no data-access layer, no local persistence
+
+**Status:** Accepted
+**Date:** 2026-08-22
+
+**Context:** This session's Hermes-side work (built entirely as external
+provisioning outside this repo's own pipeline -- profiles `opp-manager`,
+`notes-manager`, `files-manager`, each with real SOUL.md/config.yaml/
+Skills) produced a real foundation the operator now wants reflected in
+Second Brain's own UI: "Time to move those Agents into our Original
+Backend... we need to build our Schema in our backend to match what we
+did in Hermes and Mark those Agents and Skills with Hermes... We Build the
+backend for View Only now." ADR-001 (2026-08-20) explicitly scoped Hermes/
+LangGraph data as "not ours to own or build a data-access layer for" --
+this request reads as a direct exception to that, so it was surfaced back
+to the operator rather than assumed. Operator's own framing, verbatim:
+"Our Backend has a Different Definition Pipeline --> Cron Agent --->
+Experts etc, we have Sections. For now we are going to copy what we built
+in Hermes as Definition only. Later we will need to use the backend to
+send Stuff to Hermes."
+
+**Decision:** Add a read-only mirror, scoped narrowly:
+- `app/data_access/hermes_definitions.py` -- reads Hermes' own real files
+  directly on every call (profile.yaml's `description`, config.yaml's
+  `model`/`agent.reasoning_effort`, SOUL.md's first paragraph as Primary's
+  own fallback description, every `skills/*/*/SKILL.md`'s frontmatter) --
+  never a synced copy, never a database, so it can't drift from what
+  Hermes actually has configured. `hermes_home_path` (new `Settings`
+  field, defaults to this machine's real install path) points at the
+  root; `_disabled-*` archive folders (skills moved off a profile -- see
+  MEMORY.md's own entries on this) are siblings of `skills/`, not nested
+  inside it, so they're naturally excluded by construction, no special-
+  case filtering needed.
+- `app/business/hermes/definitions.py` -- thin dataclass-to-dict wrapper,
+  first real content in the `business/hermes/` skeleton folder the
+  2026-08-20 redesign plan already earmarked for this.
+- `app/api/hermes_agents_router.py` -- `GET /hermes/agents`, `GET
+  /hermes/agents/{id}` (404 on unknown). Separate file from the existing
+  `hermes_router.py` (that one is live session/status data from Hermes'
+  own `hermes serve` API; this is definitions read from Hermes' own
+  files -- a distinct concern, one router file per concern).
+- Naming: `HermesAgent`/`HermesSkill`, explicitly prefixed -- bare
+  `Agent`/`Skill` already means two OTHER things in this codebase (the
+  deprecated `agent_registry.py`/`skill_registry.py`, and the new Tool/
+  Category/Action vocabulary where "Action" specifically replaced "Skill"
+  to avoid this exact collision with Hermes' own Skill concept). Every
+  record carries `source: "hermes"` (operator's own "Mark those Agents
+  and Skills with Hermes") so the UI can visually distinguish these from
+  whatever Second Brain's own separate "Pipeline -> Cron -> Agent ->
+  Experts" taxonomy eventually becomes -- that taxonomy is explicitly
+  future/undefined as of this ADR, not designed here.
+- Backend only, per the operator's own explicit "View Only for now" scope
+  -- no frontend page built in this pass (the existing `features/agents-
+  map/` UI, confirmed during research, currently points at ADR-001's own
+  archived routers and 404s; a new view would need its own work, not
+  requested yet).
+- No create/update/delete -- read-only by construction, matching "for now
+  we are doing everything manually." Point 3 of the operator's own
+  request ("In future I want our Backend to be the one who Create Agents
+  and Pipeline and Cron Jobs") is explicitly deferred, not designed here.
+
+**Alternatives Considered:**
+- *Call Hermes' own `hermes serve` API (port 9119, already wired via
+  `hermes_client.py`) instead of reading files* -- rejected: verified live
+  that API only exposes `/api/status`, `/api/sessions`, `/api/sessions/
+  stats`, `/api/config`, `/api/profiles/active` today, none of which
+  return a full Agent+Skills listing. Operator's own explicit choice
+  anyway ("Read live from Hermes' own files").
+- *A locally-synced store (dataclass + JSON, matching the Provider/Tool
+  registry pattern already used under `data_access/system/`)* -- rejected
+  for this pass: adds a sync step and a real drift risk (the mirror could
+  say something Hermes itself no longer has configured) for zero benefit
+  over a live read, which is cheap here (a handful of small file reads,
+  not a network call). Worth revisiting only if this endpoint's read
+  latency or Hermes' own filesystem layout ever becomes a real problem.
+- *Treat this as fully superseding ADR-001* -- rejected, per the
+  operator's own answer: this is a scoped display exception, not a
+  reversal -- Second Brain's backend still doesn't manage Hermes' agent/
+  skill state as of this ADR, only displays a live snapshot of it.
+
+**Consequences:** `pyyaml` added as a new backend dependency (already
+transitively present via `langchain`, so no real new install cost).
+`hermes_home_path` is a real per-machine path with no portability
+guarantee -- running this backend on a machine without a local Hermes
+install returns an empty agent list (`list_agents()` returns `[]`, never
+raises), not an error, matching the "view only, degrade gracefully"
+framing. A live-confirmed skill-count discrepancy exists between this
+reader (78 skills for Primary) and Hermes' own `hermes profile show`
+output (82) -- not yet root-caused (a nonstandard folder depth somewhere
+in the bundled skill set is the leading guess); worth investigating before
+this becomes a trust problem, but not blocking for a first view-only pass.
+The eventual "backend creates Agents/Pipelines/Cron Jobs in Hermes"
+direction (operator's own point 3) will need real write access into
+Hermes -- likely via its own CLI/API, a materially different, riskier
+capability than this read-only pass, and its own future decision.
+
+---
+
+## ADR-004: Retire the old Second-Brain-native orchestration agents for real (not just archive their routers); restore Sections as Second Brain's own concept with a real taxonomy; retrofit `features/agents-map/` over the Hermes mirror via a presentation-layer adapter, not by reviving the old Agent CRUD/chat/action surface
+
+**Status:** Accepted
+**Date:** 2026-08-22
+
+**Context:** ADR-001 (2026-08-20) archived 9 old orchestration routers but
+deliberately left their underlying registries (`agent_registry.py`,
+`section_registry.py`, `skill_registry.py`, etc.) live, because real
+dependents still existed -- most concretely, `main.py`'s own startup
+lifespan called `ensure_librarian_agents_and_section()` on every app
+start, which idempotently recreated two real agents
+(`threads-cleaning`, `company-and-partner-building`) plus a
+"Librarian" Section, alongside 8 more hardcoded seed agents in
+`agent_registry.py` itself. ADR-003 (same day) built a new, separate,
+read-only mirror of Hermes' real agents but explicitly did NOT touch any
+of this -- until the operator, mid-retrofit of `features/agents-map/`
+(the frontend's own existing, richer Agent/Section/Skill UI, built for
+this now-superseded model), confirmed directly: "Yes, remove them, we're
+fully on Hermes now."
+
+**Decision:**
+1. **Old agents genuinely retired, not just archived.** `agent_registry.
+   py`'s `_SEED_AGENTS` emptied to `{}`; `.second-brain/agents_registry.
+   json`'s `created_agents` cleared; `main.py`'s lifespan no longer calls
+   `ensure_librarian_agents_and_section()` (left defined, unused, in
+   `librarian_housekeeping.py` -- nothing else calls it, so leaving it in
+   place costs nothing and avoids touching a 1300+ line file further).
+   `agent_registry.list_agents()` now honestly returns `[]` rather than a
+   stale seed list.
+2. **Sections restored as Second Brain's own real concept -- genuinely
+   independent of Hermes**, per the operator's own explicit framing:
+   "Sections Part has Nothing to do with Hermes So You can Restore it."
+   `app/_archive/api/sections_router.py` was fully intact and
+   self-contained (only depends on `agent_registry`/`section_registry`,
+   both safe post-retirement) -- restored verbatim to `app/api/
+   sections_router.py`, wired into `main.py`. `section_registry.py`'s own
+   `_STARTING_SECTION_NAMES` updated to the operator's real taxonomy,
+   verbatim: "Our Sections will be (Customer, Liberian, Industry,
+   Technology, Data Gatherer, Sales)" -- all 6 created up front, most
+   empty today ("Show all 6 now, most empty... the map shows where things
+   will go, not just what exists today"), rather than only the ones with
+   a real agent. Section schema extended with `icon`/`color`/`subtitle`
+   (previously absent, a real pre-existing gap against what the frontend
+   already expected) defaulting to `null` -- not fabricated, real design
+   values are a later pass.
+3. **`features/agents-map/` retrofitted via a presentation-layer adapter
+   (`app/business/hermes/agents_map_adapter.py`), not by reviving the old
+   Agent CRUD/chat/action/job/knowledge-gap surface.** Investigated
+   reviving `app/_archive/api/agents_router.py`/`skills_router.py`
+   directly first -- rejected: they're real, working routers, but their
+   mutating endpoints (create, chat, trigger-action, PATCH assignment,
+   knowledge-gap resolve/research) have no real Hermes-side counterpart
+   to actually call, and using `agent_registry.create_agent()`'s own
+   shape to store 4 fabricated pseudo-agent records representing real
+   Hermes profiles would be exactly the kind of hand-maintained,
+   drift-prone duplicate ADR-003 was written to avoid. Built fresh,
+   view-only `app/api/agents_router.py`/`skills_router.py` instead, at
+   the SAME URL surface the frontend already calls (`/agents`,
+   `/agents/{id}`, `/skills`, `/agents/{id}/skills`) -- no frontend
+   rewiring needed for list/detail rendering. The adapter maps
+   `HermesAgent`/`HermesSkill` (ADR-003, kept a pure, undecorated mirror)
+   onto the frontend's existing `AgentSummary`/`AgentDetail`/
+   `SkillSummary` TypeScript contract:
+   - `type` (worker/producer/expert) -- operator's own explicit call,
+     verbatim: "Core is a pipeline, every step in the core is a worker,
+     File Agent and Notes Agents are Producers, no Experts Yet" -> Primary
+     and `opp-manager` are `worker`; `notes-manager`/`files-manager` are
+     `producer` (real static id->type table in the adapter, not a
+     per-agent guess).
+   - `section_id` -- all 4 real agents sit under the real "Data Gatherer"
+     Section (resolved by name via `section_registry`, never a bare
+     string literal, so a future rename can't silently desync it).
+   - `working_mode` -- `autonomous` for all 4 (operator: "All the same
+     mode" -> autonomous).
+   - `provider_id`/`provider_name` -- real, from `HermesAgent.provider`
+     (config.yaml's own `model.provider`, e.g. `"custom:compass"`), a new
+     honest field added to `hermes_definitions.py` for this.
+   - Fields with no honest Hermes equivalent (`settings`, `keywords`,
+     `scope`, `guardrails`, `color`, `depends_on`,
+     `branch_target_agent_id`) are left empty/`null`, never fabricated.
+   - Chat / Job tree / Knowledge-gaps tabs on `AgentDetailPanel.tsx`:
+     operator's own choice, "Show but disabled" -- rendered but inert for
+     a `source: "hermes"` agent, rather than hidden entirely or backed by
+     fake endpoints.
+
+**Alternatives Considered:**
+- *Sync Hermes agent data INTO `agents_registry.json`, reusing the old
+  `agent_registry.py`/`agents_router.py` machinery as-is* -- rejected
+  (see Decision 3): a lossy, hand-maintained duplicate with no real
+  write-endpoint backing, re-exposing full CRUD/chat/action surface over
+  data that isn't actually live-manageable that way.
+- *Leave the old agents in place, only add the new Hermes mirror
+  alongside them* -- rejected per the operator's own explicit
+  confirmation ("we're fully on Hermes now") -- keeping stale
+  Second-Brain-native agents around after their own architecture (ADR-001)
+  named them superseded serves no purpose and actively confuses "what's
+  real" on the map.
+- *Treat Sections as Hermes-scoped too, folding them into
+  `hermes_definitions.py`* -- rejected: Sections are a genuine
+  Second-Brain-native, user-mutable concept (ADR-014) that predates and
+  is independent of the Hermes work; conflating the two would violate
+  ADR-003's own "keep the Hermes mirror honest and undecorated" principle
+  from the other direction.
+
+**Consequences:** `app/_archive/api/agents_router.py`/`skills_router.py`
+remain archived, untouched, dead code -- not deleted (still a real
+historical/reference artifact per the archive's own README), just
+confirmed NOT the path taken. A real, pre-existing stale-state bug was
+found and fixed in the same pass: `.second-brain/agent_sections.json`
+had already been created (with the OLD 5-section seed list plus
+dangling assignments to now-retired agent ids) by an earlier app run
+before this ADR's seed-list change landed -- `section_registry.py`'s
+own seed-on-first-read logic only fires when the file doesn't exist at
+all, so updating `_STARTING_SECTION_NAMES` alone didn't retroactively
+fix an already-seeded install; the file was regenerated by hand to the
+real 6-section list with empty assignments. `/skills` today returns a
+genuinely large, noisy list (Primary alone carries ~78 bundled generic
+Hermes skills, e.g. `apple-notes`, `github-issues`, unrelated to Second
+Brain) -- accurate, not a bug, but likely needs real curation/filtering
+in a later UI pass before it's a good user-facing list.
+
+---
+
+## ADR-005: Every real Hermes cron job is ported as a Pipeline definition (`app/data_access/system/pipelines/*.json`), rendered as its own real Step tree on the map -- generalized the existing single-pipeline splice mechanism to N pipelines rather than special-casing a second one
+
+**Status:** Accepted
+**Date:** 2026-08-22
+
+**Context:** ADR-004 proved the pattern with one Pipeline ("Threads
+Builder", covering the real `email-delta-capture` cron job) by reusing
+`features/agents-map/pipelineJobTreeAdapter.ts`'s existing splice
+mechanism -- but that mechanism was hardcoded to exactly one pipeline id
+(`EMAIL_CAPTURE_PIPELINE_AGENT_ID`, originally the old
+`email-capture-pipeline` agent, repointed to `threads-builder`). The
+operator then asked for the rest: "Port the rest of the Pipelines now."
+The real Hermes cron surface (`hermes cron list`, confirmed live) has
+exactly 3 jobs total: `email-delta-capture` (already ported),
+`meeting-capture-recurring`, `new-company-discovery`.
+
+**Decision:**
+1. Two more real Pipeline definitions added, grounded in the actual,
+   first-hand-known behavior of the Skills each cron job runs:
+   - `meeting-builder.json` (`meeting-capture-recurring` /
+     `meeting-capture` Skill) -- Fetch Meetings -> Resolve Meeting Folder
+     (series vs. one-time, mirrors email-thread-capture's own
+     resolve-then-create pattern) -> Build Attendees -> Link to Thread.
+   - `company-discovery.json` (`new-company-discovery` /
+     `new-company-discovery` Skill) -- Scan Threads for Domains + Scan
+     Meetings for Domains (parallel; both real, independent scans) ->
+     Filter Known Domains -> Add to Entities.md. The recurring cron job is
+     ONLY the scan-and-queue half -- classification (Customer/Partner/
+     Affiliate/Ignore) happens separately, conversationally, on operator
+     review, and is deliberately NOT modeled as a step here.
+2. **Generalized the splice mechanism to N pipelines instead of adding a
+   second hardcoded id.** New `GET /pipelines` (`list_pipeline_refs()` in
+   `agents_map_adapter.py`) lets the frontend discover every real Pipeline
+   id without guessing from `AgentSummary`'s own fields.
+   `pipelineJobTreeAdapter.ts`'s `spliceEmailCapturePipelineJobTree`
+   (singular) replaced with `fetchAllPipelineJobTrees` +
+   `spliceAllPipelineJobTrees` (plural) -- fetches every Pipeline's own Job
+   tree in parallel, splices each independently; one Pipeline's failed
+   `/jobs` fetch degrades to "that one Pipeline's summary node stays
+   unspliced," never a blank Section (same degrade contract as the
+   original single-pipeline version, now per-pipeline instead of global).
+   `AgentsMapPage.tsx`'s own `jobs` state (a flat, cross-pipeline array,
+   since a Job is looked up by id alone) gained a sibling
+   `jobPipelineIds: Map<jobId, pipelineId>` -- `JobSettingsPanel` needs
+   the Job's REAL parent Pipeline id, not a hardcoded one, to ever ask the
+   right `/agents/{id}/jobs/{jobId}/settings` endpoint (that endpoint
+   itself is not yet built -- View Only scope, ADR-003/004 -- so the panel
+   still degrades to an error/empty state today, but now against the
+   correct id rather than a silently wrong one).
+
+**Alternatives Considered:**
+- *Add a second hardcoded pipeline id constant next to the first,
+  special-casing 2 (then 3) pipelines inline* -- rejected: the operator's
+  own framing ("Every Pipeline (Cron) Should be Added") makes clear this
+  is a real, open-ended set, not a fixed pair; hardcoding N pipeline ids
+  inline is the exact kind of thing that breaks silently the next time a
+  cron job is added and someone forgets to touch this file.
+- *Model Company Discovery's classification step too, to keep every
+  Pipeline at a uniform "4 real steps"* -- rejected: classification is
+  real, but it's NOT part of what the recurring cron job itself does end
+  to end (it happens later, conversationally, on a different trigger) --
+  forcing it in as a step would misrepresent the actual automated flow
+  just to hit a step-count expectation.
+
+**Consequences:** Verified live end-to-end (Browser pane, real running
+dev servers) -- "6 sections · 13 agents mapped" (Primary + 4+4+4 real
+Steps across the three Pipelines), Company Discovery's own fork/merge
+shape (two parallel scan Steps feeding one Filter Step) renders correctly,
+confirming the tree layout handles a real multi-dependency Step, not just
+the linear chain Threads Builder happened to be. A real backend-hot-reload
+gap was hit and fixed along the way (see ADR-004's own similar note) --
+`WatchFiles` reloaded once for an early edit in this pass and then
+silently stopped detecting further changes to `agents_router.py`, serving
+stale code (a real 404 on `/agents/threads-builder/jobs`) until the dev
+server was stopped and restarted cleanly; worth remembering as the
+reliable fix whenever the map looks stale after a backend edit that
+should have taken effect.
+
+---
+
+## ADR-006: A new "Hermes Operations" page reads cron jobs/schedule/run-history/logs by direct file+sqlite access (no gateway dependency), and a genuine two-way chat bridge proxies Hermes' real JSON-RPC-over-WebSocket protocol rather than reimplementing or approximating it
+
+**Status:** Accepted
+**Date:** 2026-08-22
+
+**Context:** Operator: "Reading Corn Jobs and Their Schedule, Server
+Status, Schedule of the corn jobs and Status of it and Details Log so we
+can link and know what happened" (first, scoped-read piece of a larger
+"Hermes Library" initiative), followed mid-task by "Add as well how to
+chat with Agent Back and Forth Communication when the Gateway is up."
+Investigation (read-only, against this machine's real Hermes install)
+found: cron jobs live in plain `<HERMES_HOME>/cron/jobs.json`; run history
+lives in `<HERMES_HOME>/cron/executions.db` (SQLite); each run's own
+report is a markdown file under `cron/output/<job_id>/`, and its own raw
+log lines carry a derivable session tag in `logs/agent.log` -- all four
+readable directly, no gateway/CLI process required (consistent with
+ADR-001/hermes_definitions.py's existing "not ours to own, read the real
+files" precedent). Separately, Hermes' own embedded chat turned out NOT to
+be a REST endpoint -- confirmed live (hand-driving `/api/ws`'s real
+`session.create`/`prompt.submit`/event-stream protocol against the running
+gateway, getting a genuine model reply back) before writing any
+integration code.
+
+**Decision:**
+1. **Cron/schedule/status/log surface, entirely read-only, entirely direct
+   file/db access:** new `app/data_access/hermes_cron.py`
+   (`list_cron_jobs`/`get_cron_job`/`list_cron_executions`/
+   `get_execution_detail`) reads `jobs.json` + `executions.db` +
+   timestamp-derived report/log paths directly, same pattern as
+   `hermes_definitions.py` -- no local persistence, every call re-reads the
+   real source, can never drift. Business wrapper
+   `hermes_cron_status.py` (ADR-005 point 5's "router never reaches
+   data_access/ directly" shape) turns the dataclasses into plain dicts.
+   Server/gateway status reuses the EXISTING `hermes_status.py`/
+   `/hermes/status` built earlier this session -- not rebuilt.
+2. **Chat is a genuine bidirectional proxy, not a REST wrapper attempt:**
+   new `app/data_access/hermes_ws_client.py::HermesChatSession` is a real
+   async JSON-RPC-over-WebSocket client (one Hermes `/api/ws` connection +
+   one Hermes chat session per instance), reusing `hermes_client.py`'s
+   already-cached session token (passed as `?token=` on the WS handshake,
+   the one endpoint that takes it as a query param rather than a header).
+   `app/api/hermes_router.py::chat_ws` (`WEBSOCKET /hermes/chat/{agent_id}`)
+   bridges a browser WebSocket to this session 1:1 -- every real Hermes
+   event frame (`message.delta`/`message.complete`/`thinking.delta`/
+   `approval.request`/etc.) passed through verbatim as `{"type","payload"}`
+   rather than reinterpreted, so the frontend decides what to render and
+   nothing real is silently dropped. `session.create`'s own `profile` param
+   scopes a chat to a specific non-Primary specialist (`opp-manager`/
+   `notes-manager`/`files-manager`); omitted for `"default"` (Primary),
+   since that id is the launch identity itself, not a real `profiles/
+   default` directory the param could resolve.
+3. New page `HermesOpsPage.tsx` (route `/hermes`, nav "Hermes Operations")
+   -- Server Status card, expandable Cron Jobs list (click a job for its
+   run history, click a run for its linked report + raw log lines), and a
+   Chat panel (agent picker limited to the 4 real Hermes agents --
+   Pipelines are Second Brain's own synthetic entries with no live Hermes
+   profile behind them, deliberately excluded from the chat picker).
+
+**Alternatives Considered:**
+- *Shell out to `hermes cron list`/`hermes cron runs <id>` instead of
+  reading `jobs.json`/`executions.db` directly* -- rejected for READS
+  specifically (the operator's own "shell out to the CLI for writes"
+  recommendation from the same investigation was scoped to WRITES, where
+  reimplementing Hermes' own file-format/locking logic would be risky;
+  reads have no such risk, and direct file/db access matches the existing,
+  already-working `hermes_definitions.py` precedent exactly).
+- *Approximate chat with a single-shot REST-style "send and poll for
+  result" wrapper* -- rejected: Hermes has no such endpoint: the ONLY real
+  send-a-message surface is the stateful, streaming `/api/ws` JSON-RPC
+  protocol. A polling approximation would mean inventing a protocol Hermes
+  doesn't have, silently losing the real streaming/approval/clarify
+  signals, and diverging further from Hermes' actual behavior over time.
+- *Build only a minimal single-turn chat (no streaming, no approvals)* --
+  offered to the operator as the smaller option; operator chose the full
+  version (streaming, session reuse, approval/clarify handling) explicitly,
+  accepting the larger scope.
+
+**Consequences:** Verified live, end to end, through the real running
+dev servers (Browser pane) -- not just unit-level: the WS chat protocol
+was hand-driven against the live gateway BEFORE any backend code was
+written (confirmed the exact wire shape, avoiding a wrong-shape rebuild
+later); Second Brain's own `/hermes/chat/{agent_id}` proxy was then
+smoke-tested standalone (real "PONG"-style reply received) before wiring
+the frontend; and finally the full page was exercised in the browser
+itself -- expanding a real cron job's run history, drilling into a real
+run's linked report + matching log lines, and sending a real chat message
+through the actual page UI and getting a real streamed reply back from
+Primary. Two real frontend bugs were found and fixed in this same pass
+(both `useEffect(() => fetchX().then(setY), [])`-style implicit-arrow-
+return-of-a-Promise mistakes, not the tool's fault) -- a `useEffect`
+callback must never itself return anything other than `undefined` or a
+cleanup function; wrap the body in braces whenever the effect exists only
+to kick off a `.then()` chain.
+
+---
