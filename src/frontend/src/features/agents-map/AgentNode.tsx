@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { MockAgent } from './mockAgents';
 import { polarToCartesian, type Point } from './polarLayout';
-import { getVisualIconName } from './visualOptions';
+import { getVisualIconName, getIconColorForBackground } from './visualOptions';
 
 interface AgentNodeProps {
   agent: MockAgent;
@@ -78,7 +78,13 @@ export function AgentNode({ agent, onSelect, compact, large, radiusOverride, ang
   // this node's own default type-colored treatment untouched.
   const iconName = getVisualIconName(agent.icon);
   const style: CSSProperties = { top: `${y}%`, left: `${x}%` };
-  if (agent.color) style['--node-color' as string] = agent.color;
+  if (agent.color) {
+    style['--node-color' as string] = agent.color;
+    // Only meaningful for a CUSTOM color -- the 3 default Type colors
+    // keep using --color-on-accent via the CSS fallback below, unchanged.
+    const iconColor = getIconColorForBackground(agent.color);
+    if (iconColor) style['--node-icon-color' as string] = iconColor;
+  }
   return (
     <button
       type="button"

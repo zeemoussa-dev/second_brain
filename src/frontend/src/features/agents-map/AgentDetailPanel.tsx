@@ -1,18 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   fetchAgent,
   fetchAgentHistory,
   fetchAgentKnowledgeGaps,
   researchKnowledgeGap,
   resolveKnowledgeGap,
-  sendChatMessage,
-  sendChatMessageWithAttachment,
   updateAgentAssignment,
   type AgentDetail,
   type AgentHistoryEntry,
   type KnowledgeGapsResponse,
 } from './agentsApiClient';
-import { fetchSections, fetchProviders, type SectionSummary, type ProviderSummary } from '../settings/settingsApiClient';
+import { fetchSections, type SectionSummary } from '../settings/settingsApiClient';
 import {
   fetchPendingApproval,
   approvePendingApproval,
@@ -32,17 +30,20 @@ import {
   type AgentSchedule,
 } from './agentSchedulesApiClient';
 import { ApiError } from '../../api/client';
-import { ChatMessageText } from '../../components/ChatMessageText';
+import { AgentChatPanel } from '../chat/AgentChatPanel';
+import { fetchHermesSessions, type HermesSession } from '../hermes-ops/client';
 
 interface AgentDetailPanelProps {
   agentId: string;
   onClose: () => void;
-}
-
-interface ChatMessage {
-  role: 'user' | 'agent';
-  text: string;
-  isError?: boolean;
+  // 2026-08-22 -- this panel's own `agent` state updates immediately on a
+  // successful mutation (setAgent(updated) below), so the panel itself
+  // always looked right; but AgentsMapPage's own separate `agents`/
+  // `fullAgents` state (what the actual map canvas renders from) never
+  // got told anything changed, so the NODE on the map stayed stale until
+  // a full page reload re-ran refreshAgents(). Optional so this panel
+  // still works standalone/in tests with no parent to notify.
+  onAgentUpdated?: () => void;
 }
 
 const TABS = ['overview', 'chat', 'history', 'settings', 'schedule', 'visual'] as const;
@@ -64,6 +65,11 @@ function getAgentPurpose(agent: AgentDetail): string {
   if (purposeEntry) return purposeEntry.value;
   const domainEntry = agent.settings.find((row) => row.key === 'Domain');
   if (domainEntry) return domainEntry.value;
+  // 2026-08-22 -- a Hermes-sourced agent (ADR-003/004) never has a
+  // Purpose/Domain settings row (that shape is deliberately never
+  // fabricated), but DOES have a real `prompt` (its own profile's real
+  // description/SOUL.md excerpt) -- fall back to that before giving up.
+  if (agent.prompt) return agent.prompt;
   return 'No stated purpose recorded for this agent.';
 }
 
@@ -75,6 +81,23 @@ const WORKING_MODE_LABELS: Record<AgentDetail['working_mode'], string> = {
 
 const GUARDRAILS_STATEMENT =
   "Replies are grounded in what this agent's own tools actually find in the vault — it honestly says it doesn't know rather than guessing.";
+
+// Same formatting as AgentActivityPage.tsx's own (duplicated per this
+// codebase's small-helper convention, ADR-002) -- Hermes session
+// timestamps are real UNIX epoch seconds, not pre-formatted strings.
+function formatSessionTimestamp(epochSeconds: number | null): string {
+  if (epochSeconds === null) return '—';
+  return new Date(epochSeconds * 1000).toLocaleString();
+}
+
+function formatSessionDuration(startedAt: number | null, endedAt: number | null): string {
+  if (startedAt === null || endedAt === null) return '—';
+  const totalSeconds = Math.max(0, Math.round(endedAt - startedAt));
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainingSeconds = totalSeconds % 60;
+  return `${minutes}m ${remainingSeconds}s`;
+}
 
 // The full catalog (all 11 real Skills, REQ-SB-48-US-01-AC-01), each marked
 // granted/not-yet-granted against the agent's own current skill-kind
@@ -89,16 +112,10 @@ function buildSkillsTreeItems(catalog: SkillSummary[], capabilities: AgentDetail
   }));
 }
 
-const ACCEPTED_EXTENSIONS = ['.pdf', '.txt', '.md'];
-
-export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
+export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDetailPanelProps) {
   const [agent, setAgent] = useState<AgentDetail | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [draft, setDraft] = useState('');
-  const [sending, setSending] = useState(false);
   const [history, setHistory] = useState<AgentHistoryEntry[] | null>(null);
   const [sections, setSections] = useState<SectionSummary[] | null>(null);
-  const [providers, setProviders] = useState<ProviderSummary[] | null>(null);
   const [skillCatalog, setSkillCatalog] = useState<SkillSummary[] | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [keywordsDraft, setKeywordsDraft] = useState('');
@@ -108,10 +125,16 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
   const [scopeSuggestions, setScopeSuggestions] = useState<ScopeSuggestions | null>(null);
   const [approvals, setApprovals] = useState<Record<string, PendingApproval>>({});
   const [gapsData, setGapsData] = useState<KnowledgeGapsResponse | null>(null);
+  // 2026-08-23 -- this Agent's own real Hermes session log (operator:
+  // "the Overview tab should show these Hermes sessions per agent too"),
+  // server-side filtered by agentId (a real Agent's own id IS its real
+  // Hermes profile id -- hermes_definitions.py's own PRIMARY_PROFILE_ID =
+  // "default" etc.). null while not yet fetched, [] once fetched with no
+  // real sessions found (a Pipeline id, or a genuinely brand-new Agent) --
+  // never fabricated as a placeholder entry either way.
+  const [hermesSessions, setHermesSessions] = useState<HermesSession[] | null>(null);
   const [gapAnswerDrafts, setGapAnswerDrafts] = useState<Record<string, string>>({});
   const [researchingGapId, setResearchingGapId] = useState<string | null>(null);
-  const [attachedFile, setAttachedFile] = useState<File | null>(null);
-  const [attachError, setAttachError] = useState<string | null>(null);
   const [schedules, setSchedules] = useState<AgentSchedule[] | null>(null);
   const [agentSkills, setAgentSkills] = useState<SkillSummary[] | null>(null);
   const [scheduleEditingCapabilityId, setScheduleEditingCapabilityId] = useState<string | null>(null);
@@ -121,14 +144,9 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [runningNowCapabilityId, setRunningNowCapabilityId] = useState<string | null>(null);
-  const threadEndRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setAgent(null); // clear stale content immediately on agent switch
-    setMessages([]); // clear the previous agent's chat thread on switch
-    setDraft('');
-    setSending(false);
     setHistory(null); // clear the previous agent's history on switch
     setActiveTab('overview');
     setKeywordsDraft('');
@@ -137,10 +155,9 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
     setGuardrailsDraft('');
     setScopeSuggestions(null); // clear the previous agent's suggestion snapshot on switch
     setGapsData(null);
+    setHermesSessions(null); // clear the previous agent's session log on switch
     setGapAnswerDrafts({});
     setResearchingGapId(null);
-    setAttachedFile(null); // clear the previous agent's staged attachment on switch
-    setAttachError(null);
     setSchedules(null); // clear the previous agent's schedules on switch
     setAgentSkills(null);
     setScheduleEditingCapabilityId(null);
@@ -157,14 +174,9 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
     });
     fetchAgentHistory(agentId).then(setHistory);
     fetchSections().then(setSections);
-    fetchProviders().then(setProviders);
     fetchSkills().then(setSkillCatalog);
     fetchScopeSuggestions().then(setScopeSuggestions);
   }, [agentId]);
-
-  useEffect(() => {
-    threadEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages, sending]);
 
   useEffect(() => {
     if (!history) return;
@@ -196,6 +208,13 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
     }
   }, [activeTab, agentId, agent?.type]);
 
+  useEffect(() => {
+    // History tab, not Overview (operator, 2026-08-23: "The Hermes
+    // Sessions in Agent Should be in the History not in Overview").
+    if (activeTab !== 'history') return;
+    fetchHermesSessions(30, 0, agentId).then((response) => setHermesSessions(response.sessions));
+  }, [activeTab, agentId]);
+
   function refetchSchedulesAndHistory() {
     fetchSchedules(agentId).then(setSchedules);
     fetchAgentHistory(agentId).then(setHistory);
@@ -210,31 +229,31 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
   async function handleSectionChange(sectionId: string) {
     const updated = await updateAgentAssignment(agentId, { section_id: sectionId });
     setAgent(updated);
-  }
-
-  async function handleProviderChange(providerId: string) {
-    const updated = await updateAgentAssignment(agentId, { provider_id: providerId });
-    setAgent(updated);
+    onAgentUpdated?.();
   }
 
   async function handleWorkingModeChange(workingMode: string) {
     const updated = await updateAgentAssignment(agentId, { working_mode: workingMode });
     setAgent(updated);
+    onAgentUpdated?.();
   }
 
   async function handleIsBackgroundAgentChange(isBackgroundAgent: boolean) {
     const updated = await updateAgentAssignment(agentId, { is_background_agent: isBackgroundAgent });
     setAgent(updated);
+    onAgentUpdated?.();
   }
 
   async function handleIconChange(iconId: string) {
     const updated = await updateAgentAssignment(agentId, { icon: iconId });
     setAgent(updated);
+    onAgentUpdated?.();
   }
 
   async function handleColorChange(colorHex: string) {
     const updated = await updateAgentAssignment(agentId, { color: colorHex });
     setAgent(updated);
+    onAgentUpdated?.();
   }
 
   async function handleVisualReset() {
@@ -242,6 +261,7 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
     // (agent_visual_registry.py) — distinct from omitting the field.
     const updated = await updateAgentAssignment(agentId, { icon: '', color: '' });
     setAgent(updated);
+    onAgentUpdated?.();
   }
 
   async function handleApprove(approvalId: string) {
@@ -260,12 +280,14 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
     await grantAgentSkill(agentId, skillId);
     const updated = await fetchAgent(agentId);
     setAgent(updated);
+    onAgentUpdated?.();
   }
 
   async function handleRevokeSkill(skillId: string) {
     await revokeAgentSkill(agentId, skillId);
     const updated = await fetchAgent(agentId);
     setAgent(updated);
+    onAgentUpdated?.();
   }
 
   // Multi-select bulk actions (REQ-SB-48-US-01-T02) -- N sequential calls to
@@ -281,6 +303,7 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
     }
     const updated = await fetchAgent(agentId);
     setAgent(updated);
+    onAgentUpdated?.();
   }
 
   async function handleBulkRevokeSkills(skillIds: string[]) {
@@ -289,6 +312,7 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
     }
     const updated = await fetchAgent(agentId);
     setAgent(updated);
+    onAgentUpdated?.();
   }
 
   async function handleKeywordsCommit() {
@@ -298,6 +322,7 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
       .filter((keyword) => keyword.length > 0);
     const updated = await updateAgentAssignment(agentId, { keywords });
     setAgent(updated);
+    onAgentUpdated?.();
     setKeywordsDraft(updated.keywords.join(', '));
   }
 
@@ -308,18 +333,21 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
       .filter((entry) => entry.length > 0);
     const updated = await updateAgentAssignment(agentId, { scope });
     setAgent(updated);
+    onAgentUpdated?.();
     setScopeDraft(updated.scope.join(', '));
   }
 
   async function handlePromptCommit() {
     const updated = await updateAgentAssignment(agentId, { prompt: promptDraft });
     setAgent(updated);
+    onAgentUpdated?.();
     setPromptDraft(updated.prompt ?? '');
   }
 
   async function handleGuardrailsCommit() {
     const updated = await updateAgentAssignment(agentId, { guardrails: guardrailsDraft });
     setAgent(updated);
+    onAgentUpdated?.();
     setGuardrailsDraft(updated.guardrails);
   }
 
@@ -348,6 +376,7 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
     const nextScope = Array.from(new Set([...parts.filter((entry) => entry.length > 0), value]));
     const updated = await updateAgentAssignment(agentId, { scope: nextScope });
     setAgent(updated);
+    onAgentUpdated?.();
     setScopeDraft(updated.scope.join(', '));
   }
 
@@ -434,65 +463,6 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
     }
   }
 
-  function handleFileSelect(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const extension = `.${file.name.split('.').pop()?.toLowerCase() ?? ''}`;
-    if (!ACCEPTED_EXTENSIONS.includes(extension)) {
-      setAttachError(
-        `'${extension}' files aren't supported yet — only PDF (.pdf), plain text (.txt), and Markdown (.md) files can be summarized today.`,
-      );
-      setAttachedFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
-    }
-    setAttachError(null);
-    setAttachedFile(file);
-  }
-
-  function handleRemoveAttachment() {
-    setAttachedFile(null);
-    setAttachError(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  }
-
-  async function handleSend(event: React.FormEvent) {
-    event.preventDefault();
-    const text = draft.trim();
-    if ((!text && !attachedFile) || sending) return;
-    const bubbleText = attachedFile ? `${text} [attached: ${attachedFile.name}]`.trim() : text;
-    setMessages((prev) => [...prev, { role: 'user', text: bubbleText }]);
-    setDraft('');
-    const fileToSend = attachedFile;
-    setAttachedFile(null);
-    setAttachError(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-    setSending(true);
-    try {
-      if (fileToSend) {
-        const response = await sendChatMessageWithAttachment(agentId, text, fileToSend);
-        setMessages((prev) => [
-          ...prev,
-          { role: 'agent', text: response.reply, isError: response.attachment_status === 'rejected' },
-        ]);
-      } else {
-        const response = await sendChatMessage(agentId, text);
-        setMessages((prev) => [...prev, { role: 'agent', text: response.reply }]);
-      }
-      fetchAgentHistory(agentId).then(setHistory);
-    } catch {
-      // A real Compass-backed reply can genuinely fail (network error,
-      // Provider timeout) -- surfaced honestly in the thread itself, not
-      // silently dropped, matching this project's own "honest, not
-      // fabricated/swallowed" posture already established for actions.
-      setMessages((prev) => [
-        ...prev,
-        { role: 'agent', text: 'Something went wrong sending that message. Please try again.', isError: true },
-      ]);
-    } finally {
-      setSending(false);
-    }
-  }
 
   return (
     <>
@@ -532,6 +502,12 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
                 <div className="side-panel-section" data-testid="agent-overview-tab">
                   <h3>Overview</h3>
                   <div className="kv-list">
+                    {agent.description && (
+                      <div className="kv-row" data-testid="overview-description">
+                        <span className="kv-key">Description</span>
+                        <span>{agent.description}</span>
+                      </div>
+                    )}
                     <div className="kv-row" data-testid="overview-purpose">
                       <span className="kv-key">Purpose</span>
                       <span>{getAgentPurpose(agent)}</span>
@@ -602,19 +578,19 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
                       </div>
                       <div className="kv-row">
                         <span className="kv-key">Provider</span>
-                        {providers && (
-                          <select
-                            className="input kv-select"
-                            value={agent.provider_id}
-                            onChange={(event) => handleProviderChange(event.target.value)}
-                          >
-                            {providers.map((provider) => (
-                              <option key={provider.id} value={provider.id}>
-                                {provider.name}{provider.is_default ? ' (default)' : ''}
-                              </option>
-                            ))}
-                          </select>
-                        )}
+                        {/* Read-only (2026-08-23) -- a Hermes agent's real
+                            Provider comes straight from its own config.yaml
+                            (agent.provider_name, ADR-004 point 3) and has no
+                            real write path this panel can call: the old
+                            editable dropdown was populated by GET /providers,
+                            a Second-Brain-native registry endpoint that was
+                            never rebuilt after the Hermes retrofit (a real
+                            404 on every panel open), and even had it
+                            resolved, agents_router.py's own PATCH body
+                            (AgentVisualUpdateBody) never reads a provider_id
+                            field at all -- selecting a different Provider
+                            would have silently done nothing. */}
+                        <span>{agent.provider_name || 'Unknown'}</span>
                       </div>
                       {!agent.provider_available && (
                         <p className="text-muted" style={{ fontSize: 'var(--font-size-sm)' }}>
@@ -761,69 +737,11 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
 
               {activeTab === 'chat' && (
                 <div className="side-panel-section side-panel-section--chat">
-                  <div className="chat-thread" data-role="agent-chat-thread">
-                    {messages.length === 0 && (
-                      <p className="text-muted chat-thread-empty">
-                        Ask {agent.name} anything, or send one of its known trigger
-                        phrases to run an action directly.
-                      </p>
-                    )}
-                    {messages.map((message, index) => (
-                      <div
-                        className={`chat-message chat-message--${message.role}${message.isError ? ' chat-message--error' : ''}`}
-                        key={index}
-                      >
-                        <ChatMessageText text={message.text} />
-                      </div>
-                    ))}
-                    {sending && (
-                      <div className="chat-message chat-message--agent chat-message--pending" aria-live="polite">
-                        <span className="chat-typing-dot" />
-                        <span className="chat-typing-dot" />
-                        <span className="chat-typing-dot" />
-                      </div>
-                    )}
-                    <div ref={threadEndRef} />
-                  </div>
-                  {attachError && (
-                    <p className="text-muted" data-role="chat-attach-error" role="alert">
-                      {attachError}
-                    </p>
-                  )}
-                  {attachedFile && (
-                    <div className="chat-attach-preview" data-role="chat-attach-preview">
-                      <span>📎 {attachedFile.name}</span>
-                      <button type="button" className="btn" onClick={handleRemoveAttachment}>
-                        Remove
-                      </button>
-                    </div>
-                  )}
-                  <form className="chat-input-row" onSubmit={handleSend}>
-                    <input
-                      type="text"
-                      className="input"
-                      placeholder={`Message ${agent.name}…`}
-                      value={draft}
-                      onChange={(event) => setDraft(event.target.value)}
-                      disabled={sending}
-                    />
-                    <input
-                      type="file"
-                      accept=".pdf,.txt,.md"
-                      data-role="chat-attach-input"
-                      aria-label="Attach file"
-                      ref={fileInputRef}
-                      onChange={handleFileSelect}
-                      disabled={sending}
-                    />
-                    <button
-                      type="submit"
-                      className="btn btn-primary"
-                      disabled={sending || (!draft.trim() && !attachedFile)}
-                    >
-                      {sending ? 'Sending…' : 'Send'}
-                    </button>
-                  </form>
+                  <AgentChatPanel
+                    agentId={agentId}
+                    agentName={agent.name}
+                    onMessageSent={() => fetchAgentHistory(agentId).then(setHistory)}
+                  />
                 </div>
               )}
 
@@ -855,6 +773,34 @@ export function AgentDetailPanel({ agentId, onClose }: AgentDetailPanelProps) {
                         <p className="text-muted">Nothing recorded yet.</p>
                       </div>
                     )
+                  )}
+
+                  <h3 style={{ marginTop: 'var(--space-4)' }}>Hermes sessions</h3>
+                  {hermesSessions === null ? (
+                    <p className="text-muted" style={{ fontSize: 'var(--font-size-sm)' }}>Loading...</p>
+                  ) : hermesSessions.length === 0 ? (
+                    <p className="text-muted" style={{ fontSize: 'var(--font-size-sm)' }} data-testid="history-no-sessions">
+                      No real Hermes sessions found for this agent yet.
+                    </p>
+                  ) : (
+                    <div className="log-list" data-testid="history-hermes-sessions">
+                      {hermesSessions.map((session) => (
+                        <div className="log-item" key={session.id}>
+                          <span>
+                            {session.is_active ? (
+                              <span className="badge badge-warning">Active</span>
+                            ) : (
+                              <span className="badge badge-success">Done</span>
+                            )}{' '}
+                            {session.title || '(untitled session)'} — {session.message_count} message
+                            {session.message_count === 1 ? '' : 's'}
+                            {session.ended_at !== null &&
+                              ` — ${formatSessionDuration(session.started_at, session.ended_at)}`}
+                          </span>
+                          <span className="log-item-meta">{formatSessionTimestamp(session.started_at)}</span>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
               )}

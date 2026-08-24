@@ -55,6 +55,14 @@ interface AgentsMapCanvasProps {
   // not the overview.
   selectedAgentId: string | null;
   onSelectAgent: (agentId: string) => void;
+  // 2026-08-23 -- opens SectionDetailPanel (Overview/Settings tabs, Name/
+  // Description/Icon/Color) for a Section's own Hub. Only reachable once
+  // already inside that Section's drill-down (SectionDrilldown.tsx passes
+  // this as the inner Hub's onActivate) -- the overview's own Hub click
+  // still zooms into the drill-down first, matching the existing "click an
+  // Agent inside a drill-down to open its own detail panel" pattern rather
+  // than overloading the overview Hub click with two different meanings.
+  onSelectSection: (sectionId: string) => void;
 }
 
 // Widened click-to-zoom target (REQ-SB-38-US-01) — BUG-002 Option D's
@@ -64,7 +72,7 @@ interface AgentsMapCanvasProps {
 // are always `${sectionId}-${type}-cluster`, never a bare sectionId).
 type ZoomTarget = { kind: 'section'; id: string } | { kind: 'cluster'; id: string };
 
-export function AgentsMapCanvas({ sections, agents, fullAgents, clusters, dependencyEdges, selectedAgentId, onSelectAgent }: AgentsMapCanvasProps) {
+export function AgentsMapCanvas({ sections, agents, fullAgents, clusters, dependencyEdges, selectedAgentId, onSelectAgent, onSelectSection }: AgentsMapCanvasProps) {
   const hasAgents = sections.length > 0 && agents.length > 0;
 
   // Drill-down / semantic-zoom state (BUG-002 fix, Option D) — both local
@@ -295,21 +303,30 @@ export function AgentsMapCanvas({ sections, agents, fullAgents, clusters, depend
                   // White, not accent-colored (operator, 2026-08-15:
                   // "Lines that Connects Agents should be White Slimmer").
                   const stroke = 'var(--color-text)';
-                  // Only an agent with no real dependency-tree predecessor
-                  // gets a direct Hub line — a standalone agent (no
-                  // depends_on at all) IS its own root, so this still
-                  // covers the plain single-agent case unchanged. Every
-                  // other Job in a multi-stage pipeline already has a real
-                  // line to its own predecessor (below); operator,
-                  // 2026-08-16: "All Agents Are Connected to the hub while
-                  // it should be the last one in the Tree" (root-only,
-                  // confirmed directly) — a second, redundant Hub spoke on
-                  // top of the tree's own edges was the bug.
-                  const dependentAgentIds = new Set(
-                    dependencyEdges.filter((edge) => edge.sectionId === section.id).map((edge) => edge.toAgentId),
+                  // Only an agent with no real dependency-tree SUCCESSOR
+                  // gets a direct Hub line — the terminal/producer stage
+                  // that actually writes to the vault, not the entry point
+                  // that merely fetches raw external data. A standalone
+                  // agent (no depends_on either direction) is both its own
+                  // root and its own terminal, so the plain single-agent
+                  // case is unchanged. Fixed 2026-08-23 (operator: "Link to
+                  // the Hub Should be The Nodes that Actually write to the
+                  // Vault, I can See The nodes that Write to the Hub are
+                  // the Farest from the Section Hub, Which is not
+                  // Correct") — this previously filtered to ROOTS (agents
+                  // with no PREDECESSOR), which drew the Hub spoke to the
+                  // pipeline's own entry point instead: backwards from the
+                  // operator's own original 2026-08-16 framing ("it should
+                  // be the last one in the Tree"), and the longest possible
+                  // line (root sits at the OUTERMOST radius per the
+                  // depth->radius flip below), which is also what made it
+                  // sweep across other chains' territory and cross their
+                  // own inner edges.
+                  const agentsWithSuccessor = new Set(
+                    dependencyEdges.filter((edge) => edge.sectionId === section.id).map((edge) => edge.fromAgentId),
                   );
                   const lines: ReactElement[] = agentPoints
-                    .filter(({ agent }) => !dependentAgentIds.has(agent.id))
+                    .filter(({ agent }) => !agentsWithSuccessor.has(agent.id))
                     .map(({ agent, point }) => {
                       const hubEdge = pointTowards(hubCenter, point, HUB_VISUAL_RADIUS);
                       return (
@@ -517,6 +534,7 @@ export function AgentsMapCanvas({ sections, agents, fullAgents, clusters, depend
           onBack={handleBack}
           onNavigate={handleNavigateSection}
           onSelectAgent={onSelectAgent}
+          onOpenSectionSettings={onSelectSection}
         />
       )}
       {activeCluster && activeClusterSection && (

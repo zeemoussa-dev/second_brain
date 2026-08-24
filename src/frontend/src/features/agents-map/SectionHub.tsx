@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { AgentSection } from './mockAgents';
 import { HUB_RADIUS, polarToCartesian } from './polarLayout';
+import { getVisualIconName } from './visualOptions';
 
 interface SectionHubProps {
   section: AgentSection;
@@ -60,7 +61,16 @@ export function SectionHub({
   // glyph falls back to the generic "hub" glyph the same way.
   const style: CSSProperties = { top: `${y}%`, left: `${x}%` };
   if (section.color) style['--hub-color' as string] = section.color;
-  const iconGlyph = section.icon ?? 'hub';
+  // Same picker-id -> real-ligature resolution AgentNode.tsx already
+  // applies (2026-08-16, "icons still not visible on agents") -- a
+  // Section's own icon can be a VisualPicker `id` (e.g. "compass") whose
+  // real Material Symbols ligature differs ("explore"); rendering the id
+  // directly renders the literal word instead of substituting the glyph.
+  // SectionHub never got this same fix, so any Section using one of the
+  // handful of id!=ligature entries (VISUAL_ICONS in visualOptions.ts)
+  // showed unreadable text instead of its icon -- both here (overview)
+  // and in SectionDrilldown.tsx, which renders this same component.
+  const iconGlyph = getVisualIconName(section.icon) ?? 'hub';
 
   if (onActivate) {
     return (

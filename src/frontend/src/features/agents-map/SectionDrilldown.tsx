@@ -38,6 +38,12 @@ interface SectionDrilldownProps {
   // otherwise (a different Section's agent, or none) the canvas stays
   // at its normal framing.
   selectedAgentId: string | null;
+  // 2026-08-23 -- opens SectionDetailPanel for this Section's own Hub.
+  // Wired ONLY here (not the overview's SectionHub), so a click on the
+  // already-non-interactive drill-down Hub gains a real behavior instead
+  // of staying a dead click target, while the overview Hub keeps its
+  // existing "zoom into this drill-down" meaning unchanged.
+  onOpenSectionSettings: (sectionId: string) => void;
 }
 
 // Hub now sits near the BOTTOM of the canvas, not literal center (operator,
@@ -78,7 +84,7 @@ const FOCUS_ZOOM_SCALE = 3;
 // is positioned via the same top/left % point the focused node itself
 // uses.
 
-export function SectionDrilldown({ section, sections, agents, dependencyEdges, onBack, onNavigate, onSelectAgent, selectedAgentId }: SectionDrilldownProps) {
+export function SectionDrilldown({ section, sections, agents, dependencyEdges, onBack, onNavigate, onSelectAgent, selectedAgentId, onOpenSectionSettings }: SectionDrilldownProps) {
   const sectionAgents = layoutSectionDrilldown(
     agents.filter((agent) => agent.sectionId === section.id),
   );
@@ -132,12 +138,19 @@ export function SectionDrilldown({ section, sections, agents, dependencyEdges, o
     sectionAgents.map((agent) => [agent.id, polarToCartesian(agent.radius, agent.angleDeg, hubPoint)]),
   );
   const sectionDependencyEdges = dependencyEdges.filter((edge) => edge.sectionId === section.id);
-  // Any agent that's the TARGET of a real depends_on edge gets its line
-  // from that predecessor instead — only agents with no predecessor here
-  // (a pipeline's own entry point, or a standalone agent) connect
-  // straight to the Hub.
-  const agentsWithPredecessor = new Set(sectionDependencyEdges.map((edge) => edge.toAgentId));
-  const rootAgents = sectionAgents.filter((agent) => !agentsWithPredecessor.has(agent.id));
+  // Only the terminal/producer stage (nothing depends_on IT — the one
+  // that actually writes to the vault) connects straight to the Hub;
+  // every earlier stage already has a real line to its own successor
+  // below. Fixed 2026-08-23 (operator: "Link to the Hub Should be The
+  // Nodes that Actually write to the Vault... the nodes that Write to
+  // the Hub are the Farest from the Section Hub, Which is not
+  // Correct") — same bug/fix as AgentsMapCanvas.tsx's own overview
+  // rendering: this used to filter to agents with no PREDECESSOR (the
+  // pipeline's own entry point), the exact opposite of what the operator
+  // asked for and the longest possible line (an entry point sits at the
+  // OUTERMOST radius, layoutAgents.ts's own depth->radius flip).
+  const agentsWithSuccessor = new Set(sectionDependencyEdges.map((edge) => edge.fromAgentId));
+  const terminalAgents = sectionAgents.filter((agent) => !agentsWithSuccessor.has(agent.id));
   const hoveredAgent = hoveredAgentId ? sectionAgents.find((agent) => agent.id === hoveredAgentId) ?? null : null;
   const hoveredAgentPoint = hoveredAgent ? pointById.get(hoveredAgent.id) ?? null : null;
   // Only resolves when the open panel's agent belongs to THIS Section —
@@ -251,7 +264,7 @@ export function SectionDrilldown({ section, sections, agents, dependencyEdges, o
           <div className="section-ghost-name" aria-hidden="true">{section.label}</div>
           {hasAgents && (
             <svg className="agents-map-lines" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
-              {rootAgents.map((agent) => {
+              {terminalAgents.map((agent) => {
                 const point = pointById.get(agent.id);
                 if (!point) return null;
                 const hubEdge = pointTowards(hubPoint, point, DRILLDOWN_HUB_VISUAL_RADIUS);
@@ -297,6 +310,7 @@ export function SectionDrilldown({ section, sections, agents, dependencyEdges, o
             // overview map — the exact same point hubPoint above
             // computes.
             angleOffsetDeg={DRILLDOWN_HUB_ANGLE_DEG - section.hubAngleDeg}
+            onActivate={() => onOpenSectionSettings(section.id)}
           />
           {sectionAgents.map((agent) => (
             <AgentNode

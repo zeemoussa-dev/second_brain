@@ -30,6 +30,23 @@ export const VISUAL_ICONS: VisualIconOption[] = [
   { id: 'calendar', icon: 'calendar_month', label: 'Calendar' },
   { id: 'bell', icon: 'notifications', label: 'Bell' },
   { id: 'link', icon: 'link', label: 'Link' },
+  // 2026-08-22 (operator: "very small amount") -- roughly doubled, biased
+  // toward this app's own real domain (agents, pipelines, vault/data)
+  // rather than generic filler.
+  { id: 'hub', icon: 'hub', label: 'Hub' },
+  { id: 'pipeline', icon: 'conveyor_belt', label: 'Pipeline' },
+  { id: 'workflow', icon: 'account_tree', label: 'Workflow' },
+  { id: 'route', icon: 'route', label: 'Route' },
+  { id: 'bolt', icon: 'bolt', label: 'Bolt' },
+  { id: 'database', icon: 'database', label: 'Database' },
+  { id: 'inbox', icon: 'inbox', label: 'Inbox' },
+  { id: 'send', icon: 'send', label: 'Send' },
+  { id: 'description', icon: 'description', label: 'Description' },
+  { id: 'auto', icon: 'auto_awesome', label: 'Auto' },
+  { id: 'group', icon: 'group', label: 'Group' },
+  { id: 'public', icon: 'public', label: 'Public' },
+  { id: 'lock', icon: 'lock', label: 'Lock' },
+  { id: 'verified', icon: 'verified', label: 'Verified' },
 ];
 
 // Curated palette: this app's own real accent + Agent-type tokens
@@ -73,4 +90,29 @@ export const VISUAL_COLORS: string[] = [
 export function getVisualIconName(iconId: string | null): string | null {
   if (!iconId) return null;
   return VISUAL_ICONS.find((icon) => icon.id === iconId)?.icon ?? iconId;
+}
+
+// 2026-08-22 (operator: "the Icon Colors should be Smart to go between
+// dark and light based on the color") -- .agent-node--autonomous's own
+// filled-node icon color was a single hardcoded token (--color-on-accent,
+// dark) tuned for the 3 original Type colors only. Once a custom color
+// from VISUAL_COLORS' full 10-swatch palette can be picked per agent
+// (some genuinely dark, e.g. #4f46e5/#7c3aed/#b91c1c), a fixed dark icon
+// goes invisible against them. Standard relative-luminance formula (WCAG's
+// own simplified perceptual weighting -- green reads brighter to the eye
+// than red or blue at the same numeric value) decides light-icon-on-dark
+// vs dark-icon-on-light; the two return values are this app's own real
+// --color-on-accent (dark) and --color-text (near-white) tokens, not new
+// invented colors, so the result stays visually consistent with
+// everywhere else those tokens are already used.
+export function getIconColorForBackground(hex: string | null): string | undefined {
+  if (!hex) return undefined;
+  const match = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!match) return undefined;
+  const value = match[1];
+  const r = parseInt(value.slice(0, 2), 16);
+  const g = parseInt(value.slice(2, 4), 16);
+  const b = parseInt(value.slice(4, 6), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.55 ? 'var(--color-on-accent)' : 'var(--color-text)';
 }

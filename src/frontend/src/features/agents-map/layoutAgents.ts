@@ -270,8 +270,20 @@ export interface DependencyEdge {
 // direction-aware, not as one combined total, so a busy fan-out stage
 // with 2 children and a busy merge with 2 parents can each still reach
 // their own real cap independently.
+//
+// MAX_OUTGOING raised to 3 (2026-08-24, found live: "Solutions Expert in
+// Compass not linked to Compass Expert in Agentic Map") — `compass-expert`
+// is the first individual AGENT (not a pipeline Job) to have more than 2
+// real dependents, relaying to 3 sub-specialists by explicit design
+// (`compass-pricing-expert`/`compass-solutions`/`compass-models-expert`,
+// see MEMORY.md's own "one real domain, one Hermes profile" entries) --
+// the cap silently dropped the 3rd edge (`compass-solutions`, whichever
+// happened to iterate last) with no visual indication anything was
+// missing. Safe to raise: real pipeline Jobs never exceed 2 by the same
+// data-model constraint this cap already documents, so this only ever
+// changes rendering for a case like compass-expert's.
 const MAX_INCOMING_CONNECTIONS = 2;
-const MAX_OUTGOING_CONNECTIONS = 2;
+const MAX_OUTGOING_CONNECTIONS = 3;
 
 function buildDependencyEdges(
   mapAgents: MockAgent[],
@@ -380,6 +392,20 @@ export function layoutAgents(agents: AgentSummary[], sectionList: SectionSummary
   // their dependent — built from the full, unfiltered `agents` param.
   const agentsById = new Map(agents.map((agent) => [agent.id, agent]));
   const depthCache = new Map<string, number>();
+  // 2026-08-23 (operator: "the Agents that are solo, They are Far away
+  // from the Section Hub They need to be Closer") -- a genuinely solo
+  // agent (no depends_on AND nothing else depends on it -- Primary/
+  // files-manager/notes-manager/opp-manager today, none of which belong
+  // to any real pipeline) was falling into the SAME depth-0 branch as a
+  // pipeline's own entry point (Fetch Emails, Scan Threads, etc.),
+  // landing at AGENT_RADIUS_MAX -- the single farthest ring on the map,
+  // identical to "raw external data source", which a standalone agent
+  // conceptually isn't. Computed globally (not per-section) since
+  // depends_on can reference an agent outside its own section.
+  const agentsWithDependents = new Set<string>();
+  for (const agent of agents) {
+    for (const depId of agent.depends_on) agentsWithDependents.add(depId);
+  }
 
   const mapAgents: MockAgent[] = [];
   const clusters: ClusterMarker[] = [];
@@ -396,15 +422,32 @@ export function layoutAgents(agents: AgentSummary[], sectionList: SectionSummary
       // is its own entry point) has no depth to spread across, so those
       // agents sit at the band's own midpoint rather than all collapsing
       // onto AGENT_RADIUS_MIN.
+      // 2026-08-22 (operator-directed): depth-0 (a pipeline's own entry
+      // point, e.g. "Fetch Meetings" -- the real step that pulls from
+      // Outlook) renders at AGENT_RADIUS_MAX, OUTERMOST; the deepest
+      // dependent (the step everything else feeds into) renders closest
+      // to the Hub at AGENT_RADIUS_MIN -- data flows inward from the raw
+      // outside source toward the Hub, not outward from it. Inverted from
+      // the original depth/maxDepth fraction (which put depth-0 innermost)
+      // via `1 - ...`; every other consumer of `radius` below (jitter,
+      // drill-down stretch) is unaffected, since they only care about the
+      // final numeric value, not which direction depth maps to.
+      const isSolo = agent.depends_on.length === 0 && !agentsWithDependents.has(agent.id);
       const baseRadius = maxDepth === 0
         ? (AGENT_RADIUS_MIN + AGENT_RADIUS_MAX) / 2
-        : AGENT_RADIUS_MIN + (depths[index] / maxDepth) * (AGENT_RADIUS_MAX - AGENT_RADIUS_MIN);
+        : AGENT_RADIUS_MIN + (1 - depths[index] / maxDepth) * (AGENT_RADIUS_MAX - AGENT_RADIUS_MIN);
       const radiusStep = maxDepth > 0 ? (AGENT_RADIUS_MAX - AGENT_RADIUS_MIN) / maxDepth : (AGENT_RADIUS_MAX - AGENT_RADIUS_MIN);
       const jitterAmplitude = Math.min(RADIUS_JITTER_MAX, radiusStep * RADIUS_JITTER_FRACTION);
-      const radius = Math.min(
-        AGENT_RADIUS_MAX,
-        Math.max(AGENT_RADIUS_MIN, baseRadius + jitterAmplitude * hashToUnitOffset(agent.id)),
-      );
+      const radius = isSolo
+        // Random (deterministic per id, same convention as the jitter
+        // above) 25%-50% of the way from the Hub out to baseRadius —
+        // "between 50% and 25% of the Current Distance", current being
+        // where this agent would otherwise have landed.
+        ? HUB_RADIUS + (0.25 + 0.25 * ((hashToUnitOffset(agent.id) + 1) / 2)) * (baseRadius - HUB_RADIUS)
+        : Math.min(
+            AGENT_RADIUS_MAX,
+            Math.max(AGENT_RADIUS_MIN, baseRadius + jitterAmplitude * hashToUnitOffset(agent.id)),
+          );
       mapAgents.push({
         id: agent.id,
         label: agent.name,

@@ -58,6 +58,11 @@ export interface AgentDetail {
   is_background_agent: boolean;
   icon: string | null;
   color: string | null;
+  // 2026-08-22 -- a genuinely SHORT excerpt (the real first sentence,
+  // never fabricated) of `prompt` below, distinct from it -- the hover
+  // card on the map uses AgentSummary's own copy of this same field;
+  // Overview shows it here as its own row, separate from the full prompt.
+  description: string | null;
   // REQ-SB-66-US-01-T04's own stored-value-only convention -- the resolved
   // effective default text (when unset) is a runtime call-site concern
   // (T02/T03), never returned here.
@@ -117,6 +122,73 @@ export function sendChatMessage(agentId: string, message: string): Promise<ChatR
   });
 }
 
+// One real SSE frame from POST .../chat/stream (agents_router.py's own
+// `_stream_reply`) -- 'activity' is a real thinking/status signal
+// (distinct from the actual reply), 'delta' is one streamed reply
+// chunk, 'complete' carries the FULL final reply (not just the last
+// chunk), 'error' ends the stream early.
+export type ChatStreamEvent =
+  | { type: 'activity'; text: string }
+  | { type: 'delta'; text: string }
+  | { type: 'complete'; text: string }
+  | { type: 'error'; detail: string };
+
+// Raw `fetch`, not apiFetch (2026-08-24) -- apiFetch always awaits and
+// parses one whole JSON body; this reads the response as a live byte
+// stream instead. Reuses ATTACHMENT_BASE_URL (below) rather than a
+// second identically-valued constant -- both are "real fetch, not
+// apiFetch's one-shot-JSON contract" call sites for the same reason.
+export async function streamChatMessage(
+  agentId: string,
+  message: string,
+  onEvent: (event: ChatStreamEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch(`${ATTACHMENT_BASE_URL}/agents/${agentId}/chat/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+    signal,
+  });
+  if (!response.ok || !response.body) {
+    throw new ApiError(response.status, await response.text());
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    // SSE frames are separated by a blank line; a frame can arrive
+    // split across multiple stream chunks, so only fully-terminated
+    // frames (buffer holds a real "\n\n") are ever parsed out here —
+    // the remainder waits in `buffer` for the rest to arrive.
+    let separatorIndex: number;
+    while ((separatorIndex = buffer.indexOf('\n\n')) !== -1) {
+      const rawFrame = buffer.slice(0, separatorIndex);
+      buffer = buffer.slice(separatorIndex + 2);
+      const dataLine = rawFrame.split('\n').find((line) => line.startsWith('data: '));
+      if (!dataLine) continue;
+      try {
+        onEvent(JSON.parse(dataLine.slice('data: '.length)) as ChatStreamEvent);
+      } catch {
+        // A malformed frame is skipped, not fatal to the whole stream --
+        // matches this app's own "surface what's real, don't crash the
+        // thread over one bad chunk" posture elsewhere in chat handling.
+      }
+    }
+  }
+}
+
+// 2026-08-24 -- pairs with the backend's own new session-continuity fix
+// (chat_sessions.py): a chat turn now reuses the same live Hermes
+// session across messages instead of starting fresh every time, so
+// there needs to be a real way to deliberately end a conversation too.
+export function resetChatSession(agentId: string): Promise<{ reset: boolean }> {
+  return apiFetch<{ reset: boolean }>(`/agents/${agentId}/chat/reset`, { method: 'POST' });
+}
+
 export interface ChatAttachmentResponse {
   reply: string;
   attachment_status:
@@ -173,6 +245,11 @@ export interface JobTreeEntry {
   name: string;
   depends_on: string[];
   section_id: string | null;
+  // 2026-08-22 -- per-Step type ('worker' by default, 'producer' for a
+  // pipeline's own real entry point that pulls raw data from an external
+  // source like Outlook). Optional so a Job source that predates this
+  // field degrades to the parent Pipeline's own type at the splice site.
+  type?: 'worker' | 'producer' | 'expert';
 }
 
 export function fetchAgentJobs(agentId: string): Promise<JobTreeEntry[]> {
