@@ -1,5 +1,5 @@
-"""Durable, vault-local, per-email staging store (ADR-046 Decision 1) --
-one directory per staged email under .second-brain/email_staging/<entry_id>/,
+"""Durable, per-email staging store (ADR-046 Decision 1) --
+one directory per staged email under <app database folder>/email_staging/<entry_id>/,
 holding a JSON metadata record plus each attachment's own real bytes on
 disk. A dedicated data_access sibling to vault_writer.py -- mirrors
 upload_storage.py's own explicit "raw pre-note buffer, not a vault note,
@@ -20,11 +20,8 @@ from pathlib import Path
 
 from app.config import settings
 
-_STAGING_DIR = ".second-brain/email_staging"
-
-
 def _staging_root() -> Path:
-    return settings.vault_path / _STAGING_DIR
+    return settings.second_brain_data_path / "email_staging"
 
 
 def _entry_dir(entry_id: str) -> Path:

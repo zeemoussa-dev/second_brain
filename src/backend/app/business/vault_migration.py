@@ -28,7 +28,6 @@ from app.business.pipelines import email_capture_pipeline, email_pull
 from app.config import settings
 from app.data_access import vault_writer
 
-_STATE_DIR = ".second-brain"
 _MIGRATION_BACKUP_DIR = "migration_backup"
 _PROCESSED_EMAILS_FILE = "processed_email_ids.json"
 _CONVERSATIONS_FILE = "conversation_index.json"
@@ -69,7 +68,7 @@ def wipe_legacy_email_notes() -> dict:
     stores already gone from their canonical paths, so it reports zero
     moves with no error."""
     run_timestamp = _new_run_timestamp()
-    backup_root = settings.vault_path / _STATE_DIR / _MIGRATION_BACKUP_DIR / run_timestamp
+    backup_root = settings.second_brain_data_path / _MIGRATION_BACKUP_DIR / run_timestamp
     emails_root = settings.vault_path / "Work" / _EMAILS_KIND_FOLDER
     emails_backup_dir = backup_root / _EMAILS_KIND_FOLDER
 
@@ -91,7 +90,7 @@ def wipe_legacy_email_notes() -> dict:
                 })
         vault_writer.remove_empty_dirs(emails_root)
 
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_files_archived: list[dict] = []
     for filename in (_PROCESSED_EMAILS_FILE, _CONVERSATIONS_FILE):
         source_path = state_dir / filename
@@ -195,7 +194,7 @@ def regenerate_customer_notes() -> dict:
     reports an empty customers_processed list with no error and proposes
     no duplicate Pending Approval."""
     run_timestamp = _new_run_timestamp()
-    backup_root = settings.vault_path / _STATE_DIR / _MIGRATION_BACKUP_DIR / run_timestamp
+    backup_root = settings.second_brain_data_path / _MIGRATION_BACKUP_DIR / run_timestamp
     customers_backup_dir = backup_root / _CUSTOMERS_KIND_FOLDER
 
     customers_processed: list[dict] = []

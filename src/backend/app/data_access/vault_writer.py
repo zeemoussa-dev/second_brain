@@ -16,7 +16,6 @@ from app.data_access import section_ownership
 _SLUG_INVALID_CHARS = re.compile(r'[\\/:*?"<>|]')
 _TAG_INVALID_CHARS = re.compile(r"[^a-z0-9/]+")
 _WORK_ROOT = "Work"
-_STATE_DIR = ".second-brain"
 _PROCESSED_EMAILS_FILE = "processed_email_ids.json"
 _CONVERSATIONS_FILE = "conversation_index.json"
 _LAST_CAPTURE_RUN_FILE = "last_capture_run.json"
@@ -33,6 +32,7 @@ _AGENT_PROMPTS_FILE = "agent_prompts.json"
 _AGENTS_REGISTRY_FILE = "agents_registry.json"
 _AGENT_KNOWLEDGE_GAPS_FILE = "agent_knowledge_gaps.json"
 _COCKPIT_THREADS_FILE = "cockpit_threads.json"
+_COCKPIT_CHAT_FILE = "cockpit_chat.json"
 _AGENT_BACKGROUND_FLAGS_FILE = "agent_background_flags.json"
 _AGENT_VISUALS_FILE = "agent_visuals.json"
 _AGENT_SCHEDULES_FILE = "agent_schedules.json"
@@ -177,7 +177,23 @@ def list_all_note_paths() -> list:
     `pre_migration_summary.md`/`pre_migration_summary.consumed.md`
     (`BUGFIX-05-US-01`, `ADR-053`) -- the plain-text, non-frontmatter
     Thread-directory sidecar `migrate_flat_thread_to_directory` writes and
-    `synthesize_thread` archives, never a real note."""
+    `synthesize_thread` archives, never a real note.
+
+    Real bug, found live 2026-08-27 (operator: "I can See the same
+    meeting twice"): this scan never excluded `_archive/`-prefixed
+    folders (`Work/_archive/`, `Work/People/_Archived Duplicates
+    (2026-08-24)/`, etc.) -- this project's own established "keep on
+    disk, hide from live app" archive convention (never delete real
+    data, MEMORY.md) -- so an archived note kept showing up in every
+    live read (My Day Calendar, search, indexing) right alongside its
+    still-current replacement, defeating the entire point of archiving
+    it. Any path with a `_`-prefixed folder component anywhere under
+    Work/ is now excluded from this scan, matching the SAME leading-
+    underscore-means-excluded idiom this whole ecosystem already uses
+    elsewhere (Hermes' own `_disabled-skills-on-primary/`) -- NOT a
+    substring match on "archive" in a path, which would also wrongly
+    exclude real Threads that happen to be ABOUT archiving (e.g. "FW-
+    Microsoft Archive for sharepoint storage")."""
     work_root = settings.vault_path / _WORK_ROOT
     if not work_root.exists():
         return []
@@ -186,6 +202,7 @@ def list_all_note_paths() -> list:
         if path.name not in _OKF_RESERVED_FILENAMES
         and path.name not in _THREAD_SIDECAR_RESERVED_FILENAMES
         and path.is_file()
+        and not any(part.startswith("_") for part in path.relative_to(work_root).parent.parts)
     )
 
 
@@ -785,7 +802,7 @@ def remove_empty_dirs(root) -> None:
 
 
 def _processed_emails_path():
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / _PROCESSED_EMAILS_FILE
 
@@ -805,7 +822,7 @@ def mark_email_processed(entry_id: str) -> None:
 
 
 def _conversations_path():
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / _CONVERSATIONS_FILE
 
@@ -837,7 +854,7 @@ def record_conversation_note(conversation_id: str, note_stem: str) -> None:
 
 
 def _last_capture_run_path():
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / _LAST_CAPTURE_RUN_FILE
 
@@ -1332,7 +1349,7 @@ def ensure_meeting_note_baseline_frontmatter(
 
 
 def _processed_meetings_path():
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / _PROCESSED_MEETINGS_FILE
 
@@ -1945,7 +1962,7 @@ def format_human_readable_datetime(raw: str) -> str:
 
 
 def _meeting_thread_link_config_path():
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / _MEETING_THREAD_LINK_CONFIG_FILE
 
@@ -2365,7 +2382,7 @@ def append_body_section_line(path, header: str, line: str) -> None:
 
 
 def _agent_history_path():
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / _AGENT_HISTORY_FILE
 
@@ -2412,7 +2429,7 @@ def load_agent_history(agent_id: str) -> list[dict]:
 
 
 def _sections_state_path():
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / _AGENT_SECTIONS_FILE
 
@@ -2434,7 +2451,7 @@ def save_sections_state(state: dict) -> None:
 
 
 def _providers_state_path():
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / _AGENT_PROVIDERS_FILE
 
@@ -2456,7 +2473,7 @@ def save_providers_state(state: dict) -> None:
 
 
 def _agent_memory_path():
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / _AGENT_MEMORY_FILE
 
@@ -2495,7 +2512,7 @@ def append_agent_memory_entries(agent_id: str, facts: list[str]) -> None:
 
 
 def _skills_state_path():
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / _AGENT_SKILLS_FILE
 
@@ -2517,7 +2534,7 @@ def save_skills_state(state: dict) -> None:
 
 
 def _agents_registry_state_path():
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / _AGENTS_REGISTRY_FILE
 
@@ -2540,7 +2557,7 @@ def save_agents_registry_state(state: dict) -> None:
 
 
 def _agent_keywords_path():
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / _AGENT_KEYWORDS_FILE
 
@@ -2581,7 +2598,7 @@ def load_all_agent_keywords() -> dict[str, list[str]]:
 
 
 def _working_modes_state_path():
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / _AGENT_WORKING_MODES_FILE
 
@@ -2603,7 +2620,7 @@ def save_working_modes_state(state: dict) -> None:
 
 
 def _agent_visuals_state_path():
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / _AGENT_VISUALS_FILE
 
@@ -2625,7 +2642,7 @@ def save_agent_visuals_state(state: dict) -> None:
 
 
 def _background_agent_flags_state_path():
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / _AGENT_BACKGROUND_FLAGS_FILE
 
@@ -2647,7 +2664,7 @@ def save_background_agent_flags_state(state: dict) -> None:
 
 
 def _agent_schedules_state_path():
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / _AGENT_SCHEDULES_FILE
 
@@ -2669,7 +2686,7 @@ def save_agent_schedules_state(state: dict) -> None:
 
 
 def _job_run_state_path():
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / _JOB_RUN_STATE_FILE
 
@@ -2692,7 +2709,7 @@ def save_job_run_state(state: dict) -> None:
 
 
 def _pending_approvals_state_path():
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / _AGENT_PENDING_APPROVALS_FILE
 
@@ -2714,7 +2731,7 @@ def save_pending_approvals_state(state: dict) -> None:
 
 
 def _cockpit_threads_state_path():
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / _COCKPIT_THREADS_FILE
 
@@ -2731,6 +2748,28 @@ def load_cockpit_threads_state() -> dict | None:
 
 def save_cockpit_threads_state(state: dict) -> None:
     path = _cockpit_threads_state_path()
+    path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
+def _cockpit_chat_state_path():
+    state_dir = settings.second_brain_data_path
+    state_dir.mkdir(parents=True, exist_ok=True)
+    return state_dir / _COCKPIT_CHAT_FILE
+
+
+def load_cockpit_chat_state() -> dict | None:
+    """Pure I/O -- returns None if cockpit_chat.json doesn't exist yet
+    (ADR-003; the empty-dict seed and per-subject-key default are
+    app/business/cockpit/chat_store.py's own concern, ADR-007 -- a
+    genuinely new store, never the stale cockpit_threads.json above)."""
+    path = _cockpit_chat_state_path()
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def save_cockpit_chat_state(state: dict) -> None:
+    path = _cockpit_chat_state_path()
     path.write_text(json.dumps(state, indent=2), encoding="utf-8")
 
 
@@ -2888,7 +2927,7 @@ def ensure_task_note_baseline_frontmatter(
 
 
 def _task_note_index_path():
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / _TASK_NOTE_INDEX_FILE
 
@@ -2927,7 +2966,7 @@ def record_task_note(entry_id: str, stem: str) -> None:
 
 
 def _agent_scopes_path():
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / _AGENT_SCOPES_FILE
 
@@ -2970,7 +3009,7 @@ _DEFAULT_AGENT_PROMPT_RECORD = {"prompt": None, "guardrails": ""}
 
 
 def _agent_prompts_path():
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / _AGENT_PROMPTS_FILE
 
@@ -3004,7 +3043,7 @@ def save_agent_prompt_record(id: str, record: dict) -> None:
 
 
 def _knowledge_gaps_state_path():
-    state_dir = settings.vault_path / _STATE_DIR
+    state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
     return state_dir / _AGENT_KNOWLEDGE_GAPS_FILE
 

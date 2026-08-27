@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -36,6 +37,32 @@ class Settings(BaseSettings):
     # step. Default matches this machine's real install path; override via
     # .env on a different machine.
     hermes_home_path: Path = Path.home() / "AppData" / "Local" / "hermes"
+    # App's own operational-state folder (System settings page, 2026-08-27)
+    # -- deliberately independent of vault_path so it can be relocated
+    # without moving the vault. `None` means "not set via .env"; the
+    # validator below then defaults it to the historical
+    # <vault_path>/.second-brain location, so an existing install keeps
+    # working unchanged until the operator explicitly moves it from the
+    # System settings page (system_settings.py owns the real folder move).
+    second_brain_data_path: Path | None = None
+    # Comma-separated frontend origins allowed to call this API
+    # (main.py's CORS middleware). Default matches the two Vite dev ports
+    # this repo actually ships with -- override via .env for any other
+    # deployment target.
+    cors_allowed_origins: str = (
+        "http://localhost:5173,http://127.0.0.1:5173,"
+        "http://localhost:5174,http://127.0.0.1:5174"
+    )
+
+    @model_validator(mode="after")
+    def _default_second_brain_data_path(self) -> "Settings":
+        if self.second_brain_data_path is None:
+            self.second_brain_data_path = self.vault_path / ".second-brain"
+        return self
+
+    @property
+    def cors_allowed_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
 
 
 settings = Settings()

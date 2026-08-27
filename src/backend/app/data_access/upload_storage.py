@@ -1,13 +1,15 @@
 """Temporary, non-vault raw-byte upload storage (ADR-034) -- the first
 extension of the .second-brain/ flat-file state convention
-(app/data_access/vault_writer.py's own _STATE_DIR) to raw bytes rather
+(app/data_access/vault_writer.py's own state store) to raw bytes rather
 than JSON. One file per upload, named with a generated id to avoid
 collisions (mirrors this project's own standing filename-uniqueness
 Constraint, MEMORY.md), deleted once summarized/handed off or on
 validation rejection. Deliberately does not import vault_writer -- this
-boundary is siblings with it (both under .second-brain/), not layered
-on top of it; vault_writer.py owns JSON state, this module owns binary
-blobs, both compute their own subdirectory under settings.vault_path.
+boundary is siblings with it (both under settings.second_brain_data_path),
+not layered on top of it; vault_writer.py owns JSON state, this module
+owns binary blobs, both compute their own subdirectory under the same
+app-database root (System settings page, 2026-08-27 -- independent of
+settings.vault_path since then).
 """
 from __future__ import annotations
 
@@ -21,11 +23,8 @@ from app.config import settings
 ACCEPTED_EXTENSIONS = {".pdf", ".txt", ".md"}
 MAX_UPLOAD_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB (REQ-SB-28-US-01 Constraints)
 
-_UPLOADS_DIR = ".second-brain/uploads"
-
-
 def _uploads_dir() -> Path:
-    path = settings.vault_path / _UPLOADS_DIR
+    path = settings.second_brain_data_path / "uploads"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
