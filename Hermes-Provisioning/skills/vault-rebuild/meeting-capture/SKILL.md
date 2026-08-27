@@ -35,29 +35,57 @@ Meetings intentionally does not repeat that mistake).
 
 ## Structure this builds
 
-```
-Work/Meetings/<date> <Subject>/       -- ONE-TIME meeting
-    <date> <Subject>.md               -- the only file; this meeting only
-                                          ever happens once, so this IS
-                                          the occurrence.
+**2026-08-27 update: `ingest_meeting.py` was rewritten onto
+`vault_manager.py` (`Implementation/Plans/2026-08-25-vault-writer-
+standardization.md`) — the shape below is the REAL, current one; the
+older `occurrences/` (no own folder, no date-prefixed folder) shape this
+section used to describe no longer matches the real script.**
 
-Work/Meetings/<Subject>/               -- RECURRING series (no date --
-                                           the folder spans every
-                                           occurrence)
-    <Subject>.md                        -- series concept note; "## History"
-                                           lists every occurrence
-                                           (wikilinks down, dated), mirrors
-                                           a Thread concept's own
-                                           "## Related".
-    occurrences/
-        <date> <time> <Subject>.md      -- one real file PER OCCURRENCE,
-                                            mirrors Threads' own messages/
-                                            folder shape exactly. Never one
-                                            ever-growing note for the whole
-                                            series (operator, 2026-08-21,
-                                            explicit correction of an
-                                            earlier design that did that).
 ```
+Work/Meetings/<date>-<Subject>/            -- ONE-TIME meeting
+    <date>-<Subject>.md                     -- the only file; this meeting
+                                                only ever happens once, so
+                                                this IS the occurrence.
+
+Work/Meetings/<date>-<Series>/              -- RECURRING series, own folder
+                                                (note_own_folder) -- the
+                                                date prefix is the LATEST
+                                                real occurrence's own date
+                                                (vm.bump_folder_date bumps
+                                                it forward on every later
+                                                capture), so the folder
+                                                sorts by recency in a file
+                                                browser; the file inside it
+                                                never carries a date
+                                                (note_filename_plain).
+    <Series>.md                             -- series concept note; "## History"
+                                                lists every occurrence
+                                                (wikilinks down, dated),
+                                                mirrors a Thread concept's
+                                                own "## Related".
+    Recurrences/
+        <date>-<Subject>/                   -- one real file PER
+            <date>-<Subject>.md                 OCCURRENCE, its own folder
+                                                 too (so a real attachment
+                                                 has somewhere to live).
+                                                 Never one ever-growing
+                                                 note for the whole series
+                                                 (operator, 2026-08-21,
+                                                 explicit correction of an
+                                                 earlier design that did
+                                                 that).
+```
+
+Identity (both kinds): frontmatter `id`, never the folder/file name — a
+series is identified by its own real `calendar_series_id`; an
+OCCURRENCE is identified by a synthetic `{series_id}-{start}` key, NEVER
+Outlook's own raw `EntryID` (`event["id"]`) — confirmed live 2026-08-27
+that Outlook's own COM API returns the SAME `EntryID` for every real
+occurrence of at least some recurring series, so trusting it directly
+silently treated every occurrence after the first-ever-captured one as
+"already captured" and skipped it forever. `calendar_event_id` in
+frontmatter still records Outlook's own raw id, just never as the
+lookup key.
 
 Both note kinds share the same frontmatter shape: `type, recurrence,
 organizer, teams_link, dial_in, attendees, tags, thread,
@@ -85,8 +113,10 @@ this Skill's own `scripts/`. The absolute-path form removes that
 dependency entirely, even when a `cwd` parameter is also available):
 
 ```
-terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\skills\\vault-rebuild\\meeting-capture\\scripts\\run_full_meeting_capture.py\"")
+terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\profiles\\<this profile>\\skills\\vault-rebuild\\meeting-capture\\scripts\\run_full_meeting_capture.py\"")
 ```
+
+(real, per-profile deployment path -- e.g. `profiles\meeting-prep-agent\skills\...` for the `meeting-capture-recurring` cron job; every profile this Skill is deployed to has its own copy under its own `profiles\<name>\skills\` tree, never a shared profile-less `hermes\skills\` location.)
 
 This script is naturally recurring-safe as-is (a bounded calendar
 window, resolved-by-calendar-id dedup) -- suitable for a recurring
@@ -154,15 +184,22 @@ meeting has a `thread` value, it is never reconsidered on a later rerun.
   SKILL.md documents: populated for Exchange-resolved attendees, blank
   for anyone external. Never guessed.
 - **A recurring series' identity is its own `calendar_series_id`
-  (Outlook's GlobalAppointmentID), not its subject text** -- the series
-  folder is resolved by SCANNING existing Meeting notes for a matching
-  `calendar_series_id`, never recomputed from subject alone, so a small
-  subject-text drift across occurrences (a typo fixed, a location added
-  to the title) never splits one real series into two folders.
-- **One-time meetings dedupe by their own deterministic `<date>
-  <Subject>` path** (with a hash-of-EntryID suffix on a genuine name
-  collision) -- safe to re-run `run_full_meeting_capture.py` any time;
-  an already-captured event is topped up, never duplicated.
+  (Outlook's GlobalAppointmentID), not its subject text** -- resolved via
+  `vault_manager.find_by_id`, never recomputed from subject alone, so a
+  small subject-text drift across occurrences (a typo fixed, a location
+  added to the title) never splits one real series into two folders.
+- **A recurring OCCURRENCE's identity is a synthetic `{series_id}-
+  {start}` key, never Outlook's own raw `EntryID`** -- confirmed live
+  2026-08-27 that Outlook's own COM API can return the IDENTICAL
+  `EntryID` for every real occurrence of a recurring series, so trusting
+  it directly as the lookup key silently skipped every occurrence after
+  the first-ever-captured one, forever. A one-time meeting's identity is
+  still its own real `EntryID` (`event["id"]`) -- confirmed reliable for
+  non-recurring items specifically; only the recurring-occurrence case
+  needed the synthetic key.
+- Safe to re-run `run_full_meeting_capture.py` any time -- an
+  already-captured event (by whichever of the above two identity keys
+  actually applies to it) is topped up, never duplicated.
 
 ## Verification
 

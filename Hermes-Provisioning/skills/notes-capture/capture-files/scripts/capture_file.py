@@ -1,44 +1,28 @@
-"""CLI entry point: catch-all capture for a file uploaded with no stated
-context (2026-08-22, operator's own framing -- mirrors capture-notes, but
-for files). The agent reads the actual file (dedicated format skill, never
-a placeholder -- see this Skill's own SKILL.md) and writes a real prose
-summary; this script's job stays mechanical: place the file in its own
-folder, write its companion description note, best-effort wikilink any
-real Customer/Partner name the summary mentions.
+"""CLI entry point: `vault_manager.py`-based replacement for the original
+capture_file.py (Implementation/Plans/2026-08-25-vault-writer-
+standardization.md's third real deployment, 2026-08-26 -- operator:
+"handle the Notes files uploads"). Same job -- catch-all capture for a
+file uploaded with no stated context, folder-per-file so attachments have
+somewhere real to live -- but the note/folder itself is placed by
+`vault_manager.py`'s real `create()` (`note_own_folder`) instead of this
+file's own hand-rolled slugify/collision/frontmatter logic. The real
+uploaded file is moved into the SAME folder `create()` already returns.
 
-Folder-per-file (operator, 2026-08-22 -- corrected from an earlier flat
-per-day layout): mirrors this vault's own established pattern (Threads,
-Meetings, Opportunities all get a folder named after the thing, holding a
-same-named .md alongside the real content) --
+Auto-wikilinking known Customer/Partner names is UNCHANGED, reused as-is
+from `capture_note.py`'s own copy (this codebase's established per-Skill
+self-containment convention -- duplicated, not shared).
 
-    Work/Files/<YYYY-MM-DD>/<original filename stem>/
-        <original filename>            -- the real file, untouched
-        <original filename stem>.md    -- description (Summary, then
-                                           optionally Details -- see
-                                           add_file_detail())
+Real shape change from the original (matching the meeting-capture
+rebuild's own precedent): `Work/Files/<date>/<stem>/` (date as a separate
+parent folder) becomes `Work/Files/<date>-<stem>/` (date folded into the
+folder name) -- old captures are untouched; only NEW ones use the new
+shape.
 
-Deliberately NOT filed under a specific Customer/Partner -- same choice as
-capture-notes: capture now, a later reasoning pass re-files/re-classifies.
-
-Two jobs, two CLI modes:
-
+Usage: identical real two-mode contract --
     python capture_file.py --vault-path P --input-file F
         F: {"source_path": str, "summary": str, "filename": str (optional)}
-        Prints {"created": true, "file_path": str, "description_path": str,
-        "linked_mentions": [...]} or {"error": str}.
-
     python capture_file.py --vault-path P --append --input-file F
-        F: {"file_path": str, "details": str, "images": [{"source_path":
-        str, "caption": str}, ...] (optional)} -- file_path is the real
-        captured file's own path (as returned by the create job), used to
-        locate its sibling description note. `images` lets the agent embed
-        an already-rendered diagram/slide/page image (e.g. from
-        pptx_render.py or a PDF-to-image tool) alongside the details text --
-        each is COPIED into the file's own folder and embedded as Obsidian
-        `![[...]]` syntax with its own caption.
-        Prints {"appended": true, "description_path": str,
-        "linked_mentions": [...], "attached_images": [...]} or
-        {"error": str}.
+        F: {"file_path": str, "details": str, "images": [...] (optional)}
 """
 from __future__ import annotations
 
@@ -46,17 +30,13 @@ import argparse
 import json
 import re
 import shutil
-from datetime import datetime
 from pathlib import Path
 
+import vault_manager as vm
+
 _FRONTMATTER_LINE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*):\s?(.*)$")
-_SLUG_INVALID_CHARS = re.compile(r'[\\/:*?"<>|]')
-_BODY_SECTION_HEADER_PATTERN = re.compile(r"^## .+$", re.MULTILINE)
-
-
-def _slugify(text: str, max_len: int = 120) -> str:
-    slug = _SLUG_INVALID_CHARS.sub("-", text).strip()
-    return slug[:max_len] if slug else "Untitled File"
+_FILE_TEMPLATE_ID = "file"
+_NOTE_NAME = "Files"
 
 
 def _parse_frontmatter_value(raw: str):
@@ -84,8 +64,6 @@ def _read_note_name(md_path: Path) -> str | None:
 
 
 def _iter_known_entity_names(vault_path: Path):
-    """Real Customer + Partner hub note names, for best-effort auto-linking
-    only -- never a resolution/validation gate."""
     for root_name in ("Customers", "Partners"):
         root = vault_path / "Work" / root_name
         if not root.exists():
@@ -112,71 +90,6 @@ def _auto_wikilink(text: str, entity_names) -> tuple[str, list[str]]:
     return text, linked
 
 
-def _unique_folder(files_dir: Path, stem_slug: str) -> Path:
-    """Avoid same-day folder-name collisions -- append a numeric
-    disambiguator rather than merging into an earlier file's own folder."""
-    candidate = files_dir / stem_slug
-    if not candidate.exists():
-        return candidate
-    n = 2
-    while True:
-        candidate = files_dir / f"{stem_slug}-{n}"
-        if not candidate.exists():
-            return candidate
-        n += 1
-
-
-def capture_file(vault_path: Path, source_path: str, summary: str, filename: str = "") -> dict:
-    source = Path(source_path)
-    if not source.is_file():
-        return {"error": f"source file not found: {source}"}
-    summary = (summary or "").strip()
-    if not summary:
-        return {"error": "empty summary"}
-
-    # Prefer the real original filename the agent was told (e.g. from WhatsApp
-    # media metadata) over the local download path's own name -- platform
-    # download caches commonly rewrite it (e.g. a "doc_<hash>_" prefix), which
-    # is never something the sender actually named the file.
-    dest_name = (filename or "").strip() or source.name
-    dest_name = dest_name.strip()
-    dest_stem = Path(dest_name).stem or "Untitled File"
-
-    date_str = datetime.now().strftime("%Y-%m-%d")
-    files_dir = vault_path / "Work" / "Files" / date_str
-    files_dir.mkdir(parents=True, exist_ok=True)
-
-    folder = _unique_folder(files_dir, _slugify(dest_stem))
-    folder.mkdir(parents=True, exist_ok=False)
-
-    dest_path = folder / dest_name
-    shutil.move(str(source), str(dest_path))
-
-    try:
-        entity_names = list(_iter_known_entity_names(vault_path))
-    except OSError:
-        entity_names = []
-    linked_summary, linked_mentions = _auto_wikilink(summary, entity_names)
-
-    md_path = folder / f"{folder.name}.md"
-    frontmatter = (
-        "---\n"
-        'type: "File"\n'
-        f'date: "{date_str}"\n'
-        f'original_filename: "{dest_name}"\n'
-        'tags: ["kind/file"]\n'
-        "---\n\n"
-    )
-    md_path.write_text(frontmatter + f"## Summary\n\n{linked_summary}\n", encoding="utf-8")
-
-    return {
-        "created": True,
-        "file_path": str(dest_path),
-        "description_path": str(md_path),
-        "linked_mentions": linked_mentions,
-    }
-
-
 def _unique_sibling_path(folder: Path, name: str) -> Path:
     candidate = folder / name
     if not candidate.exists():
@@ -192,12 +105,6 @@ def _unique_sibling_path(folder: Path, name: str) -> Path:
 
 
 def _attach_images(folder: Path, images: list[dict]) -> tuple[str, list[str]]:
-    """Copies each already-rendered image (e.g. a slide/page render showing
-    a diagram) into the file's own folder and returns Markdown embed blocks
-    (Obsidian ![[...]] syntax, one per image with its own caption) plus the
-    list of copied filenames. Images are COPIED, not moved -- the agent's
-    own render output may be a shared temp/scratch path it still wants
-    around."""
     blocks: list[str] = []
     copied: list[str] = []
     for item in images or []:
@@ -215,13 +122,47 @@ def _attach_images(folder: Path, images: list[dict]) -> tuple[str, list[str]]:
     return "\n\n".join(blocks), copied
 
 
+def capture_file(vault_path: Path, source_path: str, summary: str, filename: str = "") -> dict:
+    source = Path(source_path)
+    if not source.is_file():
+        return {"error": f"source file not found: {source}"}
+    summary = (summary or "").strip()
+    if not summary:
+        return {"error": "empty summary"}
+
+    # Prefer the real original filename the agent was told (e.g. from WhatsApp
+    # media metadata) over the local download path's own name -- platform
+    # download caches commonly rewrite it (e.g. a "doc_<hash>_" prefix), which
+    # is never something the sender actually named the file.
+    dest_name = (filename or "").strip() or source.name
+    dest_stem = Path(dest_name).stem or "Untitled File"
+
+    try:
+        entity_names = list(_iter_known_entity_names(vault_path))
+    except OSError:
+        entity_names = []
+    linked_summary, linked_mentions = _auto_wikilink(summary, entity_names)
+
+    template = vm.load_template(vault_path, _FILE_TEMPLATE_ID)
+    result = vm.create(vault_path, template, note_name=_NOTE_NAME, title=dest_stem, sections={"Summary": linked_summary})
+
+    folder = Path(result["folder"])
+    dest_path = folder / dest_name
+    shutil.move(str(source), str(dest_path))
+
+    return {
+        "created": True,
+        "file_path": str(dest_path),
+        "description_path": result["path"],
+        "linked_mentions": linked_mentions,
+    }
+
+
 def add_file_detail(vault_path: Path, file_path: str, details: str, images: list[dict] | None = None) -> dict:
     """Appends a follow-up analysis pass to an already-captured file's own
-    description note, under '## Details' -- never a new file, never sent
-    anywhere; the vault stays the one place this content lives. Repeat
-    calls append further points rather than overwriting earlier ones.
-    Optionally embeds one or more already-rendered images (e.g. a diagram
-    slide/page render) alongside the text -- see _attach_images."""
+    description note, under 'Details' -- never a new file. Repeat calls
+    append further points (`mode="append"`) rather than overwriting
+    earlier ones."""
     details = (details or "").strip()
     if not details and not images:
         return {"error": "empty details"}
@@ -233,6 +174,11 @@ def add_file_detail(vault_path: Path, file_path: str, details: str, images: list
     if not md_path.is_file():
         return {"error": f"description note not found: {md_path}"}
 
+    frontmatter, _ = vm.read_note(md_path)
+    note_id = frontmatter.get("id")
+    if not note_id:
+        return {"error": f"description note has no real id: {md_path}"}
+
     try:
         entity_names = list(_iter_known_entity_names(vault_path))
     except OSError:
@@ -242,20 +188,9 @@ def add_file_detail(vault_path: Path, file_path: str, details: str, images: list
     image_blocks, attached_images = _attach_images(real_file.parent, images or [])
     combined = "\n\n".join(part for part in (linked_details, image_blocks) if part)
 
-    text = md_path.read_text(encoding="utf-8")
-    header_pattern = re.compile(r"^## Details$", re.MULTILINE)
-    header_match = header_pattern.search(text)
-    if header_match is None:
-        separator = "" if text.endswith("\n") else "\n"
-        new_text = text + separator + f"\n## Details\n\n{combined}\n"
-    else:
-        region_start = header_match.end()
-        next_header = _BODY_SECTION_HEADER_PATTERN.search(text, region_start)
-        region_end = next_header.start() if next_header else len(text)
-        existing = text[region_start:region_end].strip("\n")
-        merged = (existing + "\n\n" + combined).strip("\n") if existing else combined
-        new_text = text[:region_start] + "\n\n" + merged + "\n\n" + text[region_end:]
-    md_path.write_text(new_text, encoding="utf-8")
+    note_name = md_path.parent.parent.relative_to(vault_path / vm._NOTES_ROOT).as_posix()
+    template = vm.load_template(vault_path, _FILE_TEMPLATE_ID)
+    vm.modify_section(vault_path, template, note_id=note_id, section="Details", content=combined, mode="append", note_name=note_name)
 
     return {
         "appended": True,

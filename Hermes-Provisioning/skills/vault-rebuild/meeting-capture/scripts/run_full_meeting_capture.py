@@ -25,9 +25,22 @@ SUMMARY_PATH = os.path.join(SCRATCH_DIR, "meeting_capture_summary.json")
 
 PYTHON = sys.executable or "python"
 
+# Real bug, found live 2026-08-27 running a real recapture: a subprocess's
+# own stdout defaults to the WINDOWS CONSOLE's codepage (cp1252 on this
+# machine), not UTF-8 -- a real meeting subject/attendee name containing a
+# character outside cp1252 (an en-dash, a smart quote, a non-Latin name)
+# crashes list_recent_meetings.py's/ingest_meeting.py's own final
+# `print(json.dumps(...))` with UnicodeEncodeError, which this
+# orchestrator then reports as a hard failure (`list_recent_meetings
+# failed`) even though the real data itself was fine. Forcing UTF-8 I/O on
+# every child process this orchestrator spawns -- the SAME real fix
+# `PYTHONIOENCODING=utf-8` applied manually to unblock the first re-run --
+# fixes it at the one real call site both scripts share, not per-script.
+_CHILD_ENV = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
+
 
 def run_script(args: list[str]) -> tuple[int, str, str]:
-    proc = subprocess.run([PYTHON] + args, cwd=SCRIPTS_DIR, capture_output=True, text=True)
+    proc = subprocess.run([PYTHON] + args, cwd=SCRIPTS_DIR, capture_output=True, text=True, env=_CHILD_ENV)
     return proc.returncode, proc.stdout, proc.stderr
 
 

@@ -1,42 +1,38 @@
-"""CLI entry point: quick-capture note logging (2026-08-22, operator's own
-explicit framing -- "Quick and Dirty where I don't have time to answer so
-many Questions"). This is the catch-all for anything relayed to this
-specialist: never asks a question, never blocks, never resolves a Customer
-or Partner before filing. It just writes the given title/summary/body to
-today's date folder under the vault's General Notes area.
+"""CLI entry point: `vault_manager.py`-based replacement for the original
+capture_note.py (Implementation/Plans/2026-08-25-vault-writer-
+standardization.md's second real deployment, 2026-08-26 -- operator:
+"handle the Notes files uploads"). Same job -- quick-capture note logging,
+never asks a question, never blocks -- but the note itself is placed/
+written by `vault_manager.py`'s real template-driven `create()` instead of
+this file's own hand-rolled slugify/collision/frontmatter logic.
 
-Deliberately NOT filed under a specific Customer/Partner hub -- the
-operator's own choice: "General Notes will Stay General for now... we will
-work on it later" (a future reasoning pass will re-classify/re-file General
-Notes; this script's only job is fast, lossless capture today).
+Auto-wikilinking known Customer/Partner names (`_iter_known_entity_names`/
+`_auto_wikilink`) is UNCHANGED, reused as-is -- a real, working, generic
+vault-scanning helper, not part of the write-mechanics problem
+`vault_manager.py` solves.
 
-The agent (not this script) generates the title and summary -- it already
-read and understood the content; this script's job stays purely mechanical:
-slugify, place the file, avoid collisions, write it.
+Real shape change from the original (both deliberate, matching the SAME
+unified convention the meeting-capture rebuild already established):
+`Work/Notes/<date>/<slug>.md` (date as a separate parent folder) becomes
+`Work/Notes/<date>-<title>.md` (date folded into the filename) -- old
+General Notes are untouched; only NEW captures use the new shape.
 
-Usage:
+Usage: identical real contract --
     python capture_note.py --vault-path P --input-file F
-
-F: {"title": str, "summary": str, "body": str}
-
-Prints {"created": true, "path": str, "linked_mentions": [str, ...]} or
-{"error": str}.
+    F: {"title": str, "summary": str, "body": str}
 """
 from __future__ import annotations
 
 import argparse
 import json
 import re
-from datetime import datetime
 from pathlib import Path
 
+import vault_manager as vm
+
 _FRONTMATTER_LINE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*):\s?(.*)$")
-_SLUG_INVALID_CHARS = re.compile(r'[\\/:*?"<>|]')
-
-
-def _slugify(text: str, max_len: int = 80) -> str:
-    slug = _SLUG_INVALID_CHARS.sub("-", text).strip()
-    return slug[:max_len] if slug else "Untitled Note"
+_NOTE_TEMPLATE_ID = "note"
+_NOTE_NAME = "Notes"
 
 
 def _parse_frontmatter_value(raw: str):
@@ -68,8 +64,7 @@ def _read_note_name(md_path: Path) -> str | None:
 
 def _iter_known_entity_names(vault_path: Path):
     """Real Customer + Partner hub note names, for best-effort auto-linking
-    only -- never a resolution/validation gate (unlike track-opportunities'
-    own strict Customer resolution)."""
+    only -- never a resolution/validation gate."""
     for root_name in ("Customers", "Partners"):
         root = vault_path / "Work" / root_name
         if not root.exists():
@@ -101,33 +96,12 @@ def _auto_wikilink(text: str, entity_names) -> tuple[str, list[str]]:
     return text, linked
 
 
-def _unique_note_path(notes_dir: Path, slug: str) -> Path:
-    """Avoid same-day title collisions -- append the current time, then a
-    numeric counter, rather than silently overwriting an earlier note."""
-    candidate = notes_dir / f"{slug}.md"
-    if not candidate.exists():
-        return candidate
-    time_suffixed = notes_dir / f"{slug} {datetime.now().strftime('%H-%M')}.md"
-    if not time_suffixed.exists():
-        return time_suffixed
-    n = 2
-    while True:
-        candidate = notes_dir / f"{slug} {datetime.now().strftime('%H-%M')}-{n}.md"
-        if not candidate.exists():
-            return candidate
-        n += 1
-
-
 def capture_note(vault_path: Path, title: str, summary: str, body: str) -> dict:
     body = (body or "").strip()
     if not body:
         return {"error": "empty note body"}
     title = (title or "").strip() or "Untitled Note"
     summary = (summary or "").strip()
-
-    date_str = datetime.now().strftime("%Y-%m-%d")
-    notes_dir = vault_path / "Work" / "Notes" / date_str
-    notes_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         entity_names = list(_iter_known_entity_names(vault_path))
@@ -137,24 +111,13 @@ def capture_note(vault_path: Path, title: str, summary: str, body: str) -> dict:
     linked_summary, summary_mentions = _auto_wikilink(summary, entity_names) if summary else (summary, [])
     linked_mentions = list(dict.fromkeys(linked_mentions + summary_mentions))
 
-    slug = _slugify(title)
-    note_path = _unique_note_path(notes_dir, slug)
-
-    frontmatter = (
-        "---\n"
-        'type: "Note"\n'
-        f'date: "{date_str}"\n'
-        'tags: ["kind/notes"]\n'
-        "---\n\n"
+    template = vm.load_template(vault_path, _NOTE_TEMPLATE_ID)
+    result = vm.create(
+        vault_path, template, note_name=_NOTE_NAME, title=title,
+        sections={"Summary": linked_summary, "Body": linked_body},
     )
-    content = frontmatter + f"## Summary\n\n{linked_summary}\n\n## Body\n\n{linked_body}\n"
-    note_path.write_text(content, encoding="utf-8")
 
-    return {
-        "created": True,
-        "path": str(note_path),
-        "linked_mentions": linked_mentions,
-    }
+    return {"created": True, "path": result["path"], "linked_mentions": linked_mentions}
 
 
 def main() -> int:
