@@ -31,7 +31,7 @@ from pathlib import Path
 
 from app.business import vault_indexing
 from app.config import settings
-from app.data_access import vault_manager as vm
+from app.vault import vault_manager as vm
 
 _FILE_TEMPLATE_ID = "file"
 

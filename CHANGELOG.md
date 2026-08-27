@@ -2377,3 +2377,53 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   are NOT live-tested (would mutate a real Hermes profile) — verified
   only against the real `hermes profile --help`/`hermes gateway --help`
   output and code review.
+
+- refactor: Second Data Access Layer architecture pass — split the
+  Obsidian-vault side of `data_access/` into three real layers
+  (operator: "vault is our Obsidian Mapping... Then we have Second
+  Brain Vault, this one Understand Templates, Structure... Then Core
+  can Talk to Second Brain Vault ask for Section it returns Section as
+  a JSON"). New `app/obsidian/` — pure Obsidian-format primitives
+  (frontmatter, tags, `## ` section read/write + write-permission
+  rules, whole-vault/folder listing, the generic 4-file OKF directory
+  pattern, attachments). Zero `app.config` import, matching
+  `app/hermes/`'s own "config injected, never imported" convention —
+  every function takes an explicit `path` or `vault_path`. New
+  `app/vault/` — `vault_manager.py` relocated unchanged (still stdlib-
+  only, still physically copy-deployed into 8 Hermes skill folders) plus
+  a new `VaultClient`: constructed with a Template (fetched by the
+  Template Manager) and the vault root, exposes `create_structure`/
+  `write_file`/`write_section`/`update_property`/`find`/
+  `get_last_modified_files`, then disposed — short-lived and scoped to
+  one job, unlike `app/business/hermes/client.py`'s persistent
+  singleton, since a different Template is a genuinely different job.
+  New `app/data_access/templates/` — the real Template Manager
+  (`get_template`/`list_templates`), fixing a real ADR-003 layering
+  violation where `business/vault_templates.py` was reading
+  `Template.json` files directly instead of going through data_access.
+  `data_access/vault_writer.py` now holds only the ~150 Customer/
+  Project/Person/Meeting/Thread/Partner/Task functions that have no
+  real Template.json yet (operator: Threads specifically, "we kept it
+  because it's used in the Threads pipeline as we didn't create a
+  template for it yet") — every extracted primitive it used internally
+  is now imported from `app.obsidian` instead of duplicated, and every
+  external caller across `app/business/` keeps working unchanged via
+  re-exports under the original names. Found and fixed a real bug along
+  the way, the hard way (would have been invisible until the first
+  actual call): `_slugify` had no replacement definition after
+  extraction — 24 call sites across the file would have crashed with a
+  `NameError` on first use, caught only by writing a script to cross-
+  check every real `vault_writer.<name>` usage across the whole
+  codebase (AST-parsed module symbols vs. every real attribute access)
+  rather than trusting `import app.main` succeeding, which only proves
+  module-level code is valid, not that every function body's names
+  still resolve. Verified live after a clean backend restart:
+  `/vault-index/rebuild` (1,545 real notes, exercises
+  `list_all_note_paths`), `/vault-search/status`, `/vault/overview`,
+  `/sections`, and `/vault/templates` (the new Template Manager, real
+  templates like `azure-kb-doc`/`compass-kb-doc`) all correct. Left
+  deliberately deferred, not silently dropped: the ~600-line JSON-
+  state-store tail of `vault_writer.py` (agent history, cockpit chat,
+  schedules, etc. — its own per-concern-folder split) and migrating the
+  ~150 legacy note-kind functions onto real Templates + `VaultClient`
+  (needs a Template authored per kind first).

@@ -23,7 +23,7 @@ import json
 from pathlib import Path
 
 from app.business import people_extraction, vault_indexing
-from app.data_access import vault_manager as vm
+from app.vault import vault_manager as vm
 from app.data_access import vault_writer
 
 _ATTENDEE_FIELD_BY_KIND = {"meeting": "attendees", "email": "recipients"}

@@ -1,6 +1,22 @@
-"""Writes markdown notes into the Obsidian vault (app.config.settings.vault_path).
-No staging/promotion step — per MEMORY.md's decision, anything written here is
-immediately part of the trusted vault.
+"""Second Brain's own Customer/Project/Person/Meeting/Thread/Partner/Task
+business logic for the Obsidian vault (app.config.settings.vault_path).
+No staging/promotion step — per MEMORY.md's decision, anything written
+here is immediately part of the trusted vault.
+
+The raw Obsidian-format mechanics this module used to define directly
+(frontmatter parsing, tags, `## ` section read/write, the generic OKF
+4-file directory pattern, whole-vault scanning) moved to app/obsidian/
+(2026-08-27, backend architecture refactor) — this module now imports
+them and adds the Second-Brain-specific knowledge on top (which
+frontmatter keys a Customer needs, tag conventions, note-kind path
+layout). None of these note kinds have a real Template.json yet (the
+Templates/VaultClient path — app/vault/, app/data_access/templates/ —
+is the target for note kinds that do), so they stay here, hand-written,
+until one is authored for each. Re-exported below with their original
+names/signatures so every existing caller across app/business/ keeps
+working unchanged; new code should prefer importing app.obsidian
+directly for anything that doesn't need this module's own Second-Brain
+business logic.
 """
 from __future__ import annotations
 
@@ -11,10 +27,46 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from app.config import settings
-from app.data_access import section_ownership
+from app.obsidian import attachments as _obsidian_attachments
+from app.obsidian import directory_baseline as _okf
+from app.obsidian import notes as _obsidian_notes
+from app.obsidian.formatting import format_human_readable_datetime
+from app.obsidian.frontmatter import (
+    insert_frontmatter_key_if_missing,
+    insert_tags_line,
+    read_note,
+    remove_frontmatter_key_if_present,
+    rename_frontmatter_key,
+    upsert_frontmatter_key,
+    write_frontmatter_note as _write_frontmatter_note,
+)
+from app.obsidian.notes import WIKILINK_PATTERN, extract_wikilink_targets
+from app.obsidian.sections import (
+    append_body_line as append_person_note_update_line,
+    append_body_section_line,
+    insert_body_line_if_missing,
+    insert_body_section_if_missing,
+    read_body_section,
+    replace_body_line,
+    replace_body_opening_line,
+    replace_body_section,
+)
+from app.obsidian.tags import swap_tag, tag_slug
 
-_SLUG_INVALID_CHARS = re.compile(r'[\\/:*?"<>|]')
-_TAG_INVALID_CHARS = re.compile(r"[^a-z0-9/]+")
+# format_okf_provenance/okf_directory_paths/okf_concept_file_exists/
+# move_okf_directory/create_okf_directory_baseline/
+# ensure_okf_directory_baseline are re-exported as module-level names
+# further down (right where the old inline definitions used to be) so
+# every existing `vault_writer.create_okf_directory_baseline(...)`-style
+# call keeps working unchanged.
+_slugify = _obsidian_notes.slugify
+format_okf_provenance = _okf.format_okf_provenance
+okf_directory_paths = _okf.okf_directory_paths
+okf_concept_file_exists = _okf.okf_concept_file_exists
+move_okf_directory = _okf.move_okf_directory
+create_okf_directory_baseline = _okf.create_okf_directory_baseline
+ensure_okf_directory_baseline = _okf.ensure_okf_directory_baseline
+
 _WORK_ROOT = "Work"
 _PROCESSED_EMAILS_FILE = "processed_email_ids.json"
 _CONVERSATIONS_FILE = "conversation_index.json"
@@ -38,26 +90,6 @@ _AGENT_VISUALS_FILE = "agent_visuals.json"
 _AGENT_SCHEDULES_FILE = "agent_schedules.json"
 _JOB_RUN_STATE_FILE = "job_run_state.json"
 _MEETING_THREAD_LINK_CONFIG_FILE = "meeting_thread_link_config.json"
-_FRONTMATTER_LINE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*):\s?(.*)$")
-_LIST_ITEM_PATTERN = re.compile(r'"((?:[^"\\]|\\.)*)"')
-
-
-def _slugify(text: str, max_len: int = 80) -> str:
-    slug = _SLUG_INVALID_CHARS.sub("-", text).strip()
-    return slug[:max_len] if slug else "untitled"
-
-
-def tag_slug(text: str) -> str:
-    """Obsidian tags can't contain spaces — lowercase, non-alphanumeric runs
-    collapsed to a single hyphen, e.g. 'Department of Government Enablement'
-    -> 'department-of-government-enablement'. Public (promoted from the
-    former _tag_slug — REQ-SB-10 — so business-layer code has one shared
-    normalization function instead of duplicating slug logic outside
-    data_access; pure rename, no behavior change)."""
-    slug = _TAG_INVALID_CHARS.sub("-", text.lower()).strip("-")
-    return slug or "untitled"
-
-
 def build_tags(customer: str, kind: str) -> list[str]:
     """Hierarchical Obsidian tags mirroring the folder structure, so notes
     stay findable by customer/kind via search/graph view independent of
@@ -66,330 +98,16 @@ def build_tags(customer: str, kind: str) -> list[str]:
     return [f"customer/{tag_slug(customer)}", f"kind/{tag_slug(kind)}"]
 
 
-def _format_frontmatter_value(value) -> str:
-    if isinstance(value, list):
-        return "[" + ", ".join(_format_frontmatter_value(v) for v in value) + "]"
-    if isinstance(value, str):
-        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-        return f'"{escaped}"'
-    return str(value)
-
-
-def _parse_frontmatter_value(raw: str):
-    raw = raw.strip()
-    if raw.startswith('"') and raw.endswith('"'):
-        return raw[1:-1].replace('\\"', '"').replace("\\\\", "\\")
-    if raw.startswith("[") and raw.endswith("]"):
-        # Real gap, found and fixed by REQ-SB-01-US-01: every list-shaped
-        # frontmatter value this codebase writes (tags, via
-        # _format_frontmatter_value's own list branch) is always a list
-        # of quoted strings. Still not a general YAML parser (unchanged
-        # docstring caveat on read_note); only this one recognized literal
-        # shape.
-        inner = raw[1:-1]
-        return [
-            match.group(1).replace('\\"', '"').replace("\\\\", "\\")
-            for match in _LIST_ITEM_PATTERN.finditer(inner)
-        ]
-    return raw
-
-
-def read_note(path) -> tuple[dict, str]:
-    """Splits a note into (frontmatter dict, body text). Parses only the
-    simple key: "value" shape write_note itself produces — good enough for
-    the backfill script, not a general YAML parser."""
-    text = path.read_text(encoding="utf-8")
-    if not text.startswith("---\n"):
-        return {}, text
-    end = text.find("\n---\n", 4)
-    if end == -1:
-        return {}, text
-    frontmatter_block = text[4:end]
-    body = text[end + 5:]
-    frontmatter: dict = {}
-    for line in frontmatter_block.splitlines():
-        match = _FRONTMATTER_LINE.match(line)
-        if match:
-            frontmatter[match.group(1)] = _parse_frontmatter_value(match.group(2))
-    return frontmatter, body
-
-
-def extract_wikilink_targets(body: str) -> list[str]:
-    """Every [[target]] wikilink target found anywhere in a note's body
-    text, in first-seen order — reuses the same WIKILINK_PATTERN
-    upsert_attendee_links already relies on for one matched
-    **Attendees:** line, generalized to the whole body (REQ-SB-01-US-01,
-    the vault indexing layer's own outgoing-wikilink capture). Resolving
-    a target against another note's own filename stem is the caller's
-    job (app/business/vault_indexing.py), not this function's — this is
-    a raw text-extraction primitive only, matching read_note()'s own
-    "not a general parser" scope."""
-    return WIKILINK_PATTERN.findall(body)
-
-
-def insert_tags_line(path, tags: list[str]) -> None:
-    """Surgical insert, not a full frontmatter rewrite — adds a single
-    `tags: [...]` line just before the closing `---`, leaving every other
-    line (including exact number formatting) byte-for-byte untouched. Used
-    for backfilling notes written before `tags` existed."""
-    text = path.read_text(encoding="utf-8")
-    end = text.find("\n---\n", 4)
-    if end == -1:
-        return
-    insertion = f'tags: {_format_frontmatter_value(tags)}\n'
-    path.write_text(text[: end + 1] + insertion + text[end + 1:], encoding="utf-8")
-
-
-_OKF_RESERVED_FILENAMES = {"index.md", "log.md", "captures.md"}
-_THREAD_SIDECAR_RESERVED_FILENAMES = {
-    "pre_migration_summary.md", "pre_migration_summary.consumed.md",
-}
+def write_note(subfolder: str, filename_stem: str, frontmatter: dict, body: str) -> str:
+    return _obsidian_notes.write_note(settings.vault_path, subfolder, filename_stem, frontmatter, body)
 
 
 def list_all_note_paths() -> list:
-    """Every real, normally-frontmattered note anywhere under `Work/`, at
-    ANY depth — a single bounded recursive scan (`REQ-SB-71-US-02`,
-    `ADR-048` Decision 7), replacing this function's own prior 1-level
-    flat glob plus two hardcoded `Customers/*/*.md`/`Customers/*/projects/
-    */*.md` globs (`ADR-042`'s own flagged Consequence, resolved narrowly
-    for Customer/Project only, `REQ-SB-54-US-01-T06`). Strictly
-    behavior-preserving for every existing caller — a superset of the old
-    flat + two-hardcoded-glob result, since every note that scheme already
-    found still lives at a depth `rglob("*.md")` also reaches; newly,
-    correctly discovers Thread's own distilled concept file, every raw
-    message note, and (once other note kinds gain a directory shape) any
-    further nested concept file — closing the SAME class of blind spot
-    `ADR-042` already flagged once for Customer/Project, generalized
-    instead of special-cased a third/fourth time (`Implementation/
-    Learnings.md`, `SPRINT-048`). `index.md`/`log.md`/`captures.md` are
-    OKF-reserved/append-only files with no ordinary key: value frontmatter
-    shape, excluded so every existing caller's read_note(path) contract
-    keeps holding. `path.is_file()` guard (`REQ-SB-72-US-01-T04`, found
-    live) -- `rglob("*.md")` matches DIRECTORIES whose own name happens to
-    end in `.md`, not only regular files; a real, pre-existing gap in
-    `email_classification.write_file_companion`'s own `file_slug`
-    convention (out of this task's own `## Files to Modify`, disclosed
-    separately) can produce exactly such a directory when the original
-    attachment's own filename already ends in `.md` -- without this guard,
-    `read_note(path)` crashes with a real `PermissionError` trying to open
-    a directory as a file. Purely defensive: zero behavior change for any
-    well-formed note, which is always a regular file. Also excludes
-    `pre_migration_summary.md`/`pre_migration_summary.consumed.md`
-    (`BUGFIX-05-US-01`, `ADR-053`) -- the plain-text, non-frontmatter
-    Thread-directory sidecar `migrate_flat_thread_to_directory` writes and
-    `synthesize_thread` archives, never a real note.
-
-    Real bug, found live 2026-08-27 (operator: "I can See the same
-    meeting twice"): this scan never excluded `_archive/`-prefixed
-    folders (`Work/_archive/`, `Work/People/_Archived Duplicates
-    (2026-08-24)/`, etc.) -- this project's own established "keep on
-    disk, hide from live app" archive convention (never delete real
-    data, MEMORY.md) -- so an archived note kept showing up in every
-    live read (My Day Calendar, search, indexing) right alongside its
-    still-current replacement, defeating the entire point of archiving
-    it. Any path with a `_`-prefixed folder component anywhere under
-    Work/ is now excluded from this scan, matching the SAME leading-
-    underscore-means-excluded idiom this whole ecosystem already uses
-    elsewhere (Hermes' own `_disabled-skills-on-primary/`) -- NOT a
-    substring match on "archive" in a path, which would also wrongly
-    exclude real Threads that happen to be ABOUT archiving (e.g. "FW-
-    Microsoft Archive for sharepoint storage")."""
-    work_root = settings.vault_path / _WORK_ROOT
-    if not work_root.exists():
-        return []
-    return sorted(
-        path for path in work_root.rglob("*.md")
-        if path.name not in _OKF_RESERVED_FILENAMES
-        and path.name not in _THREAD_SIDECAR_RESERVED_FILENAMES
-        and path.is_file()
-        and not any(part.startswith("_") for part in path.relative_to(work_root).parent.parts)
-    )
+    return _obsidian_notes.list_all_note_paths(settings.vault_path, _WORK_ROOT)
 
 
 def list_notes_in_kind_folder(kind: str) -> list:
-    """Same shape as list_all_note_paths(), scoped to one Work/<kind>/
-    folder (REQ-SB-12-US-02) — avoids reading and discarding every
-    Customer/Person/Partner/Notification/File note just to filter down to
-    one kind (e.g. Emails, Meetings). Returns [] if the kind folder
-    doesn't exist yet (e.g. Meetings before REQ-SB-08 has ever run) —
-    same not-yet-created-folder handling list_all_note_paths() already
-    has for Work/ itself."""
-    kind_root = settings.vault_path / _WORK_ROOT / kind
-    if not kind_root.exists():
-        return []
-    return sorted(kind_root.glob("*.md"))
-
-
-def _write_frontmatter_note(path: Path, frontmatter: dict, body: str) -> None:
-    """Unconditional full-file write of a frontmatter+body note at an
-    already-resolved path — extracted (ADR-042 point 1) from write_note's
-    own prior inline body so both write_note (flat note kinds) and the new
-    OKF directory family's concept-file creation (create_okf_directory_
-    baseline) share one frontmatter-rendering mechanism instead of two
-    parallel copies. Behavior-preserving: identical output to write_note's
-    pre-extraction inline version for every existing caller."""
-    frontmatter_lines = ["---"]
-    for key, value in frontmatter.items():
-        frontmatter_lines.append(f"{key}: {_format_frontmatter_value(value)}")
-    frontmatter_lines.append("---")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(frontmatter_lines) + "\n\n" + body, encoding="utf-8")
-
-
-def write_note(subfolder: str, filename_stem: str, frontmatter: dict, body: str) -> str:
-    note_path = settings.vault_path / subfolder / f"{_slugify(filename_stem)}.md"
-    _write_frontmatter_note(note_path, frontmatter, body)
-    return str(note_path)
-
-
-def format_okf_provenance(by: str, at: str) -> str:
-    """JSON-encodes an OKF actor-provenance value (`generated`/`verified`,
-    ADR-042 point 3) as a string under the field's own literal name —
-    extends, rather than duplicates, the same _format_frontmatter_value
-    dict-round-trip workaround already shipped for Meeting `attendees`/
-    Email `recipients`. `by`/`at` are stored verbatim; populating them
-    with a real agent id / ISO timestamp is a business-layer concern
-    (REQ-SB-57), not this data_access function's own job."""
-    return json.dumps({"by": by, "at": at})
-
-
-def okf_directory_paths(directory_root: Path, slug: str) -> dict:
-    """Resolves the deterministic path set for one OKF-conformant
-    directory note kind (ADR-042 point 1) rooted at directory_root:
-    index.md/<slug>.md/log.md/captures.md, all inside a
-    <directory_root>/<slug-of-slug>/ directory — without checking whether
-    any of them exist yet. Mirrors every other note kind's own
-    deterministic-path-from-a-stable-key precedent (hub_note_path/
-    meeting_note_path/thread_note_path), generalized to a 4-file
-    directory shape instead of one flat file."""
-    concept_slug = _slugify(slug)
-    base = Path(directory_root) / concept_slug
-    return {
-        "directory": base,
-        "index": base / "index.md",
-        "concept": base / f"{concept_slug}.md",
-        "log": base / "log.md",
-        "captures": base / "captures.md",
-    }
-
-
-def okf_concept_file_exists(directory_root: Path, slug: str) -> bool:
-    return okf_directory_paths(directory_root, slug)["concept"].exists()
-
-
-def move_okf_directory(source_directory: Path, target_parent_directory: Path) -> Path:
-    """Generic, cross-parent OKF-directory archival-move primitive
-    (`REQ-SB-74-US-01-T04`, `ADR-055` Decision 4) -- not Customer-specific,
-    named/placed alongside `okf_directory_paths` for the same reason
-    `okf_directory_paths` itself is shared across Customer/Project. Mirrors
-    `rename_thread_directory`'s own atomic-move-plus-refuse-to-overwrite
-    discipline, WIDENED to a DIFFERENT parent directory (not just a new
-    slug under the same parent), NARROWED by NOT renaming the concept file
-    inside -- the directory's own name/slug is unchanged, only its
-    LOCATION moves, so every file inside (`index.md`/`<slug>.md`/`log.md`/
-    `captures.md`, plus any nested subdirectory such as `People/`) is
-    moved byte-for-byte, untouched, in one atomic `Path.rename()` --
-    satisfies "content byte-for-byte unchanged" by construction, not by a
-    defensive check. Raises `FileExistsError` on a genuine collision at
-    the target, never silently overwrites. Returns the new directory
-    path."""
-    target_parent_directory.mkdir(parents=True, exist_ok=True)
-    target_directory = target_parent_directory / source_directory.name
-    if target_directory.exists():
-        raise FileExistsError(
-            f"would overwrite existing directory at {target_directory}"
-        )
-    source_directory.rename(target_directory)
-    return target_directory
-
-
-def _write_or_backfill_identifying_header(path: Path, identifying_name: str) -> None:
-    """Writes/backfills the bare `# {name}` HALF of index.md's own
-    already-Accepted header convention onto log.md/captures.md
-    (BUGFIX-07-US-01, BUG-028) — shared by both the fresh-creation path
-    (create_okf_directory_baseline) and the top-up/backfill path
-    (ensure_okf_directory_baseline), and also reachable from create_okf_
-    directory_baseline itself for the partial/interrupted-prior-run case.
-    Fresh creation (path does not exist yet): writes the header as the
-    file's full content. Backfill (path already exists): a file is
-    "headerless" iff its current first line does not start with "# " —
-    confirmed against every real caller that appends content into an
-    already-existing log.md/captures.md (append_person_note_update_line's
-    three call sites), none of which ever writes a line starting with
-    "# " — so the header is prepended, every existing byte preserved,
-    never reordered/duplicated. An already-headered file (first line
-    already starts with "# ") is left completely untouched — idempotent
-    on a repeat ensure_* run."""
-    header = f"# {identifying_name}\n\n"
-    if not path.exists():
-        path.write_text(header, encoding="utf-8")
-        return
-    text = path.read_text(encoding="utf-8")
-    first_line = text.split("\n", 1)[0]
-    if first_line.startswith("# "):
-        return
-    path.write_text(header + text, encoding="utf-8")
-
-
-def create_okf_directory_baseline(
-    directory_root: Path, slug: str, concept_frontmatter: dict, identifying_name: str,
-    index_listing_body: str = "",
-) -> dict:
-    """Creates an OKF-conformant directory note kind for the first time
-    (ADR-042 point 1): index.md (whole-file, auto-generated listing —
-    never header-scoped, never preserved on top-up, since it has zero
-    user- or agent-owned prose), <slug>.md (the OKF concept file, via
-    _write_frontmatter_note, with a body of exactly the two OKF-required
-    empty sections ## Glimpse and ## Background), and log.md/captures.md
-    each gaining/keeping their own identifying `# {identifying_name}`
-    header via _write_or_backfill_identifying_header (BUGFIX-07-US-01,
-    BUG-028) — fresh-created with the header on first creation, or
-    backfilled with it if a prior partial/interrupted run already left an
-    already-existing-but-headerless file behind; captures.md's own body
-    content, once real content exists there, is never disturbed by this
-    function beyond that header-presence check — the structural (not
-    conventional) guarantee that no <slug>.md regeneration code path can
-    ever reach it (ADR-042 Scenario 2/3). Always writes index.md/<slug>.md
-    unconditionally, mirroring every other note kind's own create_*_
-    baseline contract — callers must check okf_concept_file_exists()
-    first. Returns the same path set okf_directory_paths() resolves, each
-    value stringified."""
-    paths = okf_directory_paths(directory_root, slug)
-    paths["directory"].mkdir(parents=True, exist_ok=True)
-    paths["index"].write_text(index_listing_body, encoding="utf-8")
-    _write_frontmatter_note(paths["concept"], concept_frontmatter, "## Glimpse\n\n## Background\n")
-    _write_or_backfill_identifying_header(paths["log"], identifying_name)
-    _write_or_backfill_identifying_header(paths["captures"], identifying_name)
-    return {key: str(value) for key, value in paths.items()}
-
-
-def ensure_okf_directory_baseline(
-    directory_root: Path, slug: str, concept_frontmatter_defaults: dict, identifying_name: str,
-    index_listing_body: str = "",
-) -> list[str]:
-    """Tops up an already-existing OKF directory note kind: surgically
-    inserts any missing concept_frontmatter_defaults key into <slug>.md
-    via insert_frontmatter_key_if_missing (never touches an already-
-    present key or the body — same baseline-preservation contract every
-    other note kind's own ensure_*_baseline_frontmatter already
-    established), creates log.md/captures.md with their own identifying
-    header if missing, or backfills that same header onto an already-
-    existing headerless one without disturbing any already-appended real
-    content (BUGFIX-07-US-01, BUG-028 — see
-    _write_or_backfill_identifying_header), and unconditionally rewrites
-    index.md (whole-file swap, same as create_okf_directory_baseline —
-    index.md has no user-owned content to preserve). Returns the list of
-    concept frontmatter keys actually inserted (empty if the concept file
-    already had all of them)."""
-    paths = okf_directory_paths(directory_root, slug)
-    inserted: list[str] = []
-    for key, value in concept_frontmatter_defaults.items():
-        if insert_frontmatter_key_if_missing(paths["concept"], key, value):
-            inserted.append(key)
-    _write_or_backfill_identifying_header(paths["log"], identifying_name)
-    _write_or_backfill_identifying_header(paths["captures"], identifying_name)
-    paths["index"].write_text(index_listing_body, encoding="utf-8")
-    return inserted
+    return _obsidian_notes.list_notes_in_kind_folder(settings.vault_path, kind, _WORK_ROOT)
 
 
 def customer_directory_paths(customer: str) -> dict:
@@ -598,207 +316,39 @@ def list_known_kinds() -> list[str]:
     return sorted(p.name for p in work_root.iterdir() if p.is_dir())
 
 
-def write_attachments(
-    subfolder: str, note_stem: str, message_segment: str, attachments: list[dict]
-) -> list[dict]:
-    """Saves each attachment next to its note, Obsidian-convention style:
-    <subfolder>/attachments/<note_stem>/<slug-of-message_segment>/<filename>
-    -- nested one level deeper per message (BUGFIX-03-US-01, closes
-    BUG-014's gap 2) so two different messages sharing one note (a
-    Thread) can never silently overwrite same-named attachments (e.g.
-    recurring image001.png signature images). message_segment is the
-    caller's own per-message identifier -- the Thread pipeline passes
-    the message's own full `received` timestamp (see email_
-    classification.summarize_attachment), not a day-only date, since a
-    Thread routinely receives multiple same-day messages. Returns one
-    entry per attachment with a vault-relative link (relative to the
-    note's own location) for embedding in the note body — oversized
-    attachments (content already None per outlook_com.py's size cap)
-    are recorded but not written, same "filename-only, not silently
-    dropped" precedent as agentic-map."""
-    results: list[dict] = []
-    if not attachments:
-        return results
-
-    note_slug = _slugify(note_stem)
-    message_slug = _slugify(message_segment)
-    attachments_dir = (
-        settings.vault_path / subfolder / "attachments" / note_slug / message_slug
-    )
-
-    for attachment in attachments:
-        filename = attachment["filename"]
-        if attachment["content"] is None:
-            results.append({"filename": filename, "size": attachment["size"], "saved": False})
-            continue
-        attachments_dir.mkdir(parents=True, exist_ok=True)
-        file_path = attachments_dir / filename
-        file_path.write_bytes(attachment["content"])
-        relative_link = f"attachments/{note_slug}/{message_slug}/{filename}"
-        results.append({
-            "filename": filename,
-            "size": attachment["size"],
-            "saved": True,
-            "relative_link": relative_link,
-        })
-
-    return results
+def write_attachments(subfolder: str, note_stem: str, message_segment: str, attachments: list[dict]) -> list[dict]:
+    return _obsidian_attachments.write_attachments(settings.vault_path, subfolder, note_stem, message_segment, attachments)
 
 
 def staged_attachment_files(conversation_id: str, message_id: str) -> list:
-    """Lists every real attachment file `raw_message_capture.
-    capture_raw_thread_messages` (`REQ-SB-71-US-02-T03`) durably persisted
-    for one raw message, via `write_attachments`'s own already-established
-    `<subfolder>/attachments/<note_slug>/<message_slug>/` convention
-    (`subfolder="Work/Threads"`, `note_stem=conversation_id`,
-    `message_segment=message_id`), reused verbatim -- the deterministic
-    location `T07`'s own Files/OKF companion composition re-derives to
-    read real attachment bytes back, since `email_staging`'s own copy is
-    already gone by Stage 2 time. Returns `[]` (the common case -- most
-    emails carry none) if no attachments were ever saved for this
-    message."""
-    directory = (
-        settings.vault_path / _THREADS_SUBFOLDER / "attachments"
-        / _slugify(conversation_id) / _slugify(message_id)
-    )
-    if not directory.exists():
-        return []
-    return sorted(path for path in directory.iterdir() if path.is_file())
+    return _obsidian_attachments.staged_attachment_files(settings.vault_path, _THREADS_SUBFOLDER, conversation_id, message_id)
 
 
 def write_file_companion(
-    subfolder: str,
-    note_stem: str,
-    file_slug: str,
-    original_filename: str,
-    content: bytes,
-    summary: str,
-    source_thread: str | None = None,
-    source_email: str | None = None,
+    subfolder: str, note_stem: str, file_slug: str, original_filename: str, content: bytes, summary: str,
+    source_thread: str | None = None, source_email: str | None = None,
 ) -> dict:
-    """Generic Files/OKF-companion primitive (`REQ-SB-71-US-02-T07`,
-    `ADR-048` Decision 4) -- `<subfolder>/files/<slug-of-file_slug>/
-    <original_filename>` (raw bytes, untouched) beside `<subfolder>/
-    files/<slug-of-file_slug>/<slug-of-file_slug>.md` (an OKF-lite
-    companion note: frontmatter + `## Summary` agent-owned + `##
-    Personal Notes` human-owned), replacing today's buried, unlinked
-    dated sub-entry (`summarize_attachment`) with a first-class,
-    backlink-discoverable note. Parameterized by `(subfolder, note_stem)`
-    exactly like `write_attachments` already is -- `subfolder` accepts
-    either a vault-relative string (`"Work/Threads"`) or an already
-    vault-absolute path (e.g. one Thread's own `thread_directory_paths(...)
-    ["directory"]`); pathlib's own `Path.joinpath` semantics make
-    `settings.vault_path / subfolder` resolve correctly either way (an
-    absolute right-hand operand wins), mirroring exactly how `write_
-    attachments`'s own `subfolder` join already behaves. `note_stem` is
-    accepted for interface parity with `write_attachments` (a future
-    caller may want it for its own subfolder-scoping); this convention's
-    own path shape does not incorporate it -- `file_slug` alone is the
-    complete identifier, since (unlike an email's own per-message
-    attachments) a Files/OKF companion is never nested per-message.
-    Built once, against the one real concrete need (Email/Thread
-    attachments) -- generic enough that a future Meeting/Customer/Person/
-    Opportunity need reuses it UNCHANGED."""
-    slug = _slugify(file_slug)
-    files_dir = settings.vault_path / subfolder / "files" / slug
-    files_dir.mkdir(parents=True, exist_ok=True)
-    file_path = files_dir / original_filename
-    file_path.write_bytes(content)
-    companion_path = files_dir / f"{slug}.md"
-    frontmatter = {
-        "type": "File",
-        "file_slug": file_slug,
-        "original_filename": original_filename,
-    }
-    if source_thread is not None:
-        # 2026-08-21, additive -- operator: "create a file.md next to it
-        # with the Source Thread." A wikilink string, same convention as
-        # ingest_email.py's own participant_links.
-        frontmatter["source_thread"] = source_thread
-    if source_email is not None:
-        # 2026-08-21, additive -- operator: "Link the file to the email
-        # it came from as well." A wikilink to the specific message note,
-        # not just its Thread.
-        frontmatter["source_email"] = source_email
-    _write_frontmatter_note(
-        companion_path,
-        frontmatter,
-        f"## Summary\n\n{summary}\n\n## Personal Notes\n",
+    # note_stem accepted for interface parity only -- the real path shape
+    # never incorporated it (see app.obsidian.attachments' own docstring).
+    return _obsidian_attachments.write_file_companion(
+        settings.vault_path, subfolder, file_slug, original_filename, content, summary, source_thread, source_email,
     )
-    return {
-        "file_path": str(file_path),
-        "companion_path": str(companion_path),
-    }
 
 
 def write_file_link_companion(
-    subfolder: str,
-    file_slug: str,
-    url: str,
-    source_thread: str | None = None,
-    source_email: str | None = None,
+    subfolder: str, file_slug: str, url: str, source_thread: str | None = None, source_email: str | None = None,
 ) -> dict:
-    """Sibling to `write_file_companion` (2026-08-21, operator: "files
-    that are not in the email as attachment but a link to the file
-    somewhere ... create an MD for this file that will contain the link
-    to it and summary I will provide later") -- for a file referenced
-    ONLY by URL (e.g. a SharePoint/OneDrive "shared with you" link),
-    never a real attachment's bytes. Writes JUST the companion note --
-    `<subfolder>/files/<slug-of-file_slug>/<slug-of-file_slug>.md` -- no
-    sibling raw-bytes file, since there are no bytes to save. Same
-    baseline body shape as `write_file_companion` (`## Summary` empty,
-    `## Personal Notes`) -- the empty Summary is deliberate, per the
-    operator's own "summary I will provide later," not an oversight."""
-    slug = _slugify(file_slug)
-    files_dir = settings.vault_path / subfolder / "files" / slug
-    files_dir.mkdir(parents=True, exist_ok=True)
-    companion_path = files_dir / f"{slug}.md"
-    frontmatter = {
-        "type": "File",
-        "file_slug": file_slug,
-        "url": url,
-    }
-    if source_thread is not None:
-        frontmatter["source_thread"] = source_thread
-    if source_email is not None:
-        frontmatter["source_email"] = source_email
-    _write_frontmatter_note(
-        companion_path,
-        frontmatter,
-        f"[{url}]({url})\n\n## Summary\n\n\n\n## Personal Notes\n",
+    return _obsidian_attachments.write_file_link_companion(
+        settings.vault_path, subfolder, file_slug, url, source_thread, source_email,
     )
-    return {"companion_path": str(companion_path)}
 
 
 def move_note_and_attachments(note_path, target_dir) -> str:
-    """Moves a note and its sibling attachments/<note_slug>/ folder (if any)
-    into target_dir, preserving the note's own filename. Refuses to
-    silently overwrite an existing file at the destination — a genuine
-    collision should surface, not disappear one of the two notes."""
-    target_dir.mkdir(parents=True, exist_ok=True)
-    note_slug = note_path.stem
-    new_note_path = target_dir / note_path.name
-    if new_note_path.exists():
-        raise FileExistsError(f"would overwrite existing note at {new_note_path}")
-    note_path.rename(new_note_path)
-
-    old_attachments_dir = note_path.parent / "attachments" / note_slug
-    if old_attachments_dir.exists():
-        new_attachments_dir = target_dir / "attachments" / note_slug
-        new_attachments_dir.parent.mkdir(parents=True, exist_ok=True)
-        old_attachments_dir.rename(new_attachments_dir)
-
-    return str(new_note_path)
+    return _obsidian_notes.move_note_and_attachments(note_path, target_dir)
 
 
 def remove_empty_dirs(root) -> None:
-    if not root.exists():
-        return
-    for path in sorted(root.rglob("*"), key=lambda p: len(p.parts), reverse=True):
-        if path.is_dir() and not any(path.iterdir()):
-            path.rmdir()
-    if root.is_dir() and not any(root.iterdir()):
-        root.rmdir()
+    return _obsidian_notes.remove_empty_dirs(root)
 
 
 def _processed_emails_path():
@@ -915,27 +465,6 @@ def create_customer_hub_note_baseline(customer: str) -> str:
     )
 
 
-def insert_frontmatter_key_if_missing(path, key: str, value) -> bool:
-    """Surgical insert of one `key: value` frontmatter line just before
-    the closing `---`, leaving every other line (including exact
-    formatting) byte-for-byte untouched — generalizes insert_tags_line's
-    "surgical insert, not full rewrite" precedent from a single
-    hardcoded `tags` key to any key/value pair, and (unlike
-    insert_tags_line) checks presence itself rather than relying on the
-    caller. Returns True if inserted, False if the key was already
-    present (no write performed)."""
-    frontmatter, _ = read_note(path)
-    if key in frontmatter:
-        return False
-    text = path.read_text(encoding="utf-8")
-    end = text.find("\n---\n", 4)
-    if end == -1:
-        return False
-    insertion = f"{key}: {_format_frontmatter_value(value)}\n"
-    path.write_text(text[: end + 1] + insertion + text[end + 1 :], encoding="utf-8")
-    return True
-
-
 def ensure_hub_note_baseline_frontmatter(path, customer: str) -> list[str]:
     """Tops up an already-existing hub note with any of the four baseline
     frontmatter keys it is missing (type/customer/tags/affiliate_of),
@@ -955,47 +484,6 @@ def ensure_hub_note_baseline_frontmatter(path, customer: str) -> list[str]:
         if insert_frontmatter_key_if_missing(path, key, baseline_values[key]):
             inserted.append(key)
     return inserted
-
-
-def insert_body_line_if_missing(path, line: str) -> bool:
-    """Surgical insert of a single line as the first line of a note's
-    body if it is not already present anywhere in the file — used for
-    the inline `**Customer:** [[Hub]]` wikilink (REQ-SB-14 Scenario 5's
-    idempotency: an already-linked note must be left byte-for-byte
-    unchanged on a rerun). Returns True if inserted, False if the line
-    was already present (no write performed)."""
-    text = path.read_text(encoding="utf-8")
-    if line in text:
-        return False
-    end = text.find("\n---\n", 4)
-    if end == -1:
-        # No frontmatter block found (shouldn't happen for notes this
-        # module writes) — prepend at the very top as a fallback.
-        path.write_text(line + "\n\n" + text, encoding="utf-8")
-        return True
-    # write_note() always writes "---\n\n<body>" — end points at the
-    # leading "\n" of the closing "\n---\n"; body starts 6 chars later
-    # (past "---\n" itself, plus the blank-line separator).
-    body_start = end + 6
-    new_text = text[:body_start] + line + "\n\n" + text[body_start:]
-    path.write_text(new_text, encoding="utf-8")
-    return True
-
-
-def append_person_note_update_line(note_path, line: str) -> None:
-    """Unconditionally appends one line to a Person note's own body --
-    the real write primitive both the Supervised-approve direct-write
-    path (T02's own already_approved=True branch) and this module's
-    confirm_proposal (Manual/Autonomous's own explicit-confirm write)
-    share (ADR-038 point 7). Deliberately NOT insert_body_line_if_
-    missing's idempotent-if-already-present shape -- each proposed edit
-    is its own new fact to record, even if coincidentally identical
-    text to an existing line, so it must always append, never silently
-    no-op on a textual coincidence."""
-    path = Path(note_path)
-    text = path.read_text(encoding="utf-8")
-    separator = "" if text.endswith("\n") else "\n"
-    path.write_text(text + separator + line + "\n", encoding="utf-8")
 
 
 _PEOPLE_SUBFOLDER = f"{_WORK_ROOT}/People"
@@ -1151,12 +639,9 @@ _PROCESSED_MEETINGS_FILE = "processed_meeting_ids.json"
 
 _ATTENDEES_LINE_PATTERN = re.compile(r"^\*\*Attendees:\*\* (.+)$", re.MULTILINE)
 _ATTENDEES_LINE_PREFIX = "**Attendees:** "
-# Public (promoted from the former _WIKILINK_PATTERN -- BUGFIX-06-US-01,
-# BUG-027 -- so app/business/cockpit/people.py has one shared
-# wikilink-stripping regex instead of duplicating [[...]] extraction
-# outside data_access; pure rename, no behavior change. Mirrors the
-# tag_slug promotion precedent, REQ-SB-10-US-01-T01.)
-WIKILINK_PATTERN = re.compile(r"\[\[([^\]]+)\]\]")
+# WIKILINK_PATTERN itself now lives in app.obsidian.notes (imported at
+# the top of this file) -- kept importable from here under its original
+# name for every existing caller.
 
 
 def meeting_note_filename_stem(subject: str, start: str) -> str:
@@ -1934,33 +1419,6 @@ def rename_thread_directory(old_directory: Path, new_directory: Path) -> Path:
     return new_concept_path
 
 
-def format_human_readable_datetime(raw: str) -> str:
-    """Renders a raw, COM-stringified timestamp (email["received"]'s own
-    real shape, e.g. "2026-08-16 13:02:57.246000+00:00") in a
-    human-readable form, e.g. "Aug 16, 2026, 1:02 PM" (ADR-046 Decision
-    10, REQ-SB-69-US-01-T07) -- a pure display-formatting helper, never a
-    replacement for the machine-parseable `last_message_at` field itself,
-    which stays byte-for-byte unchanged everywhere it's already written.
-    Parses via datetime.fromisoformat (handles the space-separated,
-    microsecond-precision, UTC-offset-suffixed shape list_recent_mail's
-    own `received` field already produces) and falls back to a bare
-    date-only strptime for the "YYYY-MM-DD"-only shape. Never raises and
-    never fabricates a guessed date -- a genuinely unparseable raw string
-    is returned unchanged, mirroring this codebase's own honest-
-    degradation posture (e.g. summarize_attachment's own "summary_error"
-    pattern) applied here to a display-only formatting concern."""
-    try:
-        parsed = datetime.fromisoformat(raw)
-    except (ValueError, TypeError):
-        try:
-            parsed = datetime.strptime(raw[:10], "%Y-%m-%d")
-        except (ValueError, TypeError):
-            return raw
-    month_day_year = f"{parsed.strftime('%b')} {parsed.strftime('%d').lstrip('0') or '0'}, {parsed.year}"
-    time_of_day = parsed.strftime("%I:%M %p").lstrip("0") or "0"
-    return f"{month_day_year}, {time_of_day}"
-
-
 def _meeting_thread_link_config_path():
     state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
@@ -2066,319 +1524,6 @@ def list_known_partners() -> list[str]:
         if partner:
             partners.add(partner)
     return sorted(partners)
-
-
-def rename_frontmatter_key(path, old_key: str, new_key: str, new_value=None) -> bool:
-    """Generic frontmatter-key rename for the Customer->Partner
-    migration's idempotent retag scan (ADR-009 point 5): renames
-    old_key to new_key, preserving the existing value unless new_value
-    is given explicitly (used for the hub note's own `type: Customer`
-    -> `type: Partner` value swap, where the key name itself doesn't
-    change but the value does). No-op (returns False, no write) if
-    old_key is not present in the note's frontmatter — this absence
-    check is what makes a rerun a true no-op once a note has already
-    been migrated. Scoped strictly to the frontmatter block (never the
-    body), leaving every other line byte-for-byte untouched, mirroring
-    insert_frontmatter_key_if_missing's surgical-insert contract."""
-    frontmatter, _ = read_note(path)
-    if old_key not in frontmatter:
-        return False
-    value = new_value if new_value is not None else frontmatter[old_key]
-    text = path.read_text(encoding="utf-8")
-    end = text.find("\n---\n", 4)
-    if end == -1:
-        return False
-    frontmatter_block = text[: end + 1]
-    rest = text[end + 1:]
-    lines = frontmatter_block.splitlines(keepends=True)
-    for i, line in enumerate(lines):
-        match = _FRONTMATTER_LINE.match(line.rstrip("\n"))
-        if match and match.group(1) == old_key:
-            lines[i] = f"{new_key}: {_format_frontmatter_value(value)}\n"
-            break
-    path.write_text("".join(lines) + rest, encoding="utf-8")
-    return True
-
-
-def remove_frontmatter_key_if_present(path, key: str) -> bool:
-    """Sibling to insert_frontmatter_key_if_missing — drops a
-    frontmatter key's line entirely if present. Used to drop
-    affiliate_of when a Customer hub note is migrated to Partner, which
-    has no Affiliate concept (ADR-009's hub-note rewrite step). Scoped
-    strictly to the frontmatter block. No-op (False) if the key is
-    already absent — idempotent by construction."""
-    frontmatter, _ = read_note(path)
-    if key not in frontmatter:
-        return False
-    text = path.read_text(encoding="utf-8")
-    end = text.find("\n---\n", 4)
-    if end == -1:
-        return False
-    frontmatter_block = text[: end + 1]
-    rest = text[end + 1:]
-    kept_lines = []
-    for line in frontmatter_block.splitlines(keepends=True):
-        match = _FRONTMATTER_LINE.match(line.rstrip("\n"))
-        if match and match.group(1) == key:
-            continue
-        kept_lines.append(line)
-    path.write_text("".join(kept_lines) + rest, encoding="utf-8")
-    return True
-
-
-def swap_tag(path, old_tag: str, new_tag: str) -> bool:
-    """Generic tags-list swap for the Customer->Partner migration's
-    retag scan (ADR-009 point 5): replaces `"old_tag"` with `"new_tag"`
-    within the note's frontmatter `tags:` line only — write_note/
-    _format_frontmatter_value always render tags as a single-line
-    `tags: ["a", "b"]` list, so a scoped, single-line string replace is
-    equivalent to a structural list-element swap without needing a real
-    YAML parser (read_note's own documented "not a general YAML parser"
-    limitation). Never touches the body or any other frontmatter line.
-    No-op (False) if old_tag is not present in that line — idempotent
-    by construction."""
-    text = path.read_text(encoding="utf-8")
-    end = text.find("\n---\n", 4)
-    if end == -1:
-        return False
-    frontmatter_block = text[: end + 1]
-    rest = text[end + 1:]
-    lines = frontmatter_block.splitlines(keepends=True)
-    old_quoted = f'"{old_tag}"'
-    new_quoted = f'"{new_tag}"'
-    changed = False
-    for i, line in enumerate(lines):
-        match = _FRONTMATTER_LINE.match(line.rstrip("\n"))
-        if match and match.group(1) == "tags" and old_quoted in line:
-            lines[i] = line.replace(old_quoted, new_quoted)
-            changed = True
-            break
-    if not changed:
-        return False
-    path.write_text("".join(lines) + rest, encoding="utf-8")
-    return True
-
-
-def replace_body_line(path, old_line: str, new_line: str) -> bool:
-    """Generic body-line-label replace for the Customer->Partner
-    migration's retag scan (ADR-009 point 5): replaces the exact line
-    old_line with new_line wherever it appears in the note (used to
-    relabel an existing inline `**Customer:** [[Name]]` wikilink to
-    `**Partner:** [[Name]]`). No-op (False) if old_line is not present
-    — idempotent by construction, mirroring insert_body_line_if_missing's
-    presence-check style."""
-    text = path.read_text(encoding="utf-8")
-    if old_line not in text:
-        return False
-    path.write_text(text.replace(old_line, new_line), encoding="utf-8")
-    return True
-
-
-_BODY_SECTION_HEADER_PATTERN = re.compile(r"^## .+$", re.MULTILINE)
-
-
-def insert_body_section_if_missing(path, header: str) -> bool:
-    """Idempotent "top up only if absent" primitive for a whole `## `-level
-    header (`REQ-SB-72-US-01-T04`) — mirrors `insert_body_line_if_missing`'s
-    own idempotent shape, generalized from a single line to a section
-    header, so a header `replace_body_section` can later write into can be
-    created the first time without that function itself ever creating one
-    (it only ever regenerates the region between an ALREADY-present header
-    and the next, by design — see its own docstring). Presence is checked
-    via the SAME exact, literal line-match regex `replace_body_section`
-    itself uses, so this function and that one always agree on whether a
-    given header is "present." Appends `f"\\n\\n{header}\\n"` to the end of
-    the file's own body if `header` is not already present anywhere in the
-    file. Returns `True` if inserted, `False` if already present (no write
-    performed). Never touches an already-present header's own content —
-    this function only ever appends a bare header line at the very end;
-    populating its content is `replace_body_section`'s own job, called
-    separately afterward."""
-    text = path.read_text(encoding="utf-8")
-    header_line_pattern = re.compile(r"^" + re.escape(header) + r"$", re.MULTILINE)
-    if header_line_pattern.search(text) is not None:
-        return False
-    separator = "" if text.endswith("\n") else "\n"
-    path.write_text(text + separator + f"\n{header}\n", encoding="utf-8")
-    return True
-
-
-def replace_body_section(path, header: str, new_content: str, *, caller: str) -> bool:
-    """Header-scoped full-region regeneration primitive (ADR-042 point 2):
-    replaces everything strictly between `header`'s own line and the next
-    `##`-level header line (or end of file) with new_content, leaving
-    everything outside that bounded region — frontmatter, other sections,
-    and both header lines themselves — byte-for-byte untouched. Locates
-    `header` by an exact, literal line match on every call (never a cached
-    or computed byte offset), so it behaves identically no matter how many
-    times the note has already been regenerated — the general "regenerate,
-    don't patch" mechanism this story establishes to replace
-    insert_body_line_if_missing's fixed-frontmatter-offset fragility for
-    any section meant to reflect current state (MEMORY.md, BUG-003/
-    ESC-003), rather than being incrementally patched. A nested `###`
-    (or deeper) subheader inside the same section is NOT a boundary and
-    stays part of the replaced region — only another `## `-level header
-    ends it. No-op (returns False, no write performed, nothing raised) if
-    `header` is not found anywhere in the file — mirrors this module's own
-    insert_*_if_missing "no-op is a valid, expected outcome" contract; it
-    never creates the section itself.
-
-    `caller` (REQ-SB-71-US-01, ADR-048 Decision 2) is a REQUIRED keyword-only
-    parameter — a deliberate breaking-signature change, no default, so every
-    call site (present and future) must explicitly declare identity. Checked
-    against section_ownership.is_header_allowed(caller, header) BEFORE any
-    file I/O; raises section_ownership.SectionWriteNotAllowed when `caller`
-    may not write `header` — a real, observable, honest failure, distinct
-    from this function's own separate, unchanged "header not found in this
-    file" -> False contract below, which only fires once the caller check
-    has already passed."""
-    if not section_ownership.is_header_allowed(caller, header):
-        raise section_ownership.SectionWriteNotAllowed(
-            f"caller {caller!r} is not allowed to write header {header!r}"
-        )
-    text = path.read_text(encoding="utf-8")
-    header_line_pattern = re.compile(r"^" + re.escape(header) + r"$", re.MULTILINE)
-    header_match = header_line_pattern.search(text)
-    if header_match is None:
-        return False
-    region_start = header_match.end()
-    next_header_match = _BODY_SECTION_HEADER_PATTERN.search(text, region_start)
-    region_end = next_header_match.start() if next_header_match else len(text)
-    new_text = (
-        text[:region_start]
-        + "\n\n"
-        + new_content.strip("\n")
-        + "\n\n"
-        + text[region_end:]
-    )
-    path.write_text(new_text, encoding="utf-8")
-    return True
-
-
-def read_body_section(path, header: str) -> str:
-    """Header-scoped reader primitive (REQ-SB-63-US-01-T02), the read
-    counterpart to replace_body_section's own write -- reuses that
-    function's own exact header/next-header location regex (`header`
-    located by an exact, literal line match on every call; the region
-    ends at the next `## `-level header line or end of file, a nested
-    `###`-or-deeper subheader is NOT a boundary) so no second, divergent
-    header-finding mechanism is ever introduced. Returns the stripped
-    text strictly between `header`'s own line and that boundary, or ""
-    if `header` is not found anywhere in the file -- mirrors replace_
-    body_section's own "no-op/absent is a valid, expected outcome"
-    contract, adapted to a read. Never writes to the file."""
-    text = path.read_text(encoding="utf-8")
-    header_line_pattern = re.compile(r"^" + re.escape(header) + r"$", re.MULTILINE)
-    header_match = header_line_pattern.search(text)
-    if header_match is None:
-        return ""
-    region_start = header_match.end()
-    next_header_match = _BODY_SECTION_HEADER_PATTERN.search(text, region_start)
-    region_end = next_header_match.start() if next_header_match else len(text)
-    return text[region_start:region_end].strip("\n")
-
-
-def replace_body_opening_line(path, new_line: str) -> bool:
-    """Opening-region full regeneration primitive (`REQ-SB-67-US-01-T01`,
-    `REQ-SB-54` point 11's first real implementation) — the same
-    bounded-region-replace mechanism replace_body_section already
-    establishes, generalized to a DIFFERENT region-start rule: instead of
-    locating a GIVEN header's own line as the region start, this locates
-    the end of the frontmatter block (the file's own SECOND literal
-    `---` line, via the same `"\\n---\\n"` boundary convention
-    insert_body_line_if_missing/insert_tags_line already use — body
-    content starts 6 chars past the match, past the closing `---\\n`
-    itself plus the blank-line separator, per _write_frontmatter_note's
-    own `<frontmatter> + "\\n\\n" + <body>` layout). The region END is the
-    FIRST `## `-level header line found from there (reusing the same
-    shared _BODY_SECTION_HEADER_PATTERN replace_body_section/
-    read_body_section/append_body_section_line all already search with),
-    or end of file if the note has no `## ` header at all — the note's
-    own "opening region", ahead of its first real section.
-
-    Regenerates that region WHOLESALE on every call, exactly like
-    replace_body_section's own "regenerate, don't patch" contract
-    (`REQ-SB-54` point 8): a second call with a different new_line
-    completely replaces the first call's own text, never appends or
-    patches alongside it. `new_line` is defensively `strip("\\n")`-ed
-    before writing (mirrors replace_body_section's own `new_content.
-    strip("\\n")` handling), so the written region always has exactly one
-    blank line before and after it regardless of what the caller passes.
-
-    Unlike replace_body_section, this primitive does NOT no-op when the
-    target region is merely empty — a note's own opening region always
-    structurally exists (even blank) the instant its frontmatter is
-    well-formed, so an empty region is a normal, real state to overwrite,
-    not an absent-header case. Returns False (no write performed) only
-    when the file has no parseable `"\\n---\\n"` frontmatter-closing
-    boundary at all (a malformed note) — mirrors read_note's own same
-    guard. General-purpose: works for any note kind with a well-formed
-    frontmatter block, not hardcoded to Thread notes — this story's own
-    scope only ever calls it against Thread notes (thread_match_merge,
-    `T02`/`T03`), but the primitive itself makes no such assumption."""
-    text = path.read_text(encoding="utf-8")
-    end = text.find("\n---\n", 4)
-    if end == -1:
-        return False
-    region_start = end + 6
-    next_header_match = _BODY_SECTION_HEADER_PATTERN.search(text, region_start)
-    region_end = next_header_match.start() if next_header_match else len(text)
-    new_text = (
-        text[:region_start]
-        + new_line.strip("\n")
-        + "\n\n"
-        + text[region_end:]
-    )
-    path.write_text(new_text, encoding="utf-8")
-    return True
-
-
-def append_body_section_line(path, header: str, line: str) -> None:
-    """Header-SCOPED, growing body-section append primitive (REQ-SB-55-
-    US-01-T01, ADR-043 Consequences) — the generalization of
-    replace_body_section's own header/next-header location logic (the
-    identical literal, whole-line regex match, never a raw substring
-    search) from full-region REPLACE to insert-just-before-the-region's-
-    own-end. `## Transcript` (already present on a Thread's own baseline
-    body) and `## Attachments` (absent until a Thread's first attachment)
-    both go through this SAME function: only one of a note's sections can
-    be "physically last" for the older, EOF-blind
-    append_person_note_update_line to correctly target, which no longer
-    holds once a note can grow two independent sections.
-
-    If `header` is not found anywhere in the file, it is CREATED at the
-    end of the file, containing exactly `line` — deliberately the
-    OPPOSITE of replace_body_section's own documented no-op-if-absent
-    contract: a REGENERATED section always already has its header from
-    baseline, but a GROWING section may not exist yet on a note's first
-    entry. If `header` IS found, `line` is appended as the new last line
-    of that header's own bounded region (in call order), leaving every
-    other section — including one physically positioned after this
-    header — completely untouched. Mirrors append_person_note_update_
-    line's own unconditional-append discipline: never idempotent-if-
-    already-present, since each call is its own new fact even if
-    coincidentally identical text to an existing line."""
-    text = path.read_text(encoding="utf-8")
-    header_line_pattern = re.compile(r"^" + re.escape(header) + r"$", re.MULTILINE)
-    header_match = header_line_pattern.search(text)
-    if header_match is None:
-        base = text.rstrip("\n")
-        new_text = base + "\n\n" + header + "\n\n" + line + "\n"
-        path.write_text(new_text, encoding="utf-8")
-        return
-    region_start = header_match.end()
-    next_header_match = _BODY_SECTION_HEADER_PATTERN.search(text, region_start)
-    region_end = next_header_match.start() if next_header_match else len(text)
-    existing_region = text[region_start:region_end].strip("\n")
-    new_region = f"{existing_region}\n{line}" if existing_region else line
-    new_text = (
-        text[:region_start]
-        + "\n\n"
-        + new_region
-        + "\n\n"
-        + text[region_end:]
-    )
-    path.write_text(new_text, encoding="utf-8")
 
 
 def _agent_history_path():
@@ -2771,27 +1916,6 @@ def load_cockpit_chat_state() -> dict | None:
 def save_cockpit_chat_state(state: dict) -> None:
     path = _cockpit_chat_state_path()
     path.write_text(json.dumps(state, indent=2), encoding="utf-8")
-
-
-def upsert_frontmatter_key(path, key: str, value) -> bool:
-    """Ensures key: value is present with EXACTLY this value -- inserts
-    if missing (mirroring insert_frontmatter_key_if_missing), or
-    overwrites in place if already present but holding a different
-    value (unlike insert_frontmatter_key_if_missing, which never
-    touches an already-present key). Used for Task notes' due/status
-    fields only (REQ-SB-09 Scenario 5/6) -- the one baseline-field pair
-    this pipeline's own ACs require to reflect Outlook's CURRENT value
-    on every top-up, not just fill a gap, unlike every other baseline
-    key in this codebase so far (Customer/Person/Meeting all use strict
-    insert-if-missing). Returns True if the file was written (inserted
-    OR changed), False if the key was already present with an
-    identical value (a true no-op)."""
-    frontmatter, _ = read_note(path)
-    if key not in frontmatter:
-        return insert_frontmatter_key_if_missing(path, key, value)
-    if frontmatter[key] == value:
-        return False
-    return rename_frontmatter_key(path, key, key, new_value=value)
 
 
 _TASKS_SUBFOLDER = f"{_WORK_ROOT}/Tasks"
