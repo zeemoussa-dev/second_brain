@@ -18,6 +18,994 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix: three follow-up bugs found earlier this session, fixed directly.
+  (1) `hermes_client.py`'s only session-token mechanism (scraping
+  `window.__HERMES_SESSION_TOKEN__` out of `GET /`'s HTML) silently
+  broke for EVERY live Hermes chat feature whenever Hermes ran via
+  `hermes serve` (headless) — confirmed via the real Hermes source
+  (`hermes_cli/web_server.py`) that the session token itself is always
+  generated (`_resolve_session_token()`), it's just no longer embedded
+  in HTML in headless mode; that same function reads
+  `HERMES_DASHBOARD_SESSION_TOKEN` from the environment if set, instead
+  of generating a random one. Set a fixed value there (Hermes' own root
+  `.env`) and the matching `HERMES_API_KEY` in this app's own `.env` —
+  `hermes_client.py`'s existing manual-override path picks it up
+  directly, no HTML scraping ever needed again. Verified live: the
+  static key authenticates correctly against a real protected endpoint
+  through genuinely headless `hermes serve`. (2) `vault_manager.py`'s
+  `find_by_id`/`find_by_filename`/`find_in_folder` fallback scan now
+  excludes `_`-prefixed (archived) folders and tolerates an unreadable
+  file instead of crashing the whole scan — fixes the dormant unscoped-
+  call crash found live under `Work/_archive/`, propagated to all 17
+  real deployed locations. (3) `my_day.customer_from_tags` now only
+  matches `customer/`-prefixed tags — fixes a real Thread tagged both
+  `partner/g42` and `customer/mubadala` resolving to "G42" instead of
+  "Mubadala" in the Inbox Cockpit's own info panel; verified live.
+- Found while verifying these fixes (not a Second Brain code bug —
+  flagging for awareness): port 8001 (the real backend port) ended up
+  with zombie TCP LISTEN entries after repeated backend restarts this
+  session — three independent process tools (`Get-Process`,
+  `Win32_Process`, `tasklist`) all agree the owning PIDs no longer
+  exist, but Windows hasn't released the socket. Verification for fix
+  (3) had to move to a scratch port (8002) to get a clean result. A
+  reboot would clear this (this machine has needed one before this
+  session for a similar reason); not attempting any system-level
+  network reset without asking first.
+
+- feat: Replicated the Phase 5 Section fallback agent pattern to
+  Technology, Sales, and Industry — three new real Hermes profiles
+  (`technology-hub`, `sales-hub`, `industry-hub`; `--no-skills`,
+  deliberately read-only, cloned config from `research-agent` same as
+  `customer-hub`), each with a SOUL.md tailored to its own folder's real
+  structure (`Work/Technology/<Tech>/<Sub-topic>/`,
+  `Work/Sales/<Deal>/`, `Work/Industries/<Industry>/<Sub-vertical>/` —
+  hierarchical KB-reference docs, not per-entity hub folders like
+  Customer's own `<slug>/index.md`/`log.md`/`captures.md` shape) plus
+  the matching per-folder structural index. `fallback_agent_id` wired on
+  all three Sections. **Live routing is deliberately NOT wired for
+  these three yet** — confirmed live before building: unlike Customer
+  (`customer/<slug>` tags on real Meetings/Threads), Technology/Sales/
+  Industry tags (`technology/<slug>`, `sales/<slug>`, `industry/<slug>`)
+  exist only on each entity's own hub note, never on a conversation that
+  discusses it — there is no real "this conversation is about Technology
+  X" signal to key routing off yet (operator, confirming scope: "Build
+  the profiles now, routing later"). Verified `technology-hub` live via
+  `@mention` (the same underlying chat mechanism automatic routing will
+  eventually use, since automatic fallback has nothing to trigger it
+  yet) — asked about Azure architecture, got back a complete, accurate
+  answer citing 7 real reference notes under
+  `Work/Technology/Azure/Architecture/` by real path and real content.
+  `sales-hub`/`industry-hub` built identically, not independently
+  re-verified given the pattern is now proven twice (Customer's
+  hub-folder shape, Technology's hierarchical-KB shape).
+
+- feat: Phase 5 of the vault structural index — Section fallback agent,
+  built and verified live end-to-end with a real reply. Sections gained
+  a `fallback_agent_id` field (the Hermes profile that answers when a
+  mentioned entity has no dedicated Expert), editable from Settings >
+  Sections. New moderator function `match_customer_fallback_agent`
+  (`moderator.py`) generalizes the existing `match_customer_expert`
+  pattern: given a conversation's own subject note, if it's tagged to a
+  Customer with NO dedicated `<slug>-expert` registered, returns the
+  Customer Section's own configured fallback agent instead — never
+  fabricated, `None` whenever the subject isn't Customer-tagged, a
+  dedicated Expert already covers it, or no fallback is configured.
+  Wired into `chat_turn.py`'s live routing at BOTH points where it
+  previously fell straight to the hardcoded `_RESEARCH_AGENT_ID`: the
+  "roster has agents but none match" case, and — found live, a real gap
+  in the first wiring — the "no Experts brought in yet" case too, since
+  a brand-new conversation about an uncovered Customer is the exact
+  motivating scenario ("only a few that are Important"). Created a real
+  new Hermes profile, `customer-hub` (`hermes profile create ...
+  --no-skills`, no bundled write-capable Skills — deliberately
+  read-only), with a SOUL.md pointing it at the Customer folder's own
+  structural index plus direct vault reads, no new Skill needed.
+  Verified live: asked a real question about Mubadala (a real Customer
+  with no dedicated Expert) on a real Thread with no roster yet —
+  routed correctly to `customer-hub`, which returned a complete, real,
+  accurate answer citing `Mubadala.md`'s actual content (financials,
+  affiliates, named people).
+- Found and fixed a real compatibility gap along the way (not part of
+  this feature, but blocking all live verification): `hermes serve`
+  (the documented headless way to run Hermes) now returns 404 for
+  `GET /` — Hermes' own web UI is deliberately disabled in that mode —
+  which silently breaks `hermes_client.py`'s only session-token-fetch
+  mechanism for EVERY live Hermes chat feature in this app, not just
+  new ones. Worked around by running `hermes dashboard --no-open`
+  instead (same port/backend, web UI enabled) to unblock verification;
+  a real fix (giving the backend a token-fetch path that works against
+  a genuinely headless instance) is flagged as a separate follow-up,
+  since `hermes dashboard` isn't documented as a supported way to run
+  this app's own production chat backend long-term.
+- Found (not fixed here — flagged for follow-up) while live-testing:
+  the Inbox Cockpit's own "Customer" info field can show a Partner's
+  name instead of the real Customer when a Thread carries both tags —
+  confirmed live, root-caused to `my_day.py`'s `customer_from_tags`
+  matching the first tag found in a dict merging Customer AND Partner
+  names together, with no namespace filtering (unlike `moderator.py`'s
+  own correct `_subject_customer`, which does filter for `customer/`).
+
+- feat: Phase 4 of the vault structural index — Section → folder
+  mapping, built and verified live. Sections gained a real `folders:
+  string[]` field (`section_registry.py`, `PATCH /sections/{id}`) — a
+  Section can own zero, one, or several top-level `Work/` folders, no
+  hardcoded table. Settings > Sections now shows a checkbox list of
+  every real folder (reusing the same live list Vault Overview/Index
+  Filtering already fetch) in each Section's expanded row, toggling
+  instantly (same immediate-apply pattern as Icon & Color). The
+  Registry's own `Section.json` disk mirror now includes `folders` too
+  — the real reason this field exists: a future Section fallback agent
+  (Phase 5) is a standalone Hermes-side process with no way to call this
+  backend's API, so it reads its own folder scope straight off this
+  file, same pattern already established for Index Filtering and
+  `build_vault_index.py`. Mapped live: Customer→Customers,
+  Technology→Technology, Sales→Sales, Industry→Industries;
+  Librarian/Data Gatherer intentionally left empty (workforce roles, not
+  content domains); Partners intentionally left unassigned for now
+  (operator: "Don't include Partners for now").
+
+- feat: Phase 3 of the vault structural index — capture-pipeline cutover,
+  built and verified live. `find_by_id`/`find_by_filename`/
+  `find_in_folder` (`Hermes-Provisioning/shared/vault_manager.py` and its
+  7 byte-identical copies) now try the new per-folder index first, but
+  a stale or missing index can only ever make a lookup SLOWER, never
+  WRONG: a "not found" result — from a missing index file, an unindexed
+  scope, or the id genuinely not being in the index — always falls
+  through to the original `rglob` scan, and even an index HIT is
+  verified with a real `is_file()` check before being trusted (catches a
+  since-moved/deleted indexed entry). `ingest_meeting.py` is the only
+  confirmed real, live, active external caller (all 3 call sites,
+  correctly folder-scoped) — verified live against the real vault: a
+  real meeting id resolves via the fast path in ~0.002s (was ~0.06s+ for
+  the equivalent scoped scan), a genuinely-missing id still correctly
+  falls through and returns `None`. Redeployed to all 17 real, active
+  deployed locations (11 meeting-capture profiles, azure-kb-writer,
+  compass-kb-writer, capture-files, capture-notes, research-kb-writer,
+  vault-index), each verified byte-identical to source, including a
+  final check run directly from the actual deployed
+  `meeting-prep-agent` copy (not just the repo source).
+- Found (not fixed here — flagged for follow-up) while testing the
+  fallback path: `find_by_id`/`find_by_filename` called unscoped
+  (`note_name=None`) crashes on a real file under `Work/_archive/` —
+  confirmed live. Currently dormant (no real caller passes
+  `note_name=None` today), pre-existing, unrelated to this change.
+
+- feat: Phase 2 of the vault structural index — cron wiring, built and
+  verified live end-to-end. New Hermes Skill
+  `Hermes-Provisioning/skills/vault-rebuild/vault-index/` (SKILL.md +
+  `build_vault_index.py`/`vault_manager.py` scripts, deployed to the
+  default/Primary profile, whose gateway is confirmed currently running
+  — `meeting-prep-agent`'s own gateway, hosting the existing
+  `meeting-capture-recurring` job, was found down during this work).
+  Registered as `vault-index-rebuild`, `every 30m`, `--deliver local`.
+  `hermes cron run vault-index-rebuild` (job triggered by *name*, no
+  need to look up its hex id) confirmed working both directly and via a
+  new subprocess trigger added to the existing `POST /vault-index/rebuild`
+  endpoint — clicking the app's own "Rebuild index" button now refreshes
+  BOTH the backend's in-memory index (fast, synchronous, unchanged) and
+  this new disk index (fire-and-forget — an agent-mediated run took
+  ~60s in live testing, confirmed via `generated_at` advancing after the
+  triggering process exited, so the HTTP response never blocks on it).
+  One real rebuild path, two triggers (schedule + button), matching the
+  plan's own "no drift" goal.
+
+- feat: Settings > Vault > Index Filtering — real, editable config for
+  which top-level `Work/` folders the agent-facing structural indexer
+  covers, instead of it walking every folder unconditionally (operator:
+  "Index Filtering a new settings feature... instead of Hardcoding
+  files"). New `vault_index_config.py`/`GET,PATCH /vault/index-config`
+  on the backend (folder list reuses the existing `get_overview()` live
+  folder discovery, no re-scan); `build_vault_index.py` reads the same
+  `.second-brain/index_config.json` file directly off disk (no backend
+  dependency, matching its own standalone design) before deciding which
+  folders to walk. A folder with no saved preference defaults to
+  included, so this is fully backward-compatible with Phase 1's original
+  "index everything" behavior. Verified live end-to-end: excluding
+  "Files" through the UI removed `Files.json` from the generated index
+  and dropped the total note count by exactly 4; re-including it
+  restored both.
+
+- feat: Phase 1 of the vault structural index
+  (`Implementation/Plans/2026-08-27-vault-index-and-section-agents.md`)
+  built and verified live: `Hermes-Provisioning/shared/build_vault_index.py`
+  — a standalone (stdlib-only, no backend dependency, same deployment
+  model as `vault_manager.py`) script that walks `Work/` once and writes
+  one JSON file per real top-level folder plus one whole-vault JSON,
+  under `.second-brain/index/`. Mirrors the backend's own three exclusion
+  rules exactly (OKF-reserved filenames, Thread-sidecar files, any
+  `_`-prefixed folder anywhere in the path) so this index doesn't
+  resurface an archived duplicate. Verified against the real vault:
+  12 of 14 folder counts matched the backend's own live index exactly
+  (People/Technology/Tasks/Meetings/Research/Files/Notes/Sales/Templates/
+  Initiatives all identical); Partners/Customers/Threads/Industries
+  differed because of a real, pre-existing, unrelated bug this
+  cross-check surfaced in the backend's own index (see next entry) — this
+  new index's higher counts are the correct ones.
+- Found (not fixed here — flagged for follow-up): `vault_indexing.py`'s
+  `rebuild_index()` keys its whole-vault dict by bare filename stem
+  globally, so any two notes anywhere in the vault that share a filename
+  silently overwrite each other. Confirmed real: the same person's note
+  linked under both a Customer's and a Partner's own `People/` folder
+  (`zishan.naviwala@core42.ai.md`, et al.), and a repeated per-hub
+  subsection filename (`Market Relevance.md`, 14 occurrences) — both
+  collide and undercount. Affects the React frontend's own Vault
+  Browser/search today, not just this new index. Out of scope for the
+  index-and-Section-agents plan; spawned as a separate follow-up task.
+
+- fix: two rendering bugs in the just-added collapsible-row pattern
+  (Settings > Sections, Settings > Vault > Entities), found live
+  (operator: "The Icon in Industry is wrong, and the Title of the
+  Section... in the entities in vault is very dark not visible"). (1) A
+  section's `icon` field can hold a VisualPicker *picker id* (e.g.
+  `compass`), not necessarily its real Material Symbols ligature name
+  (e.g. `explore`) — Industry was set to the id `compass`, which isn't a
+  real ligature, so it rendered as literal text instead of a glyph.
+  Fixed by resolving through the existing `getVisualIconName()` helper
+  (already used by `AgentNode.tsx`/`SectionHub.tsx` for the exact same
+  id-vs-ligature gap) instead of rendering `section.icon` raw. (2)
+  Wrapping each collapsible row's header in a plain `<button>` picked up
+  the browser's own default button text color instead of the app's theme
+  text color — invisible-dark against this app's dark surfaces. Fixed by
+  adding `color: inherit` to both buttons.
+- refactor: Settings > Sections redesigned to match the rest of the new
+  Settings structure — rows collapse to icon/name/agent-count by default
+  (`chevron_right`/`expand_more`), expanding to Name, Description, and
+  Icon & Color editors, all with persistent labels via a new shared
+  `Field` component (`features/settings/Field.tsx`, extracted from the
+  Vault > Entities page so both share one implementation). Icon/Color
+  editing reuses the existing `VisualPicker` component and
+  `PATCH /sections/{id}` endpoint verbatim — the same ones the Agents
+  Map's own `SectionDetailPanel.tsx` already uses when you click a Hub —
+  no new backend code, no duplicate icon/color picker. Verified live:
+  icon and description edits round-trip to the real `agent_sections.json`
+  store and back; both reverted after testing.
+
+- fix: Cockpit Documents upload confirmation hardcoded "this meeting"
+  regardless of `subject_kind` — wrong for the Inbox Cockpit (email/
+  Thread subjects). Found verifying the Documents feature across Meeting
+  and Inbox Cockpits after the earlier meeting-capture/routing fixes;
+  now reads "this email" for `subject_kind == "email"`.
+- fix: Inbox Cockpit's People/Received/Customer fields were all reading
+  frontmatter keys a real Thread never actually carries — People always
+  showed 0 (looked for a `recipients` field that doesn't exist; a
+  Thread's real participants are wikilinks in its own `## Related`
+  section instead), Received was always blank (`received` vs. the real
+  `last_message_at`), Customer was always blank (a raw `customer` field
+  vs. the real `customer/<slug>` tag). `people.py` now reads `##
+  Related` for email/Thread subjects (`type: "Person"` filtered, so a
+  linked Customer/Partner hub is never mistaken for a person);
+  `cockpit_router.py` now resolves a real Customer name from the tag
+  server-side (reusing `my_day.py`'s own existing tag→hub-name lookup,
+  now made public); `InboxCockpitPage.tsx` points at the real
+  `last_message_at` key. Verified live against a real Thread; a Meeting
+  Cockpit re-checked immediately after, confirmed unaffected.
+- refactor: Global App Settings redesigned from a flat, unstyled stack
+  of two cards into a Google-style icon-card landing grid
+  (`SettingsPage.tsx`) with six flat sibling drill-down routes —
+  `/settings/{system,sections,providers,vault,config,ui}` — mirroring
+  My Day's own landing-grid/sub-page convention. `SectionsCard`/
+  `ProvidersCard` moved unchanged onto their own new pages
+  (`SettingsSectionsPage.tsx`/`SettingsProvidersPage.tsx`); System/
+  Vault/Config/UI ship as honest "Not built yet" stubs — no
+  functionality was added or changed, only presentation. New
+  `.settings-grid`/`.settings-card*` rules in `settings.css` give the
+  grid its own deliberate, smaller type scale (15px card titles) rather
+  than inheriting the blunt global `h1`/`h2` sizing (18–24px) that read
+  as "too big and ugly." Operator-scoped: agent-level settings are
+  explicitly deferred to a later pass.
+- feat: Settings > System is now real, live, and editable — Hermes
+  System URL, Hermes Deployment Folder, App Database Folder
+  (`.second-brain`), Vault Location, and CORS Allowed Origins, each shown
+  with a live status check (reachable/exists/writable) and an on-demand
+  Test button, backed by a new `GET/PUT /settings/system`,
+  `POST /settings/system/test/{field}` API (`system_settings.py`). Saving
+  writes to `.env` and shows "Restart to apply"; a paired
+  `POST /settings/system/shutdown` gracefully stops the backend process
+  (Windows-safe via `signal.raise_signal`, not `os.kill`, which silently
+  bypasses Python signal handlers on Windows) so the operator can restart
+  it themselves.
+- refactor: `second_brain_data_path` is now a real, independent
+  `config.py` setting (defaults to the historical `<vault>/.second-brain`)
+  instead of being hard-derived from `vault_path` at ~30 call sites across
+  5 files (`vault_writer.py`, `vault_migration.py`, `upload_storage.py`,
+  `email_staging.py`, `registry/loader.py`, plus `vault_manager.py`'s own
+  Templates lookup). Changing it from the System settings page performs a
+  real folder move (verified against temp dirs: nested content preserved,
+  refuses a non-empty destination, refuses self-nesting, no-ops on an
+  unchanged path) rather than silently leaving existing registry/chat/
+  upload data behind at the old location. `main.py`'s CORS origin list is
+  now sourced from `settings.cors_allowed_origins` instead of hardcoded.
+  Known, disclosed limitation: Hermes Skills (their own separate,
+  physically-copied `vault_manager.py`) have no knowledge of this backend
+  setting and will keep reading/writing Templates at
+  `<vault>/.second-brain/` regardless — only this backend's own data
+  follows a relocated App Database Folder.
+- feat: Settings > Vault now has a real two-panel layout (persistent left
+  nav — Overview / Entities / Templates / Index Builder — plus content,
+  `VaultSettingsNav.tsx`) with three working sections:
+  - **Entities**: a real CRUD UI over the Customer/Partner discovery
+    registry (`vault_entities.py`, `GET/POST/PATCH/DELETE /vault/entities`)
+    — approve (mark reviewed), edit Aliases/Affiliate of/Domain, move
+    between Company/Partner, delete, add new. Parses/renders the exact
+    same format the company-review Hermes Skills already use (ported
+    byte-for-byte from `find_new_entities.py`'s own
+    `parse_entities`/`render_entities`), verified live: 35 real entities
+    (24 Companies/11 Partners) load correctly, a real edit round-trips to
+    disk and back. Redesigned after live feedback (operator: "too long...
+    hard to find newly added entities", "When you add the text I don't
+    have a title for the textbox", "make Each Company Collapsed by
+    default, Separate customers and partners, have a Separate Section
+    called need review on top"): every field now has a persistent label
+    instead of a placeholder that vanishes once filled in; rows collapse
+    to just name + status by default, expanding to the editable fields
+    only on click; a new **Needs Review** group (all `Ignore: Yes`
+    entries — where a freshly-discovered entity always lands) sits above
+    Companies/Partners, which now only list already-reviewed entries —
+    no entry appears twice; each group shows newest-appended-first (entries
+    are only ever appended, never reordered, so this is real file order,
+    not fabricated); added a live search-by-name-or-domain filter.
+- fix: Delete on an Entities.md row is now a soft delete (new `Deleted:
+  Yes` field), not a real removal. Found live (operator: "sharepoint and
+  Teams should be delete but they will keep surfacing and I know they
+  will never be a company") — a hard delete removes the row's own Domain
+  from `find_new_entities.py`'s `_already_tracked_domains` check, so a
+  noise domain gets rediscovered on the very next scan. `delete_entity()`
+  now sets `Deleted: Yes` + `Ignore: Yes` and leaves the row in place;
+  `list_entities()` filters `Deleted: Yes` out, so it's invisible in the
+  UI despite staying on disk. Added the same field to both canonical
+  Hermes parse/render copies (`find_new_entities.py`,
+  `create_companies_partners.py` — these are independent, non-shared
+  copies of the same logic, both needed the fix) plus
+  `build_entities_report.py` for schema consistency, then redeployed to
+  all 11 real profiles (verified byte-identical after). No change needed
+  to hub-creation logic — `Ignore: Yes` alone already skips a
+  Deleted/Ignored entry there. Verified live: deleted Sharepointonline
+  and Teams through the UI, confirmed both vanish from the app while
+  their real rows (with `Deleted: Yes`) and Domain fields remain on disk.
+  - **Overview**: total notes indexed, last rebuild time, and a per-Work-
+    folder note-count breakdown (`vault_indexing.get_overview()`), plus a
+    Rebuild index button reusing the existing `POST /vault-index/rebuild`.
+  - **Templates**: read-only listing of every `Template.json` under
+    `.second-brain/data/Templates/` (`vault_templates.py`,
+    `GET /vault/templates`) — note-shape policy, per-section write
+    access, frontmatter defaults.
+  - **Index Builder**: an honest stub — still being designed (per-vault
+    and per-Section `index.md` generation), not built yet.
+- refactor: `Work/Entities.md` relocated to
+  `.second-brain/Settings/Entities.md` (operator: "it should be in the
+  Settings folder... lots of Agents are Accessing this file in Hermes so
+  you need to check"). Real file move, verified byte-identical before the
+  original was removed. Updated all 4 Hermes scripts that hardcode this
+  path (`find_new_entities.py`, `apply_entity_decision.py`,
+  `create_companies_partners.py`, `build_entities_report.py`) plus every
+  SKILL.md prompt referencing "Work/Entities.md", then redeployed to all
+  11 real Hermes profiles that actually have the company-review
+  subskills installed (confirmed via each profile's own
+  `skills/company-review/<subskill>/` — not every profile with a
+  `company-review` folder has them, some only have the unrelated
+  `track-opportunities` skill there). Verified byte-identical against
+  source across all 11 after redeploy.
+
+- feat: `vault_manager.py` — the vault-writer standardization design
+  (`Implementation/Plans/2026-08-25-vault-writer-standardization.md`)
+  built and verified. New `Hermes-Provisioning/shared/vault_manager.py`:
+  a standalone (stdlib-only), template-driven vault read/write engine —
+  `find(by=id|filename|folder)`, `create`, `update`, `get_section`,
+  `modify_section` — replacing the near-byte-for-byte-duplicated
+  primitives (slugify, frontmatter format/parse, named-section find/
+  replace/append, unique-path collision avoidance) independently
+  reimplemented across `create_opportunity.py`, `apply_thread_review.py`,
+  `capture_file.py`, and `vault_lib.py`. Reads `Template.json` files from
+  the same `data/Templates/<id>/` location the RegistryLoader already
+  established (REQ-SB-80) — a template controls `note_name`/filename
+  shape, `on_existing_title` (`update_section` vs `always_new`),
+  `on_missing` (`create` vs `error`), and per-section write access
+  (`machine_write` vs `user_edit`, enforced centrally by `modify_section`
+  rather than trusted per-script). Deployment model: the file gets
+  physically copied into a Skill's own `scripts/` folder (self-
+  containment preserved — no dependency on Second Brain's backend being
+  up), same "prepare here, apply there" workflow the rest of
+  `Hermes-Provisioning/` already uses; not yet copied into any real Skill.
+  13 new pytest cases (`Hermes-Provisioning/shared/tests/
+  test_vault_manager.py`) lock in every scenario also verified live via
+  the real CLI against a scratch vault: hierarchical `note_name`
+  placement, overwrite-on-same-title with no duplicate, never-overwrite
+  with disambiguated filenames, `modify_section`'s combined create-or-
+  update, `on_missing="error"` refusing to auto-create, the `user_edit`
+  section guard refusing a machine write, and a title rename via
+  `update()` while `find(by="id")` keeps resolving the same file
+  (the concrete fix for the real Meeting-rename mess named during design).
+
+- feat: full real Meeting rebuild on `vault_manager.py` (`REQ-SB-80`'s
+  first real production skill), operator-driven end to end, 2026-08-25/26.
+  `Hermes-Provisioning/skills/vault-rebuild/meeting-capture/scripts/
+  ingest_meeting.py` rewritten to use `vault_manager.py`'s real `id`-based
+  find/create/modify_section instead of the old name-is-identity scheme
+  (`vault_lib.py`'s own documented, never-fixed bug: a series stuck on a
+  raw Outlook id forever once misnamed). New `meeting`/`meeting-series`
+  Templates (`note_own_folder`, `note_filename_plain`, `folder_date` +
+  `bump_folder_date` — a series folder now sorts by its real latest
+  occurrence date while its own filename never carries a date). Deployed
+  to all 11 real Hermes profiles carrying the skill; the real recurring
+  cron job recreated at 30-minute cadence (down from 3 hours). Full real
+  historical pull: 157/157 Outlook events, 0 errors, 787 attendees
+  linked, 26 Threads linked, confirmed idempotent on a second full pass.
+  `Work/Meetings/` is now the single, clean source of truth (the
+  operator's own real, multi-scheme mess — raw-hex-id folders,
+  `<date> <Subject>` folders, flat hash-suffixed files, bare-name
+  recurring folders — fully superseded). `app/data_access/system/
+  pipelines/meeting-builder.json` (the real Pipeline the Agents Map's
+  Data Gatherer section renders) updated to match: correct 30-minute
+  cadence, and the "Resolve Meeting Folder" step's own description
+  rewritten to describe the real new id-based mechanism instead of the
+  retired name-is-identity one. Four more real bugs found and fixed
+  during the full-history run specifically (path-length truncation
+  leaving a trailing space a second way, a hardcoded "Notes"
+  root string in the Skill script, and a `modify_section` call missing
+  its own `note_name` scope that fell back to scanning the entire
+  `Work/` tree) — see `MEMORY.md` for the full account of each.
+
+- feat: `REQ-SB-82-US-04` — Meeting/Inbox Cockpit Chat now routes each
+  live question to the ONE brought-in Expert it belongs to (never a
+  broadcast), falls back to the Research Agent in the background when
+  none matches, and lands that fallback's reply as a threaded reply on
+  the question that triggered it. New `app/business/cockpit/chat_turn.py`
+  (routing/dispatch orchestration) and `app/business/cockpit/moderator.py
+  ::route_question` (deterministic tokenized-overlap routing, reusing
+  `US-03`'s own scoring, scoped to the brought-in roster; a genuine tie
+  falls back to the Research Agent same as a zero-match). `app/business/
+  hermes/chat_sessions.py::send_and_await_reply` factors the lock/
+  session/timeout/discard-on-failure Hermes turn out of `agents_router.py
+  ::send_chat_message` (now a thin wrapper) so both the single-agent Chat
+  tab and Cockpit Chat's routed calls share one implementation.
+  `chat_store.py::append_message` gives every message a real `id` and
+  optional `reply_to_message_id`. New `POST /cockpit/{subject_kind}/
+  {subject_note_stem}/message` endpoint. Frontend: `Cockpit.tsx`'s chat
+  input is wired for the first time (previously a disabled "Chat isn't
+  wired up yet…" placeholder); a threaded reply stays in its natural
+  chronological position and carries a "↳ replying to: {quoted question}"
+  strip rather than being repositioned; a light poll (3s × 20) picks up
+  a Research Agent fallback's reply once it lands, since Cockpit Chat has
+  no push/SSE mechanism. A message sent with no Experts brought in gets
+  an honest system notice, never a fabricated reply. Verified live against
+  the real vault/Hermes gateway (see `MEMORY.md` for the full scenario
+  coverage).
+- refactor: deleted `app/business/cockpit/research.py` — confirmed dead
+  (zero live callers anywhere; only ever reachable from the archived
+  pre-Hermes-pivot router). `threads.py`/`person_note_proposals.py` were
+  investigated for the same cleanup but turned out to still be live (a
+  registered skill tool writes through them) — left untouched; see
+  `MEMORY.md`'s `US-04` entry and `BUG-040`.
+- fix: logged `BUG-040` — `propose_person_note_update`'s Manual/
+  Autonomous-dispatch proposal write has no live way to ever be seen,
+  confirmed, or discarded (only wired in the archived cockpit router).
+  Found while tracing the dead-code cleanup above; not fixed as part of
+  `US-04` — unrelated scope.
+- fix: `REQ-SB-82-US-04` live-testing fixes (operator: message stuck on
+  "Sending...", no feedback on who's answering, no way to correct a wrong
+  routing decision). `chat_turn.send_user_message` now dispatches EVERY
+  reply — a routed Expert's, not just the Research Agent fallback's — as
+  a background task via one shared `_dispatch_reply`, and returns almost
+  immediately with `{"thread", "answering": {agent_id, agent_name} |
+  None}` instead of blocking on the real Hermes turn. `Cockpit.tsx`
+  optimistically appends the user's own message before the network round
+  trip resolves, and renders an animated "X is typing…" bubble per
+  in-flight reply (tracked as an array keyed by message id, so two
+  messages routed to different agents each get their own indicator).
+  New explicit `@mention` override (`chat_turn._resolve_mention`,
+  matched against every real registered agent's id/name, not just the
+  brought-in roster) always wins over the deterministic routing score —
+  mentioning an agent not yet in the room brings them in first. Verified
+  live: the reply-routed Expert path and the @mention override both
+  render the optimistic message + typing indicator immediately and
+  resolve correctly once the real Hermes turn completes.
+- fix: `research-kb-writer` (`write_research_doc.py`) — research notes
+  were landing as loose flat files directly under `Work/Research/`
+  (operator: "if I want to do more research about a t[opic] it's gonna
+  be a mess"). `note_name` is now computed per-call from the real topic
+  (`Research/<topic>`), reusing `vault_manager`'s own existing
+  hierarchical note_name mechanism (no engine change) — every call on the
+  SAME topic string now lands in the SAME folder as a new dated file
+  (never overwriting an earlier pass), while a different topic gets its
+  own folder. Also added an optional `keywords` list, written into
+  frontmatter when given. Deployed (script + `SKILL.md`) to the real
+  `research-agent` Hermes profile. Verified live via two direct script
+  calls on the same topic: both files landed in the same folder, correct
+  distinct filenames, `keywords` present in each note's frontmatter.
+- fix: Cockpit page layout — the Chat and Experts-roster columns now
+  share a bounded, viewport-relative height and each scroll
+  independently, instead of the whole page growing/shrinking as either
+  column's content changed (operator: "When I start Typing in the
+  Cockpit It Shrinks the window... Chat Window should be full Height and
+  Same as the Agent... Scroll in the Agents Alone without the Chat").
+  `.cockpit-layout` gets an explicit `height: calc(100vh - 100px)`
+  (measured live) and default `align-items: stretch`; every grid child
+  gets `min-height: 0`; `.cockpit-panel` (the real scroll unit) gets
+  `flex:1; overflow-y:auto`. Also fixes the Chat tab specifically: the
+  message thread now scrolls on its own while the title/hint/input row
+  stay pinned (removed a stale `max-height: 380px` cap that no longer
+  serves any purpose once the outer column is properly bounded).
+  Verified live via direct DOM measurement, including confirming the
+  layout's own height is unchanged before/after typing into the input.
+- fix: `REQ-SB-82-US-04`'s Research Agent fallback was too eager — a
+  question matching no brought-in Expert went straight to a live web
+  search even when a real, not-yet-brought-in registered Expert (e.g.
+  Masdar) would plausibly know more (operator: "The Research Agent
+  Jumped in and Start Searching the web this is a wrong Behaviour...
+  we can invite Masdar Expert... or I can go do a quick Search"). New
+  `moderator.suggest_expert_for_question` checks every registered
+  Expert (not just the brought-in roster) before falling back to
+  research on a genuine zero-match; when a real candidate exists,
+  dispatches nothing and surfaces an honest system suggestion naming
+  them by name and `@mention`-able id (reusing the @mention override
+  built earlier, including the explicit "search the web anyway"
+  escape hatch). Along the way, found and fixed a real false-positive
+  bug in the shared routing/suggestion scorer: `_OVERLAP_STOPWORDS`
+  only covered domain-specific noise words, so an ordinary English
+  word ("what") surviving in an Expert's own prose description spuriously
+  matched the same word in a user's question — merged in a standard
+  English stopword set (~90 words) to fix it for both `route_question`
+  and the new suggestion check. Verified correct via direct code
+  execution (with the Registry properly booted) after a genuinely
+  confusing debugging detour caused by multiple orphaned backend
+  processes from earlier terminal sessions still answering port 8001 —
+  see `MEMORY.md` for the full account; flagged to the operator to
+  clear those processes for a final live re-verification.
+- feat: Cockpit Documents — upload a file or screenshot during a live
+  meeting, stored attached to it (operator: "I will need to upload a
+  file or a Screenshot while I am in the meeting... I don't have upload
+  button in the screen"). New `app/data_access/vault_manager.py` — the
+  first time Second Brain's own backend (not just a Hermes Skill) uses
+  the canonical vault-write engine directly, after an initial bespoke
+  writer was correctly rejected (operator: "we built a full Architecture
+  to avoid creating a new file everytime"). New `app/business/cockpit/
+  documents.py` uses the same real `file` Template `capture-files`
+  already uses (folder-per-file + a companion Summary/Details note),
+  nested under the subject's own real folder as a `Files/` subfolder
+  (operator: "Do Files Folder... in the meetings") rather than a
+  separate top-level tree. New `POST /cockpit/{subject_kind}/
+  {subject_note_stem}/documents` endpoint (multipart upload); a system
+  confirmation is appended to the live chat on success. `overview.
+  related_documents` is now real data (was a hardcoded `[]`), powering
+  both the Overview tab's own section and a real Documents tab
+  (previously a permanent stub). Verified correct via direct Python
+  execution against the real vault (bypassing the port-8001 zombie
+  processes documented above): correct folder placement, correct
+  frontmatter/sections matching the `file` Template.
+- fix: two more Cockpit Chat UI bugs, both resolved by adopting
+  `AgentChatPanel.tsx`'s already-established input pattern instead of
+  Cockpit's own ad-hoc one. The Send button centering itself in an empty
+  chat (operator: "when the Chat is empty, the Send Button is in the
+  middle of the screen") — `.chat-thread` now always renders (empty
+  state lives inside it, matching `AgentChatPanel.tsx`), instead of being
+  swapped for a separately-laid-out block. No multiline support in the
+  chat input (operator: "I don't have the Alt+Enter to add line we fixed
+  this before") — replaced the single-line `<input>` with the same
+  auto-growing `<textarea>` (Enter sends, Shift/Alt+Enter newline)
+  `AgentChatPanel.tsx` already has, plus its same attach-button
+  affordance, now wired to the new persistent Documents upload. Verified
+  live via DOM measurement: the input row sits flush at the panel's
+  bottom regardless of message count.
+- fix: three real meeting-capture bugs found chasing one operator
+  report ("Now all Meetings folder Showing the 2026-08-26"). (1)
+  `ingest_meeting.py`'s one-time-meeting branch never passed
+  `folder_date` to `vm.create()`, so a historical backfill mis-dated
+  92 of 95 folders checked to the single day the backfill happened to
+  run, not each meeting's own real date. (2) `vault_writer.
+  list_all_note_paths()` never excluded `_archive/`-prefixed folders,
+  so an archived duplicate note kept surfacing in live views (My Day
+  Calendar, search) right alongside its current replacement — fixed by
+  excluding any `_`-prefixed path component under `Work/`. (3) Outlook's
+  own `EntryID` confirmed NOT reliable as a per-occurrence identifier
+  for at least some recurring series (a live event today and an
+  already-captured 2026-07-16 occurrence of the same series came back
+  with the identical EntryID) — `ingest_meeting.py` used it directly as
+  the occurrence's identity key, silently skipping every occurrence
+  after the first-ever-captured one of any recurring series forever.
+  Fixed with a synthetic `{series_id}-{start}` identity key instead
+  (`event["id"]` still recorded in frontmatter, just never trusted as
+  identity). Also fixed along the way: `run_full_meeting_capture.py`'s
+  child processes crashed on a non-cp1252 character in real meeting
+  data (Windows console codepage) — forced UTF-8 I/O on every spawned
+  child. `Work/Meetings/` hard-deleted and fully recaptured twice
+  (operator's own call, same approach as the original meeting-naming
+  cleanup) — 191/191 events, 0 errors both passes; every folder date
+  verified against its own real `start` frontmatter, zero mismatches;
+  the reported duplicate/missing pair for 2026-08-27 confirmed fixed.
+  All fixes plus a corrected `SKILL.md` (still described the pre-
+  `vault_manager.py` folder shape) deployed to all 11 real profiles.
+- fix: recreated the `meeting-capture-recurring` cron job (had vanished
+  entirely — not visible under any profile's `cron list`) and started
+  `meeting-prep-agent`'s own gateway, which was also not running.
+  Real operational finding: cron jobs and gateways are scoped PER
+  PROFILE in this Hermes install — the default profile's gateway being
+  alive says nothing about another profile's own gateway state; always
+  check `hermes -p <profile> cron status` for that specific profile.
+
+- feat: `vault_manager.py`'s second and third real deployments —
+  `capture-notes` (`notes-manager`) and `capture-files` (`files-manager`),
+  operator: "handle the Notes files uploads." Both rewritten onto
+  `vault_manager.py`'s `create()`/`modify_section()` (new `note`/`file`
+  Templates); the real Customer/Partner auto-wikilinking logic is
+  unchanged, reused as-is (not part of the write-mechanics problem).
+  Shape change matches the meeting-capture precedent: date folded into
+  the filename/folder name (`Work/Notes/<date>-<title>.md`, `Work/Files/
+  <date>-<stem>/`) instead of a separate date-parent folder — old
+  captures untouched, only new ones use the new shape. Verified live
+  against the real vault (create + the file skill's own append-details
+  mode), then cleaned up; deployed to both real profiles. Threads/email-
+  thread-capture and the Threads-dependent summarize-and-tag-* skills
+  explicitly deferred (operator: "Threads is Dangerous for now... lets
+  leave it for later").
+
+- feat: `REQ-SB-80` — RegistryLoader + boot sequence, built directly per
+  operator direction (no `/spec`/`/plan-tasks` — a structural fix, not a
+  Gherkin story). New `app/data_access/registry/` package
+  (`schemas.py`/`errors.py`/`loader.py`): walks a real `data/` tree
+  (`<vault>/.second-brain/data/Sections/*/Agents/*/{Agent-config.json,
+  Agent-visual.json, soul.md}`, `Background/Agents/*/...`,
+  `Tools/*/{Tool.json, Skills/*/{Skill.json, Skill-visual.json}}`,
+  `Providers/*/Provider.json`) into an in-memory `Registry`, staged
+  (`checking_hermes → loading_sections → loading_agents → loading_skills →
+  loading_providers`) and fail-loud (the first invalid file halts that
+  boot attempt with its exact path + reason). `checking_hermes` reuses
+  `system_health.mcp_mount_reachable()` rather than a second HTTP-ping
+  implementation. Hot-reload (`watch_and_reload`, 2s poll of the tree's
+  own mtime fingerprint) calls the identical `boot()` coroutine used for
+  cold start — one validation path, not two. New `GET /boot-status` /
+  `POST /boot-status/retry` (`app/api/boot_router.py`), wired into
+  `main.py`'s lifespan as a fire-and-forget task (same pattern as
+  `vault_indexing.rebuild_index`) so it's pollable from the instant the
+  app accepts connections. New one-off `scripts/migrate_to_data_layer.py`
+  seeded the real tree from every existing source (`agents_map_adapter.py`
+  hardcoded dicts, `hermes_definitions.py`, `agent_visual_registry.py`,
+  `section_registry.py`, `provider_registry.py`, the real, product-
+  relevant Hermes `SKILL.md` files) — 6 Sections, 21 Agents, 4 Tools / 13
+  Skills, 2 Providers, confirmed live. Frontend: new `features/boot/`
+  (`bootApiClient.ts`, `BootGate.tsx`) wraps `<App />` in `main.tsx` —
+  full-screen blocking stage list on cold boot (or on a cold-boot
+  failure), a small non-blocking corner banner for a hot-reload
+  (in-progress or failed, with a Retry button), reusing the same
+  `GET /boot-status` shape for both. Verified live end-to-end: normal
+  boot, a deliberately corrupted `Agent-config.json` triggering the
+  fail-loud banner with the exact file + reason, and auto-recovery once
+  the file was fixed (no restart needed). Not yet done, deliberately:
+  nothing else in the app reads from the new `Registry` yet — the
+  migration script only seeds files, it doesn't rewire consumers; see
+  `MEMORY.md`.
+
+- refactor: `REQ-SB-80` follow-up — `app/business/hermes/
+  agents_map_adapter.py`'s Type/Section/depends_on/is_background_agent/
+  display_name now read the RegistryLoader's `Registry` instead of 5
+  hardcoded per-agent dicts (`_AGENT_TYPE`/`_AGENT_SECTION`/
+  `_AGENT_DEPENDS_ON`/`_BACKGROUND_AGENTS`/`_AGENT_DISPLAY_NAME`, all
+  deleted); an agent not yet migrated falls through to the exact same
+  defaults those dicts always used. `agent_visual_registry`/provider
+  sourcing untouched (still separately CRUD-editable / a live Hermes
+  mirror). Fixed a real bug this surfaced in `scripts/
+  migrate_to_data_layer.py`: it now boots its own in-process Registry
+  before calling any adapter helper (see `MEMORY.md` for why) and aborts
+  if that boot fails, rather than silently overwriting real data with
+  defaults on a re-run. Verified live: re-migration is byte-identical
+  (idempotent), and the Agents Map (6 sections, 32 agents) renders
+  unchanged through the new path.
+
+- fix: `AgentsMapPage` showed a silently-empty canvas (0 sections, 0
+  agents) for the full duration of its own `refreshAgents()` fetch
+  (`/agents` + `/sections` + every Pipeline's `/agents/{id}/jobs`) on
+  every page load/refresh — `loading` state already existed but nothing
+  rendered for it. New shared `components/PageLoading.tsx` (reuses
+  `BootGate`'s exact spinner/label visuals, `styles/boot.css`, so a
+  refresh reads as one continuous loading experience — operator: "when I
+  refresh it normally takes time for the data to load, We need to have
+  the bootGate to tell me data is loading") now fills the map's own
+  content area while `loading` is true. Verified live: reload shows
+  "Loading your Agents Map…" with a spinner, then resolves cleanly into
+  the normal 6-section/32-agent map.
+
+- feat: `BootGate` now surfaces the backend going unreachable mid-session
+  (process killed/crashed after the app already loaded), not just during
+  initial boot — operator: "I need it to tell me if the backend is
+  down." Previously the poll loop's own `catch` silently swallowed a
+  failed `/boot-status` fetch once `everReadyRef` had already flipped
+  true, so a backend crash left the last-known "ready" status on screen
+  forever with zero indication anything was wrong. New `backendUnreachable`
+  state (2 consecutive missed polls, ~2s, before declaring it down --
+  avoids a false-positive flicker on one dropped request) drives a
+  persistent red top banner ("Backend is unreachable — retrying…"),
+  independent of the existing hot-reload-failure banner; the initial
+  full-screen boot state also now distinguishes "still connecting" from
+  "confirmed not responding." Clears itself the instant a poll succeeds
+  again — no manual retry needed. Verified live: killed the backend
+  process while the app was already showing, banner appeared within
+  ~3s; restarted it, banner cleared automatically ~4s later with no
+  interaction.
+
+- feat: `BootGate`'s "backend unreachable" state now also renders a
+  dimmed, full-viewport overlay (`.backend-down-overlay`, no click
+  handler needed — an unstyled fixed div still intercepts pointer events
+  from whatever's stacked below it) between the app and the top banner,
+  so the operator can't click into a UI that can't actually do anything
+  with the backend down (operator: "add a dimmed layer on top of the
+  system when the backend is down so I can't touch it"). Verified live:
+  killed the backend, confirmed a nav click through the dim layer did
+  nothing (still on Agents Map, no navigation), restarted the backend,
+  overlay + banner both cleared automatically with the app fully
+  interactive again.
+
+- fix: `REQ-SB-80` follow-up — found and fixed a real, live bug while
+  extending Registry-backing to Skills: `SkillsTree.tsx`'s Capabilities
+  panel never rendered ANY skill, for ANY agent. Its own
+  `SKILLS_TREE_TOOL_ORDER` filters on an exact `Outlook`/`Vault`/`Web`/
+  `Compass` string match, but `agents_map_adapter.py` was feeding it the
+  raw Hermes skill-category folder name (`"knowledge-base"`,
+  `"librarian"`, etc — confirmed live, never equal to any of the 4), on
+  top of the ~80 generic bundled skills every cloned Hermes profile
+  carries by default (irrelevant catalog noise). `/skills` and
+  `/agents/{id}/skills` (`agents_map_adapter.list_all_skill_summaries`/
+  `list_agent_skill_summaries`) now source from the RegistryLoader's own
+  curated Tools/Skills catalog (new `_registry_skill_catalog()`) — `tool`
+  is the owning Tool's real display name (exact match by construction),
+  and the catalog is the 13 real, product-built skills, not Hermes'
+  entire bundled set. Added a real `mutates: bool` to `SkillConfig`
+  (`schemas.py`, `loader.py`, default `True`) since
+  `AgentDetailPanel.tsx`'s `getSchedulableCapabilities()` genuinely reads
+  it — `web-search` is the one real read-only skill, set explicitly in
+  the migration script. Verified live: `/skills`/`/agents/azure-expert/
+  skills` return correctly-tooled data, and the Settings tab's
+  Capabilities tree now visibly groups under real Outlook/Vault/Web/
+  Compass headers instead of rendering empty.
+
+- fix: `REQ-SB-80` follow-up — closed a real data-drift/data-loss risk
+  the Registry migration itself created. `section_registry.py`'s
+  `create_section`/`update_section`/`_seed_state` now dual-write into
+  `data/Sections/<id>/Section.json` (new `_write_registry_section_json`)
+  so a rename/recolor through Settings doesn't go stale in the Registry
+  (and therefore the Agents Map, which resolves a migrated agent's
+  section name from there now) until someone re-runs the migration
+  script by hand — RegistryLoader's existing hot-reload poll (~2s) picks
+  it up automatically. `delete_section`'s own blocking check previously
+  only consulted its `assignments` dict, which was never populated for
+  real Hermes agents (only the retired pre-Hermes model) — deleting a
+  Section with real migrated agents in it would have silently
+  "succeeded" while orphaning their folders; now also checks the
+  Registry's real agent placements. That fix surfaced a second live bug:
+  `sections_router.py`'s `_blocked_delete_message` resolved blocker
+  names via the same dead pre-Hermes `agent_registry` (`None["name"]`
+  would have crashed the 409 response) — switched to
+  `agents_map_adapter.get_agent_detail()`. Verified live: `DELETE
+  /sections/technology` now correctly returns HTTP 409 listing all 10
+  real agent names with no crash; a rename+revert on `/sections/industry`
+  updated its `Section.json` immediately; did not test an actual
+  real-section deletion (operator's live taxonomy, not scratch data).
+
+- feat: `REQ-SB-80` follow-up — `agent_visual_registry.set_agent_visual`
+  now also dual-writes the Registry's own `Agent-visual.json` (new
+  `_write_registry_agent_visual`, same additive/one-way shape as
+  `section_registry.py`'s `_write_registry_section_json`), closing the
+  same kind of drift gap proactively before anything actually reads
+  icon/color FROM the Registry (nothing does yet — `_visual()` still
+  reads live from this store, unchanged). New shared
+  `registry_loader.agent_data_dir(agent_id)` centralizes the Section-vs-
+  Background real-folder resolution so future dual-writers (e.g. a future
+  provider-assignment sync) don't have to re-derive it. Verified live:
+  PATCH'd `azure-expert`'s icon/color, confirmed
+  `data/Sections/technology/Agents/azure-expert/Agent-visual.json`
+  updated immediately, reverted to the original values.
+
+- test: `REQ-SB-80` follow-up — new `tests/test_registry_loader.py`, the
+  first automated regression coverage for the RegistryLoader (previously
+  verified only by hand, curl/browser, all session). 9 tests: valid-tree
+  boot, empty-tree boot, fail-loud on a missing required field / an
+  invalid agent `type` / a missing `soul.md` (asserting the exact file +
+  message), a failed hot-reload leaving the previous good `Registry`
+  object untouched (not blanked), `agent_data_dir`'s Section/Background/
+  unmigrated resolution, and the hot-reload fingerprint changing on a
+  real file edit. Isolated via `monkeypatch` on `settings.vault_path`
+  (a temp dir, never the real vault) and a stubbed
+  `system_health.mcp_mount_reachable` (never a real network call to a
+  live backend). All 9 pass; confirmed the live backend's own real
+  `/boot-status` was unaffected by the test run.
+
+- feat: `REQ-SB-82-US-03-T01` (`ADR-009`) — new
+  `app/business/cockpit/moderator.py`: two independent, purely
+  deterministic Meeting Moderator matching tracks, no LLM call, no Hermes
+  profile involvement. `match_customer_expert(subject_note_stem)` reads
+  the subject note's own real customer signal (`customer:` frontmatter OR
+  a `customer/<slug>` tag — both real, live signals depending on which
+  capture pipeline produced the note, see `MEMORY.md`) and maps it to a
+  real, already-registered `<slug>-expert` agent in the real "Customer"
+  Section (`REQ-SB-83`'s Masdar/Adnoc/TAQA today) via
+  `agents_map_adapter.list_agent_summaries()` — `None`, never fabricated,
+  if no such agent is actually registered. `match_domain_experts
+  (subject_note_stem)` is a stopword-filtered tokenized keyword overlap
+  between the subject's own tags/subject text and every real `type:
+  "expert"` agent's `name`/`description` — `[]` if nothing overlaps.
+  Verified live against the real vault and the real Hermes-mirrored agent
+  roster (no mocks): a real ADNOC-tagged Thread note and a real
+  Masdar-tagged RawMessage note each correctly resolved to
+  `adnoc-expert`/`masdar-expert`; a real Azure-subject Meeting note's
+  domain-match list included `azure-expert`; a real Aldar-tagged Thread
+  note (a customer with no registered Expert) correctly returned `None`;
+  a real, topic-unrelated Thread note returned `None`/`[]` on both tracks;
+  a full-vault scan of all 492 real notes carrying any customer signal
+  confirmed `match_customer_expert` never resolves to an agent id outside
+  the real, live Customer-Section roster. Does not close
+  `REQ-SB-82-US-03` — `T02` (compute-on-first-read caching onto
+  `chat_store`) and `T03` (frontend "Recommended" grouping) remain.
+- feat: `REQ-SB-82-US-03-T02` (`ADR-009`) — `app/business/cockpit/
+  chat_store.py::get_thread` additively computes and caches
+  `recommended_agent_ids` onto `ADR-007`'s same per-subject persisted
+  entry (`.second-brain/cockpit_chat.json`) — no new store. The first
+  real read for a subject whose entry has no `recommended_agent_ids` key
+  yet calls `moderator.match_customer_expert`/`match_domain_experts`
+  (both tracks, combined, deduplicated, order-preserving), persists the
+  result (including the honest empty-list case), and every later read
+  serves the cached value with zero recomputation; `bring_in_agent`/
+  `remove_agent` are untouched and never read/write this field. No
+  router-code change needed — `cockpit_router.py`'s existing `GET`
+  pass-through already surfaces the new field. Verified live against the
+  real vault and the real, persisted `.second-brain/cockpit_chat.json`
+  (production entry backed up before, byte-identical after): a scratch
+  Masdar+Azure-subject Meeting note's first read returned
+  `recommended_agent_ids` containing both `masdar-expert` and
+  `azure-expert` (plus every other real Azure-domain expert the
+  keyword-overlap track matched); a second read, with a call-count
+  monkeypatch on both `moderator` functions, served the identical cached
+  list with zero re-invocations; a scratch subject matching neither track
+  persisted an honest `[]` on first read, also served from cache
+  (zero re-invocations) on a second read; `bring_in_agent`/`remove_agent`
+  round-tripped `brought_in_agent_ids` on the same entry with
+  `recommended_agent_ids` unchanged throughout; independently reconfirmed
+  through the real, unmodified `GET /cockpit/{subject_kind}/
+  {subject_note_stem}` HTTP endpoint on a freshly-restarted backend
+  (fresh vault-index rebuild), which surfaced the identical persisted
+  `recommended_agent_ids` with no router edit. Scratch notes/script
+  deleted and the real `cockpit_chat.json` restored to its exact
+  pre-verification content afterward. Does not close `REQ-SB-82-US-03` —
+  `T03` (frontend "Recommended" grouping) remains.
+- feat: `REQ-SB-82-US-03-T03` — new "Recommended" grouping in
+  `Cockpit.tsx`'s Chat tab right rail, above "In this chat"/"Bring in
+  another Expert", per the same-day operator-approved visual shape (no
+  fresh `/design` pass). `CockpitThread` (`cockpitApiClient.ts`) gains
+  `recommended_agent_ids: string[]`; each recommended agent renders via
+  the existing `ExpertRow` component (zero new bespoke row component),
+  wrapped in the already-staged `cockpit-expert-recommended` CSS class for
+  an accent-bordered visual distinction, with an "Add to chat" action
+  calling the SAME `bringIn` function already wired to the real `POST
+  .../roster` endpoint. An id present in both `recommended_agent_ids` and
+  `brought_in_agent_ids` renders ONLY under "In this chat" (the plain
+  "Experts"/"Bring in another Expert" list also excludes any
+  still-recommended id, logged as a scope-internal judgement call).
+  Closes `REQ-SB-82-US-03` — all 7 locked ACs (`AC-01`..`AC-07`) now
+  verified across `T01`/`T02`/`T03`. Verified live (real headless-Edge CDP
+  session, real running backend/frontend, real vault data, no mocks)
+  against the real Masdar meeting note `Claire-Moussa - Catch-up Masdar
+  Data Platform-2026-08-18-d2c74ddc.md`: the "Recommended" section
+  rendered its real 6 matched agents (`AC-05`); bringing in a different,
+  non-recommended Expert from the plain list worked unrestricted (`AC-06`,
+  screenshot `t03-04-ac06-different-expert.png`); bringing in a
+  recommended agent via its own Add action moved it to "In this chat"
+  only, confirmed to persist across a real page reload (screenshots
+  `t03-01`..`t03-03`). Test mutations reverted afterward
+  (`brought_in_agent_ids` back to `[]` for the real subject). Also fixed,
+  as an environment precondition for this verification: the persistent
+  dev backend on port 8001 was found zombied (a dead reloader parent, a
+  live `--multiprocessing-fork` child still serving pre-`T02` code with no
+  `recommended_agent_ids` at all) — killed the confirmed-real stale PID
+  and restarted one fresh instance with the project's own documented
+  launch command; left running on port 8001 afterward per standing
+  instruction.
+- feat: `REQ-SB-82-US-05-T01` (`ADR-010`) — new `person-lookup` Skill
+  (`Hermes-Provisioning/skills/librarian/person-lookup/{SKILL.md,
+  scripts/check_person_note_empty.py, scripts/append_person_findings.py}`)
+  for the Meeting Preparation Agent's one-time attendee web lookup.
+  `check_person_note_empty.py` (`--note-path`) reads an existing Person
+  note's own body (everything after the closing `---` frontmatter fence,
+  same split convention as `vault_writer.py::read_note`) and reports
+  `{"empty": true|false}` — whitespace-only counts as empty.
+  `append_person_findings.py` (`--note-path`/`--input-file`,
+  `{"findings": str}`) appends real findings text into an ALREADY-EXISTING
+  note's own body, mirroring `app/business/cockpit/notes.py::add_person_
+  note`'s append-only-to-an-existing-note shape — never creates a new
+  note (errors honestly if the path doesn't exist), never overwrites or
+  removes existing content. Neither script performs the web lookup itself
+  — that stays the calling agent's own real `web_search` tool call, per
+  `ADR-010`. The one-time gate IS the plain body-emptiness check; no
+  separate "already looked up" tracking field or file exists. Verified
+  live against real scratch Person notes under the real vault's
+  `Work/People/` (cleaned up after verification, none left behind):
+  frontmatter-only note reports `empty: true`; a whitespace-only body also
+  reports `empty: true`; appending real findings makes a re-check on the
+  SAME note report `empty: false`; a note with content added independently
+  of this agent (not via `append_person_findings.py`) reports the same
+  honest `empty: false`, confirming no distinction is made by who added
+  the content; appending against a nonexistent note path errors honestly
+  and creates nothing. This task does not close `REQ-SB-82-US-05` —
+  `T02` (the cron/profile) remains.
+- feat: `REQ-SB-82-US-02-T02` (`ADR-008`) — new `research-kb-writer` Skill
+  (`Hermes-Provisioning/skills/librarian/research-kb-writer/{SKILL.md,
+  scripts/write_research_doc.py}`) mirroring `azure-kb-writer`'s own
+  `write_azure_doc.py` CLI/frontmatter contract (`--vault-path`/
+  `--input-file`, scratch JSON, `type: "ResearchDoc"` frontmatter +
+  `## Summary`/`## Details`), writing into a new `Work/Research/`
+  top-level vault area. ONE deliberate divergence from `azure-kb-writer`:
+  NEVER updates an existing note in place — a same-title call always
+  creates a brand-new, distinctly-suffixed file (reuses
+  `capture_note.py`'s own `_unique_note_path` time-then-counter
+  disambiguation technique verbatim). No approval/confirmation step, no
+  caller-identifying CLI argument. Provisioned the real, live
+  `research-agent` Hermes profile (`hermes profile create research-agent
+  --clone`; new SOUL.md — Librarian-Section research capability, not
+  meeting-scoped, uses Hermes' own bundled `web_search`/`terminal` tools
+  directly, no new lookup capability; real description set via `hermes
+  profile describe --text`) with the Skill installed
+  (`skills/librarian/research-kb-writer/`, confirmed `enabled` via
+  `hermes -p research-agent skills list`). Verified live end-to-end: a
+  real direct chat request produced a real, cited new note in
+  `Work/Research/`; a real cross-profile relay (from `notes-manager`)
+  produced an equivalent second note, proving caller-agnostic behavior; a
+  deliberately-unanswerable request produced an honest "no verifiable
+  record found; no note written" reply with zero new file created. The
+  real, running Agents Map (`GET /agents`) now shows `research-agent`
+  (`type: expert`, `section_id: librarian`), confirming `T01`'s
+  previously-inert registration activates correctly. **`REQ-SB-82-US-02`
+  (Research Agent) is now `Done`** — both tasks complete, all 5 locked ACs
+  (`AC-01`-`AC-05`) verified live with real positive results. **Both
+  `SPRINT-076` stories are now `Done` — `SPRINT-076` itself is `Done`**;
+  see its own `## Retrospective`.
+- feat: `REQ-SB-82-US-01-T02` — `cockpit_router.py`'s `GET
+  /cockpit/{subject_kind}/{subject_note_stem}` now returns the real,
+  persisted `thread` from `T01`'s `chat_store.get_thread(...)` in place of
+  the hardcoded empty stub (pass-through, unchanged for
+  `REQ-SB-82-US-03-T02`'s later `recommended_agent_ids` addition). New
+  endpoints `POST /cockpit/{subject_kind}/{subject_note_stem}/roster`
+  (body `{"agent_id": str}`) and `DELETE .../roster/{agent_id}`, both
+  404-ing on an unknown `subject_note_stem` via the same
+  `vault_indexing.get_index()` check the existing `GET` already used.
+- feat: `REQ-SB-82-US-01-T03` — `Cockpit.tsx`'s Chat tab roster now reads
+  and writes through the real backend instead of local-only `useState`.
+  Removed the `broughtInIds` `useState` entirely; the roster is derived
+  every render from the real fetched `data.thread.brought_in_agent_ids`,
+  so it can no longer drift from the real persisted value. New
+  `cockpitApiClient.ts` functions `bringInAgent`/`removeAgent` call
+  `T02`'s real `POST .../roster`/`DELETE .../roster/{agentId}` endpoints;
+  `bringIn`/`remove` merge the returned real thread back into component
+  state. No new visual region — the existing "In this chat"/"Bring in
+  another Expert" grouping and `chat-message`/`chat-message-author`
+  rendering are reused unchanged; the composer stays disabled
+  (`REQ-SB-82-US-04`'s concern). Verified live end-to-end (real browser,
+  real backend, real vault meeting note): brought an Expert into chat,
+  hard-reloaded, confirmed it survived; removed it, hard-reloaded,
+  confirmed it was gone; brought it in again, navigated away and back via
+  real in-app SPA navigation (not a hard reload), confirmed the roster
+  was unchanged. **`REQ-SB-82-US-01` (Persisted Cockpit Chat) is now
+  `Done`** — all 3 tasks complete, all 7 locked ACs verified live.
+  Verified live end-to-end over real HTTP against the real running
+  backend and real vault: bring-in/remove roundtrip (`AC-01`/`AC-02`),
+  per-subject-scoped 404s on unknown subjects for both new endpoints, a
+  never-touched real subject reading back the honest empty default
+  (`AC-06`), and two directly-seeded attributed messages (via
+  `chat_store`'s own functions, no new message-write endpoint added)
+  read back byte-identical, same order, over the real `GET`
+  (`AC-03`/`AC-07`). All scratch roster/message state removed from the
+  real vault's `.second-brain/cockpit_chat.json` after verification.
+
+- feat: `REQ-SB-82-US-01-T01` — new Cockpit Chat persistence module
+  (`app/business/cockpit/chat_store.py`: `get_thread`/`bring_in_agent`/
+  `remove_agent`) backed by a brand-new sibling JSON store,
+  `.second-brain/cockpit_chat.json`, keyed per `"{subject_kind}:
+  {subject_note_stem}"` (`ADR-007`). New sibling load/save functions
+  (`load_cockpit_chat_state`/`save_cockpit_chat_state`) added to
+  `vault_writer.py`, mirroring `load_agent_visuals_state`/
+  `save_agent_visuals_state`'s established read-whole-file/
+  default-if-missing/write-whole-file shape. Deliberately does NOT reuse
+  the stale, pre-Hermes-pivot `business/cockpit/threads.py`/
+  `cockpit_threads.json` (left untouched). Verified live against the
+  real vault: bring-in/remove roundtrip via a fresh disk re-read,
+  per-subject scoping (no cross-subject leakage), and an honest empty
+  default for a never-touched subject key.
+
 - feat: rebuilt `hermes_client.py`/`hermes_status.py`/`hermes_router.py`
   against Hermes' real, live-verified local API (`hermes serve`,
   `127.0.0.1:9119`, `x-hermes-session-token` auth) — replaces the
@@ -1153,3 +2141,193 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   the first try. See MEMORY.md's own new entry -- worth a clean restart
   before spending more time debugging "my Python change isn't showing up"
   against this dev setup specifically.
+- feat: Meeting/Inbox Cockpit UI makeover (`BUG-037` fix) -- operator
+  whiteboarded the new layout live: left secondary nav
+  (Overview/Chat/People/Documents/Articles) replacing the old fixed
+  left Agents/research panel, and a right rail that swaps between
+  Meeting/Email info (every prep tab) and a real Experts-only list
+  (Chat tab, `type === 'expert'`, recommended slot reserved for a
+  future Research Expert). `Cockpit.tsx` rewritten around this layout;
+  `cockpitApiClient.ts`'s `CockpitData` contract simplified to
+  `subject`/`people`/`overview`/`thread` (drops the old
+  bring-in/message/research/proposal/attachment client calls --
+  deliberately not rebuilt this pass). New, minimal
+  `app/api/cockpit_router.py` replaces the archived one: reuses only
+  `business/cockpit/people.py` (self-contained, vault-only, still
+  correct) for real subject/people data; `overview`
+  (`summary`/`related_documents`/`articles`) and `thread` come back as
+  honest empty stubs, never fabricated, since the Research Expert prep
+  pass and Hermes-backed chat are real "service" work the operator
+  deferred to a separate discussion. Removed `AttachmentsPanel.tsx`
+  (orphaned by the contract change; attachment hand-off is out of
+  scope this pass). Verified live: both `/meeting-cockpit/:stem` and
+  `/inbox-cockpit/:stem` load with zero console errors, real attendee
+  chips resolve to real Person notes (31 on a real Core42 meeting),
+  real meeting time/location/Teams-link/organizer render in the right
+  rail, and the Chat tab correctly swaps to a real 11-agent Experts
+  list with an honest "Chat isn't wired up yet" state instead of a
+  fake-looking composer.
+- fix/feat: Cockpit polish round, 3 operator-reported issues in one
+  pass. (1) "not a fan of the Cards look" -- first pass only dropped
+  `.card`'s border but kept the same raised-background-per-section
+  repetition, which still read as cards; Overview's 4 sections now
+  share ONE `.cockpit-panel`, divided by a `.cockpit-section` hairline
+  border, not 4 separate boxes. (2) Experts panel restyled to icon +
+  name rows (real Material Symbols icon via `getVisualIconName`,
+  reusing `AgentNode.tsx`'s own convention) with the existing
+  `a.item-row`/`button.item-row` hover highlight instead of a separate
+  "+ Bring in" button; roster split into "In this chat"/"Bring in
+  another Expert" groups in ONE panel rather than two sub-tabs
+  (reasoning: avoids a third layer of tabs nested inside the Cockpit's
+  own nav, for something glanced at constantly during a live meeting);
+  clicking an in-chat Expert removes them (not an @mention insert --
+  typing `@` in the composer already covers addressing a message,
+  clicking a roster row is a "manage this participant" action, the
+  same split Slack/Teams already use). Bring-in/remove is real,
+  clickable, local component state -- not yet persisted, since there's
+  still no Chat backend to persist it to (disclosed to the operator,
+  not silently faked). (3) "I lost track of the meeting" -- clicking a
+  Person chip used to navigate to `/browse/:stem`, a separate page;
+  new `PersonNotePanel.tsx` renders the SAME `fetchNoteDetail`+
+  `NoteBody` content inside the Cockpit's own side panel instead
+  (reuses `AgentDetailPanel.tsx`'s existing `.side-panel-overlay`/
+  `.side-panel` convention), so the meeting is never unmounted.
+  Follow-up in the same pass: the panel wasn't showing frontmatter at
+  all (where most of a Person note's real info lives -- email/phone/
+  linkedin) -- added an explicit Person-field KV list plus a generic
+  fallback loop for any other frontmatter key, so nothing is silently
+  dropped. Also added real "add a note" capability -- operator: "Notes
+  about the person during the meeting, saved to their note is needed
+  we still can't edit notes anywhere" -- new
+  `business/cockpit/notes.py`'s `add_person_note` calls
+  `vault_writer.append_body_section_line` (an existing, already-tested
+  primitive, REQ-SB-55-US-01-T01) against a real `## Personal Notes`
+  section, timestamped, mirroring the same section convention Meeting/
+  Thread notes already use. New `POST /cockpit/person/{stem}/notes`.
+  Scoped deliberately narrow -- Person notes only, not general note
+  editing (a real, separate, bigger gap the operator flagged but
+  hasn't asked to build yet). Verified live end-to-end: typed a real
+  note, confirmed `200 OK`, confirmed the exact new `## Personal
+  Notes` section + timestamped line landed on disk in the real vault
+  file, then removed that test entry afterward (verification-only,
+  not something the operator actually said about the real person).
+- feat: built the 3 Customer Experts (REQ-SB-83) -- `masdar-expert`,
+  `adnoc-expert`, `taqa-expert`, same clone/SOUL.md/verify pattern as
+  the original Azure Expert build. Sales Section, `type: "expert"`, no
+  `depends_on` (one Expert per customer, per the operator's own "for now
+  its one Expert per Customer today"). Each reads that ONE customer's
+  real vault folder (`Work/Customers/<Name>/`) plus anything tagged
+  `customer/<slug>` fresh on every question, never writes (points to
+  `opp-manager` for any create/update ask). Wired into
+  `agents_map_adapter.py` and Primary's own SOUL.md relay list.
+  Verified live, all 3, real grounded answers against real vault data:
+  Masdar's real "Data Platform" Opportunity (correctly found via tag
+  search despite being filed as a Mubadala Affiliate, not its own
+  top-level Customer folder), Adnoc's real "Azure Data Manager for
+  Energy" Opportunity (~$50k/month), TAQA's real Affiliate breakdown
+  (Ewec/Taqa Water Solutions/Taqadistribution, named contacts, recent
+  log entries) with an honest "no dedicated Opportunities folder" where
+  that's genuinely true. Real bug found and fixed along the way:
+  `OBSIDIAN_VAULT_PATH` is unset system-wide, so the bundled `obsidian`
+  Skill silently resolves to a nonexistent path unless the vault's
+  absolute path is stated explicitly in the profile's own SOUL.md --
+  see MEMORY.md.
+- feat: registered `research-agent` (`REQ-SB-82-US-02-T01`, `ADR-008`) in
+  `agents_map_adapter.py`'s `_AGENT_TYPE`/`_AGENT_SECTION` dicts --
+  `type: "expert"`, `section: "Librarian"` -- so Second Brain's own Agents
+  Map UI places and types it correctly the moment the real `research-agent`
+  Hermes profile is provisioned (`T02`). Second Brain's own
+  presentation-layer concern only; inert until the real profile exists.
+  Verified live both in-process (monkeypatched `hermes_definitions.
+  list_agents()`) and against a real running server's `GET /agents`
+  response (`research-agent` correctly absent today; zero regression to
+  any of the other 22 real agents/pipelines' own `type`/`section_id`).
+- feat: `REQ-SB-82-US-05-T02` (`ADR-010`) — new
+  `Hermes-Provisioning/cron/meeting-prep-agent.md` cron declaration
+  (`schedule: {"kind": "interval", "minutes": 720}`, `deliver:
+  "whatsapp"`, the real prompt text), plus the real, live
+  `meeting-prep-agent` Hermes profile + cron job provisioned on the
+  operator's actual Hermes install: `hermes profile create
+  meeting-prep-agent --clone`, a new real `SOUL.md` (twice-daily
+  scan/delegate/notify/suppress procedure), `T01`'s `person-lookup`
+  Skill installed, real cron job `7b8f10e528ab` created
+  (`hermes -p meeting-prep-agent cron create "every 720m" ...
+  --deliver whatsapp --skill person-lookup`), gateway installed as a
+  Windows login item. Closes `REQ-SB-82-US-05` — both tasks now `Done`.
+  Verified live: an independent direct `hermes -p research-agent chat
+  -q ...` relay call (real `web_search`-backed note written to
+  `Work/Research/`); a real delegation triggered FROM
+  `meeting-prep-agent` itself against a real, disposable scratch Meeting
+  note (genuinely-unfamiliar topic → real Research Agent finding
+  written); a real "nothing to find" control case against a second
+  scratch meeting, correctly staying silent; a real plain-language
+  suppression instruction, confirmed persisted to the profile's own
+  native memory and re-confirmed HONORED in a brand-new session with
+  zero prior conversation turns (a genuine cross-session persistence
+  proof) against the same meeting that would otherwise have real
+  findable data; the cron job's own `every 720m`/`deliver: whatsapp`
+  registration confirmed live via `cron list`/`cron status`. All scratch
+  vault/Person notes and the test memory entry cleaned up afterward (a
+  real, unrelated-domain research note from the independent relay test
+  left in place, matching `REQ-SB-82-US-02-T02`'s own precedent). Two
+  real, disclosed findings, neither blocking a locked AC (see
+  `MEMORY.md`): Hermes' own "remember" tool auto-routed the suppression
+  fact into `memories/MEMORY.md` rather than the `memories/USER.md`
+  `ADR-010` named (both are equally real, native, always-injected
+  per-profile memory); a freshly-cloned profile's own gateway can't stay
+  running unattended until its WhatsApp is separately, manually paired
+  (`hermes -p meeting-prep-agent whatsapp`, a real operator follow-up
+  action, not completed this session) — so AC-04/AC-05's literal
+  WhatsApp-send half and AC-08's literal unattended-fire half are
+  disclosed as configuration-confirmed/decision-logic-proven rather than
+  fully live-observed end-to-end, per the task's own pre-authorized
+  verification methodology for a 12h+ cadence. `SPRINT-077` (both its
+  stories now `Done`) closed the same pass — see its own drafted
+  Retrospective.
+
+### 2026-08-27
+
+- fix: Data-quality bug (operator: "Something Keeps Creating log capture
+  and index in Mubadala and Core42 and DGE and few More this is
+  destroying the data Quality") — orphaned, boilerplate `index.md`/
+  `log.md`/`captures.md` files kept reappearing alongside the real,
+  name-prefixed hub files (`<Customer>.md`, `<Customer>-log.md`,
+  `<Customer>-captures.md`) in 10 of 15 real `Work/Customers/` folders.
+  Root cause: `app/api/email_poc_router.py` — an unguarded, ~25-endpoint
+  legacy debug/maintenance router (prefix `/poc`), mounted in `main.py`
+  with zero live trigger (no scheduler, no MCP tool path, no frontend
+  caller — confirmed by direct grep) but directly reachable by anyone
+  who could POST to it, the only surviving path into
+  `customer_hub_linking.ensure_customer_hub_note` and its siblings after
+  the 2026-08-24 `capture_scheduler` lifespan retirement (see that
+  entry's own comment in `main.py`). Fixed by deleting
+  `email_poc_router.py` outright and removing its import/mount from
+  `main.py` — the business modules it called into
+  (`customer_hub_linking.py`, `email_classification.py`, etc.) are left
+  in place, since other real, non-router code
+  (`partner_hub_linking.py`, `vault_migration.py`) still imports them
+  directly. Verified live: `/poc/*` now 404s; `/boot-status`,
+  `/sections`, `/vault-search/status` all still 200. Cleaned up the 6
+  still-affected customers' bare files after content-verifying every one
+  as pure boilerplate (`# <Customer>\n\n- [[<Customer>]]` / empty body) —
+  operator explicitly chose delete over archive for these specific,
+  zero-content files (Azerbaijan/AzinTelecom/ILOE/Idda/Microsoft Azure,
+  the other 5 originally-affected customers, were independently removed
+  by the operator mid-investigation, unrelated to this bug). See
+  `MEMORY.md` for the open question this didn't fully close (DGE's bare
+  files were regenerated as recently as today, after the 2026-08-24
+  scheduler fix was already in place — `/poc` closes the only KNOWN live
+  path, but the exact trigger for that specific recreation was never
+  conclusively identified).
+- fix: Backend port 8001's zombie-socket issue (flagged as unresolved
+  earlier this session, see the 2026-08-24 [Unreleased] entry above) —
+  actually root-caused and fixed while restarting for the `/poc` removal
+  above. The "phantom" LISTEN-owning PIDs `netstat`/`Get-NetTCPConnection`
+  kept reporting were dead `uvicorn --reload` parent processes, but each
+  had spawned a Windows `multiprocessing` reload child
+  (`spawn_main(parent_pid=...)`) that inherited the listening socket
+  handle and stayed alive after the parent died — confirmed by matching
+  `Get-CimInstance Win32_Process`'s `parent_pid=` argument on the live
+  child processes directly against the dead phantom PIDs. Killing those
+  orphaned children (not the long-gone parents) released the socket for
+  real; no reboot needed after all.

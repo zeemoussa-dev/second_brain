@@ -6,7 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.business import agent_schedule_registry, vault_indexing
 from app.api.agents_router import pipelines_router, router as agents_router
-from app.api.email_poc_router import router as email_poc_router
+from app.api.boot_router import router as boot_router
+from app.api.cockpit_router import router as cockpit_router
 from app.api.health_check_router import router as health_check_router
 from app.api.hermes_agents_router import router as hermes_agents_router
 from app.api.hermes_router import router as hermes_router
@@ -15,9 +16,13 @@ from app.api.mcp_server import mcp_server
 from app.api.my_day_router import router as my_day_router
 from app.api.sections_router import router as sections_router
 from app.api.skills_router import router as skills_router
+from app.api.settings_system_router import router as settings_system_router
 from app.api.system_health_router import router as system_health_router
 from app.api.vault_index_router import router as vault_index_router
+from app.api.vault_router import router as vault_router
 from app.api.vault_search_router import router as vault_search_router
+from app.config import settings
+from app.data_access.registry import loader as registry_loader
 from app.data_access.system.tools import registry as tools_registry
 
 # capture_scheduler's own `lifespan` is deliberately NOT imported/entered
@@ -57,6 +62,13 @@ async def lifespan(app: FastAPI):
         # around. Confirmed live, 2026-08-20: /mcp/outlook 404'd until
         # this was added.
         await tools_registry.enter_tool_server_lifespans(stack)
+        # REQ-SB-80 -- RegistryLoader's cold boot + hot-reload poll loop.
+        # Background task, never awaited (same "don't block 'application
+        # startup complete'" reasoning as every other fire-and-forget task
+        # in this lifespan) -- GET /boot-status is servable from the
+        # instant the app accepts connections, so BootScreen can show real
+        # "in_progress" stages instead of a blank screen while this runs.
+        asyncio.create_task(registry_loader.boot_and_watch())
         # 2026-08-22 (operator-directed, "we're fully on Hermes now"): the
         # old Second-Brain-native Agent orchestration layer (the Librarian
         # bootstrap included) is retired -- ADR-001 already named Hermes as
@@ -139,25 +151,22 @@ app = FastAPI(title="Second Brain", lifespan=lifespan)
 
 # Frontend (Vite dev server) and backend (uvicorn) run as separate
 # processes on different ports — every browser-originated fetch from
-# src/frontend is cross-origin without this. Scoped to the Vite dev
-# server's own default bind addresses (ADR-010) rather than a wildcard,
-# since this is a single-user personal-data API (REQ-SB-12-US-02, first
-# task to make a real browser->backend fetch call).
+# src/frontend is cross-origin without this. Scoped to real origins
+# (ADR-010) rather than a wildcard, since this is a single-user
+# personal-data API (REQ-SB-12-US-02, first task to make a real
+# browser->backend fetch call). Sourced from settings.cors_allowed_origins
+# (System settings page, 2026-08-27) instead of hardcoded here — default
+# still matches the two Vite dev ports this repo ships with.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173", "http://127.0.0.1:5173",
-        # Vite auto-increments past 5173 when it's already bound by a
-        # concurrent dev-server session (REQ-SB-13-US-01 live verification,
-        # 2026-08-11) — additive only, does not remove the 5173 entry above.
-        "http://localhost:5174", "http://127.0.0.1:5174",
-    ],
+    allow_origins=settings.cors_allowed_origins_list,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(health_check_router)
-app.include_router(email_poc_router)
+app.include_router(boot_router)
+app.include_router(cockpit_router)
 app.include_router(my_day_router)
 app.include_router(system_health_router)
 app.include_router(vault_index_router)
@@ -165,6 +174,8 @@ app.include_router(vault_search_router)
 app.include_router(hermes_router)
 app.include_router(hermes_agents_router)
 app.include_router(sections_router)
+app.include_router(settings_system_router)
+app.include_router(vault_router)
 app.include_router(agents_router)
 app.include_router(pipelines_router)
 app.include_router(skills_router)
