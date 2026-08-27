@@ -689,3 +689,440 @@ cleanup function; wrap the body in braces whenever the effect exists only
 to kick off a `.then()` chain.
 
 ---
+
+## ADR-007: Cockpit roster/message persistence is one new per-subject-keyed JSON store (`.second-brain/cockpit_chat.json`), never a revival of `business/cockpit/threads.py`/`ADR-036`
+
+**Status:** Accepted
+**Date:** 2026-08-25
+
+**Context:** `REQ-SB-82-US-01` needs the Chat tab's brought-in roster and
+message history to survive reload/navigation, scoped per `(subject_kind,
+subject_note_stem)`. `cockpit_router.py`'s `GET /cockpit/{subject_kind}/
+{subject_note_stem}` today returns a hardcoded, honest empty `thread`
+stub; `Cockpit.tsx`'s `broughtInIds` is local-only `useState`. The
+frontend's own `CockpitThread` TS contract (`cockpitApiClient.ts`) is
+already correctly shaped for this (`messages: [{speaker, agent_id,
+agent_name, text}], brought_in_agent_ids: string[]`) — only a real
+backend behind it is missing.
+
+The one prior real implementation of this exact surface
+(`business/cockpit/threads.py`, originally `ADR-036` in the archived
+pre-2026-08-20 sequence, `.second-brain/cockpit_threads.json`) is
+confirmed stale, not quietly reusable: it composed `run_agent_
+conversation`, a function that no longer exists post-Hermes-pivot (the
+whole Second-Brain-native LangGraph orchestration layer it belonged to
+was archived, `ADR-001`). `MEMORY.md`'s own 2026-08-25 entry confirms
+`business/cockpit/{threads,research,person_note_proposals,attachments}.py`
+are all stale for the same reason. This story's own Constraints
+explicitly forbid reviving that design as-is and leave the concrete
+storage mechanism open for this pass to decide.
+
+**Decision:** One new, genuinely fresh module, `app/business/cockpit/
+chat_store.py`, backed by ONE new JSON file, `.second-brain/
+cockpit_chat.json` — a flat top-level dict keyed by `"{subject_kind}:
+{subject_note_stem}"`, each value exactly matching `CockpitThread`'s
+existing shape: `{"brought_in_agent_ids": [...], "messages": [...]}`.
+This reuses the naming spirit of the old `cockpit_threads.json`
+convention (one file, subject-keyed) without reusing any of its actual
+code or the retired `run_agent_conversation` composition.
+
+Load/save follows the SAME established pattern as every other single-key
+JSON state store in this app (`vault_writer.load_agent_visuals_state`/
+`save_agent_visuals_state` is the direct precedent — read-whole-file,
+default-if-missing, write-whole-file, no locking layer) — new sibling
+functions in `vault_writer.py`, not a new persistence technology.
+
+New router surface on `cockpit_router.py`: `POST /cockpit/{subject_kind}/
+{subject_note_stem}/roster` (bring in) and `DELETE .../roster/{agent_id}`
+(remove); the existing `GET` returns the real, persisted `thread` in
+place of the stub. `Cockpit.tsx`'s `bringIn`/`remove` call these instead
+of mutating local state.
+
+This story's own store is deliberately generic — no `source: "recommended"
+| "manual"` distinction on `brought_in_agent_ids` (that's `REQ-SB-82-US-03`'s
+own additive extension, `ADR-009`, layered on the SAME entry, not a
+second store) — and carries no message-sending logic at all (`REQ-SB-82-
+US-04`'s concern).
+
+**Alternatives Considered:**
+- *Resurrect `business/cockpit/threads.py`/`ADR-036` verbatim* — rejected:
+  it composes `run_agent_conversation`, a function that no longer exists;
+  there is nothing left to revive without a full rewrite, at which point
+  it is not actually a revival.
+- *One file per subject* (`.second-brain/cockpit_chat/<key>.json`) —
+  rejected for this pass: this app's own existing single-key JSON stores
+  (`agent_visuals.json`, etc.) all use one file regardless of key count;
+  a meeting/email-scale key count (hundreds, not millions) doesn't yet
+  justify per-subject files. Revisit if per-subject write contention or
+  the single file's size ever becomes a real, measured problem (see
+  Consequences).
+- *Store chat/roster inside the subject note's own frontmatter* —
+  rejected: this project's own System-Data-vs-Vault-Data taxonomy
+  (`MEMORY.md`/`CLAUDE.md`) draws a firm line between Second Brain's own
+  operational state and the user's trusted vault content; a chat
+  transcript is the former, and frontmatter is not naturally append-
+  friendly for a growing message log either.
+- *Persist via a long-lived `HermesChatSession` per subject, letting
+  Hermes' own gateway hold history* — rejected: Hermes' session memory is
+  scoped to one agent conversation, not a multi-Expert, per-subject
+  roster+thread record Second Brain itself needs to read/render across
+  reloads; also out of scope, since this story explicitly builds storage
+  only, no send/receive (no `HermesChatSession` is even opened here).
+
+**Consequences:** Every Cockpit subject visited creates or updates one
+real entry in this one new file; concurrent writes to different subjects
+share the same file (a real, accepted read-modify-write race, the same
+accepted characteristic every other single-file JSON state store in this
+app already has — no locking layer exists anywhere in this codebase
+yet). If file size or write contention ever becomes a real, measured
+problem, revisit the one-file-per-subject alternative above. Message
+attribution stays exactly `CockpitThread`'s already-existing TS
+contract — no frontend widening/narrowing needed once this story ships.
+`REQ-SB-82-US-03` will ADD a `recommended_agent_ids` field to this same
+per-subject entry (an additive schema change, not a redesign) — see
+`ADR-009`.
+
+---
+
+## ADR-008: Research Agent is a new, standalone Hermes profile under the Librarian Section with its own `research-kb-writer` Skill writing into a new `Work/Research/` folder — no MCP server, no routing through `REQ-SB-63`'s Vault Filing Expert
+
+**Status:** Accepted
+**Date:** 2026-08-25
+
+**Context:** `REQ-SB-82-US-02` needs a Research Agent, under the existing
+Librarian Section, that looks something up and writes what it finds as a
+brand-new, additive note into its own dedicated vault area, with no
+approval gate (its write structurally cannot touch existing content). No
+live research/web-lookup mechanism exists anywhere in the current,
+post-Hermes-pivot codebase to build against — the pre-pivot `REQ-SB-36`
+web-research Skill belonged to the fully-retired Second-Brain-native
+agent/LangGraph model and is not reusable. A genuine, unreconciled
+tension existed between this requirement's own "own folder, no placement
+decision needed" framing and `REQ-SB-63`'s general "every agent routes
+new content through the Librarian/Vault Filing Expert" principle — the
+story flagged this as unclear rather than guessing.
+
+Operator resolution (2026-08-25): `vault_filing_expert.py`'s only real
+callers (`email_classification.py`, `librarian_housekeeping.py`,
+`knowledge_bootstrap.py`, `knowledge_gap_tracking.py`,
+`project_customer_synthesizer.py`, `skill_tools.py`) are themselves
+pre-Hermes-pivot orchestration-layer code `main.py` no longer wires into
+the running app — the same fate as `cockpit_router.py`'s own old
+Chat/research surface. It is not a live, reachable mechanism today,
+regardless of `REQ-SB-63`'s own general framing. The only proven, live
+write pattern in this codebase is a dedicated per-Expert writer Skill
+(`azure-kb-writer`, `compass-kb-writer`, and the 3 Customer Experts all
+write this way) — write directly via a new one, mirroring
+`azure-kb-writer`'s own real, working `write_azure_doc.py` contract.
+Research mechanism: Hermes' own bundled `web_search`/`terminal` tools,
+the same real, proven capability already powering `azure-expert`'s and
+`compass-expert`'s own research — no new lookup capability needed.
+
+**Decision:**
+1. **New Hermes profile, `research-agent`**, registered under the
+   existing Librarian Section the same way `notes-manager`/`files-manager`
+   already are (`app/business/hermes/agents_map_adapter.py`'s
+   `_AGENT_TYPE`/`_AGENT_SECTION` dicts) — same "one real domain, one
+   Hermes profile" pattern this codebase has now used 15+ times
+   (`MEMORY.md`). No MCP server, no Second Brain backend process
+   dependency at runtime, per `ADR-002`'s own already-settled reasoning
+   (a `terminal`-tool `pip install` step covers any real dependency; this
+   agent needs none beyond Hermes' own bundled tools anyway).
+2. **Research via Hermes' bundled `web_search`/`terminal` tools directly**
+   — no new lookup Skill is built.
+3. **New writer Skill, `research-kb-writer`**, script `write_research_
+   doc.py`, mirroring `azure-kb-writer`'s own `write_azure_doc.py` CLI
+   contract exactly (`--vault-path`/`--input-file`, a scratch JSON
+   payload, frontmatter + `**Topic:**`-style backlink + `## Summary`/
+   `## Details` + optional images) — called as a plain, direct `terminal`
+   invocation using its own full absolute path (this codebase's
+   established Skill-script-invocation convention). ONE deliberate
+   divergence from `azure-kb-writer`'s own contract: `azure-kb-writer`
+   overwrites the SAME note on a repeated same-title/area call
+   (`updated: true`, its real refresh mechanism); `research-kb-writer`
+   NEVER overwrites — a title collision gets a disambiguating suffix
+   (date or numeric) and a brand-new file every time. This directly
+   serves `REQ-SB-82-US-02`'s own Constraint (no merge/dedup logic for
+   v1; repeated similar requests may legitimately produce more than one
+   note) and its Scenario 2 (a research write must never edit or
+   overwrite any existing note) — `azure-kb-writer`'s own update-in-place
+   default would silently violate that AC the moment two requests
+   produced the same title.
+4. **Destination: `Work/Research/<slug>.md`** — flat, no category
+   subfolder split (unlike Azure's `Services/<Category>/`, since this
+   agent's scope is narrower and doesn't yet need one). Frontmatter:
+   `type: "ResearchDoc"`, `topic`, `tags: ["research"]`, `source_url`
+   (real, omitted rather than fabricated when none exists), `created`.
+5. **No approval gate** — the write proceeds immediately once research
+   is done, since it is structurally confined to `Work/Research/` and can
+   never affect any other note.
+6. **Does not route through `REQ-SB-63`'s Vault Filing Expert.** This is
+   a structural non-routing (nothing live to route through today), not
+   an active choice among two working alternatives.
+7. **No caller-specific behavior** (Scenario 4) — the agent is reached
+   identically whether relayed from a scheduled job (`REQ-SB-82-US-05`)
+   or a live Cockpit Chat request, the same one-shot relay/direct-reach
+   mechanisms every other Hermes profile in this codebase already uses.
+
+**Alternatives Considered:**
+- *Route research writes through `REQ-SB-63`'s Vault Filing Expert for
+  consistency with its own stated principle* — rejected: confirmed its
+  only real callers are archived/dead pre-Hermes-pivot code; honoring the
+  principle literally would mean reviving genuinely retired
+  infrastructure for a single write path that structurally needs no
+  placement decision anyway (a fixed destination folder).
+- *Build a new MCP server / backend-hosted research capability* (`ADR-001`'s
+  original pre-`ADR-002` shape) — rejected per `ADR-002`'s own settled
+  reasoning: no benefit remains once Hermes' own `terminal`/`web_search`
+  tools are directly usable, no dependency-install gap this agent needs
+  solved.
+- *Give `research-kb-writer` the same update-in-place semantics as
+  `azure-kb-writer`* — rejected: directly conflicts with `REQ-SB-82-US-02`'s
+  own explicit "no merge/dedup logic, repeated requests may produce more
+  than one note" Constraint and Scenario 2's "never edits or overwrites"
+  requirement.
+- *Fold this capability into an existing agent (`notes-manager`)* instead
+  of a new dedicated Hermes profile — rejected: the PRD's own framing
+  ("may itself grow into a full Expert... reused directly from mid-meeting
+  Chat too") and Scenario 4's caller-agnostic requirement match the
+  established one-domain-one-profile pattern better than folding into
+  `notes-manager`'s own narrower catch-all-capture mandate; also
+  preserves a clean, sole-KB-write-owner boundary consistent with every
+  other Expert-family precedent (Compass, Azure).
+
+**Consequences:** A new `research-agent` Hermes profile must be
+provisioned outside this repo (Hermes-side work, same as every other
+specialist — not part of this repo's own `src/` build). `Work/Research/`
+becomes a new top-level vault area with no consumer beyond the Cockpit
+Overview's already-existing (currently-stub) "Related documents"/
+"Articles" sections — wiring that consumption is explicitly out of scope
+here (`REQ-SB-82-US-05`'s or a later story's concern). Because every
+write always creates a new file, `Work/Research/` will accumulate
+multiple notes for similar or repeated topics over time with no automatic
+consolidation — a known, disclosed limitation per this story's own
+Constraints, not a defect.
+
+---
+
+## ADR-009: Meeting Moderator roster recommendation runs entirely inside Second Brain's own backend (deterministic tag/keyword matching, no new Hermes profile), computed-on-first-read and cached as an additive field on `ADR-007`'s own persisted roster store
+
+**Status:** Accepted
+**Date:** 2026-08-25
+
+**Context:** `REQ-SB-82-US-03` needs the Meeting Cockpit's Chat roster to
+show a "Recommended" grouping (customer-match + domain-match, both
+tracks, run independently) before the user manually brings anyone in. The
+PRD's own claim that the UI "already reserves" a Recommended slot was
+confirmed, by direct inspection, to be inaccurate against the real,
+current `Cockpit.tsx` (2026-08-25 UI makeover) — a genuinely new region,
+though its VISUAL shape was already approved the same day, in the same
+live-whiteboarding session that produced this requirement (an interactive
+mockup: right rail "Recommended" section with the matched agent + an Add
+action, plain Experts list below — operator-confirmed "Good," no fresh
+`/design` pass needed). This story is a real, disclosed dependency on
+`REQ-SB-82-US-01`'s own persisted roster store (`ADR-007`) — a
+recommendation assembled "before you arrive" needs somewhere durable to
+live before the user ever opens the Cockpit. The domain-match track's own
+underlying data was confirmed, by direct inspection, not to exist for any
+real agent — `agents_map_adapter.py`'s own module docstring: "Fields with
+no honest Hermes equivalent (settings, keywords, scope, ...) are left
+empty/null rather than fabricated." Operator resolution: domain-match =
+lightweight keyword overlap between the meeting's own tags/subject and
+each Expert's already-exposed `GET /agents` `name`/`description` fields —
+no new structured per-agent scope-tagging schema for v1.
+
+**Decision:**
+1. **New business module, `app/business/cockpit/moderator.py`** — two
+   independent matching functions: `match_customer_expert(subject_note_
+   stem)` (the subject's own `customer` tag/folder → a real,
+   already-registered `<customer>-expert` agent id, per `REQ-SB-83`'s
+   real Masdar/Adnoc/TAQA agents; `None`, never fabricated, if no match)
+   and `match_domain_experts(subject_note_stem)` (tokenized keyword
+   overlap between the subject's own tags/subject text and every real
+   `type: "expert"` agent's `name`/`description`, both tracks run and
+   combined, neither suppresses the other).
+2. **Both tracks are purely deterministic/mechanical** (a frontmatter
+   lookup and a keyword-overlap comparison) — NOT an LLM judgment call —
+   so both run entirely inside Second Brain's own backend, synchronously,
+   with no new Hermes profile, cron job, or scheduled task needed for
+   this story.
+3. **Trigger: compute-on-first-real-read, then cache.** The first `GET
+   /cockpit/{subject_kind}/{subject_note_stem}` call for a subject with
+   no `recommended_agent_ids` entry yet computes both tracks and persists
+   the result; every subsequent read (including the read that opens the
+   Chat tab itself, per Scenario 5's own "before bringing anyone in
+   manually" wording) serves the cached value. This satisfies every
+   Scenario without a proactive/eager trigger — computing at read time,
+   before any manual bring-in action within that same page load, already
+   IS "before you arrive" in the sense the Scenarios actually assert.
+4. **Persisted schema: one additive field on `ADR-007`'s own per-subject
+   entry** — `recommended_agent_ids: list[str]`, a non-authoritative hint
+   list separate from `brought_in_agent_ids`. Bringing a recommended
+   agent into the chat uses the exact same `bring_in_agent` mechanism as
+   any manual bring-in (Scenario 6 — recommendation never restricts
+   manual choice).
+5. **Frontend:** a new "Recommended" grouping in `Cockpit.tsx`'s Chat tab
+   right rail, above the existing "In this chat"/"Bring in another
+   Expert" groups, per the already-approved mockup shape. An agent
+   already brought in renders only in "In this chat," never duplicated
+   into "Recommended."
+
+**Alternatives Considered:**
+- *Compute the recommendation proactively, triggered by the SAME event
+  that captures/updates the subject note* (e.g. an additive step on the
+  real Meeting Builder Hermes pipeline, `ADR-005`) — considered: gives a
+  literal "recommended before ANY read ever happens" guarantee. Rejected
+  for this pass in favor of compute-on-first-read: the proactive route
+  would require a purely mechanical, deterministic computation to be
+  wired into Hermes-side pipeline/Skill machinery for no behavioral gain
+  against this story's own Scenarios (all of which are satisfied by
+  "recommended before manual bring-in within the same page load"), adding
+  real cross-system complexity (a Hermes Skill calling back into Second
+  Brain's REST API just to run a keyword match) for zero observable
+  benefit. Revisit only if a future requirement genuinely needs the
+  recommendation to exist before the very first Cockpit open of a
+  brand-new subject.
+- *A new, structured per-agent "scope"/"keywords" field* (extending
+  `HermesAgent`) instead of reusing `name`/`description` — rejected per
+  the operator's own explicit resolution: no new structured schema for
+  v1, refine later if keyword overlap proves too coarse.
+- *A second, separate JSON store for `recommended_agent_ids`* instead of
+  extending `ADR-007`'s existing per-subject entry — rejected:
+  recommendation and roster are the same real-world concept (who's
+  in/available for this subject's chat) viewed two ways; splitting them
+  into two files would require two reads/writes per Cockpit page load and
+  risks the two drifting out of sync (e.g. a recommended agent already
+  manually brought in needing cross-store consistency).
+
+**Consequences:** `CockpitThread`'s TS contract gains one new field,
+`recommended_agent_ids: string[]`, additive and backward-compatible (a
+subject with no recommendation computed yet reads back `[]`, the same
+honest-empty convention every other field in this store already follows).
+The domain-match track's keyword-overlap quality is coarse by design
+(operator's own explicit "refine later" framing) — a real, disclosed
+limitation, not a defect, likely to need iteration once exercised against
+a broader real agent roster. A brand-new subject's very first `GET` pays
+the one-time cost of computing both tracks inline — cheap (local
+frontmatter read + an in-memory keyword comparison against however many
+real agents exist today), not expected to be a real latency concern at
+this codebase's current agent-roster scale.
+
+---
+
+## ADR-010: Meeting Preparation Agent is a new Hermes profile + cron job (mirroring `new-company-discovery`'s real cron shape), relays KB lookups to `research-agent`, and persists its learned suppression preference in Hermes' own native per-profile memory file, not a Second-Brain-owned store
+
+**Status:** Accepted
+**Date:** 2026-08-25
+
+**Context:** `REQ-SB-82-US-05` needs an agent that scans upcoming
+meetings twice daily, delegates unfamiliar-topic KB lookups to the
+Research Agent (`ADR-008`), runs a one-time web lookup for any attendee
+whose Person note is still empty beyond frontmatter, sends a WhatsApp
+summary only when it finds real data worth checking, and learns to
+suppress future notifications for a given meeting/type from plain-
+language feedback. The PRD's own cited persistence mechanism,
+`vault_writer.append_agent_memory_entries`, was confirmed, by direct
+reading, to have ZERO live callers today (only `app/_archive/api/
+agents_router.py` and the confirmed-stale `business/cockpit/threads.py`
+reference it) — not, in fact, "already working elsewhere" in the current
+architecture, contrary to the PRD's own text.
+
+Operator resolution (2026-08-25): (a) WhatsApp delivery = a new Hermes
+cron job/profile mirroring `daily-briefing`'s intended proactive shape
+and, concretely, `new-company-discovery`'s own real, live cron
+(`cron/jobs.json`, confirmed directly: `schedule: {"kind": "interval",
+"minutes": 1440}`, `deliver: "whatsapp"`, its own SKILL.md's explicit "if
+[nothing found], reply with nothing substantive — do not send a no-op
+notification"). (b) Suppression persistence = Hermes' own native
+per-profile `memories/USER.md` file — confirmed real and already
+populated with genuine learned facts on `azure-expert`'s own file
+(`§`-delimited plain-language entries, e.g. reply-style preferences),
+NOT `vault_writer.append_agent_memory_entries`. (c) "Meetings like this"
+resolves to the meeting's own `calendar_series_id`, falling back to its
+`customer` tag for a one-off meeting.
+
+**Decision:**
+1. **New Hermes profile, `meeting-prep-agent`**, clone-based, same "one
+   real domain, one Hermes profile" pattern this codebase has used
+   repeatedly (`MEMORY.md`). Owns its own new cron job: `schedule:
+   {"kind": "interval", "minutes": 720}` (twice daily — `new-company-
+   discovery`'s own real interval is 1440 minutes/once-daily; this
+   agent's PRD requirement is 2x/day, so the interval is halved, same
+   `"interval"` schedule kind), `deliver: "whatsapp"`, and a cron
+   `prompt` following `new-company-discovery`'s own real, live prompt
+   shape (a plain-English instruction naming the Skill, with the same
+   explicit "reply with nothing substantive if nothing found" clause) —
+   satisfies Scenario 5 (no notification when nothing worth checking) and
+   Scenario 8 (runs on its own schedule, no manual trigger).
+2. **KB-lookup delegation (Scenario 1):** relays to `research-agent`
+   (`ADR-008`) via the SAME one-shot cross-profile relay every
+   multi-profile chain in this codebase already uses (`hermes -p
+   research-agent chat -q "..."`) — per this project's own documented
+   Constraint (`MEMORY.md`), this relay has no live back-channel, so
+   `meeting-prep-agent` must fully specify its research ask in one shot,
+   never expecting Research Agent to ask a clarifying question back
+   mid-relay.
+3. **Person-note web lookup (Scenarios 2, 3):** a new Skill, own script,
+   mirroring `app/business/cockpit/notes.py::add_person_note`'s
+   established append-only-to-an-existing-note shape (never creates a new
+   Person note — the note already exists, just empty). Eligibility is a
+   plain mechanical check: the note's own body (everything after
+   frontmatter) is empty/whitespace-only. A real web lookup runs only
+   when that check passes; once ANY real content exists in the body
+   (written by this agent OR the user), the check fails on every future
+   run — no separate "already looked up" tracking field is needed, the
+   note's own real content IS the gate.
+4. **Suppression persistence: Hermes' own native per-profile `memories/
+   USER.md`.** The agent writes/reads its own learned suppression
+   preference in plain language via its own memory tool (the SAME
+   mechanism already populating real facts on other profiles), keyed by
+   the meeting's own `calendar_series_id`, falling back to its `customer`
+   tag for a one-off meeting. No new Second-Brain-side schema, store, or
+   API — matching a future meeting against a learned plain-language
+   preference is left to the agent's own judgment on each scheduled run
+   (its memory file is already injected into its context every session,
+   per this project's own documented Hermes memory mechanics), not
+   structurally enforced by Second Brain's backend.
+
+**Alternatives Considered:**
+- *`vault_writer.append_agent_memory_entries`* (the PRD's own cited
+  mechanism) — rejected: confirmed zero live callers today; reviving it
+  would mean building against dead infrastructure with no proven current
+  behavior, when a real, already-working alternative (Hermes' native
+  per-profile memory) is directly observable working today.
+- *A new Second-Brain-owned structured suppression store* (e.g.
+  `.second-brain/meeting_prep_suppressions.json`, same shape as `ADR-007`'s
+  `cockpit_chat.json`) — considered and rejected for this story
+  specifically: the operator's own resolution names Hermes' native memory
+  as the mechanism, and a structured store would additionally require
+  Second Brain's backend to somehow parse the agent's own free-language
+  interpretation of "suppress meetings like this" back into a rigid
+  match — a judgment call an LLM agent handles naturally on each run and
+  a rigid JSON matcher would not.
+- *Route WhatsApp delivery through a Second-Brain-owned integration*
+  instead of a Hermes cron's own `deliver: "whatsapp"` — rejected: Second
+  Brain has and needs no direct WhatsApp integration of its own; Hermes'
+  gateway is the sole, already-proven real channel (`ADR-001`'s own
+  "extra channels run through Hermes' own gateway" decision), and
+  `deliver: "whatsapp"` on a cron job is the exact mechanism
+  `new-company-discovery` already uses live today.
+- *Have Meeting Prep Agent perform the web lookup and write findings
+  itself for unfamiliar topics*, instead of delegating to Research Agent
+  — rejected per Scenario 1's own explicit "delegates... rather than
+  researching it itself" wording, and per the PRD's own framing of the
+  Prep Agent as one caller among possibly others of the shared Research
+  Agent capability, not a duplicate implementation.
+
+**Consequences:** A new `meeting-prep-agent` Hermes profile and cron job
+must be provisioned outside this repo (Hermes-side work, not part of this
+repo's own `src/` build). The suppression preference lives entirely
+inside Hermes' own per-profile memory file, outside this repo's version
+control and outside Second Brain's own data model — Second Brain's
+backend has no visibility into, or ability to query/audit, what is
+currently suppressed; a future story wanting Second Brain's OWN UI to
+show/manage suppressions would need a different, additive mechanism, not
+covered here. The relay to `research-agent` inherits the same documented
+one-shot, no-live-back-channel constraint as every other cross-profile
+relay in this codebase.
+
+---

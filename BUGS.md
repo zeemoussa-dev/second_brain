@@ -65,9 +65,10 @@ is a thin status mirror of the index table below.
 | BUG-034 | Agent detail panel's Schedule tab 404s on every real Hermes-sourced agent (`GET /agents/{id}/schedules` never rebuilt against the Hermes retrofit) | Logic | Major | Open | 2026-08-23 | — |
 | BUG-035 | Settings page's Providers card 404s entirely — full `/providers` CRUD was never rebuilt against the Hermes retrofit | Logic | Major | Open | 2026-08-23 | — |
 | BUG-036 | Some Meeting-series and Person notes are filed under a raw Outlook internal identifier (`calendar_series_id`/LegacyExchangeDN) as their own filename/stem, even though a real human-readable name is already known and stored right in the same note's own frontmatter | Logic | Major | Open | 2026-08-23 | Partial fix, 2026-08-24 |
-| BUG-037 | Cockpit (Inbox/Meeting) 404s entirely — `cockpit_router.py` was archived during the Hermes pivot and never rebuilt, so clicking any Email/Meeting from My Day dead-ends | Logic | Major | Open | 2026-08-24 | — |
+| BUG-037 | Cockpit (Inbox/Meeting) 404s entirely — `cockpit_router.py` was archived during the Hermes pivot and never rebuilt, so clicking any Email/Meeting from My Day dead-ends | Logic | Major | Closed | 2026-08-24 | Direct fix, 2026-08-25 |
 | BUG-038 | BUG-036's raw-ID/DN naming produced full duplicate Meeting notes, not just bad names — 7 recurring series and 17 one-time meetings each existed twice (an old pre-`2026-08-21`-rewrite flat/raw-ID copy invisible to the current dedup scan, alongside a correctly-named replacement) | Logic | Major | Closed | 2026-08-24 | Direct fix, 2026-08-24 |
 | BUG-039 | Agents Map: `compass-solutions` not visually linked to `compass-expert`, even though its real `depends_on` is correct | UI | Minor | Closed | 2026-08-24 | Direct fix, 2026-08-24 |
+| BUG-040 | `propose_person_note_update` (Manual/Autonomous dispatch) writes a pending Person-note-edit proposal nobody can ever see, confirm, or discard | Logic | Minor | Open | 2026-08-26 | — |
 
 ---
 
@@ -1726,7 +1727,7 @@ is a thin status mirror of the index table below.
 
 - **Area:** Logic
 - **Severity:** Major
-- **Status:** Open
+- **Status:** Closed
 - **Found:** 2026-08-24, working autonomously on "bring My Day back
   smarter" (operator: "The API is Missing I know lets bring it back
   smarter") — after fixing `my_day.py`'s own stale data model (see
@@ -1767,6 +1768,26 @@ is a thin status mirror of the index table below.
   real risk of a half-working revival being worse than the current
   honest 404 if `app.business.cockpit`'s own imports don't even resolve
   cleanly against the post-pivot codebase (not yet checked).
+- **Resolution (2026-08-25):** operator-directed UI makeover (whiteboarded
+  live, not a formal `/spec`) replaced the old fixed 3-panel layout
+  (left Agents/research, middle Chat, right subject info) with a left
+  secondary nav (Overview/Chat/People/Documents/Articles) and a right
+  rail that swaps between Meeting/Email info (prep tabs) and a real
+  Experts-only list (Chat tab) — see `CHANGELOG.md`. This bug's own
+  predicted risk held: `threads.py`/`research.py`/`person_note_
+  proposals.py`/`attachments.py` were NOT revived (still assume the
+  retired Second-Brain-native agent model) — a brand-new, minimal
+  `app/api/cockpit_router.py` was written instead, reusing only
+  `people.resolve_people_chips` (self-contained, vault-only, still
+  correct). `GET /cockpit/{subject_kind}/{stem}` now returns real
+  subject/people data plus honest `overview`/`thread` stubs
+  (`summary: null`, empty lists) rather than 404ing — verified live,
+  both Meeting and Inbox Cockpit, no console errors, real attendee
+  chips resolving to real Person notes. Chat send/bring-in/research/
+  attachment hand-off are deliberately still not built — the Chat tab
+  shows an honest disabled composer — that's real future "Cockpit
+  service" work (Research Expert prep pass, Hermes-backed chat), a
+  separate discussion per the operator, not a reopening of this bug.
 
 ### BUG-038 — BUG-036's raw-ID/DN naming produced full duplicate Meeting notes, not just bad names — 7 recurring series and 17 one-time meetings each existed twice
 
@@ -1870,3 +1891,40 @@ is a thin status mirror of the index table below.
   real case. Verified live: the drilldown's own SVG now shows a third
   line from `compass-expert` down to `compass-solutions`, confirmed both
   by re-reading the line/node coordinates directly and by screenshot.
+
+### BUG-040 — `propose_person_note_update` (Manual/Autonomous dispatch) writes a pending Person-note-edit proposal nobody can ever see, confirm, or discard
+
+- **Area:** Logic
+- **Severity:** Minor
+- **Status:** Open
+- **Found:** 2026-08-26, while tracing `REQ-SB-82-US-04`'s own dead-code
+  cleanup: `app/business/cockpit/threads.py` and `person_note_proposals.py`
+  looked like leftover pre-Hermes-pivot code (unreferenced by the live
+  `cockpit_router.py`), but tracing the import graph further found
+  `skill_registry.py` still registers `propose_person_note_update`
+  (`skill_tools.py`) live for the `people-producer` trigger, and its
+  `already_approved=False` branch (Manual/Autonomous dispatch, no human
+  click) calls `person_note_proposals.create_proposal`, which writes into
+  `threads.py`'s own `cockpit_threads.json` store.
+- **Screen \ route:** No screen — purely a backend write path. Would-be
+  surface: Meeting/Inbox Cockpit Chat tab.
+- **Repro steps:**
+  1. Cause a Hermes agent to invoke `propose_person_note_update` in
+     Manual or Autonomous working mode (never Supervised-approved).
+  2. Inspect `.second-brain/cockpit_threads.json` directly — a new
+     `person_note_proposals` entry (`status: "pending"`) exists on the
+     owning subject's thread.
+  3. Look for it anywhere in the app.
+- **Expected:** The pending proposal is visible somewhere in the Cockpit
+  Chat, with a way to confirm (writes the Person note) or discard it.
+- **Actual:** `confirm_proposal`/`discard_proposal`/`list_pending_proposals`
+  are only ever called from `app/_archive/api/cockpit_router.py` (archived
+  during the Hermes pivot, `BUG-037`). The current, live `cockpit_router.py`
+  never imports `person_note_proposals` at all, and the frontend's
+  `CockpitThread` type has no `person_note_proposals` field — the proposal
+  is written, then permanently unreachable.
+- **Screenshot:** N/A
+- **Note:** Not fixed as part of `REQ-SB-82-US-04` — unrelated to that
+  story's own live-routing/threaded-reply scope. `threads.py`/
+  `person_note_proposals.py` are left in place (still live for this one
+  write path) rather than deleted.

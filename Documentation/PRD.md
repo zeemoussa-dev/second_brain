@@ -3987,56 +3987,366 @@ layered on top of a more open "one per job" design. -->
 
 **Acceptance:** Not yet specced — placeholder reserving the capability.
 
-### REQ-SB-80: Create Agent — Provisioning a New Hermes Agent From Second Brain
+### REQ-SB-80: Second Brain Data Layer — Sections/Agents/Pipelines/Tools/Skills/Providers as the Real Source of Truth, Pushed to Hermes
 
-Second Brain today has no real capability to create a new Hermes agent —
-`ADR-003`'s own "view only" scope, and `agents_router.py`'s own current
-surface (list/detail/chat/schedules), are both silent on
-creation/provisioning; it was never built. Confirmed live this session:
-standing up a real, working specialist agent (Azure Calculator — prices
-Azure infrastructure against the live Azure Retail Prices API) required
-going entirely outside this repo and this app — `hermes profile create
-<name> --clone`, by hand, directly against the real Hermes CLI, followed
-by hand-writing a new SOUL.md and Skill directly under the profile's own
-real `skills/` folder. It worked, and the new agent was correctly
-auto-discovered by Second Brain's existing read-only mirror the moment it
-existed (`hermes_definitions.py` reads every real `profiles/*` dir
-dynamically — confirmed live via `GET /hermes/agents`) — but getting
-there took direct filesystem/CLI access, not anything Second Brain itself
-offers.
+**Superseded scope, 2026-08-25 — this requirement grew from a single
+"Create Agent" wizard into a full data-ownership reversal.** The original
+framing (below, preserved) treated Second Brain as permanently
+"agent-agnostic" (`ADR-003`'s own "view only" scope) and imagined Create
+Agent as just shelling out to `hermes profile create` by hand. Two real
+problems surfaced across this same working session make that framing no
+longer sufficient: (1) every single agent added tonight (Customer Experts,
+Research Agent, Meeting Prep Agent) required a HAND EDIT to
+`agents_map_adapter.py`'s own hardcoded Python dicts
+(`_AGENT_TYPE`/`_AGENT_SECTION`/`_AGENT_DEPENDS_ON`/`_AGENT_DISPLAY_NAME`)
+— the "view only" mirror was never actually just a mirror, Second Brain's
+own presentation layer was quietly re-hardcoding the same roster Hermes
+already had; (2) a same-session productization audit (see `CHANGELOG.md`,
+2026-08-25) found this pattern repeated well beyond that one file — 7
+separate, mostly-dead `.second-brain/agent_*.json` stores, 30 files
+hand-typed with the same literal vault path, and an entire agent roster
+that is hand-written prose (`SOUL.md`) with no shared data source at all.
+The fix isn't a thinner mirror — it's Second Brain's own backend
+DELIBERATELY BECOMING the real owner of this data, with Hermes as a real,
+regenerable target it pushes to. This is a genuine, conscious reversal of
+`ADR-003`'s "never owns Hermes data" stance — not an accident, a decision,
+recorded here for `/plan-tasks`' own architect pass to turn into a real
+superseding ADR.
 
-**Agent-agnostic, on purpose** — Second Brain's own role (`ADR-003`) is to
-mirror whatever real agents exist in Hermes, never to own their content.
-A real "Create Agent" capability here means driving Hermes' own real
-provisioning mechanism (shell out to the real `hermes` CLI, the same way
-this session's manual build did it by hand) — not inventing a second,
-parallel, hand-maintained agent-definition format that duplicates what
-`hermes profile create` already does.
+**The real data layer, agreed through direct design discussion (not
+guessed):**
 
-**Scope, not yet sized:** likely a form/wizard reachable from the Agents
-Map (name, purpose/description, starting Skill(s) if any) that shells out
-to `hermes profile create --clone --description ...`, writes a real
-SOUL.md from the given purpose, and refreshes the map — making this
-session's manual Azure Calculator steps repeatable from inside the app
-instead of requiring direct filesystem/CLI access every time.
+```
+data/
+  Sections/
+    <Section>/
+      Section.json
+      Agents/<Agent>/{Agent-config.json, Agent-visual.json, soul.md}
+      Pipelines/<Pipeline>/...
+  Background/
+    Agents/<Agent>/{Agent-config.json, Agent-visual.json, soul.md}
+  Tools/
+    <Tool>/
+      Tool.json
+      Skills/<Skill>/{Skill.json, Skill-visual.json, scripts/...}
+  Providers/
+    <Provider>/Provider.json
+```
 
-<!-- Raised 2026-08-23, operator: "I want to Create an Agent to be my
-Azure Calculator Helper" then "and it need to be simple and very smart,
-Ask the right Questions to get based on the Solution" — the Azure
-Calculator agent itself was then built and fully verified working
-(Hermes-side only, per `ADR-003`, no Second Brain code changes needed).
-When it was first logged only as a CHANGELOG.md entry, the operator
-corrected: "This is not a change log this is an app Agent should go to
-the second Brain Framework." Clarifying which part that meant: "We didn't
-go to Create Agents Yet, This is a Pure Agent to be created in Hermes Has
-Nothing to do with Second Brain Project as its Agents Agnostic[.]
-Separate between we need the Funcationality (Create Agent I know we don't
-have that yet[)] and Create azure Agent which is a business need)." Two
-genuinely separate things per the operator's own explicit split: the
-Azure Calculator agent is a fulfilled, Hermes-side business need, complete
-(see CHANGELOG.md, 2026-08-23) — this requirement tracks the SEPARATE,
-still-missing "Create Agent" capability as its own real, backlogged item
-in the Second Brain Framework itself, not left as a CHANGELOG-only mention
-that would otherwise be easy to lose track of. -->
+Real, current examples this shape needs to hold on day one (every one of
+these is a real, live, already-built agent/skill from tonight, not a
+hypothetical): `Sections/Technology/Agents/{azure-expert, azure-services-
+expert, azure-enterprise-architect, azure-data-architect, azure-infra-
+architect, azure-calculator, compass-expert, compass-pricing-expert,
+compass-models-expert, compass-solutions}`; `Sections/Sales/Agents/
+{opp-manager, macc-expert}`; `Sections/Customer/Agents/{masdar-expert,
+adnoc-expert, taqa-expert}`; `Sections/Librarian/Agents/{notes-manager,
+files-manager, research-agent, meeting-prep-agent}`; `Sections/Data
+Gatherer/Pipelines/{email-capture, meeting-capture, ...}`;
+`Background/Agents/{default}` (Primary); `Tools/Outlook/Skills/{...}`;
+`Tools/Vault/Skills/{azure-kb-writer, research-kb-writer, person-lookup,
+capture-notes, capture-files, track-opportunities, ...}`;
+`Tools/Web/Skills/{web-search}`; `Tools/Compass/Skills/{...}`;
+`Providers/{compass, anthropic-claude}`.
+
+**Real design decisions locked in during this discussion, not left open:**
+- **Skills are reusable, never owned by one Agent** — an Agent's own
+  `Agent-config.json` references Skill ids; the Skill's own real files
+  (scripts, config, visual) live once, under its owning Tool, never
+  duplicated per-agent.
+- **Tools are the parent of Skills, not a sibling category** — "Outlook is
+  a Tool, its Skills are the real Actions in Hermes" (operator, verbatim).
+  A Skill with no real external service behind it (e.g. `azure-kb-writer`,
+  which just writes to the vault) still needs a Tool to live under —
+  resolved: **"Vault is a tool"** (operator, verbatim), joining
+  `Outlook`/`Web`/`Compass` as the 4th Tool — this also directly matches
+  the grouping `src/frontend/src/features/agents-map/SkillsTree.tsx`
+  already hardcodes as `SKILLS_TREE_TOOL_ORDER` (found in the same
+  session's audit), so this isn't a new taxonomy, it's making an existing
+  frontend assumption into real backend data.
+- **Background Agents get ONE global folder, not one per Section** —
+  operator, verbatim, correcting an earlier draft that nested them inside
+  each Section: "the background Tasks we have only one background folder
+  Its not in Section then why you want to create background per section."
+  A background agent (e.g. Primary/`default`) isn't really "of" any one
+  Section.
+- **Section = a stable id, not a rename-fragile folder-name-is-the-only-
+  key assumption** — `Section.json` inside each Section's own folder
+  carries the Section's real identity; the folder itself is for human
+  browsing, matching how `section_registry.py`'s existing `.second-
+  brain/agent_sections.json` store already treats Sections as real,
+  renameable/creatable entities today (this requirement extends that
+  already-correct pattern, doesn't replace it).
+- **Providers get their own folder too**, not the flat `.second-brain/
+  agent_providers.json` blob that already exists — operator, verbatim:
+  "Providers you removed it while it should be a folder so when I want to
+  Provision a new Hermes I have the data" — the real point: providing a
+  new Hermes install its own real starting data (LLM endpoints/models)
+  needs to be a first-class, browsable part of this same data layer, not
+  a separate flat file elsewhere.
+
+**Boot sequence — a real RegistryLoader, staged and reused across cold
+boot and hot-reload:** loading this whole `data/` tree into something the
+app can actually query isn't free — it needs a real loader, and the
+operator flagged the UX consequence directly: "What I am missing is a
+Booting screen with some info, checking hermes, loading agents, gettings
+skills instead of me waiting next to the screen with KB and nothing
+around it while alot of happening in the BG."
+
+- **Fail-loud validation, operator, verbatim:** "Fail Loud so I can fix or
+  remove" — a malformed `*-config.json`/`*.json` anywhere in the tree
+  stops the boot and surfaces the exact file + validation error, rather
+  than silently excluding the broken entity.
+- **Hot-reload, needed for productization, operator, verbatim:** "the Hot
+  Reload is needed if we will productize this, but again think
+  consalidation and how can we reuse still" — editing a file under
+  `data/` should update the running app without a backend restart, but
+  the reload path must reuse the same loader/validation code as cold
+  boot, not a second parallel mechanism.
+- **Reuse what already exists, don't reinvent the Hermes check** — this
+  session's own audit already found a real, working, no-cache
+  reachability check: `system_health.mcp_mount_reachable()`
+  (`src/backend/app/business/system_health.py`), exposed today via `GET
+  /system-health`. The boot sequence's "checking Hermes" stage calls this
+  directly instead of writing a second HTTP-ping implementation.
+- **One staged-status source of truth, two presentations** — the
+  RegistryLoader tracks its own progress as an ordered list of stages
+  (`checking_hermes → loading_sections → loading_agents → loading_skills →
+  loading_providers → ready`), each `pending/in_progress/done/failed`,
+  with the failing file path + error message attached on `failed`. A
+  single endpoint reports this same status shape for both cases: at cold
+  boot the frontend shows a full-screen `BootScreen` blocking entry into
+  the app until `ready` (or showing the failed stage + error so it can be
+  fixed/removed); on a later hot-reload the identical status data drives
+  a small non-blocking banner instead of the full screen — one status
+  model, not two mechanisms, directly answering the "consolidation, how
+  can we reuse" instruction.
+
+**Real, disclosed follow-on, not addressed in this pass** — operator,
+verbatim: "even if Hermes wants to create Something (Create Agent It can
+be instrctured to Use the Items in our Repo) will get there later." Once
+this data layer is real, Hermes' own agent-creation flow (a Hermes agent
+building another Hermes agent) should itself be told to read/write
+through this same repo structure rather than freelancing its own shape —
+explicitly parked for a later pass, not designed here.
+
+**Genuinely open, not resolved by this discussion — left to `/plan-
+tasks`:** the actual push mechanism's failure modes. "Push to Hermes"
+means real file writes into `%LOCALAPPDATA%\hermes\` (a `SOUL.md`, a
+`config.yaml` entry, installing a Skill into a profile's own `skills/`
+folder) — what happens if the Hermes gateway is down when a push is
+attempted, if a profile is mid-conversation, or if someone edits a
+`SOUL.md` directly through Hermes' own tooling outside Second Brain
+entirely (does the next push silently overwrite that drift, detect and
+flag it, or something else)? Not guessed at here.
+
+<!-- Raised 2026-08-23, operator (original, narrower scope): "I want to
+Create an Agent to be my Azure Calculator Helper" then "and it need to be
+simple and very smart, Ask the right Questions to get based on the
+Solution" — the Azure Calculator agent itself was then built and fully
+verified working (Hermes-side only, per `ADR-003`, no Second Brain code
+changes needed). When it was first logged only as a CHANGELOG.md entry,
+the operator corrected: "This is not a change log this is an app Agent
+should go to the second Brain Framework." Clarifying which part that
+meant: "We didn't go to Create Agents Yet, This is a Pure Agent to be
+created in Hermes Has Nothing to do with Second Brain Project as its
+Agents Agnostic[.] Separate between we need the Funcationality (Create
+Agent I know we don't have that yet[)] and Create azure Agent which is a
+business need)."
+
+Raised again, 2026-08-25, operator, prompted directly by that same day's
+productization audit ("The Registry Design is a mess I was wondering why
+you change py file everytime I ask you to add an Agent, Hardcorded
+Strings, We should have had in the backend a set of COnfigs per Agent in
+Section Structure stored in a Json file and you build the Agent Registry
+by Reading this folder. We can Even Create an Agent that Creates an Agent
+in Hermes and it Creates those file based on a Schema we define") — the
+full folder shape above was then reached through direct back-and-forth
+(each real decision above is a direct quote or paraphrase of a real
+operator correction, not assumed). -->
+
+**Delivery approach — no full pipeline, operator, verbatim, 2026-08-25:**
+"I don't think we need the full pipeline on this as this is a fixing on a
+structure most of the work will be in our Data Access Layer." This is a
+structural fix, not a new user-facing feature — it does not need
+`/spec`'s Gherkin-story treatment or the rest of the `/plan-tasks →
+/plan-sprints → /implement-sprint` machinery. Build directly against the
+locked design above (the same "just build it" pattern already used
+elsewhere this session), starting with the architect updating
+`architecture.md` + a superseding ADR over `ADR-003`, then implementing
+the real folder tree and migrating `agents_map_adapter.py`'s hardcoded
+dicts onto it.
+
+**Explicitly out of scope here, operator, verbatim:** "The Agent Creation
+is a bigger story we will get to it later" — the UI/wizard capability
+that lets a human provision a brand-new agent from inside Second Brain
+(the original narrower framing this requirement grew out of) is real,
+still wanted, and deliberately deferred to its own future requirement
+once this data layer exists under it. Not scoped, not designed, not
+started here.
+
+**Acceptance:** Not applicable in Gherkin form per the delivery approach
+above — this requirement is tracked and built as infrastructure, verified
+by direct testing (the data layer holds every real agent/skill listed
+above, the app runs unchanged against it, and a push to Hermes round-
+trips correctly) rather than by locked ACs.
+
+---
+
+### REQ-SB-81: Inline Note Editing With Locked AI-Generated Sections
+
+Second Brain today has no note-editing capability anywhere — every note
+view (`/browse/:stem`, and the Cockpit's own `PersonNotePanel.tsx`) is
+read-only; the one real write path that exists
+(`business/cockpit/notes.py`'s `add_person_note`) is narrowly scoped to
+appending one timestamped line to a Person note's own `## Personal
+Notes` section, not editing the note itself. The operator wants a real,
+general capability to edit a note's own content directly, in place —
+"inline edit," explicitly contrasted with a bolted-on "add a note"
+affordance — much like editing a Word document, EXCEPT sections that
+are AI-generated stay locked (read-only), not editable through this
+surface.
+
+This vault already has a real, existing convention this maps onto
+cleanly, not a new one to invent: note kinds captured by an automated
+pipeline (Thread/Meeting's own `## Summary`, written by
+`summarize-and-tag-threads`/meeting capture) are AI-generated, while
+other sections on the SAME notes (`## Personal Notes`, `## Quick
+Notes`, `## Actions`) are already conceptually the human-owned, editable
+ones — `append_body_section_line` (REQ-SB-55-US-01-T01) already treats
+each section as its own independently-addressable region. Locking likely
+means: AI-generated sections render as plain text (no edit affordance at
+all), human-owned sections become real inline-editable regions (contentEditable
+or a textarea-per-section, saved via a new PATCH-style endpoint per
+section) — but which sections count as "AI-generated" per note KIND, and
+whether that's inferred from a fixed per-kind allowlist or an explicit
+per-section marker, is a real, open design question, not assumed
+resolved here.
+
+<!-- Raised 2026-08-25, operator: "I believe I need an Option to Edit the
+Whole fine except AI Generated notes (Will be Great if it looks like an
+inline edit not (Add note to a file same concept as word but with locked
+sections)" -- raised as a "log this as a missing feature," not a build
+request; the narrower `add_person_note` capability (Person notes' own
+`## Personal Notes` section only) shipped the same day as a real, working
+piece, ahead of this broader requirement. -->
 
 **Acceptance:** Not yet specced — placeholder reserving the capability.
+
+---
+
+### REQ-SB-82: Cockpit Mechanics — Prep, Research, and Moderation
+
+Extends REQ-SB-43/44's Meeting/Inbox Cockpit (and its 2026-08-25 UI
+makeover, see CHANGELOG.md) with the real agent mechanics behind it —
+today's Cockpit is a working shell (real subject/people data, a real
+Experts roster you can bring in/remove) with `overview`/`thread` as
+honest empty stubs. This requirement is those stubs becoming real.
+
+**Meeting Preparation Agent** — runs twice a day, scans upcoming
+meetings, gathers what it can about each (KB lookups for any unfamiliar
+technology/topic, delegating to the Research Agent below; a web lookup
+for any attendee whose Person note is still empty beyond frontmatter —
+run once per person, never repeated once real content exists). Sends a
+WhatsApp summary by default when it finds real data worth checking on a
+meeting; learns to suppress future notifications for a given meeting/
+type from your own plain-language feedback ("don't send me info about
+meetings like this"), persisted the same way agent memory already works
+elsewhere (`vault_writer.append_agent_memory_entries`).
+
+**Research Agent** — lives under the existing Librarian Section (not
+meeting-scoped; the Prep Agent is one caller among possibly others
+later), may itself grow into a full Expert over time the same way
+Compass/Azure Experts did. Writes new, additive notes into their own
+vault area (their own folder, never touching or overwriting anything
+else — no approval gate needed for that reason, unlike a write that
+could damage existing content). Reused directly from mid-meeting Chat
+too (see Moderator below).
+
+**Meeting Moderator** — assembles the Chat's roster before you arrive
+(the "Recommended" slot the UI already reserves) by matching the
+meeting's own `customer` tag/folder against a Customer Expert (see
+REQ-SB-83) AND matching topic/tags against a domain Expert's own KB
+scope (Azure/MACC's own categories) — both tracks, not one. During the
+meeting, routes each question to the ONE Expert it actually belongs to
+instead of broadcasting to everyone brought in; when it doesn't know,
+triggers the Research Agent rather than guessing or dead-ending.
+
+**Async research + threaded replies** — a Research Agent call during a
+live meeting never blocks the chat; the live conversation keeps moving
+while it works in the background. Its result lands as a threaded reply
+to the question that triggered it (not a new flat message), so the
+chat's own real-time order isn't scrambled by a result landing a minute
+or two later.
+
+**Persisted chat** — Chat's current roster/message state is real
+component state with no backend (2026-08-25 UI pass, disclosed at the
+time) — resets on reload. This requirement makes it real: survives
+navigating away and back, survives a reload, is the actual record of
+what was discussed and decided in that meeting.
+
+<!-- Raised 2026-08-25, operator-directed, across a real design
+discussion (verbatim, key turns): "I believe we need to have a meeting
+Preparation Agent, He Recieves the meeting find all info he can get
+about this meeting... if we can like to linked in and find the Person
+what they do and store that info in the person file... Then the meeting
+Moderator Agent... Assemeble the Agents Needed in the meeting he Monitor
+the chat... Direct Messages to the Write Agent when I ask a Question
+instead of having my Questions Goes to all Agents at the same time."
+Clarified through follow-up: Research Agent "is not related to the
+meeting, as we might promote it later to Expert (Same as Azure for
+example)" and "is in the Liberian Section"; LinkedIn lookup is "a small
+Search... may be if we have nothing about the person we do it"; Prep
+Agent "can run 2 times a day... send me a what's app message when I have
+Data in that meeting that I need to check" unless told otherwise per
+meeting; routing fallback "if you don't know ask it might end up by
+something we need to research and have an Expert on that Research
+coming to the meeting," done "Async, background it Show things as
+Replys so Conversation in chat don't get lost"; and finally, "One thing
+Chat doesn't get lost in the meeting in case I changed the Page." When
+asked to challenge the design before building: research promotion needs
+no approval gate ("it doesn't affect anything else it is located in its
+own folder so I don't think any harm can be done there" — operator's own
+correction, accepted, distinct from BUG-037's real data-loss case which
+involved overwriting existing content); the Moderator's roster-assembly
+signal was missing a Customer-Expert track entirely, which the operator
+then scoped as its own requirement (REQ-SB-83). -->
+
+**Acceptance:** Not yet specced — genuinely substantial (new async job
+infrastructure, a persisted-chat data model, cross-agent orchestration)
+and deliberately routed through the full `/spec → /plan-tasks →
+/plan-sprints → /implement-sprint` pipeline rather than built ad hoc,
+given its real size. Depends on REQ-SB-43/44 (done), REQ-SB-83 (Customer
+Experts, for the Moderator's own customer-match track).
+
+---
+
+### REQ-SB-83: Customer Experts — One Domain Specialist per Major Customer
+
+Today's Expert roster is domain-scoped (Azure, MACC) with no
+customer-scoped counterpart — a meeting with Masdar has no "Masdar
+Expert" the Moderator (REQ-SB-82) could bring in, only a generic domain
+match. Each Customer Expert is scoped to one real customer: everything
+tagged for that customer (`customer/<name>`) plus that customer's own
+vault folder (`Work/Customers/<Name>/` — Opportunities, People,
+Affiliates, Files) is its real, live knowledge, read fresh the same way
+every other Expert in this app reads its own domain rather than caching
+a stale copy. One Expert per customer for now; may grow its own
+sub-agents later the same way Azure Expert did, not built ahead of that
+real need.
+
+First three (2026-08-25, operator-directed): Masdar, Adnoc, TAQA.
+
+<!-- Raised 2026-08-25, operator, verbatim: "We didn't create Customer
+Experts may be we need to add them as well, Madar Expert So far any Tag
+that Contains Masdar, and the Masdar folder in Customers same for Adnoc
+and Same for TAQA, Those Agents might have sub Agents Later but for now
+its one Expert per Customer today." Built the same day as a direct,
+standalone task (same shape as the original Azure Expert build) --
+Sales Section, `type: "expert"`, no `depends_on` (each stands alone,
+per "one Expert per Customer today"). -->
+
+**Acceptance:** Not yet specced formally as Gherkin — built directly
+this same session (mirrors REQ-SB-80's own placeholder-vs-built
+distinction: a real, working capability can exist before its formal
+spec catches up). See CHANGELOG.md for the real, verified build.

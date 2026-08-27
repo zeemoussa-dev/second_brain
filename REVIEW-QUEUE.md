@@ -7784,3 +7784,89 @@ resolution involved a backward step.
   disclosed for awareness only).
   → `Implementation/Sprints/SPRINT-074-people-notes-linked-to-company-partner-note.md`
 
+- [ ] 2026-08-25 · **REQ-SB-82-US-04** · design the async-result/threaded-
+  reply plumbing; routing-decision/tie-break rule still unresolved
+  Plain English: **update, 2026-08-25 same day** — the analyst's own
+  original framing here ("no proven live multi-turn back-channel between
+  separate agent profiles today") is now confirmed OUTDATED by direct
+  code inspection: `business/hermes/chat_sessions.py` (built the same
+  session for the streaming-chat feature) already holds a live, per-agent
+  WebSocket session open via `get_or_create_session(agent_id)` — generic
+  across ANY Hermes profile, not one — with real async `send_prompt`/
+  `events()` primitives (`data_access/hermes_ws_client.py`'s
+  `HermesChatSession`) already proven working. The hard infrastructure
+  question is resolved: live, multi-turn, per-agent back-channels are
+  real today, just currently only driven for one agent at a time (the
+  main Chat page). What's still genuinely open: how a Research Agent's
+  async result, triggered mid-meeting, gets attached back to the RIGHT
+  Cockpit chat thread later (a job/persistence design, not an
+  architecture unknown) — plus threaded/parent-child reply rendering
+  (zero UI precedent anywhere in this app) and the routing-decision/
+  tie-break rule (how the Moderator picks the ONE Expert), both still
+  unresolved by the PRD's own text.
+  **What to do:** design the async-job + thread-attachment mechanism
+  (much more tractable now); run `/design` for the threaded-reply UI;
+  decide the routing-decision/tie-break rule; then `/plan-tasks`.
+  → `Implementation/UserStories/REQ-SB-82-US-04-meeting-moderator-live-routing-and-async-research.md`
+
+(REQ-SB-82-US-01/02/03/05's own ADR-review entries — resolved 2026-08-25,
+operator: "Start Coding" — each ADR checked against the operator's own
+earlier resolution notes, matched exactly, authorized to proceed. See
+each story's own `## Notes` for the authorization breadcrumb.)
+
+- [ ] 2026-08-25 · **SPRINT-076** · skim the sprint retrospective and
+  harvest learnings
+  Plain English: `SPRINT-076` (`REQ-SB-82-US-01` Persisted Cockpit Chat +
+  `REQ-SB-82-US-02` Research Agent) is `Done` — both stories' tasks built
+  and live-verified (`US-01`: 3 tasks, all 7 locked ACs; `US-02`: 2 tasks,
+  all 5 locked ACs, including a real, live `research-agent` Hermes profile
+  + `research-kb-writer` Skill provisioned outside this repo and exercised
+  end-to-end — a direct chat call, a cross-profile relay call, and a
+  deliberately-unanswerable request, each producing real, independently-
+  inspectable evidence). The coder drafted a Retrospective (sizing
+  accuracy — exact match, 5 tasks/M; what worked — mirroring
+  `azure-kb-writer`'s own proven Skill contract file-for-file, verifying a
+  fresh `hermes profile create --clone`'s real shape against an
+  already-Done sibling profile before assuming any pruning was needed, a
+  3-step live-verification ladder for caller-agnostic/honest-failure ACs;
+  no antipatterns this sprint; open follow-ups — `REQ-SB-82-US-04` stays
+  independently flagged, `SPRINT-077` is now unblocked), but does not
+  write `Implementation/Learnings.md` directly — that's a human step.
+  **What to do:** read `## Retrospective` in the sprint file, then copy
+  the "Patterns to carry forward" entries into
+  `Implementation/Learnings.md`.
+  → `Implementation/Sprints/SPRINT-076-cockpit-chat-persistence-and-research-agent.md`
+
+- [ ] 2026-08-25 · **SPRINT-077** · skim the sprint retrospective, harvest
+  learnings, AND complete a real operator follow-up action
+  Plain English: `SPRINT-077` (`REQ-SB-82-US-03` Moderator roster
+  pre-assembly + `REQ-SB-82-US-05` Meeting Preparation Agent) is `Done` —
+  both stories' tasks built and live-verified (`US-03`: 3 tasks, all 7
+  locked ACs; `US-05`: 2 tasks, all 8 locked ACs). The coder drafted a
+  Retrospective (sizing — exact match, 5 tasks/M; two real findings worth
+  carrying forward — scoped/disposable scratch data for live-verifying a
+  NEW proactive/notifying agent, and re-testing a learned-memory feature
+  in a genuinely fresh session), but does not write
+  `Implementation/Learnings.md` directly — that's a human step.
+  **Separately, a real operator action is needed** for `US-05-T02`'s own
+  cron job to actually start firing unattended: the new
+  `meeting-prep-agent` Hermes profile's own WhatsApp connection isn't
+  paired yet (its `.env`/config inherited from `default` at clone time,
+  but NOT an already-paired platform session — confirmed live, its
+  gateway exits immediately with "WhatsApp enabled but not paired"). The
+  cron job itself IS correctly registered (`every 720m`, `deliver:
+  whatsapp`, confirmed via `hermes -p meeting-prep-agent cron list`/
+  `cron status`) and will start firing for real the moment pairing is
+  done — nothing else is needed. Also disclosed (non-blocking, no locked
+  AC affected): Hermes' own "remember" tool routed a real, live-verified
+  suppression-preference write into `memories/MEMORY.md` rather than the
+  `memories/USER.md` `ADR-010` named — both are equally real, native,
+  always-injected per-profile memory; see `MEMORY.md` (root) and
+  `REQ-SB-82-US-05-T02`'s own Implementation Log for the full detail.
+  **What to do:** (1) read `## Retrospective` in the sprint file and copy
+  the "Patterns to carry forward"/"Antipatterns to avoid" entries into
+  `Implementation/Learnings.md`; (2) run `hermes -p meeting-prep-agent
+  whatsapp` on the real Hermes install and complete the real QR-code
+  pairing so the already-scheduled cron job can actually start firing.
+  → `Implementation/Sprints/SPRINT-077-moderator-roster-recommendation-and-meeting-prep-agent.md`
+
