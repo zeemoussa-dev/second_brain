@@ -9,6 +9,16 @@ import { MyDayCalendarPage } from './pages/MyDayCalendarPage';
 import { MyDayTodoPage } from './pages/MyDayTodoPage';
 import { MyDayApprovalsPage } from './pages/MyDayApprovalsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { SettingsSystemPage } from './pages/SettingsSystemPage';
+import { SettingsSectionsPage } from './pages/SettingsSectionsPage';
+import { SettingsProvidersPage } from './pages/SettingsProvidersPage';
+import { SettingsVaultPage } from './pages/SettingsVaultPage';
+import { SettingsVaultEntitiesPage } from './pages/SettingsVaultEntitiesPage';
+import { SettingsVaultTemplatesPage } from './pages/SettingsVaultTemplatesPage';
+import { SettingsVaultIndexBuilderPage } from './pages/SettingsVaultIndexBuilderPage';
+import { SettingsVaultIndexFilteringPage } from './pages/SettingsVaultIndexFilteringPage';
+import { SettingsConfigPage } from './pages/SettingsConfigPage';
+import { SettingsUIPage } from './pages/SettingsUIPage';
 import { SystemHealthPage } from './pages/SystemHealthPage';
 import { AgentActivityPage } from './pages/AgentActivityPage';
 import { VaultBrowserPage } from './pages/VaultBrowserPage';
@@ -31,6 +41,16 @@ function App() {
           <Route path="/my-day/todo" element={<MyDayTodoPage />} />
           <Route path="/my-day/approvals" element={<MyDayApprovalsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings/system" element={<SettingsSystemPage />} />
+          <Route path="/settings/sections" element={<SettingsSectionsPage />} />
+          <Route path="/settings/providers" element={<SettingsProvidersPage />} />
+          <Route path="/settings/vault" element={<SettingsVaultPage />} />
+          <Route path="/settings/vault/entities" element={<SettingsVaultEntitiesPage />} />
+          <Route path="/settings/vault/templates" element={<SettingsVaultTemplatesPage />} />
+          <Route path="/settings/vault/index-filtering" element={<SettingsVaultIndexFilteringPage />} />
+          <Route path="/settings/vault/index-builder" element={<SettingsVaultIndexBuilderPage />} />
+          <Route path="/settings/config" element={<SettingsConfigPage />} />
+          <Route path="/settings/ui" element={<SettingsUIPage />} />
           <Route path="/system-health" element={<SystemHealthPage />} />
           <Route path="/agent-activity" element={<AgentActivityPage />} />
           <Route path="/browse" element={<VaultBrowserPage />} />

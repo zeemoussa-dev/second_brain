@@ -18,6 +18,125 @@
 .badge-warning { background: color-mix(in srgb, var(--color-warning) 20%, transparent); color: var(--color-warning); }
 .badge-danger  { background: color-mix(in srgb, var(--color-danger) 20%, transparent); color: var(--color-danger); }
 
+/* Settings landing page -- icon-card grid (operator, 2026-08-27: "I need
+   a Settings Landing Page with Cards to each Section... Use Google Style
+   ... Fonts now are too big and looks Ugly", "I want Icons per Section
+   and a Grid Look not a row"). Deliberately its own smaller, explicit
+   scale rather than the bare global h1/h2 rule (tokens.css) every other
+   page's headings inherit unstyled -- that blunt --font-size-lg/xl
+   sizing (18px/24px, bold) is exactly what read as too big for a small
+   clickable tile. Reuses the SAME grid/hover-lift mechanics My Day's own
+   .day-section-grid already established (my-day.css) -- a deliberately
+   separate class name, not a shared one, since the two pages' cards
+   carry different content shapes (icon + title + description here, a
+   big count number there). */
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-4);
+}
+
+.settings-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.settings-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-accent);
+}
+
+.settings-card-icon {
+  font-size: 28px;
+  color: var(--color-accent);
+}
+
+.settings-card-title {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  margin: 0;
+}
+
+.settings-card-desc {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+/* Vault settings' own two-panel layout (Settings > Vault, 2026-08-27,
+   operator: "I need the vault Settings to have a Second Panel on the
+   left as well with Different Sections") -- a persistent left nav
+   (Overview/Entities/Templates/Index Builder) rendered manually by each
+   page (no React Router Outlet -- this repo's own flat-sibling-route
+   convention stays intact; VaultSettingsNav is just a shared component
+   each page composes, same as the "<- Settings" back-link pattern). */
+.vault-settings-layout {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.vault-settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  position: sticky;
+  top: var(--space-4);
+}
+
+.vault-settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.vault-settings-nav-item .material-symbols-outlined {
+  font-size: 18px;
+}
+
+.vault-settings-nav-item:hover {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+.vault-settings-nav-item--active {
+  background: var(--color-surface-raised);
+  color: var(--color-accent);
+}
+
+.vault-settings-content {
+  min-width: 0;
+}
+
+/* Labeled compact field -- a plain placeholder disappears once an input
+   has a value, so a filled-in row gave no clue which field was which
+   (operator: "When you add the text I don't have a title for the
+   textbox so i don't know what that is"). Every field wrapped this way
+   keeps a small, persistent label above it regardless of content. */
+.field-labeled {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.field-labeled-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted);
+}
+
 /* Page-level section tabs (e.g. System Health's App Status / Hermes
    Status split) -- same underlying visual language as
    agent-panel.css's .side-panel-tab*, kept as its own generic rule set
