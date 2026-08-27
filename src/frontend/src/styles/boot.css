@@ -1,0 +1,237 @@
+.boot-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg);
+}
+
+.boot-screen-panel {
+  width: min(360px, 90vw);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.boot-screen-eyebrow {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.boot-screen-title {
+  margin: calc(-1 * var(--space-4)) 0 0;
+  font-family: var(--font-serif);
+  font-size: var(--font-size-xl);
+  color: var(--color-text);
+}
+
+.boot-screen-waiting {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.boot-stage-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.boot-stage {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--font-size-base);
+  color: var(--color-text-muted);
+}
+
+.boot-stage-done,
+.boot-stage-in_progress {
+  color: var(--color-text);
+}
+
+.boot-stage-failed {
+  color: var(--color-danger);
+}
+
+.boot-stage-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.boot-stage-icon-done {
+  color: var(--color-success);
+}
+
+.boot-stage-icon-failed {
+  color: var(--color-danger);
+}
+
+.boot-stage-icon-active {
+  color: var(--color-accent);
+}
+
+.boot-stage-icon-pending {
+  color: var(--color-text-muted);
+  opacity: 0.5;
+}
+
+.boot-spin {
+  animation: boot-spin 1.1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-spin {
+    animation: none;
+  }
+}
+
+@keyframes boot-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.boot-error {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-danger);
+  background: rgba(185, 28, 28, 0.1);
+}
+
+.boot-error-message {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--font-size-base);
+}
+
+.boot-error-file {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  word-break: break-all;
+}
+
+.boot-retry-button {
+  align-self: flex-start;
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  border: none;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.boot-retry-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.backend-down-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1050;
+  background: rgba(0, 0, 0, 0.55);
+  cursor: not-allowed;
+}
+
+.backend-down-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-danger);
+  color: #fff;
+  font-size: var(--font-size-sm);
+}
+
+.boot-banner {
+  position: fixed;
+  bottom: var(--space-4);
+  right: var(--space-4);
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: min(420px, calc(100vw - 2 * var(--space-4)));
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+}
+
+.boot-banner-failed {
+  border-color: var(--color-danger);
+}
+
+.boot-banner-failed .material-symbols-outlined {
+  color: var(--color-danger);
+}
+
+.boot-banner-booting .material-symbols-outlined {
+  color: var(--color-accent);
+}
+
+.boot-banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.boot-banner-file {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  word-break: break-all;
+}
+
+.boot-retry-button-compact {
+  margin-top: 0;
+  flex-shrink: 0;
+}
+
+/* PageLoading -- shared with BootGate above (same spinner/label
+   vocabulary, `.boot-spin` reused as-is) but scoped to fill a page's own
+   already-visible content area, not the whole viewport. */
+.page-loading {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  color: var(--color-text-muted);
+}
+
+.page-loading-spinner {
+  font-size: 28px;
+  color: var(--color-accent);
+}
+
+.page-loading-title {
+  margin: 0;
+  font-size: var(--font-size-base);
+}

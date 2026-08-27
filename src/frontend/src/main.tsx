@@ -9,10 +9,14 @@ import './styles/agent-panel.css'
 import './styles/vault-browser.css'
 import './styles/vault-graph.css'
 import './styles/cockpit.css'
+import './styles/boot.css'
 import App from './App.tsx'
+import { BootGate } from './features/boot/BootGate.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <BootGate>
+      <App />
+    </BootGate>
   </StrictMode>,
 )
