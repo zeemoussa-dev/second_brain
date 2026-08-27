@@ -4,8 +4,11 @@ Type. Composed alongside app/business/agent_registry.py, not inside it —
 agent_registry.py itself is not modified (ADR-011 point 2's "agent
 identity/type/actions stay hardcoded" reasoning is untouched).
 """
+import json
+
 from app.business import agent_registry
 from app.data_access import vault_writer
+from app.data_access.registry import loader as registry_loader
 
 # 2026-08-22 (operator's own real taxonomy, verbatim): "Our Sections will
 # be (Customer, Liberian, Industry, Technology, Data Gatherer, Sales)" --
@@ -16,13 +19,60 @@ from app.data_access import vault_writer
 _STARTING_SECTION_NAMES = ["Customer", "Librarian", "Industry", "Technology", "Data Gatherer", "Sales"]
 
 
+def _write_registry_section_json(section: dict) -> None:
+    """Keeps the RegistryLoader's own `data/Sections/<id>/Section.json`
+    (REQ-SB-80) in sync with this store's own `name`/`icon`/`color`/
+    `subtitle`/`description`/`folders` -- without this, a rename/recolor
+    through Settings would go stale in the Registry (and therefore the
+    Agents Map, which resolves a migrated agent's section NAME via the
+    Registry now, not this file) until someone re-ran the one-off
+    migration script by hand. `folders` (2026-08-27, Phase 4 of
+    Implementation/Plans/2026-08-27-vault-index-and-section-agents.md)
+    is this same disk mirror's real purpose for a future Section
+    fallback agent -- a standalone Hermes-side agent has no way to call
+    this backend's own API, so it reads its own folder scope from this
+    exact file instead, same "read config directly off disk" pattern
+    already established by Index Filtering and build_vault_index.py.
+    RegistryLoader's own hot-reload poll (~2s) picks this write up
+    automatically -- no other plumbing needed. This store's own
+    `.second-brain/agent_sections.json` stays the actual CRUD source of
+    truth (id/creation/agent-assignment-for-the-old-model); this is a
+    one-way push of its own metadata subset, mirroring the "Second Brain
+    pushes to targets it owns" shape REQ-SB-80 established, scoped
+    narrowly to the one place a stale Registry copy was a real, live risk."""
+    path = registry_loader.data_root() / "Sections" / section["id"] / "Section.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "id": section["id"],
+                "name": section["name"],
+                "icon": section.get("icon"),
+                "color": section.get("color"),
+                "subtitle": section.get("subtitle"),
+                "description": section.get("description"),
+                "folders": section.get("folders", []),
+                "fallback_agent_id": section.get("fallback_agent_id"),
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
 def _seed_state() -> dict:
     sections = [
-        {"id": vault_writer.tag_slug(name), "name": name, "icon": None, "color": None, "subtitle": None, "description": None}
+        {
+            "id": vault_writer.tag_slug(name), "name": name,
+            "icon": None, "color": None, "subtitle": None, "description": None,
+            "folders": [], "fallback_agent_id": None,
+        }
         for name in _STARTING_SECTION_NAMES
     ]
     state = {"sections": sections, "assignments": {}}
     vault_writer.save_sections_state(state)
+    for section in sections:
+        _write_registry_section_json(section)
     return state
 
 
@@ -59,6 +109,8 @@ def list_sections() -> list[dict]:
             "id": s["id"], "name": s["name"],
             "icon": s.get("icon"), "color": s.get("color"), "subtitle": s.get("subtitle"),
             "description": s.get("description"),
+            "folders": s.get("folders", []),
+            "fallback_agent_id": s.get("fallback_agent_id"),
             "agent_ids": agent_ids_by_section.get(s["id"], []),
         }
         for s in state["sections"]
@@ -73,9 +125,14 @@ def create_section(name: str) -> dict:
         # Same normalized name already exists — return it rather than
         # duplicating (tag_slug collisions collapse to the same section).
         return existing
-    section = {"id": section_id, "name": name, "icon": None, "color": None, "subtitle": None, "description": None}
+    section = {
+        "id": section_id, "name": name,
+        "icon": None, "color": None, "subtitle": None, "description": None,
+        "folders": [], "fallback_agent_id": None,
+    }
     state["sections"].append(section)
     vault_writer.save_sections_state(state)
+    _write_registry_section_json(section)
     return section
 
 
@@ -87,6 +144,8 @@ def update_section(
     color: str | None = None,
     subtitle: str | None = None,
     description: str | None = None,
+    folders: list[str] | None = None,
+    fallback_agent_id: str | None = None,
 ) -> dict | None:
     """General Section update (2026-08-23, operator: "the Hub can be
     clicked and has its own Settings... Section Color and Icon,
@@ -102,7 +161,20 @@ def update_section(
     agent_visual_registry.py: the router only ever passes a field here
     when the caller actually sent it, so `None` always means "leave
     unchanged" and `""` always means "clear back to unset" — never
-    ambiguous at this layer."""
+    ambiguous at this layer. `folders` (2026-08-27, Phase 4 of
+    Implementation/Plans/2026-08-27-vault-index-and-section-agents.md)
+    is a list, not a string, so it needs no such sentinel: `None` means
+    "leave unchanged", any actual list (including `[]`) REPLACES the
+    section's own folder scope wholesale — a Section can legitimately own
+    zero, one, or several top-level Work/ folders (operator: "if a
+    section need more than one folder we give both indexes to the
+    Expert of Hub"). `fallback_agent_id` (2026-08-27, Phase 5) is back to
+    the string omitted/""-clears convention -- the real Hermes profile
+    (id == its profile folder name, chat_sessions.py's own convention)
+    that answers on this Section's behalf when a mentioned entity in its
+    scope has no dedicated Expert registered (operator: "Fallback-only").
+    `None` when never configured -- moderator.match_customer_fallback_agent
+    then correctly finds nothing rather than fabricating a fallback."""
     state = _load_state()
     for section in state["sections"]:
         if section["id"] == section_id:
@@ -116,7 +188,12 @@ def update_section(
                 section["subtitle"] = subtitle or None
             if description is not None:
                 section["description"] = description or None
+            if folders is not None:
+                section["folders"] = folders
+            if fallback_agent_id is not None:
+                section["fallback_agent_id"] = fallback_agent_id or None
             vault_writer.save_sections_state(state)
+            _write_registry_section_json(section)
             return section
     return None
 
@@ -130,6 +207,17 @@ def delete_section(section_id: str) -> dict:
     blocked_by_agent_ids = [
         agent_id for agent_id, sid in state["assignments"].items() if sid == section_id
     ]
+    # `assignments` above only ever tracked the now-fully-retired
+    # pre-Hermes agent model (agent_registry.py's own 2026-08-22
+    # emptying) -- it was NEVER populated for real Hermes agents, so this
+    # check alone would silently let a Section with real migrated agents
+    # in it (REQ-SB-80's data/ tree) be deleted out from under them.
+    # Cross-check the RegistryLoader's own real, live placements too.
+    registry = registry_loader.get_registry()
+    if registry is not None:
+        for agent_id, agent in registry.agents.items():
+            if agent.section_id == section_id and agent_id not in blocked_by_agent_ids:
+                blocked_by_agent_ids.append(agent_id)
     if blocked_by_agent_ids:
         return {"deleted": False, "blocked_by_agent_ids": blocked_by_agent_ids}
     state["sections"] = [s for s in state["sections"] if s["id"] != section_id]

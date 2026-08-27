@@ -7,6 +7,7 @@ import { AgentsMapSearchPalette } from '../features/agents-map/AgentsMapSearchPa
 import { AgentsMapAboutPanel } from '../features/agents-map/AgentsMapAboutPanel';
 import { CreateAgentWizardModal } from '../features/agents-map/CreateAgentWizardModal';
 import { fetchAgentList, type AgentDetail, type JobTreeEntry } from '../features/agents-map/agentsApiClient';
+import { PageLoading } from '../components/PageLoading';
 import { fetchSections } from '../features/settings/settingsApiClient';
 import { layoutAgents, type ClusterMarker, type DependencyEdge } from '../features/agents-map/layoutAgents';
 import { spliceAllPipelineJobTrees, fetchAllPipelineJobTrees } from '../features/agents-map/pipelineJobTreeAdapter';
@@ -164,16 +165,22 @@ export function AgentsMapPage() {
           {sections.length} section{sections.length === 1 ? '' : 's'} &middot; {fullAgents.length} agent{fullAgents.length === 1 ? '' : 's'} mapped
         </span>
       </div>
-      <AgentsMapCanvas
-        sections={sections}
-        agents={agents}
-        fullAgents={fullAgents}
-        clusters={clusters}
-        dependencyEdges={dependencyEdges}
-        selectedAgentId={selectedAgentId}
-        onSelectAgent={setSelectedAgentId}
-        onSelectSection={setSelectedSectionId}
-      />
+      {loading ? (
+        <div className="agents-map-stage">
+          <PageLoading title="Loading your Agents Map…" />
+        </div>
+      ) : (
+        <AgentsMapCanvas
+          sections={sections}
+          agents={agents}
+          fullAgents={fullAgents}
+          clusters={clusters}
+          dependencyEdges={dependencyEdges}
+          selectedAgentId={selectedAgentId}
+          onSelectAgent={setSelectedAgentId}
+          onSelectSection={setSelectedSectionId}
+        />
+      )}
       {!loading && !hasAgents && (
         <div className="empty-state">
           <div className="empty-state-icon">◎</div>

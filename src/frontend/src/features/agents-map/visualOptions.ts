@@ -47,6 +47,30 @@ export const VISUAL_ICONS: VisualIconOption[] = [
   { id: 'public', icon: 'public', label: 'Public' },
   { id: 'lock', icon: 'lock', label: 'Lock' },
   { id: 'verified', icon: 'verified', label: 'Verified' },
+  // 2026-08-25 (operator: "more Icons Added to the Icon Set") -- second
+  // expansion, biased toward this app's own newer real domains (customer
+  // specialists, pricing, research, meetings) rather than generic filler,
+  // same reasoning as the 2026-08-22 batch above.
+  { id: 'handshake', icon: 'handshake', label: 'Handshake' },
+  { id: 'apartment', icon: 'apartment', label: 'Company' },
+  { id: 'cloud', icon: 'cloud', label: 'Cloud' },
+  { id: 'architecture', icon: 'architecture', label: 'Architecture' },
+  { id: 'payments', icon: 'payments', label: 'Payments' },
+  { id: 'receipt', icon: 'receipt_long', label: 'Receipt' },
+  { id: 'science', icon: 'science', label: 'Research' },
+  { id: 'travel', icon: 'travel_explore', label: 'Discover' },
+  { id: 'insights', icon: 'insights', label: 'Insights' },
+  { id: 'schema', icon: 'schema', label: 'Schema' },
+  { id: 'storage', icon: 'dns', label: 'Storage' },
+  { id: 'network', icon: 'lan', label: 'Network' },
+  { id: 'meeting', icon: 'groups', label: 'Meeting' },
+  { id: 'person', icon: 'person', label: 'Person' },
+  { id: 'library', icon: 'local_library', label: 'Library' },
+  { id: 'shield', icon: 'shield', label: 'Shield' },
+  { id: 'globe', icon: 'globe', label: 'Globe' },
+  { id: 'sparkle', icon: 'auto_fix_high', label: 'Sparkle' },
+  { id: 'flag', icon: 'flag', label: 'Flag' },
+  { id: 'book', icon: 'menu_book', label: 'Book' },
 ];
 
 // Curated palette: this app's own real accent + Agent-type tokens
@@ -73,6 +97,16 @@ export const VISUAL_COLORS: string[] = [
   '#b91c1c', // --color-danger
   '#0891b2',
   '#4f46e5',
+  // 2026-08-25 (operator: "more Colors Including white") -- getIconColor
+  // ForBackground's own luminance formula already handles a light swatch
+  // correctly (>0.55 picks the dark on-accent icon color), so white needs
+  // no special-casing there, just adding to the palette itself.
+  '#ffffff',
+  '#e9e4d6', // --color-text -- an off-white, softer than pure white against this app's own dark surfaces
+  '#f59e0b',
+  '#0d9488',
+  '#8b5cf6',
+  '#ea580c',
 ];
 
 // Operator, 2026-08-16: "icons still not visible on agents" — VISUAL_ICONS

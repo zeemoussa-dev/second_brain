@@ -19,6 +19,19 @@ export interface SectionSummary {
   // it from this same SectionSummary fetch.
   subtitle: string | null;
   description: string | null;
+  // Which top-level Work/ folders this Section's content index covers
+  // (Settings > Sections, Phase 4 of Implementation/Plans/
+  // 2026-08-27-vault-index-and-section-agents.md) -- zero, one, or
+  // several; a role-based Section (Librarian, Data Gatherer) can
+  // legitimately have none. Independent of icon/color/subtitle/
+  // description above; defaults to [] for a Section created before this
+  // field existed.
+  folders: string[];
+  // The real Hermes profile that answers on this Section's behalf when
+  // a mentioned entity has no dedicated Expert (Settings > Sections,
+  // Phase 5 of Implementation/Plans/2026-08-27-vault-index-and-section-
+  // agents.md) -- null when never configured.
+  fallback_agent_id: string | null;
 }
 
 // Agents within a section fan out either side of that section's own hub

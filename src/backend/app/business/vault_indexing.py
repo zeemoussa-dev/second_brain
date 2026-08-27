@@ -7,7 +7,9 @@ persistence, no database this pass)."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
+from app.config import settings
 from app.data_access import vault_writer
 
 _vault_index: dict[str, dict] = {}
@@ -125,3 +127,24 @@ def get_last_rebuilt_at() -> str | None:
     reopen its "no filter/query parameters on get_index()" decision
     (this is a separate function, not a parameter)."""
     return _last_rebuilt_at
+
+
+def get_overview() -> dict:
+    """Settings > Vault > Overview (2026-08-27) -- per-top-level-Work-
+    folder note counts, derived from the existing in-memory index rather
+    than a fresh disk scan (same "reuse, don't reimplement" reasoning as
+    every other consumer of get_index())."""
+    work_root = settings.vault_path / "Work"
+    folder_counts: dict[str, int] = {}
+    for entry in _vault_index.values():
+        try:
+            relative = Path(entry["path"]).relative_to(work_root)
+        except ValueError:
+            continue
+        top = relative.parts[0] if relative.parts else "(Work root)"
+        folder_counts[top] = folder_counts.get(top, 0) + 1
+    return {
+        "total_notes": len(_vault_index),
+        "last_rebuilt_at": _last_rebuilt_at,
+        "folder_counts": dict(sorted(folder_counts.items(), key=lambda kv: -kv[1])),
+    }

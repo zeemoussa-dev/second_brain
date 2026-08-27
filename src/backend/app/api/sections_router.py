@@ -10,7 +10,8 @@ four fields."""
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.business import agent_registry, section_registry
+from app.business import section_registry
+from app.business.hermes import agents_map_adapter
 
 router = APIRouter(prefix="/sections")
 
@@ -23,16 +24,31 @@ class SectionUpdateBody(BaseModel):
     # Each field: omitted (key absent from the JSON body, the default
     # None) = leave unchanged; for icon/color/subtitle, "" (explicit
     # empty string) = clear the value back to unset. Mirrors
-    # AgentVisualUpdateBody's own convention (agents_router.py).
+    # AgentVisualUpdateBody's own convention (agents_router.py). `folders`
+    # is a list, not a string -- omitted (None) = leave unchanged, any
+    # real list (including []) replaces it wholesale, no empty-string
+    # sentinel needed.
     name: str | None = None
     icon: str | None = None
     color: str | None = None
     subtitle: str | None = None
     description: str | None = None
+    folders: list[str] | None = None
+    fallback_agent_id: str | None = None
 
 
 def _blocked_delete_message(name: str, blocked_by_agent_ids: list[str]) -> str:
-    names = [agent_registry.get_agent(aid)["name"] for aid in blocked_by_agent_ids]
+    # `agent_registry` (the now-fully-retired pre-Hermes agent model) is
+    # deliberately NOT used here -- it's empty and knows nothing about a
+    # real Hermes agent id, which `delete_section`'s own blocking check
+    # now also detects (REQ-SB-80). Resolved via the SAME adapter the
+    # rest of the app uses for a real agent's friendly display name;
+    # falls back to the bare id in the genuinely-impossible case a
+    # blocking id resolves to neither a Pipeline nor a real Hermes agent.
+    names = [
+        (agents_map_adapter.get_agent_detail(aid) or {}).get("name", aid)
+        for aid in blocked_by_agent_ids
+    ]
     count = len(names)
     joined = ", ".join(names)
     return (
@@ -57,7 +73,8 @@ def create_section(body: SectionCreateBody) -> dict:
 def update_section(section_id: str, body: SectionUpdateBody) -> dict:
     section = section_registry.update_section(
         section_id, name=body.name, icon=body.icon, color=body.color,
-        subtitle=body.subtitle, description=body.description,
+        subtitle=body.subtitle, description=body.description, folders=body.folders,
+        fallback_agent_id=body.fallback_agent_id,
     )
     if section is None:
         raise HTTPException(status_code=404, detail="Unknown section")

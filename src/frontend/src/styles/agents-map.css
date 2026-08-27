@@ -640,6 +640,16 @@
 .agent-focus-ring--producer { --node-color: var(--agent-color-producer); }
 .agent-focus-ring--expert   { --node-color: var(--agent-color-expert); }
 
+/* Expert/Producer nodes are 2x width in the drill-down (see
+   .agent-node--large.agent-node--expert/--producer above) -- the base
+   5.5% ring, tuned to halo a 3.75% node with a real ~0.875%-per-side
+   margin, would now render SMALLER than the node it's meant to wrap.
+   9.25% keeps that same per-side margin around the bigger 7.5% node. */
+.agent-focus-ring--expert,
+.agent-focus-ring--producer {
+  width: 9.25%;
+}
+
 /* Hover/zoom info card (SectionDrilldown.tsx) — operator, 2026-08-16:
    "show the Agent name we zoomed on and a Description of that Agent if
    Exist below the name and the type of that agent think of a nice
@@ -765,6 +775,40 @@
 .agent-node--worker   { --node-color: var(--agent-color-worker); }
 .agent-node--producer { --node-color: var(--agent-color-producer); }
 .agent-node--expert   { --node-color: var(--agent-color-expert); }
+
+/* Expert/Producer nodes render 2x the base width, in BOTH the overview
+   and the Section drill-down (operator, 2026-08-25: "I want Experts and
+   Producers to be 2x the current size in both Map and Departement
+   View") -- Workers stay at the plain base size (.agent-node's own
+   1.25%, or .agent-node--large's own 3.75% in the drill-down). Icon
+   font-size scales 2x alongside the box (matching this file's own
+   established base-vs-large ratio precedent) so it keeps the same
+   proportion of the box, not a fixed size that now reads too small.
+   Connection lines: the overview's own Hub<->Agent/dependency lines
+   already terminate at each agent's CENTER point (no per-node edge
+   trim), so a bigger circle just visually absorbs more of the line --
+   nothing to fix there. The drill-down's own lines DO trim to each
+   agent's real edge (DRILLDOWN_AGENT_VISUAL_RADIUS) -- see
+   SectionDrilldown.tsx's own per-type radius fix alongside this rule. */
+.agent-node--expert,
+.agent-node--producer {
+  width: 2.5%;
+}
+
+.agent-node--expert .agent-node-icon,
+.agent-node--producer .agent-node-icon {
+  font-size: 0.75rem;
+}
+
+.agent-node--large.agent-node--expert,
+.agent-node--large.agent-node--producer {
+  width: 7.5%;
+}
+
+.agent-node--large.agent-node--expert .agent-node-icon,
+.agent-node--large.agent-node--producer .agent-node-icon {
+  font-size: 1.25rem;
+}
 
 /* Section View (drill-down) only — 0.75x the Hub's own 5% width
    (operator, 2026-08-15: "Now Agents will be Bigger 0.75 of the Hub") —

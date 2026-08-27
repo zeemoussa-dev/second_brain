@@ -36,6 +36,23 @@ Fields with no honest Hermes equivalent (settings, keywords, scope,
 guardrails, color, depends_on, branch_target_agent_id) are left empty/
 null rather than fabricated -- never invented data standing in for
 something Hermes doesn't actually report.
+
+**2026-08-25 (REQ-SB-80):** Type/Section/depends_on/is_background_agent/
+display_name -- every one of these Second-Brain-OWN presentation
+decisions above -- moved OFF the hand-maintained hardcoded dicts that
+used to live in this file and onto the real `data/` tree
+(`app/data_access/registry/loader.py`'s `RegistryLoader`): every agent
+added used to mean a hand-edit here; now it means a real file under
+`<vault>/.second-brain/data/Sections/<Section>/Agents/<agent>/
+Agent-config.json`. An agent not yet present in the Registry (not yet
+migrated, or the Registry hasn't finished booting) falls through to the
+exact same defaults the old dicts' own `.get(agent_id, default)` calls
+always used -- worker / Data Gatherer / no deps / not background / the
+raw Hermes name -- so this is a storage change, not a behavior change,
+for anything not yet in the tree. `agent_visual_registry`/`_visual`
+below is UNCHANGED -- icon/color stays a separately CRUD-editable store
+(VisualPicker's own live edit path), not yet folded into this same
+push/pull loop.
 """
 from __future__ import annotations
 
@@ -43,109 +60,33 @@ import re
 
 from app.business import agent_visual_registry, section_registry
 from app.data_access import hermes_definitions
+from app.data_access.registry import loader as registry_loader
+from app.data_access.registry.schemas import Agent as RegistryAgent
 from app.data_access.system.pipelines import registry as pipeline_registry
 
-_AGENT_TYPE: dict[str, str] = {
-    "default": "worker",
-    "opp-manager": "worker",
-    "notes-manager": "producer",
-    "files-manager": "producer",
-    "compass-expert": "expert",
-    "compass-pricing-expert": "expert",
-    "compass-solutions": "expert",
-    "compass-models-expert": "expert",
-    "azure-expert": "expert",
-    "azure-services-expert": "expert",
-    "azure-enterprise-architect": "expert",
-    "azure-data-architect": "expert",
-    "azure-infra-architect": "expert",
-    "azure-calculator": "expert",
-    "macc-expert": "expert",
-}
 _WORKING_MODE = "autonomous"
 _SECTION_NAME = "Data Gatherer"
 
-# Real per-agent Section override (2026-08-23, operator: "more the Azure
-# Calculator to Technology Section... Opp Manager to Sales, and Notes and
-# file Manager to Liberian") -- every individual Hermes-mirrored agent
-# used to land in ONE hardcoded Section (_SECTION_NAME below) regardless
-# of what it actually does; this is the first real per-agent placement.
-# Deliberately a plain dict here (not routed through section_registry's
-# own persisted `assignments`, ADR-014) -- that store is scoped to the
-# now-fully-retired Second-Brain-native agent model (agent_registry.py's
-# own 2026-08-22 emptying) and was never wired to read for Hermes agent
-# ids; this dict is this adapter's own equivalent of _AGENT_TYPE above,
-# same shape, same reasoning. An agent id absent here (e.g. "default"/
-# Primary) falls through to _SECTION_NAME, i.e. Data Gatherer -- the
-# operator's own explicit fallback ("bring the rest... to the Data
-# Gathering"), true by construction rather than needing its own entry.
-_AGENT_SECTION: dict[str, str] = {
-    "azure-calculator": "Technology",
-    "opp-manager": "Sales",
-    "notes-manager": "Librarian",
-    "files-manager": "Librarian",
-    "compass-expert": "Technology",
-    "compass-pricing-expert": "Technology",
-    "compass-solutions": "Technology",
-    "compass-models-expert": "Technology",
-    "azure-expert": "Technology",
-    "azure-services-expert": "Technology",
-    "azure-enterprise-architect": "Technology",
-    "azure-data-architect": "Technology",
-    "azure-infra-architect": "Technology",
-    "macc-expert": "Sales",
-}
 
-# Real agent-to-agent dependency edges (2026-08-24, operator: "We will
-# have Compass Expert Depends on 3 Other Agents") -- the first REAL use
-# of `AgentSummary.depends_on` for individual (non-Pipeline) agents;
-# layoutAgents.ts's own tree-layout/dependency-line rendering already
-# exists and works generically off this field (confirmed by reading it
-# directly -- it was never Pipeline-specific, just never fed real data
-# for a plain agent before now). Each of Compass Expert's own 3
-# specialists depends ON it (matches DependencyEdge's own real
-# direction -- `fromAgentId` a `depends_on` predecessor -> `toAgentId`
-# the dependent successor that receives from it -- the same direction a
-# Pipeline step's own `depends_on` already uses), so Compass Expert
-# renders as the tree's real root with its own 3 children fanning out
-# under it, all within the Technology Section above.
-_AGENT_DEPENDS_ON: dict[str, list[str]] = {
-    "compass-pricing-expert": ["compass-expert"],
-    "compass-solutions": ["compass-expert"],
-    "compass-models-expert": ["compass-expert"],
-    # Azure Expert family (2026-08-24, operator: "We will build now Azure
-    # Expert Agent, He will have many Agents under it") -- a THREE-level
-    # chain, one level deeper than Compass's own 2-level family:
-    # azure-expert -> {azure-services-expert, azure-enterprise-architect,
-    # azure-calculator} -> azure-enterprise-architect's own further
-    # {azure-data-architect, azure-infra-architect}. azure-calculator
-    # itself moved here from being independently, directly reachable (see
-    # its own SOUL.md) to a plain dependent, the same reachability shape
-    # compass-pricing-expert already has under compass-expert.
-    "azure-services-expert": ["azure-expert"],
-    "azure-enterprise-architect": ["azure-expert"],
-    "azure-calculator": ["azure-expert"],
-    "azure-data-architect": ["azure-enterprise-architect"],
-    "azure-infra-architect": ["azure-enterprise-architect"],
-}
-
-# Real per-agent background override (2026-08-24, operator: "move the
-# Primary Chat to be Background Agent... Create a new Tab we call Chat
-# where we can Chat with this Agent since it talks to everything") --
-# Primary is the one agent general-purpose enough to warrant its own
-# always-available top-level Chat tab (ChatPage.tsx) rather than living
-# behind the map's per-Section AgentDetailPanel; moving it out of the
-# map ring here is what makes that new surface its real, primary way to
-# be reached, instead of a second, redundant path to the same chat.
-# `is_background_agent: true` fully excludes an agent from
-# layoutAgents.ts's own addressableAgents filter (2026-08-22, see the
-# comment on `_to_summary` below) -- Primary becomes unreachable via the
-# map ring entirely, by design, not merely de-emphasized.
-_BACKGROUND_AGENTS: frozenset[str] = frozenset({"default"})
+def _registry_agent(agent_id: str) -> RegistryAgent | None:
+    """The real Registry entry for this agent, or None if it hasn't been
+    migrated into the data/ tree yet (or the RegistryLoader hasn't
+    finished its first successful boot) -- every caller below treats
+    None exactly like the old dicts' own "key absent" case."""
+    registry = registry_loader.get_registry()
+    if registry is None:
+        return None
+    return registry.agents.get(agent_id)
 
 
 def _is_background_agent(agent_id: str) -> bool:
-    return agent_id in _BACKGROUND_AGENTS
+    agent = _registry_agent(agent_id)
+    return agent.config.is_background_agent if agent is not None else False
+
+
+def _agent_display_name(agent_id: str, fallback: str) -> str:
+    agent = _registry_agent(agent_id)
+    return agent.config.name if agent is not None else fallback
 
 
 def _section_id_by_name(name: str) -> str:
@@ -160,20 +101,31 @@ def _section_id_by_name(name: str) -> str:
     return section_registry.create_section(name)["id"]
 
 
-def _agent_section_name(agent_id: str) -> str:
-    return _AGENT_SECTION.get(agent_id, _SECTION_NAME)
+def _agent_section(agent_id: str) -> tuple[str, str]:
+    """(section_id, section_name) -- from the Registry when this agent has
+    been migrated into the data/ tree, else the same Data Gatherer default
+    the old _AGENT_SECTION dict always fell back to for an unlisted id."""
+    registry_entry = _registry_agent(agent_id)
+    if registry_entry is not None and registry_entry.section_id is not None:
+        registry = registry_loader.get_registry()
+        section = registry.sections.get(registry_entry.section_id) if registry else None
+        if section is not None:
+            return section.id, section.name
+    return _section_id_by_name(_SECTION_NAME), _SECTION_NAME
 
 
 def _agent_section_id(agent_id: str) -> str:
-    return _section_id_by_name(_agent_section_name(agent_id))
+    return _agent_section(agent_id)[0]
 
 
 def _agent_type(agent_id: str) -> str:
-    return _AGENT_TYPE.get(agent_id, "worker")
+    agent = _registry_agent(agent_id)
+    return agent.config.type if agent is not None else "worker"
 
 
 def _agent_depends_on(agent_id: str) -> list[str]:
-    return _AGENT_DEPENDS_ON.get(agent_id, [])
+    agent = _registry_agent(agent_id)
+    return agent.config.depends_on if agent is not None else []
 
 
 def _short_excerpt(text: str, max_len: int = 140) -> str:
@@ -214,7 +166,7 @@ def _to_summary(agent: hermes_definitions.HermesAgent, section_id: str) -> dict:
     icon, color = _visual(agent.id, agent.icon)
     return {
         "id": agent.id,
-        "name": agent.name,
+        "name": _agent_display_name(agent.id, agent.name),
         "type": _agent_type(agent.id),
         "section_id": section_id,
         # False for every real Hermes agent EXCEPT the ones in
@@ -248,13 +200,34 @@ def _skill_to_capability(skill: hermes_definitions.HermesSkill) -> dict:
     return {"id": skill.id, "label": skill.name, "kind": "skill", "tool": skill.category}
 
 
-def _skill_to_summary(skill: hermes_definitions.HermesSkill) -> dict:
-    # "mutates" is an honest true for every real Hermes Skill mirrored here
-    # today -- each one (track-opportunities, capture-notes, capture-files,
-    # summarize-and-tag-files, the document-extraction skills) genuinely
-    # writes to the vault or an external system; there is no read-only
-    # Hermes Skill in this mirror yet to contrast it against.
-    return {"id": skill.id, "name": skill.name, "description": skill.description, "tool": skill.category, "mutates": True}
+def _registry_skill_catalog() -> dict[str, dict]:
+    """id -> SkillSummary dict, from the RegistryLoader's real Tools/Skills
+    catalog (REQ-SB-80) -- REPLACES the old hermes_definitions-derived
+    version, which mirrored EVERY skill physically present under a
+    profile's skills/ dir (~80 generic bundled ones every cloned profile
+    carries -- apple-notes, imessage, github-*, etc, none of them
+    relevant to this product) and set `tool` to the raw Hermes category
+    folder name (e.g. "knowledge-base"), which never matched
+    SkillsTree.tsx's own `SKILLS_TREE_TOOL_ORDER` ('Outlook'/'Vault'/
+    'Web'/'Compass') -- confirmed live, 2026-08-25: every skill silently
+    failed to render in any group, the whole Skills panel was empty for
+    every agent. This catalog is deliberately small and curated (only
+    the real Skills this app actually built), and `tool` is the owning
+    Tool's own real display name, so it matches SkillsTree.tsx exactly."""
+    registry = registry_loader.get_registry()
+    if registry is None:
+        return {}
+    catalog: dict[str, dict] = {}
+    for tool in registry.tools.values():
+        for skill in tool.skills.values():
+            catalog[skill.config.id] = {
+                "id": skill.config.id,
+                "name": skill.config.name,
+                "description": skill.config.description,
+                "tool": tool.config.name,
+                "mutates": skill.config.mutates,
+            }
+    return catalog
 
 
 def _pipeline_to_summary(pipeline) -> dict:
@@ -341,12 +314,11 @@ def get_agent_detail(agent_id: str) -> dict | None:
     agent = hermes_definitions.get_agent(agent_id)
     if agent is None:
         return None
-    section_name = _agent_section_name(agent.id)
-    section_id = _section_id_by_name(section_name)
+    section_id, section_name = _agent_section(agent.id)
     icon, color = _visual(agent.id, agent.icon)
     return {
         "id": agent.id,
-        "name": agent.name,
+        "name": _agent_display_name(agent.id, agent.name),
         "type": _agent_type(agent.id),
         "settings": [],
         "capabilities": [_skill_to_capability(s) for s in agent.skills],
@@ -368,15 +340,19 @@ def get_agent_detail(agent_id: str) -> dict | None:
 
 
 def list_all_skill_summaries() -> list[dict]:
-    seen: dict[str, dict] = {}
-    for agent in hermes_definitions.list_agents():
-        for skill in agent.skills:
-            seen.setdefault(skill.id, _skill_to_summary(skill))
-    return list(seen.values())
+    return list(_registry_skill_catalog().values())
 
 
 def list_agent_skill_summaries(agent_id: str) -> list[dict] | None:
-    agent = hermes_definitions.get_agent(agent_id)
-    if agent is None:
+    """The agent's own real `skill_ids` (Agent-config.json), resolved
+    against the curated Registry catalog -- 404 (`None`) only when the
+    agent doesn't exist in Hermes at all; an agent that exists but has no
+    distinctive Skill of its own (most of them, honestly) gets `[]`, not
+    the old ~80-entry generic bundled-catalog dump."""
+    if hermes_definitions.get_agent(agent_id) is None:
         return None
-    return [_skill_to_summary(s) for s in agent.skills]
+    registry_agent = _registry_agent(agent_id)
+    if registry_agent is None:
+        return []
+    catalog = _registry_skill_catalog()
+    return [catalog[skill_id] for skill_id in registry_agent.config.skill_ids if skill_id in catalog]

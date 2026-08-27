@@ -1,7 +1,7 @@
 {
   "id": "meeting-builder",
   "name": "Meeting Builder",
-  "description": "Builds and maintains real Meeting notes from Outlook Calendar activity -- the real Hermes cron job behind this is meeting-capture-recurring (every 3 hours), running the meeting-capture Skill.",
+  "description": "Builds and maintains real Meeting notes from Outlook Calendar activity -- the real Hermes cron job behind this is meeting-capture-recurring (every 30 minutes), running the meeting-capture Skill.",
   "section": "Data Gatherer",
   "steps": [
     {
@@ -13,7 +13,7 @@
     {
       "id": "resolve-meeting-folder",
       "name": "Resolve Meeting Folder",
-      "description": "Determines series vs. one-time occurrence and creates/reuses the meeting's own folder structure -- mirrors email-thread-capture's own resolve-then-create pattern, one folder per meeting/series.",
+      "description": "Resolves/creates the meeting's own folder via vault_manager.py's real id-based find/create (REQ-SB-80's template-driven writer, 2026-08-26 rebuild) -- identity is the calendar event's own real id, never the folder name, so a rename or reschedule can never leave a meeting stuck under a stale name the way the old name-is-identity scheme could. A recurring series gets its own concept note plus a nested Recurrences/ folder per real occurrence, sorted by its most recent occurrence date; the series' own filename never carries a date.",
       "depends_on": ["fetch-meetings"]
     },
     {

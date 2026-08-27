@@ -71,6 +71,19 @@ const DRILLDOWN_HUB_VISUAL_RADIUS = 2.5;
 // in the overview's tiny dots, so an untrimmed center endpoint is now
 // visually obvious).
 const DRILLDOWN_AGENT_VISUAL_RADIUS = 1.875;
+// Expert/Producer nodes render at 2x width in this view (agents-map.css's
+// own `.agent-node--large.agent-node--expert`/`--producer` rule, operator
+// 2026-08-25: "Experts and Producers to be 2x the current size... take
+// care of the connections") — a line trimmed by the flat radius above
+// would stop short of (or poke into) the now-bigger circle's real edge.
+// Half of that rule's own 7.5% width.
+const DRILLDOWN_AGENT_VISUAL_RADIUS_LARGE_TYPE = 3.75;
+
+function drilldownAgentVisualRadius(type: MockAgent['type']): number {
+  return type === 'expert' || type === 'producer'
+    ? DRILLDOWN_AGENT_VISUAL_RADIUS_LARGE_TYPE
+    : DRILLDOWN_AGENT_VISUAL_RADIUS;
+}
 // How far the whole canvas zooms in on a clicked Agent while its detail
 // panel is open (operator, 2026-08-16: "The Agent will be Zoomed in to
 // 3x"). A CAMERA move on the whole `.agents-map-canvas` (pan + scale),
@@ -137,6 +150,11 @@ export function SectionDrilldown({ section, sections, agents, dependencyEdges, o
   const pointById = new Map(
     sectionAgents.map((agent) => [agent.id, polarToCartesian(agent.radius, agent.angleDeg, hubPoint)]),
   );
+  // Keyed alongside pointById so the connector lines below can trim each
+  // endpoint by THAT agent's own real visual radius (drilldownAgentVisual
+  // Radius), not one flat constant that no longer holds now that Expert/
+  // Producer nodes render bigger than Worker nodes in this view.
+  const agentById = new Map(sectionAgents.map((agent) => [agent.id, agent]));
   const sectionDependencyEdges = dependencyEdges.filter((edge) => edge.sectionId === section.id);
   // Only the terminal/producer stage (nothing depends_on IT — the one
   // that actually writes to the vault) connects straight to the Hub;
@@ -268,7 +286,7 @@ export function SectionDrilldown({ section, sections, agents, dependencyEdges, o
                 const point = pointById.get(agent.id);
                 if (!point) return null;
                 const hubEdge = pointTowards(hubPoint, point, DRILLDOWN_HUB_VISUAL_RADIUS);
-                const agentEdge = pointTowards(point, hubPoint, DRILLDOWN_AGENT_VISUAL_RADIUS);
+                const agentEdge = pointTowards(point, hubPoint, drilldownAgentVisualRadius(agent.type));
                 return (
                   <line
                     key={`drilldown-hub-${agent.id}`}
@@ -285,8 +303,10 @@ export function SectionDrilldown({ section, sections, agents, dependencyEdges, o
                 const fromPoint = pointById.get(edge.fromAgentId);
                 const toPoint = pointById.get(edge.toAgentId);
                 if (!fromPoint || !toPoint) return null;
-                const fromEdge = pointTowards(fromPoint, toPoint, DRILLDOWN_AGENT_VISUAL_RADIUS);
-                const toEdge = pointTowards(toPoint, fromPoint, DRILLDOWN_AGENT_VISUAL_RADIUS);
+                const fromType = agentById.get(edge.fromAgentId)?.type;
+                const toType = agentById.get(edge.toAgentId)?.type;
+                const fromEdge = pointTowards(fromPoint, toPoint, drilldownAgentVisualRadius(fromType ?? 'worker'));
+                const toEdge = pointTowards(toPoint, fromPoint, drilldownAgentVisualRadius(toType ?? 'worker'));
                 return (
                   <line
                     key={`drilldown-dep-${edge.id}`}
@@ -383,7 +403,7 @@ export function SectionDrilldown({ section, sections, agents, dependencyEdges, o
               own visual radius. */}
           {activeAgent && activeAgentPoint && (() => {
             const cardStyle: CSSProperties = {
-              top: `${activeAgentPoint.y + DRILLDOWN_AGENT_VISUAL_RADIUS + 3}%`,
+              top: `${activeAgentPoint.y + drilldownAgentVisualRadius(activeAgent.type) + 3}%`,
               left: `${activeAgentPoint.x}%`,
             };
             if (activeAgent.color) cardStyle['--node-color' as string] = activeAgent.color;
