@@ -1,27 +1,26 @@
-"""Shared-secret authentication for the /mcp mount (ADR-025 point 1) --
-a thin ASGI middleware wrapping only the mounted FastMCP sub-app, since
-app.mount(path, app) takes a raw ASGI application with no dependencies=
-parameter a Depends()-based FastAPI check could attach to. Second Brain's
-own in-app loopback MCP client (agent_orchestration/mcp_client.py,
-"http://127.0.0.1:8001/mcp") is exempted by real TCP peer address, never
-by anything the caller sends."""
+"""Shared-secret authentication for a mounted ASGI app that Hermes itself
+calls INTO (the reverse direction from every other module in this
+library, which calls OUT to Hermes). A thin ASGI middleware wrapping
+only the mounted sub-app, since `app.mount(path, app)` takes a raw ASGI
+application with no `dependencies=` parameter a Depends()-based FastAPI
+check could attach to."""
 from __future__ import annotations
 
 from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app.config import settings
-
 _LOOPBACK_ADDRESSES = {"127.0.0.1", "::1"}
 _SHARED_SECRET_HEADER = b"x-hermes-shared-secret"
 
 
-class require_hermes_shared_secret:
-    """Callable ASGI middleware class (usable as
-    require_hermes_shared_secret(app) per ADR-025's own naming)."""
+class RequireHermesSharedSecret:
+    """Callable ASGI middleware class. Loopback callers (the embedding
+    app's own in-process MCP client) are exempted by real TCP peer
+    address, never by anything the caller sends."""
 
-    def __init__(self, app: ASGIApp) -> None:
+    def __init__(self, app: ASGIApp, *, shared_secret: str) -> None:
         self._app = app
+        self._shared_secret = shared_secret
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -39,7 +38,7 @@ class require_hermes_shared_secret:
 
         headers = dict(scope.get("headers") or [])
         provided_secret = headers.get(_SHARED_SECRET_HEADER, b"").decode("utf-8")
-        if provided_secret != settings.hermes_mcp_shared_secret:
+        if provided_secret != self._shared_secret:
             response = PlainTextResponse("Unauthorized", status_code=401)
             await response(scope, receive, send)
             return

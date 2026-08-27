@@ -1,6 +1,6 @@
 """One-off migration (REQ-SB-80) -- seeds the real data/ tree
 (`<vault>/.second-brain/data/`) from every source that today holds this
-information: hermes_definitions.py (reads Hermes' real profile files
+information: app/hermes/definitions.py (reads Hermes' real profile files
 directly), agent_visual_registry.py, section_registry.py,
 provider_registry.py, and the handful of real, product-relevant Skill
 SKILL.md files under Hermes' install (NOT its whole generic bundled
@@ -39,8 +39,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.business import agent_visual_registry, provider_registry, section_registry
 from app.business.hermes import agents_map_adapter as adapter
+from app.business.hermes.client import get_client
 from app.config import settings
-from app.data_access import hermes_definitions
 from app.data_access.registry import loader as registry_loader
 from app.data_access.system.tools import registry as tools_registry
 
@@ -140,7 +140,7 @@ def migrate_sections() -> None:
 
 def migrate_agents() -> None:
     count = 0
-    for hermes_agent in hermes_definitions.list_agents():
+    for hermes_agent in get_client().definitions.list_agents():
         agent_id = hermes_agent.id
         is_background = adapter._is_background_agent(agent_id)
         agent_config = {

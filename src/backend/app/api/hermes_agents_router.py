@@ -7,19 +7,19 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from app.business.hermes import definitions
+from app.business.hermes import profiles
 
 router = APIRouter(prefix="/hermes")
 
 
 @router.get("/agents")
 def list_agents() -> list[dict]:
-    return definitions.list_agents()
+    return profiles.get_all()
 
 
 @router.get("/agents/{agent_id}")
 def get_agent(agent_id: str) -> dict:
-    agent = definitions.get_agent(agent_id)
+    agent = profiles.find_by_id(agent_id)
     if agent is None:
         raise HTTPException(status_code=404, detail=f"No Hermes agent named {agent_id!r}")
     return agent

@@ -11,8 +11,8 @@ from app.api.cockpit_router import router as cockpit_router
 from app.api.health_check_router import router as health_check_router
 from app.api.hermes_agents_router import router as hermes_agents_router
 from app.api.hermes_router import router as hermes_router
-from app.api.mcp_auth import require_hermes_shared_secret
 from app.api.mcp_server import mcp_server
+from app.business.hermes.client import get_client
 from app.api.my_day_router import router as my_day_router
 from app.api.sections_router import router as sections_router
 from app.api.skills_router import router as skills_router
@@ -74,7 +74,7 @@ async def lifespan(app: FastAPI):
         # bootstrap included) is retired -- ADR-001 already named Hermes as
         # the real agent/skill/schedule runtime going forward, and ADR-003
         # is the new, live, read-only mirror of Hermes' own real Agent/Skill
-        # definitions (app/data_access/hermes_definitions.py). The former
+        # definitions (app/hermes/definitions.py). The former
         # bootstrap call here (ensure_librarian_agents_and_section, plus its
         # own librarian-housekeeping/threads-cleaning retire/schedule-
         # removal calls) is deliberately no longer invoked -- agent_
@@ -180,7 +180,7 @@ app.include_router(agents_router)
 app.include_router(pipelines_router)
 app.include_router(skills_router)
 
-app.mount("/mcp", require_hermes_shared_secret(mcp_server.streamable_http_app()))
+app.mount("/mcp", get_client().wrap_inbound(mcp_server.streamable_http_app()))
 
 # 2026-08-20 architecture pass -- Tools registry (data_access/system/
 # tools/): mounts every declared Tool's own MCP server at its own

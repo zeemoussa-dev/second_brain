@@ -2331,3 +2331,49 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   child processes directly against the dead phantom PIDs. Killing those
   orphaned children (not the long-gone parents) released the socket for
   real; no reboot needed after all.
+
+- refactor: Extracted `app/hermes/` — a reusable, Second-Brain-agnostic
+  Hermes client library (operator: "Zero Software Engineering, Zero
+  Architecture, and No OOB Basics... this Library knows nothing about
+  our Second Brain its a Reusable Component of Hermes to do everything
+  we used today any future need of hermes will go there as well"). Every
+  prior direct-to-Hermes module (`data_access/hermes_client.py`,
+  `hermes_ws_client.py`, `hermes_definitions.py`, `hermes_cron.py`,
+  `api/mcp_auth.py`) is deleted and replaced by namespaced classes under
+  `app/hermes/`: `HermesRestAPI` (status/sessions), `HermesChatSession`
+  (live WS chat), `HermesProfiles`/`HermesSkills` (full CRUD — get_all/
+  find_by_id/read/create/update/delete — over profile.yaml/config.yaml/
+  SOUL.md/SKILL.md, direct file I/O since none of these have a real CLI
+  equivalent), `HermesCron` (job/execution history), `HermesCLI`
+  (subprocess wrapper for `hermes.exe` — profile create/delete/describe,
+  gateway start/stop/restart/status/configure, dashboard start/stop/
+  status, system status, cron run — used wherever a real CLI command
+  exists, since e.g. `profile create --clone` does real work a plain
+  mkdir can't replicate), and `RequireHermesSharedSecret` (inbound auth).
+  `HermesClient.init(base_url, home_path, api_key,
+  inbound_shared_secret)` composes all of them; nothing under
+  `app/hermes` imports `app.config`. Exactly ONE file in the whole app,
+  `app/business/hermes/client.py`, is allowed to import from
+  `app/hermes` and construct the singleton `HermesClient` — every other
+  consumer (routers, `main.py`, `vault_index_router.py`'s cron-rebuild
+  trigger, `tools/registry.py`'s inbound-auth wrapping) goes through
+  `get_client()` (operator: "All call that goes to something in hermes
+  goes throw that library"). Also relocated the Pipeline/Tool JSON
+  definitions (`company-discovery.json`, `meeting-builder.json`,
+  `threads-builder.json`, `tools/registry.json`) out of the source tree
+  into `<second_brain_data_path>/pipelines/` and `.../tools/` — real,
+  live-edited Second Brain Data (operator: "these are not static we keep
+  changing them... these are for sure Second Brain Data"), never static
+  source-tree fixtures. Found and fixed a real bug along the way:
+  `subprocess.run(..., text=True)` decodes Hermes' own CLI output with
+  Windows' console codepage (cp1252) by default, which crashes on the
+  real UTF-8 checkmarks Hermes prints — fixed with explicit
+  `encoding="utf-8", errors="replace"`. Verified live end-to-end after a
+  clean backend restart: `/hermes/status`, `/hermes/agents`, `/agents`,
+  `/pipelines`, `/tools/outlook`, `/mcp` all correct; the new read-only
+  CRUD additions (`profiles.read_soul`, `skills.get_all`/`read`,
+  `cli.get_system_status`, `cli.gateway_status`) all confirmed against
+  the real install. `create_profile`/`delete_profile`/`describe_profile`
+  are NOT live-tested (would mutate a real Hermes profile) — verified
+  only against the real `hermes profile --help`/`hermes gateway --help`
+  output and code review.

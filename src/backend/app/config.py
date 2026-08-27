@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # 2026-08-20 -- NOT port 8642/a REST-API-gateway shape as originally
     # researched; that description didn't match this installed version at
     # all). hermes_api_key is an optional manual override only --
-    # hermes_client.py's real, default path fetches the session token
+    # app/hermes/rest.py's real, default path fetches the session token
     # itself (embedded in `GET /`'s own HTML, confirmed live), since
     # that's the actual mechanism this server uses, not a pre-issued key.
     hermes_base_url: str = "http://127.0.0.1:9119"
@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     # active-profile data, not full Agent/Skill definitions. Reading these
     # DIRECTLY from Hermes' own real files (profile.yaml/config.yaml/
     # SOUL.md per profile, SKILL.md per skill) is the operator's own
-    # explicit choice for hermes_definitions.py -- always current, no sync
+    # explicit choice for app/hermes/definitions.py -- always current, no sync
     # step. Default matches this machine's real install path; override via
     # .env on a different machine.
     hermes_home_path: Path = Path.home() / "AppData" / "Local" / "hermes"

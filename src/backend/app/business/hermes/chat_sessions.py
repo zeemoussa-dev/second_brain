@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import asyncio
 
-from app.data_access.hermes_ws_client import HermesChatSession, HermesUnavailableError
+from app.business.hermes.client import HermesChatSession, HermesUnavailableError, get_client
 
 # Outer bound on a WHOLE turn (connect + session.create + prompt.submit +
 # every event up to message.complete) -- moved here from agents_router.py
@@ -58,7 +58,7 @@ async def get_or_create_session(agent_id: str) -> HermesChatSession:
     session = _sessions.get(agent_id)
     if session is not None:
         return session
-    session = HermesChatSession(agent_id)
+    session = get_client().open_chat_session(agent_id)
     await session.connect()
     _sessions[agent_id] = session
     return session

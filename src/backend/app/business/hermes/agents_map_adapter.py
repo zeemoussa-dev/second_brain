@@ -1,9 +1,9 @@
-"""Shapes Hermes' real Agent/Skill definitions (hermes_definitions.py,
+"""Shapes Hermes' real Agent/Skill definitions (app/hermes/definitions.py,
 ADR-003) into the Agents Map frontend's existing AgentSummary/AgentDetail/
 SkillSummary contract (2026-08-22, operator-directed retrofit of
 features/agents-map/ -- "Retrofit agents-map itself").
 
-Deliberately kept OUT of hermes_definitions.py/business/hermes/
+Deliberately kept OUT of app/hermes/definitions.py/business/hermes/
 definitions.py, which stay a pure, honest mirror of what Hermes itself
 reports (ADR-003) -- everything below is Second Brain's OWN presentation
 decision about how to visualize that data in a UI built for a different,
@@ -59,7 +59,7 @@ from __future__ import annotations
 import re
 
 from app.business import agent_visual_registry, section_registry
-from app.data_access import hermes_definitions
+from app.business.hermes.client import HermesAgent, HermesSkill, get_client
 from app.data_access.registry import loader as registry_loader
 from app.data_access.registry.schemas import Agent as RegistryAgent
 from app.data_access.system.pipelines import registry as pipeline_registry
@@ -129,7 +129,7 @@ def _agent_depends_on(agent_id: str) -> list[str]:
 
 
 def _short_excerpt(text: str, max_len: int = 140) -> str:
-    """Same real-first-sentence convention as hermes_definitions.py's own
+    """Same real-first-sentence convention as app/hermes/definitions.py's own
     _first_sentence -- duplicated rather than cross-imported (this vault's
     own established pattern for small helpers, ADR-002), since a Pipeline's
     own description is Second Brain's data, not Hermes'."""
@@ -162,7 +162,7 @@ def update_agent_visual(agent_id: str, icon: str | None, color: str | None) -> d
     return get_agent_detail(agent_id)
 
 
-def _to_summary(agent: hermes_definitions.HermesAgent, section_id: str) -> dict:
+def _to_summary(agent: HermesAgent, section_id: str) -> dict:
     icon, color = _visual(agent.id, agent.icon)
     return {
         "id": agent.id,
@@ -196,13 +196,13 @@ def _to_summary(agent: hermes_definitions.HermesAgent, section_id: str) -> dict:
     }
 
 
-def _skill_to_capability(skill: hermes_definitions.HermesSkill) -> dict:
+def _skill_to_capability(skill: HermesSkill) -> dict:
     return {"id": skill.id, "label": skill.name, "kind": "skill", "tool": skill.category}
 
 
 def _registry_skill_catalog() -> dict[str, dict]:
     """id -> SkillSummary dict, from the RegistryLoader's real Tools/Skills
-    catalog (REQ-SB-80) -- REPLACES the old hermes_definitions-derived
+    catalog (REQ-SB-80) -- REPLACES the old app/hermes/definitions-derived
     version, which mirrored EVERY skill physically present under a
     profile's skills/ dir (~80 generic bundled ones every cloned profile
     carries -- apple-notes, imessage, github-*, etc, none of them
@@ -261,7 +261,7 @@ def list_pipeline_refs() -> list[dict]:
 
 def list_agent_summaries() -> list[dict]:
     summaries = [
-        _to_summary(agent, _agent_section_id(agent.id)) for agent in hermes_definitions.list_agents()
+        _to_summary(agent, _agent_section_id(agent.id)) for agent in get_client().profiles.get_all()
     ]
     summaries.extend(_pipeline_to_summary(p) for p in pipeline_registry.list_pipelines())
     return summaries
@@ -311,7 +311,7 @@ def get_agent_detail(agent_id: str) -> dict | None:
             "prompt": pipeline.description or None,
             "guardrails": "",
         }
-    agent = hermes_definitions.get_agent(agent_id)
+    agent = get_client().profiles.find_by_id(agent_id)
     if agent is None:
         return None
     section_id, section_name = _agent_section(agent.id)
@@ -349,7 +349,7 @@ def list_agent_skill_summaries(agent_id: str) -> list[dict] | None:
     agent doesn't exist in Hermes at all; an agent that exists but has no
     distinctive Skill of its own (most of them, honestly) gets `[]`, not
     the old ~80-entry generic bundled-catalog dump."""
-    if hermes_definitions.get_agent(agent_id) is None:
+    if get_client().profiles.find_by_id(agent_id) is None:
         return None
     registry_agent = _registry_agent(agent_id)
     if registry_agent is None:

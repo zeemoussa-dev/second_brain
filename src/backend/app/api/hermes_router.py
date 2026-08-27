@@ -3,7 +3,7 @@ see app/_archive/README.md). Rebuilt 2026-08-20 to match hermes_status.py's
 real, verified functions. Extended 2026-08-22 with real cron job/schedule/
 run-history/log reads (hermes_cron_status.py) -- operator: "Reading Corn
 Jobs and Their Schedule, Server Status... Details Log so we can link and
-know what happened". Real two-way chat (hermes_ws_client.py) is wired
+know what happened". Real two-way chat (app/hermes/chat_session.py) is wired
 through agents_router.py's existing POST /agents/{id}/chat instead of a
 dedicated WS route here -- see that router's own docstring (2026-08-23,
 ADR-006) for why: the standalone chat widget this router used to proxy
@@ -14,7 +14,7 @@ Activity page's own real Hermes session log (operator: "the Agents
 Activities Tab should get the Agents Log from Hermes")."""
 from fastapi import APIRouter, HTTPException
 
-from app.business import hermes_cron_status, hermes_status
+from app.business.hermes import cron_status as hermes_cron_status, status as hermes_status
 
 router = APIRouter(prefix="/hermes")
 

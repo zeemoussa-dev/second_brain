@@ -7,7 +7,12 @@ number of declared Tools, including zero); they don't depend on any
 specific Tool/Action existing yet, only on registry.json's own shape
 being valid.
 
-Auth: reuses app.api.mcp_auth.require_hermes_shared_secret uniformly for
+registry.json itself lives under `<second_brain_data_path>/tools/` --
+real, live-edited Second Brain Data (Tools/Categories/Actions change as
+this app grows), never a static source-tree fixture.
+
+Auth: reuses the Hermes library's own inbound-auth wrapper
+(app.business.hermes.client.get_client().wrap_inbound) uniformly for
 every Tool mount, same as the pre-redesign single-server pattern -- a
 reasonable default, not a decision that per-Tool scoped auth is rejected.
 Revisit if/when a real need for per-Tool auth scoping shows up (see
@@ -25,10 +30,13 @@ from typing import Callable
 from fastapi import FastAPI
 from mcp.server.fastmcp import FastMCP
 
-from app.api.mcp_auth import require_hermes_shared_secret
+from app.business.hermes.client import get_client
+from app.config import settings
 from app.data_access.system.tools.schema import Action, Category, Tool
 
-_REGISTRY_PATH = Path(__file__).resolve().parent / "registry.json"
+
+def _registry_path() -> Path:
+    return settings.second_brain_data_path / "tools" / "registry.json"
 
 # Tool id -> the real FastMCP instance mounted for it. Tracked (not just
 # the id) because each one's own session_manager.run() lifespan must
@@ -47,7 +55,10 @@ def load_tools_registry() -> list[Tool]:
     objects. Pure I/O + parsing, no side effects, safe to call repeatedly
     (mirrors agent_schedule_registry.load_default_schedules's own shape,
     Backend-Backup/backend-2026-08-20/)."""
-    raw = json.loads(_REGISTRY_PATH.read_text(encoding="utf-8"))
+    path = _registry_path()
+    if not path.is_file():
+        return []
+    raw = json.loads(path.read_text(encoding="utf-8"))
     return [
         Tool(
             id=t["id"], name=t["name"], description=t["description"], icon=t["icon"],
@@ -114,7 +125,7 @@ def mount_all_tools(app: FastAPI) -> None:
         if tool.id in _mounted_servers:
             continue
         server = _build_mcp_server_for_tool(tool)
-        app.mount(tool.mount_path, require_hermes_shared_secret(server.streamable_http_app()))
+        app.mount(tool.mount_path, get_client().wrap_inbound(server.streamable_http_app()))
         _mounted_servers[tool.id] = server
 
 

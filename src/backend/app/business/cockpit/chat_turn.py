@@ -66,7 +66,7 @@ import re
 
 from app.business.cockpit import chat_store, moderator
 from app.business.hermes import agents_map_adapter, chat_sessions
-from app.data_access.hermes_ws_client import HermesUnavailableError
+from app.business.hermes.client import HermesUnavailableError
 
 # The real Hermes profile REQ-SB-82-US-02 registered under the Librarian
 # Section as this app's one designated research fallback -- same kind of

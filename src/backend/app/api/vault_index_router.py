@@ -16,28 +16,21 @@ response never waits on it -- confirmed live, 2026-08-27, both rebuilds
 independently."""
 from __future__ import annotations
 
-import subprocess
 from datetime import datetime, timezone
 
 from fastapi import APIRouter
 
 from app.business import vault_indexing
-from app.config import settings
+from app.business.hermes.client import get_client
 
 router = APIRouter(prefix="/vault-index")
 
 
 def _trigger_agent_index_rebuild() -> None:
-    hermes_exe = settings.hermes_home_path / "hermes-agent" / "bin" / "hermes.exe"
-    if not hermes_exe.is_file():
-        return  # no real Hermes install at the configured path -- nothing to trigger
-    try:
-        subprocess.Popen(
-            [str(hermes_exe), "cron", "run", "vault-index-rebuild"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
-    except OSError:
-        pass  # best-effort -- the backend's own rebuild below must still succeed either way
+    # Best-effort -- the backend's own rebuild below must still succeed
+    # either way; get_client().cli.run_cron_job already swallows "no real
+    # Hermes install at the configured path" and any launch failure.
+    get_client().cli.run_cron_job("vault-index-rebuild")
 
 
 @router.post("/rebuild")

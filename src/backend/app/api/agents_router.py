@@ -15,7 +15,7 @@ retrofit), never written back to Hermes; and Chat (POST .../chat,
 2026-08-23; POST .../chat/reset, 2026-08-24) -- the pre-existing per-agent
 Chat tab in AgentDetailPanel.tsx was calling this route already, but it
 had never been implemented against Hermes; wired to the real Hermes
-gateway (hermes_ws_client.py, ADR-006) via a `HermesChatSession` kept
+gateway (app/hermes/chat_session.py, ADR-006) via a `HermesChatSession` kept
 alive across requests per agent (chat_sessions.py, 2026-08-24 -- see
 below), not the WS surface hermes_router.py briefly proxied and has
 since dropped in favor of this.
@@ -61,8 +61,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.business.hermes import agents_map_adapter, chat_sessions
-from app.data_access import hermes_definitions
-from app.data_access.hermes_ws_client import HermesUnavailableError
+from app.business.hermes.client import HermesUnavailableError, get_client
 
 
 class AgentVisualUpdateBody(BaseModel):
@@ -121,7 +120,7 @@ async def send_chat_message(agent_id: str, body: ChatMessageBody) -> dict:
     `chat_sessions.send_and_await_reply` (factored out there,
     REQ-SB-82-US-04) so Cockpit Chat's own per-question routed calls
     share this exact same handling instead of a second copy of it."""
-    if hermes_definitions.get_agent(agent_id) is None:
+    if get_client().profiles.find_by_id(agent_id) is None:
         raise HTTPException(status_code=404, detail=f"Unknown agent: {agent_id!r}")
 
     try:
@@ -138,7 +137,7 @@ async def send_chat_message(agent_id: str, body: ChatMessageBody) -> dict:
 
 
 # Real event types seen live on a Hermes chat session besides the ones
-# _await_reply already handles (hermes_ws_client.py's own module
+# _await_reply already handles (app/hermes/chat_session.py's own module
 # docstring): thinking.delta/status.update/reasoning.available carry the
 # model's own in-progress "what it's doing" signal, distinct from the
 # actual reply text -- session.info/session.title are pure metadata, not
@@ -244,9 +243,9 @@ async def stream_chat_message(agent_id: str, body: ChatMessageBody) -> Streaming
     progress (an `activity`/`delta` frame) instead of dead silence, so
     the same 504-after-N-seconds protection isn't the right shape here;
     the underlying `HermesChatSession._call`'s own 30s per-RPC timeout
-    (hermes_ws_client.py) still bounds any single request/response leg
+    (app/hermes/chat_session.py) still bounds any single request/response leg
     of the turn."""
-    if hermes_definitions.get_agent(agent_id) is None:
+    if get_client().profiles.find_by_id(agent_id) is None:
         raise HTTPException(status_code=404, detail=f"Unknown agent: {agent_id!r}")
 
     lock = chat_sessions.get_lock(agent_id)
@@ -277,7 +276,7 @@ async def reset_chat_session(agent_id: str) -> dict:
     carried forward. The only real way to make an agent pick up a
     changed SOUL.md mid-conversation too (MEMORY.md's own documented
     "session prompt is injected once, never re-read" constraint)."""
-    if hermes_definitions.get_agent(agent_id) is None:
+    if get_client().profiles.find_by_id(agent_id) is None:
         raise HTTPException(status_code=404, detail=f"Unknown agent: {agent_id!r}")
     lock = chat_sessions.get_lock(agent_id)
     async with lock:

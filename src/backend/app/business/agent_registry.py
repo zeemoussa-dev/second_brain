@@ -6,7 +6,7 @@ ADR-011 points 1/3/4) merged at read time with a persisted
 Emptied 2026-08-22 (operator-directed, "we're fully on Hermes now") --
 every Second-Brain-native Agent this registry used to seed/hold is
 retired; Hermes is the real agent/skill/schedule runtime going forward
-(ADR-001), mirrored read-only by app/data_access/hermes_definitions.py
+(ADR-001), mirrored read-only by app/hermes/definitions.py
 (ADR-003). This module is left in place (rather than deleted) because
 section_registry.py/skill_registry.py/agents_router.py's own archived
 copy still import it; it now always returns an empty agent list, real

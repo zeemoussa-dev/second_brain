@@ -1,74 +1,48 @@
-"""Real two-way chat bridge to Hermes' own live gateway (2026-08-22,
-operator: "how to chat with Agent Back and Forth Communication when the
-Gateway is up").
+"""One live two-way chat bridge to Hermes' own gateway.
 
-Confirmed live (2026-08-22, against this machine's own running `hermes
-serve`) by hand-driving the real protocol end-to-end and getting a real
-model reply back: Hermes' embedded chat is NOT a REST call -- it's a
-newline-delimited JSON-RPC 2.0 protocol carried over one WebSocket,
-`/api/ws` (`tui_gateway/ws.py` -> `tui_gateway/server.py::dispatch`, the
-same dispatcher the desktop app and the in-browser Chat tab both drive).
+Hermes' embedded chat is NOT a REST call -- it's a newline-delimited
+JSON-RPC 2.0 protocol carried over one WebSocket, `/api/ws` (the same
+dispatcher the desktop app and Hermes' own in-browser Chat tab both
+drive).
 
 Real, verified wire shape:
 - Connect: `ws://<host>/api/ws?token=<session token>` -- the SAME per-
-  install session token hermes_client.py already scrapes from `GET /`'s
-  HTML for its own REST calls (`x-hermes-session-token` header there,
-  `?token=` query param here -- a WS handshake can't carry a custom
-  header from a browser, so Hermes accepts the identical credential as a
-  query param on this one endpoint).
-- First frame in: a `gateway.ready` event (best-effort waited on, never
-  required -- a slow/absent one must not block the chat from working).
+  install session token used for REST calls (`x-hermes-session-token`
+  header there, `?token=` query param here -- a browser WS handshake
+  can't carry a custom header, so Hermes accepts the identical
+  credential as a query param on this one endpoint).
 - `{"jsonrpc":"2.0","id":<n>,"method":"session.create","params":{...}}`
-  -> `{"id":<n>,"result":{"session_id": "..."}}`. `profile` param scopes
-  the whole session to a non-default Hermes profile (opp-manager/
-  notes-manager/files-manager); omitted entirely for "default"
-  (Primary), which IS the profile-less launch identity, not a real
-  `profiles/default` dir.
+  -> `{"id":<n>,"result":{"session_id": "..."}}`. `profile` scopes the
+  whole session to a non-default Hermes profile; omitted entirely for
+  the launch/default identity.
 - `{"jsonrpc":"2.0","id":<n>,"method":"prompt.submit","params":
   {"session_id","text"}}` -> a fast `{"status":"streaming"}` ack; the
   real reply arrives as a run of `event` frames on the SAME socket,
-  `params.session_id` scoped to this session:
-  `{"jsonrpc":"2.0","method":"event","params":{"type":"message.delta",
-  "session_id":"...","payload":{"text":"..."}}}` per streamed chunk,
-  terminated by `message.complete` (payload.text is the FULL final
-  reply, not just the last chunk) or `turn.error`. Other real event
-  types seen live in between: `session.info`, `session.title`,
-  `thinking.delta`, `status.update`, `reasoning.available` -- all passed
-  through verbatim rather than filtered, so the caller decides what to
-  render (never silently dropping a real signal).
+  terminated by `message.complete` (full final text) or `turn.error`.
 - Approval/clarify prompts arrive the same way (`approval.request`/
   `clarify.request` events) and are answered with
-  `approval.respond`/`clarify.respond` requests carrying the event's own
-  `request_id`.
-
-Deliberately kept separate from hermes_client.py (REST, request/response,
-one call in and one dict back) -- this is a genuinely different shape
-(one long-lived multiplexed connection, request/response AND
-server-pushed events interleaved on the same socket), not a REST-client
-method that happens to look different.
+  `approval.respond`/`clarify.respond` requests carrying the event's
+  own `request_id`.
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
+from typing import Callable
 
 import websockets
 
-from app.config import settings
-from app.data_access.hermes_client import HermesUnavailableError, _fetch_session_token
+from app.hermes.config import HermesConfig
+from app.hermes.errors import HermesUnavailableError
 
 _log = logging.getLogger(__name__)
 
 _RPC_TIMEOUT_S = 30.0
 
-__all__ = ["HermesUnavailableError", "HermesChatSession"]
 
-
-def _ws_url() -> str:
-    # hermes_base_url is the REST base (http://127.0.0.1:9119) -- same
-    # host/port, different scheme, for the WS chat endpoint.
-    base = settings.hermes_base_url.rstrip("/")
+def _ws_url(base_url: str) -> str:
+    base = base_url.rstrip("/")
     if base.startswith("https://"):
         return "wss://" + base[len("https://"):] + "/api/ws"
     return "ws://" + base[len("http://"):] + "/api/ws"
@@ -78,13 +52,19 @@ class HermesChatSession:
     """One live bridge: a single Hermes `/api/ws` connection plus the one
     real Hermes chat session created on it. Not reusable across agents --
     a new instance per (agent_id, caller) connection, matching how the
-    real dashboard's own Chat tab opens one socket per open chat."""
+    real dashboard's own Chat tab opens one socket per open chat.
 
-    def __init__(self, agent_id: str | None):
-        # "default" is Primary's own real profile id (hermes_definitions.py)
-        # but NOT a real `profiles/default` dir Hermes' own `profile` param
-        # can resolve -- omit it entirely so session.create falls back to
-        # its own launch/default profile, the correct target for Primary.
+    `get_token` is the owning `HermesClient`'s own token fetcher
+    (`HermesRestAPI.get_session_token`) -- this class never fetches or
+    caches a token itself, so the two always agree on the same cached
+    value."""
+
+    def __init__(self, config: HermesConfig, get_token: Callable[[], str], agent_id: str | None):
+        self._config = config
+        self._get_token = get_token
+        # "default"/the launch identity is NOT a real `profiles/default`
+        # dir Hermes' own `profile` param can resolve -- omit it entirely
+        # so session.create falls back to its own launch/default profile.
         self._profile = agent_id if agent_id and agent_id != "default" else None
         self._ws: websockets.WebSocketClientProtocol | None = None
         self._next_id = 1
@@ -94,12 +74,9 @@ class HermesChatSession:
         self.session_id: str | None = None
 
     async def connect(self) -> None:
+        token = self._get_token()
         try:
-            token = _fetch_session_token()
-        except HermesUnavailableError:
-            raise
-        try:
-            self._ws = await websockets.connect(f"{_ws_url()}?token={token}", open_timeout=10)
+            self._ws = await websockets.connect(f"{_ws_url(self._config.base_url)}?token={token}", open_timeout=10)
         except OSError as exc:
             raise HermesUnavailableError(f"Hermes WS connect failed: {exc}") from exc
         self._recv_task = asyncio.create_task(self._recv_loop())
