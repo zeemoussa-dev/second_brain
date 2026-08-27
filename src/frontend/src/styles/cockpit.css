@@ -1,23 +1,155 @@
-/* Shared Meeting/Inbox Cockpit 3-panel workspace (REQ-SB-43-US-01,
-   REQ-SB-44-US-01, ADR-036) — ported verbatim from the approved
-   html-prototype/styles.css "3-panel Cockpit workspace" section. Every
-   other class this component uses (.card, .chat-thread, .chat-message,
-   .item-list/.item-row, .tag-chip, .kv-list, .badge, .btn, .action-list,
+/* Meeting/Inbox Cockpit workspace (REQ-SB-43/44, redesigned 2026-08-25,
+   operator-directed: left secondary nav replaces the old fixed left
+   Agents panel; the right rail now swaps per tab -- Meeting/Email info
+   on the prep tabs, Experts only on Chat). Every card/list/badge class
+   this component uses (.card, .chat-thread, .chat-message, .item-list/
+   .item-row, .tag-chip, .kv-list, .badge, .btn, .action-list,
    .empty-state, .chat-proposal) already exists in this project's own
    frontend stylesheets. */
 
+/* Operator, 2026-08-27: "When I start Typing in the Cockpit It Shrinks
+   the window... Chat Window should be full Height and Same as the Agent
+   then I can Scroll in the Agents Alone without the Chat and chat I can
+   Scroll without the Agents." Previously the grid had no bounded height
+   (`align-items: start`, everything sized to its own content), so the
+   whole page grew/jumped as either column's content changed. Now the row
+   height is pinned to the real available viewport space and each column
+   scrolls independently within it. 100px = .main's own real top+bottom
+   padding (--space-6 x2 = 48px) plus this page's "Back" link row above
+   .cockpit-layout (~52px) -- measured live against the real page, not
+   guessed. */
 .cockpit-layout {
   display: grid;
-  grid-template-columns: 260px 1fr 300px;
+  grid-template-columns: 160px 1fr 280px;
   gap: var(--space-4);
-  align-items: start;
+  height: calc(100vh - 100px);
+}
+
+.cockpit-layout > * {
+  min-height: 0;
+}
+
+.cockpit-nav {
+  overflow-y: auto;
+}
+
+/* The middle column's own scrollable region is whichever .cockpit-panel
+   it's currently showing (one tab at a time) -- this wrapper just needs
+   to be a flex container so that panel can flex:1 to fill/scroll within
+   the column's real height. */
+.cockpit-main-column {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.cockpit-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 @media (max-width: 900px) {
-  .cockpit-layout { grid-template-columns: 1fr; }
+  .cockpit-layout {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .cockpit-layout > * {
+    min-height: auto;
+  }
+  .cockpit-nav {
+    overflow-y: visible;
+  }
+  .cockpit-panel {
+    flex: none;
+    overflow-y: visible;
+  }
 }
 
-.cockpit-layout .chat-thread { max-height: 380px; }
+.cockpit-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cockpit-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  text-align: left;
+  width: 100%;
+}
+
+.cockpit-nav-item:hover {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+.cockpit-nav-item.active {
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.cockpit-nav-icon {
+  width: 1.25em;
+  text-align: center;
+}
+
+/* Polished, borderless panel -- swaps out .card's visible border AND
+   its per-section repetition for one flat surface (operator, 2026-08-25
+   first pass: dropped the border but kept a raised background box per
+   section, which still read as "cards"; second pass: Overview's 4
+   sections now share ONE .cockpit-panel, divided by .cockpit-section's
+   own hairline border, not by 4 separate boxes). Scoped to the Cockpit
+   only; .card itself is untouched everywhere else it's used (Settings,
+   etc.). */
+.cockpit-panel {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+}
+
+.cockpit-panel h3 {
+  margin-top: 0;
+}
+
+.cockpit-section + .cockpit-section {
+  border-top: 1px solid var(--color-border);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+}
+
+.cockpit-group-label {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-2);
+}
+
+/* Expert roster row -- icon + name, whole row clickable, reuses
+   vault-browser.css's existing a.item-row/button.item-row hover
+   highlight rather than a separate "+ Bring in" button (operator:
+   "like People icon and name with hover effect click to bring in"). */
+.cockpit-person-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.cockpit-person-icon {
+  font-size: 20px;
+  color: var(--color-text-muted);
+}
 
 .tag-chip--static {
   display: inline-block;
@@ -38,4 +170,79 @@
   letter-spacing: 0.03em;
   margin-bottom: 2px;
   color: var(--author-color, var(--color-text-muted));
+}
+
+/* REQ-SB-82-US-04 -- a reply threaded onto an earlier question (Scenario
+   4) stays in its natural chronological position but carries this quoted
+   strip so it reads as threaded, not as an undifferentiated new message. */
+.chat-message-reply-to {
+  font-size: 0.75rem;
+  font-style: italic;
+  color: var(--color-text-muted);
+  border-left: 2px solid var(--color-border);
+  padding-left: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+/* Scenario 6 -- an honest "bring someone in first" notice, never a
+   fabricated Expert/user reply, so it reads visually distinct from both. */
+.chat-message--system {
+  align-self: center;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  font-style: italic;
+  text-align: center;
+}
+
+/* REQ-SB-82-US-04 -- "X is typing..." while a dispatched reply (a routed
+   Expert or the Research Agent fallback) is still in flight, so a slow
+   real Hermes turn reads as visible progress, not a stuck/broken Send. */
+.chat-message--typing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.typing-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 1.2em;
+}
+
+.typing-indicator span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-text-muted);
+  opacity: 0.4;
+  animation: cockpit-typing-bounce 1.1s ease-in-out infinite;
+}
+
+.typing-indicator span:nth-child(2) { animation-delay: 0.15s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes cockpit-typing-bounce {
+  0%, 60%, 100% { opacity: 0.4; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typing-indicator span { animation: none; opacity: 0.8; }
+}
+
+.chat-mention-hint {
+  font-size: 0.75rem;
+  margin: var(--space-2) 0 0;
+}
+
+.chat-mention-hint code {
+  font-size: inherit;
+}
+
+.cockpit-expert-recommended {
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
 }

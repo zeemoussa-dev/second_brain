@@ -41,7 +41,7 @@ def _customer_or_null(frontmatter: dict) -> str | None:
     return customer
 
 
-def _customer_name_by_tag() -> dict[str, str]:
+def customer_name_by_tag() -> dict[str, str]:
     """`customer/<slug>` tag -> the real Customer/Partner hub note's own
     `name` field (e.g. "customer/adnoc" -> "Adnoc") — resolved from the
     ALREADY-real, already-indexed hub note rather than reconstructing a
@@ -49,7 +49,10 @@ def _customer_name_by_tag() -> dict[str, str]:
     "Al Ain" is not always correct; the hub note's own `name` always is).
     Built fresh from the live index on every call, matching this
     module's existing no-caching convention (index rebuilds are cheap
-    and already handled by vault_indexing's own trigger)."""
+    and already handled by vault_indexing's own trigger). Public (2026-08-27)
+    -- `cockpit_router.py`'s own Inbox Cockpit info panel reuses this same
+    pairing (a Thread's own frontmatter has no `customer` field at all,
+    only the tag) rather than a second reimplementation."""
     mapping: dict[str, str] = {}
     for entry in vault_indexing.get_index().values():
         if entry["frontmatter"].get("type") not in ("Customer", "Partner"):
@@ -62,9 +65,20 @@ def _customer_name_by_tag() -> dict[str, str]:
     return mapping
 
 
-def _customer_from_tags(tags: list[str], lookup: dict[str, str]) -> str | None:
+def customer_from_tags(tags: list[str], lookup: dict[str, str]) -> str | None:
+    """Real bug, found live 2026-08-27: `lookup` (customer_name_by_tag())
+    intentionally merges BOTH Customer and Partner hub notes' own tags
+    into one dict, so a real Thread tagged `["partner/g42",
+    "customer/mubadala"]` used to return "G42" -- whichever tag happened
+    to appear first in the caller's own list, with no namespace check at
+    all. Every real caller (this module's own Emails/Calendar
+    projections, cockpit_router.py's Inbox Cockpit info panel) wants
+    specifically THE Customer, never a Partner -- filtering to
+    `customer/`-prefixed tags here fixes every one of them at once,
+    matching the same filter moderator.py's own (separately correct)
+    `_subject_customer` already applies."""
     for tag in tags:
-        if tag in lookup:
+        if tag.startswith("customer/") and tag in lookup:
             return lookup[tag]
     return None
 
@@ -179,7 +193,7 @@ def list_email_items(day: str | None = None) -> list[dict]:
     own `"stem"` field exactly — the note identity the Inbox Cockpit
     route needs."""
     range_start, range_end = _resolve_day_bounds(day)
-    customer_lookup = _customer_name_by_tag()
+    customer_lookup = customer_name_by_tag()
     sender_lookup = _latest_sender_by_conversation()
     items = []
     for entry in vault_indexing.get_index().values():
@@ -192,7 +206,7 @@ def list_email_items(day: str | None = None) -> list[dict]:
         items.append({
             "subject": frontmatter.get("thread_name", ""),
             "sender": sender_lookup.get(frontmatter.get("conversation_id"), ""),
-            "customer": _customer_from_tags(entry["tags"], customer_lookup),
+            "customer": customer_from_tags(entry["tags"], customer_lookup),
             "received": received,
             "stem": entry["stem"],
         })
@@ -213,7 +227,7 @@ def list_calendar_items(day: str | None = None) -> list[dict]:
     own frontmatter carries no customer tag of its own at all, only the
     series-level note does (2026-08-24 fix, see module docstring)."""
     range_start, range_end = _resolve_day_bounds(day)
-    customer_lookup = _customer_name_by_tag()
+    customer_lookup = customer_name_by_tag()
     series_lookup = _meeting_series_lookup()
     items = []
     for entry in vault_indexing.get_index().values():
@@ -226,7 +240,7 @@ def list_calendar_items(day: str | None = None) -> list[dict]:
         if not _within_window(start, range_start, range_end):
             continue
         series = series_lookup.get(_series_folder_name_for(entry["path"])) or {}
-        customer = _customer_from_tags(entry["tags"], customer_lookup) or _customer_from_tags(
+        customer = customer_from_tags(entry["tags"], customer_lookup) or customer_from_tags(
             series.get("tags") or [], customer_lookup
         )
         items.append({

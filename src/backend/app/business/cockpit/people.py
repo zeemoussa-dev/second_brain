@@ -1,12 +1,29 @@
 """Cockpit people-chip resolution (ADR-036 point 7) -- reads a subject
 note's attendees/recipients frontmatter list directly, resolving each
 person via people_extraction's new read-only lookup. Never creates a
-Person note."""
+Person note.
+
+**2026-08-27 fix (operator: "Fix the People/Received field gap on
+Threads")**: a real Thread's own concept note has NO `recipients`
+frontmatter field at all -- confirmed live by direct reading of a real
+Thread (`type, conversation_id, tags, last_message_at,
+last_summarized_at, thread_name`, nothing resembling recipients) -- so
+`resolve_people_chips` always returned `[]` for every email/Thread
+subject. A Thread's REAL participants are recorded as wikilinks in its
+own `## Related` section (the same body-wikilink convention Meeting
+attendee links also use, just with no frontmatter mirror for Threads).
+Scoped to JUST that section, not the whole body/`outgoing_wikilinks`,
+and filtered to `type: "Person"` -- a Thread's own `## Related` section
+also links Customer/Partner hubs (confirmed live: a real Thread's
+Summary/Related mentions `[[Masdar]]`), which must never show up as a
+"person" chip."""
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from app.business import people_extraction, vault_indexing
+from app.data_access import vault_manager as vm
 from app.data_access import vault_writer
 
 _ATTENDEE_FIELD_BY_KIND = {"meeting": "attendees", "email": "recipients"}
@@ -88,12 +105,34 @@ def _coerce_people_list(raw_value) -> list[dict]:
     return [_normalize_person_item(item) for item in people]
 
 
+def _related_section_people(path: str) -> list[dict]:
+    """A Thread's own real participants -- wikilinks in `## Related`,
+    never a `recipients` frontmatter field (see module docstring). Scoped
+    to that ONE section (via vault_manager's own read-only
+    `get_section_content`, reused rather than a second body-wikilink
+    parser) so a Customer/Partner hub mentioned in `## Summary` prose is
+    never swept in; `type: "Person"` is a second, belt-and-suspenders
+    filter for the same reason, since `## Related` itself can also link
+    a Company."""
+    section_text = vm.get_section_content(Path(path), "Related")
+    people = []
+    for target in vault_writer.extract_wikilink_targets(section_text):
+        entry = vault_indexing.get_index().get(target)
+        if entry is None or entry["frontmatter"].get("type") != "Person":
+            continue
+        people.append({"name": entry["frontmatter"].get("name"), "email": entry["frontmatter"].get("email")})
+    return people
+
+
 def resolve_people_chips(subject_kind: str, subject_note_stem: str) -> list[dict]:
     entry = vault_indexing.get_index().get(subject_note_stem)
     if entry is None:
         return []
-    field = _ATTENDEE_FIELD_BY_KIND.get(subject_kind, "attendees")
-    people = _coerce_people_list(entry["frontmatter"].get(field))
+    if subject_kind == "email":
+        people = _related_section_people(entry["path"])
+    else:
+        field = _ATTENDEE_FIELD_BY_KIND.get(subject_kind, "attendees")
+        people = _coerce_people_list(entry["frontmatter"].get(field))
     chips = []
     for person in people:
         existing = people_extraction.find_existing_person_note(person.get("email", ""))

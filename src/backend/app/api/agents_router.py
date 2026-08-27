@@ -64,45 +64,6 @@ from app.business.hermes import agents_map_adapter, chat_sessions
 from app.data_access import hermes_definitions
 from app.data_access.hermes_ws_client import HermesUnavailableError
 
-# A real turn (tool calls, a slow provider) can run well past the 30s
-# single-RPC timeout inside HermesChatSession itself -- this is the outer
-# bound on the WHOLE turn (connect + session.create + prompt.submit +
-# every event up to message.complete). Raised from 180s to 360s
-# (2026-08-24, found live: real `POST /agents/macc-expert/chat` calls
-# hit a genuine 504 -- macc-expert's own real Step-1 workflow (list
-# Opportunities, read the note, stage the template, write the checklist)
-# runs several sequential tool-using LLM turns, confirmed to take
-# 80-90s+ even over the simpler direct-CLI path, and clearly longer over
-# this REST path -- 180s no longer has real headroom for an agent this
-# tool-call-heavy, only for the lighter single-turn agents the original
-# ~30-90s baseline was measured against.
-_CHAT_TURN_TIMEOUT_S = 360.0
-
-
-def _format_clarify_request(payload: dict) -> str:
-    # Real wire shapes (hermes-agent's own tui_gateway/server.py::_clarify_block):
-    # single question -- {"question": str, "choices": list[str] | None, ...};
-    # batch -- {"questions": [{"question": str, "choices": ...}, ...]}. Either
-    # way this IS the agent's question -- surfaced verbatim, never reworded,
-    # so the reply the user sees matches exactly what Hermes itself asked.
-    questions = payload.get("questions")
-    if questions:
-        return "\n\n".join(q.get("question", "") for q in questions if q.get("question"))
-    return payload.get("question") or "The agent needs more information before it can continue."
-
-
-def _format_approval_request(payload: dict) -> str:
-    # Real wire shape (hermes-agent's own tools/approval.py /
-    # tui_gateway/server.py::_emit_approval_request): "command" is the
-    # human-readable action awaiting approval, "reason" is optional context.
-    command = payload.get("command")
-    reason = payload.get("reason")
-    if command and reason:
-        return f"The agent needs your approval before continuing:\n\n{command}\n\n({reason})"
-    if command:
-        return f"The agent needs your approval before continuing:\n\n{command}"
-    return "The agent needs your approval before it can continue."
-
 
 class AgentVisualUpdateBody(BaseModel):
     # None (field omitted) = leave unchanged; "" (explicit empty string) =
@@ -146,25 +107,6 @@ def update_agent_visual(agent_id: str, body: AgentVisualUpdateBody) -> dict:
     return updated
 
 
-async def _await_reply(session) -> str:
-    async for event in session.events():
-        event_type = event.get("type")
-        payload = event.get("payload") or {}
-        if event_type == "message.complete":
-            return payload.get("text", "")
-        if event_type == "turn.error":
-            raise HermesUnavailableError(f"Hermes turn failed: {payload}")
-        if event_type == "clarify.request":
-            return _format_clarify_request(payload)
-        if event_type == "approval.request":
-            return _format_approval_request(payload)
-        if event_type == "connection.closed":
-            # Confirmed dead -- fail fast instead of looping on an empty
-            # queue until _CHAT_TURN_TIMEOUT_S (180s) expires.
-            raise HermesUnavailableError("Hermes closed the connection")
-    raise HermesUnavailableError("Hermes closed the connection before replying")
-
-
 @router.post("/{agent_id}/chat")
 async def send_chat_message(agent_id: str, body: ChatMessageBody) -> dict:
     """One turn over the real Hermes gateway (ADR-006), on a session kept
@@ -173,27 +115,24 @@ async def send_chat_message(agent_id: str, body: ChatMessageBody) -> dict:
     not a fresh session every message. Returns `{reply, action_triggered}`
     (action_triggered always None -- Hermes has no concept of a
     Second-Brain-native triggered Action, unlike the old, retired agent
-    model this same response shape used to serve)."""
+    model this same response shape used to serve).
+
+    The actual lock/session/timeout/discard-on-failure turn is
+    `chat_sessions.send_and_await_reply` (factored out there,
+    REQ-SB-82-US-04) so Cockpit Chat's own per-question routed calls
+    share this exact same handling instead of a second copy of it."""
     if hermes_definitions.get_agent(agent_id) is None:
         raise HTTPException(status_code=404, detail=f"Unknown agent: {agent_id!r}")
 
-    lock = chat_sessions.get_lock(agent_id)
-    async with lock:
-        try:
-            session = await chat_sessions.get_or_create_session(agent_id)
-            await session.send_prompt(body.message)
-            reply_text = await asyncio.wait_for(_await_reply(session), timeout=_CHAT_TURN_TIMEOUT_S)
-        except HermesUnavailableError as exc:
-            # The live session is confirmed bad (or never connected) --
-            # drop it so the NEXT message gets a fresh one instead of
-            # repeatedly failing against a socket that's already gone.
-            await chat_sessions.discard_session(agent_id)
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-        except asyncio.TimeoutError as exc:
-            # The session itself may still be fine (a genuinely slow
-            # turn) -- left open so the conversation's own history isn't
-            # lost over one slow reply.
-            raise HTTPException(status_code=504, detail="Hermes did not reply in time") from exc
+    try:
+        reply_text = await chat_sessions.send_and_await_reply(agent_id, body.message)
+    except HermesUnavailableError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except asyncio.TimeoutError as exc:
+        # The session itself may still be fine (a genuinely slow
+        # turn) -- left open so the conversation's own history isn't
+        # lost over one slow reply.
+        raise HTTPException(status_code=504, detail="Hermes did not reply in time") from exc
 
     return {"reply": reply_text, "action_triggered": None}
 
@@ -273,10 +212,10 @@ async def _stream_reply(session):
             yield _sse({"type": "error", "detail": f"Hermes turn failed: {payload}"})
             return
         elif event_type == "clarify.request":
-            yield _sse({"type": "complete", "text": _format_clarify_request(payload)})
+            yield _sse({"type": "complete", "text": chat_sessions.format_clarify_request(payload)})
             return
         elif event_type == "approval.request":
-            yield _sse({"type": "complete", "text": _format_approval_request(payload)})
+            yield _sse({"type": "complete", "text": chat_sessions.format_approval_request(payload)})
             return
         elif event_type == "connection.closed":
             yield _sse({"type": "error", "detail": "Hermes closed the connection"})

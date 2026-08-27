@@ -1,261 +1,487 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { fetchAgentList, isBackgroundAgent, type AgentSummary } from '../agents-map/agentsApiClient';
+import { getVisualIconName } from '../agents-map/visualOptions';
 import {
-  fetchCockpit, bringInAgent, sendCockpitMessage, triggerCockpitResearch, saveCockpitResearch,
-  confirmPersonNoteProposal, discardPersonNoteProposal,
-  type CockpitData,
+  bringInAgent, fetchCockpit, removeAgent, sendMessage, uploadDocument,
+  type CockpitChatMessage, type CockpitData, type CockpitDocument,
 } from './cockpitApiClient';
+import { PersonNotePanel } from './PersonNotePanel';
 import { ChatMessageText } from '../../components/ChatMessageText';
 
-const MENTION_TOKEN_RE = /@(\S+)/g;
+// Same auto-grow ceiling as the established multiline chat input
+// (AgentChatPanel.tsx, operator: "need to grow bigger to show at least 3
+// to 5 lines") -- reused verbatim so both chat surfaces behave the same.
+const _CHAT_INPUT_MAX_HEIGHT_PX = 132;
 
-function normalizeForMatch(value: string): string {
-  return value.toLowerCase().replace(/\s+/g, '');
+// How long to keep polling for a dispatched reply -- EVERY reply (a
+// routed Expert or the Research Agent fallback) is dispatched in the
+// background now (REQ-SB-82-US-04), so this governs all of them, not just
+// research. Window (5s x 72 = 360s) matches chat_sessions.py's own
+// _CHAT_TURN_TIMEOUT_S -- found live that a real web-research turn
+// (actual tool calls, not a canned reply) routinely runs multiple
+// minutes, well past an initially-assumed 60s window.
+const _REPLY_POLL_INTERVAL_MS = 5000;
+const _REPLY_POLL_MAX_ATTEMPTS = 72;
+
+interface PendingAnswer {
+  messageId: string;
+  agentId: string;
+  agentName: string;
 }
 
-function resolveMentionedAgents(text: string, candidates: AgentSummary[]): AgentSummary[] {
-  const resolved: AgentSummary[] = [];
-  const seenIds = new Set<string>();
-  for (const match of text.matchAll(MENTION_TOKEN_RE)) {
-    const normalizedToken = normalizeForMatch(match[1]);
-    const agent = candidates.find(
-      (a) => normalizeForMatch(a.id) === normalizedToken || normalizeForMatch(a.name) === normalizedToken,
-    );
-    if (agent && !seenIds.has(agent.id)) {
-      seenIds.add(agent.id);
-      resolved.push(agent);
-    }
-  }
-  return resolved;
-}
+type CockpitTab = 'overview' | 'chat' | 'people' | 'documents' | 'articles';
+
+const NAV_ITEMS: { tab: CockpitTab; icon: string; label: string }[] = [
+  { tab: 'overview', icon: '▦', label: 'Overview' },
+  { tab: 'chat', icon: '\u{1F4AC}', label: 'Chat' },
+  { tab: 'people', icon: '\u{1F465}', label: 'People' },
+  { tab: 'documents', icon: '\u{1F4C4}', label: 'Documents' },
+  { tab: 'articles', icon: '\u{1F4F0}', label: 'Articles' },
+];
 
 interface CockpitProps {
   subjectKind: 'meeting' | 'email';
   subjectNoteStem: string;
-  subjectTitleFields: { label: string; key: string }[]; // e.g. [{label:'Time',key:'start'}]
-  attachmentsSlot?: React.ReactNode;    // REQ-SB-44-US-01 only, undefined here
-  enableDraftCopyAffordance?: boolean;  // REQ-SB-44-US-01 only, undefined/false here
+  // e.g. [{label:'Time',key:'start'}] -- rendered in the right rail's
+  // Meeting/Email info panel on every tab except Chat.
+  infoFields: { label: string; key: string }[];
 }
 
-export function Cockpit({
-  subjectKind, subjectNoteStem, subjectTitleFields, attachmentsSlot, enableDraftCopyAffordance,
-}: CockpitProps) {
+function PersonChip({ person, onOpen }: { person: CockpitData['people'][number]; onOpen: (stem: string) => void }) {
+  if (!person.has_note) {
+    return <span className="tag-chip--static" key={person.email}>{person.name} <span className="text-muted">(no note yet)</span></span>;
+  }
+  const stem = person.note_path?.split(/[\\/]/).pop()?.replace('.md', '') ?? '';
+  return <button type="button" className="btn tag-chip" onClick={() => onOpen(stem)} key={person.email}>{person.name}</button>;
+}
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
+}
+
+// A message with `reply_to_message_id` (REQ-SB-82-US-04, Scenario 4)
+// stays in its natural chronological position (never reordered/moved
+// next to its question -- that would disturb everything exchanged since)
+// but carries a quoted "replying to" strip so it's visibly threaded
+// rather than an undifferentiated new message at the bottom.
+function ChatMessage({ message, parent }: { message: CockpitChatMessage; parent: CockpitChatMessage | undefined }) {
+  if (message.speaker === 'system') {
+    return <div className="chat-message chat-message--system">{message.text}</div>;
+  }
+  return (
+    <div className={`chat-message chat-message--${message.speaker === 'user' ? 'user' : 'agent'}`}>
+      {message.speaker === 'agent' && <span className="chat-message-author">{message.agent_name}</span>}
+      {parent && (
+        <div className="chat-message-reply-to">↳ replying to: “{truncate(parent.text, 80)}”</div>
+      )}
+      <ChatMessageText text={message.text} />
+    </div>
+  );
+}
+
+function DocumentRow({ doc }: { doc: CockpitDocument }) {
+  return (
+    <div className="item-row" key={doc.note_path}>
+      <span className="material-symbols-outlined cockpit-person-icon" aria-hidden="true">description</span>
+      <span className="item-row-title">{doc.filename ?? doc.title}</span>
+    </div>
+  );
+}
+
+function ExpertRow({ agent, onClick, title }: { agent: AgentSummary; onClick: () => void; title: string }) {
+  const iconName = getVisualIconName(agent.icon) ?? 'psychology';
+  return (
+    <button type="button" className="item-row cockpit-person-row" onClick={onClick} title={title}>
+      <span className="material-symbols-outlined cockpit-person-icon" aria-hidden="true">{iconName}</span>
+      <span className="item-row-title">{agent.name}</span>
+    </button>
+  );
+}
+
+export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitProps) {
+  const [tab, setTab] = useState<CockpitTab>('overview');
   const [data, setData] = useState<CockpitData | null>(null);
-  const [availableAgents, setAvailableAgents] = useState<AgentSummary[] | null>(null);
-  const [messageInput, setMessageInput] = useState('');
-  const [pendingResearch, setPendingResearch] = useState<{ query: string; summary: string } | null>(null);
+  const [experts, setExperts] = useState<AgentSummary[] | null>(null);
+  const [openPersonStem, setOpenPersonStem] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  // Who's currently being asked, keyed by the question's own message id --
+  // an array (not one value) since a second message can be sent, and
+  // routed to a DIFFERENT agent, while an earlier one is still pending
+  // (Scenario 3: never blocked). Rendered as "X is typing..." (operator,
+  // 2026-08-26: "You need to show me what's happening").
+  const [answering, setAnswering] = useState<PendingAnswer[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const pollTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const reload = () => fetchCockpit(subjectKind, subjectNoteStem).then(setData);
-  useEffect(() => { reload(); fetchAgentList().then(setAvailableAgents); }, [subjectKind, subjectNoteStem]);
+  useEffect(() => {
+    fetchCockpit(subjectKind, subjectNoteStem).then(setData);
+    fetchAgentList().then(setExperts);
+    return () => {
+      pollTimeoutsRef.current.forEach(clearTimeout);
+      pollTimeoutsRef.current.clear();
+    };
+  }, [subjectKind, subjectNoteStem]);
 
-  const hasExperts = (data?.thread.brought_in_agent_ids.length ?? 0) > 0;
-  const agentById = new Map((availableAgents ?? []).map((agent) => [agent.id, agent]));
-  const bringInCandidates = (availableAgents ?? []).filter((agent) => !isBackgroundAgent(agent));
+  // Every dispatched reply (a routed Expert or the Research Agent
+  // fallback) lands in the background with no push mechanism -- polls for
+  // its threaded reply, stopping once it's seen or after
+  // _REPLY_POLL_MAX_ATTEMPTS (also clearing its own "typing" entry either way).
+  const pollForAnswer = (pendingMessageId: string, attemptsLeft: number) => {
+    if (attemptsLeft <= 0) {
+      setAnswering((current) => current.filter((a) => a.messageId !== pendingMessageId));
+      return;
+    }
+    const timeoutId = setTimeout(() => {
+      pollTimeoutsRef.current.delete(timeoutId);
+      fetchCockpit(subjectKind, subjectNoteStem).then((fresh) => {
+        setData(fresh);
+        const arrived = fresh.thread.messages.some((m) => m.reply_to_message_id === pendingMessageId);
+        if (arrived) {
+          setAnswering((current) => current.filter((a) => a.messageId !== pendingMessageId));
+        } else {
+          pollForAnswer(pendingMessageId, attemptsLeft - 1);
+        }
+      });
+    }, _REPLY_POLL_INTERVAL_MS);
+    pollTimeoutsRef.current.add(timeoutId);
+  };
 
-  // REQ-SB-51-US-01-T04 already filters Background Agents out of bringInCandidates;
-  // mention matching/suggestions reuse that same filtered list, never availableAgents directly.
-  const mentionedAgents = resolveMentionedAgents(messageInput, bringInCandidates);
-  const hasResolvableMention = mentionedAgents.length > 0;
-  const canSend = messageInput.trim().length > 0 && (hasExperts || hasResolvableMention);
-
-  const mentionQueryMatch = messageInput.match(/@(\S*)$/);
-  const mentionQuery = mentionQueryMatch ? mentionQueryMatch[1] : null;
-  const mentionSuggestions = mentionQuery
-    ? bringInCandidates.filter((agent) => {
-        const q = normalizeForMatch(mentionQuery);
-        return normalizeForMatch(agent.id).includes(q) || normalizeForMatch(agent.name).includes(q);
-      })
-    : [];
-
-  const handleSendMessage = (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!canSend || sending) return;
+  const handleSend = (e: FormEvent | KeyboardEvent) => {
+    e.preventDefault();
+    const text = draft.trim();
+    if (!text || sending) return;
     setSending(true);
-    Promise.all(mentionedAgents.map((agent) => bringInAgent(subjectKind, subjectNoteStem, agent.id)))
-      .then(() => sendCockpitMessage(subjectKind, subjectNoteStem, messageInput, mentionedAgents.map((agent) => agent.id)))
-      .then((updatedThread) => {
-        setMessageInput('');
-        setData((current) => (current ? { ...current, thread: updatedThread } : current));
-      })
-      .finally(() => setSending(false));
+    setDraft('');
+    // Optimistic append (operator, 2026-08-26: "The Message Don't get
+    // added to the chat until Something happen") -- shows immediately,
+    // replaced by the server's own authoritative thread (real id
+    // included) the moment the fast routing-decision response lands.
+    setData((current) => current ? {
+      ...current,
+      thread: {
+        ...current.thread,
+        messages: [...current.thread.messages, {
+          speaker: 'user', agent_id: null, agent_name: null, text,
+        }],
+      },
+    } : current);
+    sendMessage(subjectKind, subjectNoteStem, text).then(({ thread, answering: nowAnswering }) => {
+      setData((current) => (current ? { ...current, thread } : current));
+      setSending(false);
+      const userMessage = [...thread.messages].reverse().find((m) => m.speaker === 'user' && m.text === text);
+      if (userMessage?.id && nowAnswering) {
+        setAnswering((current) => [
+          ...current,
+          { messageId: userMessage.id!, agentId: nowAnswering.agent_id, agentName: nowAnswering.agent_name },
+        ]);
+        pollForAnswer(userMessage.id, _REPLY_POLL_MAX_ATTEMPTS);
+      }
+    }).catch(() => {
+      // The user's own message is persisted server-side regardless of
+      // whether routing/the Hermes turn itself failed (chat_turn.py
+      // appends it before routing) -- re-fetch so it shows up rather than
+      // leaving the input stuck on "Sending..." with no visible message.
+      setSending(false);
+      fetchCockpit(subjectKind, subjectNoteStem).then(setData);
+    });
+  };
+
+  // Plain Enter sends, Shift+Enter OR Alt+Enter inserts a real newline --
+  // same convention as the established multiline chat input
+  // (AgentChatPanel.tsx, operator: "when I try to do a multiline text
+  // Alt+Enter Doesn't create a new line"). A <textarea> doesn't
+  // auto-submit its form on Enter the way a single <input> does, so this
+  // handler is what makes plain Enter still send.
+  const handleDraftKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey && !event.altKey) {
+      event.preventDefault();
+      handleSend(event);
+    }
+  };
+
+  // Auto-grows the textarea as real content wraps, same 3-to-5-line
+  // ceiling as AgentChatPanel.tsx.
+  const handleDraftChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    setDraft(event.target.value);
+    const el = event.target;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, _CHAT_INPUT_MAX_HEIGHT_PX)}px`;
+  };
+
+  // Upload a file/screenshot straight into this meeting's own folder
+  // (operator, 2026-08-27: "I will need to upload a file or a Screenshot
+  // while I am in the meeting... I don't have upload button in the
+  // screen") -- persisted immediately (not attached-then-sent, unlike the
+  // Agent Chat panel's own ephemeral attach flow), with a system
+  // confirmation appended to the live chat so it reads as a real event in
+  // the conversation, not a silent background write.
+  const handleFileSelect = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (!file) return;
+    setUploading(true);
+    uploadDocument(subjectKind, subjectNoteStem, file)
+      .then(() => fetchCockpit(subjectKind, subjectNoteStem))
+      .then(setData)
+      .finally(() => setUploading(false));
+  };
+
+  // Real, persisted roster (REQ-SB-82-US-01, ADR-007) -- derived from the
+  // fetched thread every render, never held as its own local useState, so
+  // it can never drift from the real backend value.
+  const broughtInIds = new Set(data?.thread.brought_in_agent_ids ?? []);
+  // Moderator-recommended roster (REQ-SB-82-US-03) -- additive/
+  // informational only. An id already brought in renders ONLY under "In
+  // this chat" (never duplicated into "Recommended"); a still-recommended
+  // id is also excluded from the plain "Experts" list below so it isn't
+  // shown twice, one Add action per agent at a time (scope-internal
+  // judgement call, since Recommended's own Add already brings it in the
+  // same real way).
+  const recommendedIds = new Set(data?.thread.recommended_agent_ids ?? []);
+  const allExperts = (experts ?? []).filter((agent) => agent.type === 'expert' && !isBackgroundAgent(agent));
+  const inChat = allExperts.filter((agent) => broughtInIds.has(agent.id));
+  const recommended = allExperts.filter((agent) => recommendedIds.has(agent.id) && !broughtInIds.has(agent.id));
+  const available = allExperts.filter((agent) => !broughtInIds.has(agent.id) && !recommendedIds.has(agent.id));
+
+  const bringIn = (id: string) => {
+    bringInAgent(subjectKind, subjectNoteStem, id).then((thread) => {
+      setData((current) => (current ? { ...current, thread } : current));
+    });
+  };
+  const remove = (id: string) => {
+    removeAgent(subjectKind, subjectNoteStem, id).then((thread) => {
+      setData((current) => (current ? { ...current, thread } : current));
+    });
   };
 
   return (
     <div className="cockpit-layout">
-      <div>
-        <div className="card">
-          <h3>Available Agents</h3>
-          <div className="item-list">
-            {bringInCandidates.map((agent) => {
-              const inChat = data?.thread.brought_in_agent_ids.includes(agent.id) ?? false;
-              return (
-                <div className="item-row" key={agent.id}>
-                  <div className="item-row-main">
-                    <span className="item-row-title">{agent.name}</span>
-                    <span className="item-row-meta">{agent.type}</span>
-                  </div>
-                  <div className="item-row-actions">
-                    {inChat ? (
-                      <span className="badge badge-success">In this chat</span>
-                    ) : (
-                      <button type="button" className="btn" onClick={() => bringInAgent(subjectKind, subjectNoteStem, agent.id).then(reload)}>
-                        + Bring in
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <h3 style={{ marginTop: 'var(--space-6)' }}>Quick research ({subjectKind === 'meeting' ? 'this meeting' : 'this email'})</h3>
-          {data?.research_results.length ? (
-            <div className="item-list">
-              {data.research_results.map((result) => (
-                <div className="item-row" key={result.stem}>
-                  <div className="item-row-main"><span className="item-row-title">{result.title}</span></div>
-                  <span className="badge badge-success">Saved</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="empty-state">
-              <p className="text-muted">Nothing yet — trigger on-the-spot research from the chat once you've brought in an Expert.</p>
-            </div>
-          )}
-        </div>
-      </div>
+      <nav className="cockpit-nav">
+        {NAV_ITEMS.map((item) => (
+          <button
+            type="button"
+            key={item.tab}
+            className={tab === item.tab ? 'cockpit-nav-item active' : 'cockpit-nav-item'}
+            onClick={() => setTab(item.tab)}
+          >
+            <span className="cockpit-nav-icon" aria-hidden="true">{item.icon}</span>
+            {item.label}
+          </button>
+        ))}
+      </nav>
 
-      <div>
-        <div className="card">
-          <h3>Chat</h3>
-          {data?.thread.messages.length ? (
-            <div className="chat-thread">
-              {data.thread.messages.map((message, index) => (
-                <div className={`chat-message chat-message--${message.speaker === 'user' ? 'user' : 'agent'}`} key={index}>
-                  {message.speaker === 'agent' && (
-                    <span
-                      className="chat-message-author"
-                      style={{ '--author-color': `var(--agent-color-${agentById.get(message.agent_id ?? '')?.type ?? 'expert'})` } as React.CSSProperties}
-                    >
-                      {message.agent_name}
-                    </span>
-                  )}
-                  <ChatMessageText text={message.text} />
-                  {enableDraftCopyAffordance && message.speaker === 'agent' && (
-                    <button type="button" className="btn" style={{ marginLeft: 'var(--space-3)' }}
-                      onClick={() => navigator.clipboard.writeText(message.text)}>
-                      Copy
-                    </button>
-                  )}
-                </div>
-              ))}
-              {sending && (
-                <div className="chat-message chat-message--agent chat-message--pending" aria-live="polite">
-                  <span className="chat-typing-dot" />
-                  <span className="chat-typing-dot" />
-                  <span className="chat-typing-dot" />
-                </div>
+      <div className="cockpit-main-column">
+        {tab === 'overview' && (
+          <div className="cockpit-panel">
+            <div className="cockpit-section">
+              <h3>{subjectKind === 'meeting' ? 'Meeting summary' : 'Email summary'}</h3>
+              {data?.overview.summary ? (
+                <p>{data.overview.summary}</p>
+              ) : (
+                <p className="text-muted">No prep summary yet.</p>
               )}
             </div>
-          ) : (
-            <div className="empty-state">
-              <div className="empty-state-icon">💬</div>
-              <p><strong>No Experts brought in yet.</strong></p>
-              <p className="text-muted">Use "+ Bring in" on the left to add an Expert to this meeting's shared chat.</p>
+            <div className="cockpit-section">
+              <h3>People ({data?.people.length ?? 0})</h3>
+              {data?.people.length ? (
+                <div className="action-list">
+                  {data.people.map((person) => <PersonChip person={person} onOpen={setOpenPersonStem} key={person.email} />)}
+                </div>
+              ) : (
+                <p className="text-muted">No people resolved yet.</p>
+              )}
             </div>
-          )}
-          {pendingResearch && (
-            <div className="chat-proposal">
-              <span className="badge badge-warning">Awaiting your decision</span>
-              <p>{pendingResearch.summary}</p>
-              <div className="chat-proposal-actions">
-                <button type="button" className="btn btn-primary" onClick={() =>
-                  saveCockpitResearch(subjectKind, subjectNoteStem, pendingResearch.query, pendingResearch.summary)
-                    .then(() => { setPendingResearch(null); reload(); })
-                }>Save to vault</button>
-                <button type="button" className="btn btn-danger" onClick={() => setPendingResearch(null)}>Discard</button>
-              </div>
-            </div>
-          )}
-          {data?.person_note_proposals.map((proposal) => (
-            <div className="chat-proposal" key={proposal.id}>
-              <span className="badge badge-warning">Awaiting your decision</span>
-              <p>Propose an update to <strong>{proposal.person_name}</strong>'s note: {proposal.instruction}</p>
-              <div className="chat-proposal-actions">
-                <button type="button" className="btn btn-primary" onClick={() =>
-                  confirmPersonNoteProposal(subjectKind, subjectNoteStem, proposal.id).then(reload)
-                }>Confirm</button>
-                <button type="button" className="btn btn-danger" onClick={() =>
-                  discardPersonNoteProposal(subjectKind, subjectNoteStem, proposal.id).then(reload)
-                }>Discard</button>
-              </div>
-            </div>
-          ))}
-          <form className="chat-input-row" onSubmit={handleSendMessage} style={{ position: 'relative' }}>
-            <input
-              type="text" className="input"
-              placeholder={hasExperts ? 'Message the chat…' : 'Bring in an Expert, or type @agent_id, to start chatting…'}
-              value={messageInput} onChange={(e) => setMessageInput(e.target.value)}
-              disabled={sending}
-            />
-            <button type="submit" className="btn btn-primary" disabled={!canSend || sending}>
-              Send
-            </button>
-            {mentionQuery !== null && mentionQuery.length > 0 && mentionSuggestions.length > 0 && (
-              <div
-                className="card mention-suggestion-list" data-testid="mention-suggestions"
-                style={{ position: 'absolute', top: '100%', left: 0, zIndex: 10, marginTop: 'var(--space-1)', minWidth: '240px' }}
-              >
+            <div className="cockpit-section">
+              <h3>Related documents ({data?.overview.related_documents.length ?? 0})</h3>
+              {data?.overview.related_documents.length ? (
                 <div className="item-list">
-                  {mentionSuggestions.map((agent) => (
-                    <div
-                      className="item-row" key={agent.id} style={{ cursor: 'pointer' }}
-                      onClick={() => setMessageInput((current) => current.replace(/@(\S*)$/, `@${agent.id} `))}
-                    >
-                      <div className="item-row-main">
-                        <span className="item-row-title">{agent.name}</span>
-                        <span className="item-row-meta">{agent.id}</span>
-                      </div>
+                  {data.overview.related_documents.map((doc) => <DocumentRow doc={doc} key={doc.note_path} />)}
+                </div>
+              ) : (
+                <p className="text-muted">Nothing gathered yet.</p>
+              )}
+            </div>
+            <div className="cockpit-section">
+              <h3>Articles ({data?.overview.articles.length ?? 0})</h3>
+              {data?.overview.articles.length ? (
+                <div className="item-list">
+                  {data.overview.articles.map((article) => (
+                    <div className="item-row" key={article.url}>
+                      <a href={article.url} target="_blank" rel="noreferrer">{article.title}</a>
                     </div>
                   ))}
                 </div>
+              ) : (
+                <p className="text-muted">Nothing gathered yet.</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {tab === 'chat' && (
+          <div className="cockpit-panel">
+            <h3>Chat</h3>
+            {/* .chat-thread ALWAYS renders (matches AgentChatPanel.tsx's own
+                established structure) -- the empty-state message lives
+                INSIDE it as a plain line, never a separate block swapped
+                in place of it. Swapping in a differently-laid-out block
+                when there are no messages was what pushed the Send button
+                to the middle of the panel (operator, 2026-08-27: "when the
+                Chat is empty, the Send Button is in the middle of the
+                screen") -- .chat-thread's own flex:1 sizing now applies
+                consistently whether it holds real messages or just the
+                empty note, so the input row stays pinned at the bottom
+                either way. */}
+            <div className="chat-thread">
+              {data?.thread.messages.length ? (
+                data.thread.messages.map((message, index) => {
+                  const parent = message.reply_to_message_id
+                    ? data.thread.messages.find((m) => m.id === message.reply_to_message_id)
+                    : undefined;
+                  return <ChatMessage message={message} parent={parent} key={message.id ?? index} />;
+                })
+              ) : (
+                <p className="text-muted chat-thread-empty">
+                  No messages yet. Bring in an Expert, then ask a question below.
+                </p>
+              )}
+              {answering.map((a) => (
+                <div className="chat-message chat-message--agent chat-message--typing" key={a.messageId}>
+                  <span className="chat-message-author">{a.agentName}</span>
+                  <span className="typing-indicator" aria-label={`${a.agentName} is typing`}>
+                    <span /><span /><span />
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className="chat-mention-hint text-muted">
+              Tip: start with <code>@expert-name</code> to send straight to a specific Expert.
+              Shift+Enter for a new line.
+            </p>
+            <form className="chat-input-row" onSubmit={handleSend}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                style={{ display: 'none' }}
+                onChange={handleFileSelect}
+              />
+              <button
+                type="button"
+                className="chat-attach-btn"
+                aria-label="Attach a file or screenshot to this meeting"
+                title="Attach a file or screenshot to this meeting"
+                disabled={uploading}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <span className="material-symbols-outlined" aria-hidden="true">attach_file</span>
+              </button>
+              <textarea
+                className="input chat-message-input"
+                placeholder="Ask a question… (@mention to redirect)"
+                rows={3}
+                value={draft}
+                onChange={handleDraftChange}
+                onKeyDown={handleDraftKeyDown}
+                disabled={sending}
+              />
+              <button type="submit" className="btn btn-primary" disabled={sending || !draft.trim()}>
+                {sending ? 'Sending…' : 'Send'}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {tab === 'people' && (
+          <div className="cockpit-panel">
+            <h3>{subjectKind === 'meeting' ? 'Attendees' : 'People on this email'}</h3>
+            {data?.people.length ? (
+              <div className="action-list">
+                {data.people.map((person) => <PersonChip person={person} key={person.email} />)}
+              </div>
+            ) : (
+              <div className="empty-state"><p className="text-muted">No people resolved yet.</p></div>
+            )}
+          </div>
+        )}
+
+        {tab === 'documents' && (
+          <div className="cockpit-panel">
+            <h3>Documents</h3>
+            {data?.overview.related_documents.length ? (
+              <div className="item-list">
+                {data.overview.related_documents.map((doc) => <DocumentRow doc={doc} key={doc.note_path} />)}
+              </div>
+            ) : (
+              <div className="empty-state">
+                <p className="text-muted">Nothing uploaded yet.</p>
+                <p className="text-muted">Use the attach button in Chat to add a file or screenshot.</p>
               </div>
             )}
-          </form>
-          {hasExperts && (
-            <button type="button" className="btn" disabled={!messageInput} style={{ marginTop: 'var(--space-2)' }}
-              onClick={() => {
-                const requestingAgentId = data!.thread.brought_in_agent_ids[0];
-                triggerCockpitResearch(subjectKind, subjectNoteStem, requestingAgentId, messageInput).then((result) => {
-                  if (result.status === 'found') setPendingResearch({ query: result.query!, summary: result.summary! });
-                  setMessageInput('');
-                  reload();
-                });
-              }}>
-              Quick research
-            </button>
-          )}
-        </div>
+          </div>
+        )}
+
+        {tab === 'articles' && (
+          <div className="cockpit-panel">
+            <h3>Articles you might need</h3>
+            <div className="empty-state"><p className="text-muted">Nothing gathered yet.</p></div>
+          </div>
+        )}
       </div>
 
-      <div className="card">
-        <h3>{String(data?.subject.subject ?? '')}</h3>
-        <div className="kv-list">
-          {subjectTitleFields.map(({ label, key }) => (
-            <div className="kv-row" key={key}><span className="kv-key">{label}</span><span>{String(data?.subject[key] ?? '')}</span></div>
-          ))}
-        </div>
-        <h3 style={{ marginTop: 'var(--space-6)' }}>{subjectKind === 'meeting' ? 'Attendees' : 'People on this email'}</h3>
-        <div className="action-list">
-          {data?.people.map((person) => person.has_note ? (
-            <a className="btn tag-chip" href={`/browse/${person.note_path?.split(/[\\/]/).pop()?.replace('.md', '')}`} key={person.email}>{person.name}</a>
+      {tab === 'chat' ? (
+        <div className="cockpit-panel">
+          {recommended.length > 0 && (
+            <>
+              <div className="cockpit-group-label">Recommended</div>
+              <div className="item-list">
+                {recommended.map((agent) => (
+                  <div className="cockpit-expert-recommended" key={agent.id}>
+                    <ExpertRow agent={agent} title="Add to chat" onClick={() => bringIn(agent.id)} />
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          {inChat.length > 0 && (
+            <>
+              <div className="cockpit-group-label" style={{ marginTop: recommended.length > 0 ? 'var(--space-4)' : 0 }}>In this chat</div>
+              <div className="item-list">
+                {inChat.map((agent) => (
+                  <ExpertRow agent={agent} key={agent.id} title="Remove from chat" onClick={() => remove(agent.id)} />
+                ))}
+              </div>
+            </>
+          )}
+          <div
+            className="cockpit-group-label"
+            style={{ marginTop: inChat.length > 0 || recommended.length > 0 ? 'var(--space-4)' : 0 }}
+          >
+            {inChat.length > 0 ? 'Bring in another Expert' : 'Experts'}
+          </div>
+          {available.length ? (
+            <div className="item-list">
+              {available.map((agent) => (
+                <ExpertRow agent={agent} key={agent.id} title="Bring into this chat" onClick={() => bringIn(agent.id)} />
+              ))}
+            </div>
           ) : (
-            <span className="tag-chip--static" key={person.email}>{person.name} <span className="text-muted">(no note yet)</span></span>
-          ))}
+            <div className="empty-state"><p className="text-muted">No more Experts available.</p></div>
+          )}
         </div>
-        {attachmentsSlot}
-      </div>
+      ) : (
+        <div className="cockpit-panel">
+          <h3>{subjectKind === 'meeting' ? 'Meeting info' : 'Email info'}</h3>
+          <div className="kv-list">
+            {infoFields.map(({ label, key }) => (
+              <div className="kv-row" key={key}><span className="kv-key">{label}</span><span>{String(data?.subject[key] ?? '')}</span></div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {openPersonStem && <PersonNotePanel stem={openPersonStem} onClose={() => setOpenPersonStem(null)} />}
     </div>
   );
 }

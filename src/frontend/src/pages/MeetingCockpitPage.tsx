@@ -10,7 +10,12 @@ export function MeetingCockpitPage() {
       <Cockpit
         subjectKind="meeting"
         subjectNoteStem={stem}
-        subjectTitleFields={[{ label: 'Time', key: 'start' }, { label: 'Customer', key: 'customer' }]}
+        infoFields={[
+          { label: 'Time', key: 'start' },
+          { label: 'Location', key: 'location' },
+          { label: 'Join', key: 'teams_link' },
+          { label: 'Organizer', key: 'organizer' },
+        ]}
       />
     </>
   );

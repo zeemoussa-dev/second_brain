@@ -28,7 +28,16 @@ from __future__ import annotations
 
 import asyncio
 
-from app.data_access.hermes_ws_client import HermesChatSession
+from app.data_access.hermes_ws_client import HermesChatSession, HermesUnavailableError
+
+# Outer bound on a WHOLE turn (connect + session.create + prompt.submit +
+# every event up to message.complete) -- moved here from agents_router.py
+# (REQ-SB-82-US-04) so the identical lock/session/timeout/discard-on-
+# failure handling is shared by both the single-agent Chat tab and Cockpit
+# Chat's own per-question routed calls, instead of duplicated. Value and
+# its own reasoning (macc-expert's real multi-tool-call Step-1 workflow
+# needing 80-90s+) unchanged from agents_router.py's original.
+_CHAT_TURN_TIMEOUT_S = 360.0
 
 _sessions: dict[str, HermesChatSession] = {}
 _locks: dict[str, asyncio.Lock] = {}
@@ -77,3 +86,70 @@ async def reset_session(agent_id: str) -> None:
     deliberate reset vs. cleaning up a connection already confirmed
     dead) even though the action taken is identical."""
     await discard_session(agent_id)
+
+
+def format_clarify_request(payload: dict) -> str:
+    # Real wire shapes (hermes-agent's own tui_gateway/server.py::_clarify_block):
+    # single question -- {"question": str, "choices": list[str] | None, ...};
+    # batch -- {"questions": [{"question": str, "choices": ...}, ...]}. Either
+    # way this IS the agent's question -- surfaced verbatim, never reworded,
+    # so the reply the user sees matches exactly what Hermes itself asked.
+    questions = payload.get("questions")
+    if questions:
+        return "\n\n".join(q.get("question", "") for q in questions if q.get("question"))
+    return payload.get("question") or "The agent needs more information before it can continue."
+
+
+def format_approval_request(payload: dict) -> str:
+    # Real wire shape (hermes-agent's own tools/approval.py /
+    # tui_gateway/server.py::_emit_approval_request): "command" is the
+    # human-readable action awaiting approval, "reason" is optional context.
+    command = payload.get("command")
+    reason = payload.get("reason")
+    if command and reason:
+        return f"The agent needs your approval before continuing:\n\n{command}\n\n({reason})"
+    if command:
+        return f"The agent needs your approval before continuing:\n\n{command}"
+    return "The agent needs your approval before it can continue."
+
+
+async def _await_reply(session: HermesChatSession) -> str:
+    async for event in session.events():
+        event_type = event.get("type")
+        payload = event.get("payload") or {}
+        if event_type == "message.complete":
+            return payload.get("text", "")
+        if event_type == "turn.error":
+            raise HermesUnavailableError(f"Hermes turn failed: {payload}")
+        if event_type == "clarify.request":
+            return format_clarify_request(payload)
+        if event_type == "approval.request":
+            return format_approval_request(payload)
+        if event_type == "connection.closed":
+            # Confirmed dead -- fail fast instead of looping on an empty
+            # queue until _CHAT_TURN_TIMEOUT_S expires.
+            raise HermesUnavailableError("Hermes closed the connection")
+    raise HermesUnavailableError("Hermes closed the connection before replying")
+
+
+async def send_and_await_reply(agent_id: str, message: str) -> str:
+    """One full turn over the real Hermes gateway on this agent's own kept-
+    alive session (REQ-SB-82-US-04) -- the exact lock/session/timeout/
+    discard-on-failure handling `agents_router.py`'s `POST /{agent_id}/chat`
+    always used, factored out here so Cockpit Chat's own per-question
+    routed calls (to a brought-in Expert OR the Research Agent fallback)
+    reuse it instead of re-implementing it. Raises `HermesUnavailableError`
+    or `asyncio.TimeoutError` on failure -- never returns a fabricated
+    reply; the caller decides how to surface either as an honest message."""
+    lock = get_lock(agent_id)
+    async with lock:
+        try:
+            session = await get_or_create_session(agent_id)
+            await session.send_prompt(message)
+            return await asyncio.wait_for(_await_reply(session), timeout=_CHAT_TURN_TIMEOUT_S)
+        except HermesUnavailableError:
+            # The live session is confirmed bad (or never connected) --
+            # drop it so the NEXT message gets a fresh one instead of
+            # repeatedly failing against a socket that's already gone.
+            await discard_session(agent_id)
+            raise
