@@ -1,6 +1,6 @@
 ---
 name: new-company-discovery
-description: Approves, classifies (Customer/Partner/Affiliate/Ignore), or discovers a company entry in the vault's Work/Entities.md file. Use this whenever the operator's message approves, classifies, or makes a decision about a company/partner/customer/affiliate/vendor entry -- e.g. "make Oracle a partner", "Inb is an affiliate of Investbank", "ignore that company", "approve Oracle" -- even without the word Entities.md in the message. Also runs the recurring scan that finds new company domains in Threads/Meetings and adds them to Entities.md for review.
+description: Approves, classifies (Customer/Partner/Affiliate/Ignore), or discovers a company entry in the vault's .second-brain/Settings/Entities.md file. Use this whenever the operator's message approves, classifies, or makes a decision about a company/partner/customer/affiliate/vendor entry -- e.g. "make Oracle a partner", "Inb is an affiliate of Investbank", "ignore that company", "approve Oracle" -- even without the word Entities.md in the message. Also runs the recurring scan that finds new company domains in Threads/Meetings and adds them to Entities.md for review.
 version: 0.1.0
 author: second-brain
 license: MIT
@@ -25,7 +25,7 @@ classification itself.
 - **`find_new_entities.py`** -- mechanical, no judgment. Scans Threads
   (`participant_links`) and Meetings (`attendees`) for real email
   domains, compares against every domain already covered by an existing
-  `Work/Entities.md` entry (comma-split, so a multi-domain entry like
+  `.second-brain/Settings/Entities.md` entry (comma-split, so a multi-domain entry like
   Core42's own "core42.ae, core42.ai" correctly counts as two), and
   APPENDS a new entry for anything genuinely new -- defaulting to
   `Ignore: Yes` (safe: `create-companies-partners.py` never creates a

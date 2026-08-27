@@ -100,7 +100,11 @@ def main() -> int:
     args = parser.parse_args()
 
     vault_path = Path(args.vault_path)
-    entities_path = vault_path / "Work" / args.entities_name
+    # Settings/Entities.md under .second-brain -- see find_new_entities.py's
+    # own comment at the matching line for the full 2026-08-27 relocation
+    # reasoning; this script imports parse_entities/render_entities from
+    # that file, so the path must stay in sync with it by hand.
+    entities_path = vault_path / ".second-brain" / "Settings" / args.entities_name
     if not entities_path.exists():
         print(json.dumps({"error": f"{entities_path} does not exist"}))
         return 1

@@ -1,5 +1,5 @@
 """CLI entry point: Step 3 of the company/partner discovery sequence --
-reads the operator's own curated Work/Entities.md (Step 1's mechanical
+reads the operator's own curated .second-brain/Settings/Entities.md (Step 1's mechanical
 output, hand-edited: Ignore/Created flags set, Aliases/Affiliate of
 filled in) and creates the real Customer/Partner (and their Affiliate)
 hub notes from it. Never touches Threads, never summarizes -- that's
@@ -64,7 +64,7 @@ _FRONTMATTER_LINE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*):\s?(.*)$")
 _LIST_ITEM_PATTERN = re.compile(r'"((?:[^"\\]|\\.)*)"')
 _BODY_SECTION_HEADER_PATTERN = re.compile(r"^## .+$", re.MULTILINE)
 
-_KNOWN_FIELDS = {"Company Name", "Aliases", "Affiliate of", "Created", "Ignore", "Domain"}
+_KNOWN_FIELDS = {"Company Name", "Aliases", "Affiliate of", "Created", "Ignore", "Domain", "Deleted"}
 
 # Section-ownership guard, matching the same discipline every other
 # Skill's own vault_lib.py uses. Kept as a per-header allow-list (not one
@@ -267,6 +267,14 @@ def _render_entry(lines: list[str], entry: dict) -> None:
     lines.append(f"\tIgnore: {f.get('Ignore', 'No')}")
     lines.append("")
     lines.append(f"\tDomain: {f.get('Domain', '')}")
+    lines.append("")
+    # Deleted: Yes -- soft-delete field (2026-08-27, see the matching
+    # comment in find_new_entities.py's own _render_entry for the full
+    # reasoning). A Deleted: Yes row also always carries Ignore: Yes
+    # (set together by the app's own Settings > Vault > Entities UI), so
+    # the existing Ignore: Yes checks in Pass 1/Pass 2 above already skip
+    # it -- no separate Deleted check needed in the hub-creation logic.
+    lines.append(f"\tDeleted: {f.get('Deleted', 'No')}")
     lines.append("")
     lines.append("")
 
@@ -1078,7 +1086,9 @@ def main() -> int:
         }, ensure_ascii=False))
         return 0
 
-    entities_path = vault_path / "Work" / args.entities_name
+    # Settings/Entities.md under .second-brain -- see find_new_entities.py's
+    # own comment for the full 2026-08-27 relocation reasoning.
+    entities_path = vault_path / ".second-brain" / "Settings" / args.entities_name
     if not entities_path.exists():
         print(json.dumps({"error": f"{entities_path} does not exist -- run entity-domain-extraction first"}))
         return 1

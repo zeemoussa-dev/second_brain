@@ -12,7 +12,7 @@ metadata:
 
 # Create Companies & Partners (Step 3 of the company/partner sequence)
 
-**Step 3 of 4.** Reads the operator's own hand-curated `Work/Entities.md`
+**Step 3 of 4.** Reads the operator's own hand-curated `.second-brain/Settings/Entities.md`
 (written by `entity-domain-extraction`, then edited by hand -- Ignore/
 Created flags set, Aliases/Affiliate of filled in) and creates the real
 Customer/Partner hub notes, their Affiliate sub-entities, and moves each
@@ -21,7 +21,7 @@ summarizes -- that's Step 4, separate and later, not built yet.
 
 ## Prerequisites
 
-- `Work/Entities.md` must exist and be curated -- run
+- `.second-brain/Settings/Entities.md` must exist and be curated -- run
   `entity-domain-extraction` first, then wait for the operator to have
   actually edited it (set real `Ignore`/`Affiliate of` values). Running
   this Skill against the raw, un-curated output would create a hub note

@@ -2,7 +2,7 @@
 partner discovery -- Step 1 of a 4-step sequence (2026-08-21):
 
   1. THIS script -- group every Thread's real participants by email
-     domain, write one flat report (Work/Entities.md) for the operator
+     domain, write one flat report (.second-brain/Settings/Entities.md) for the operator
      to review by hand.
   2. [Manual] Operator edits Entities.md directly -- merges any
      duplicate entries, moves real partners into its ## Partners
@@ -218,6 +218,12 @@ def render_report(domains: dict[str, dict]) -> str:
         lines.append("")
         lines.append(f"\tDomain: {domain}")
         lines.append("")
+        # Deleted -- soft-delete field (2026-08-27), schema-consistent
+        # with find_new_entities.py/create_companies_partners.py's own
+        # _render_entry even though this one-time Step-1 script never
+        # reads it back itself.
+        lines.append("\tDeleted: No")
+        lines.append("")
         lines.append("")
 
     lines.append("## Partners")
@@ -238,7 +244,9 @@ def main() -> int:
     result = build_report(vault_path)
     report_text = render_report(result["domains"])
 
-    output_path = vault_path / "Work" / args.output_name
+    # Settings/Entities.md under .second-brain -- see find_new_entities.py's
+    # own comment for the full 2026-08-27 relocation reasoning.
+    output_path = vault_path / ".second-brain" / "Settings" / args.output_name
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(report_text, encoding="utf-8")
 

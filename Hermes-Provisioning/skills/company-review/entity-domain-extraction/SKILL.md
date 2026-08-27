@@ -16,7 +16,7 @@ metadata:
 
 1. **This Skill** -- cheap, mechanical, no LLM: group every Thread's
    real participants by email domain, write one flat file
-   (`Work/Entities.md`) for the operator to review by hand.
+   (`.second-brain/Settings/Entities.md`) for the operator to review by hand.
 2. *(Manual, not this Skill)* Operator edits `Entities.md` directly --
    merges any duplicate entries, sets `Ignore: Yes` on noise, moves real
    partners into its `## Partners` section, flips `Created` once a hub
@@ -59,7 +59,7 @@ one-line summary of those three numbers when done.
 
 ## Output shape
 
-`Work/Entities.md` -- one `### <Company Name>` section per domain found,
+`.second-brain/Settings/Entities.md` -- one `### <Company Name>` section per domain found,
 each with a tab-indented field block (renders as an indented code block
 in Obsidian, visually subordinate to the heading):
 
@@ -108,6 +108,6 @@ this Skill's job.
 
 - Report the three summary numbers (`report_path`, `companies_found`,
   `threads_scanned`).
-- Spot-check that `Work/Entities.md` exists and its `## Companies`
+- Spot-check that `.second-brain/Settings/Entities.md` exists and its `## Companies`
   section has real entries (a zero-companies result on a vault that has
   real Threads is worth flagging, not silently accepting).

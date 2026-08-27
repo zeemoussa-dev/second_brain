@@ -1,7 +1,8 @@
 """CLI entry point: recurring, INCREMENTAL sibling of entity-domain-
 extraction's own one-time build_entities_report.py (2026-08-21).
 
-That script does a full, destructive rewrite of Work/Entities.md every
+That script does a full, destructive rewrite of .second-brain/Settings/
+Entities.md every
 run -- correct for a one-time Step 1, catastrophic for a recurring job,
 since by now Entities.md is the operator's own hand-curated file (Ignore
 flags, Affiliate of, merged multi-domain entries like Core42's own
@@ -45,7 +46,7 @@ _FRONTMATTER_LINE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*):\s?(.*)$")
 _LIST_ITEM_PATTERN = re.compile(r'"((?:[^"\\]|\\.)*)"')
 _WIKILINK_PATTERN = re.compile(r"\[\[([^\]]+)\]\]")
 
-_KNOWN_FIELDS = {"Company Name", "Aliases", "Affiliate of", "Created", "Ignore", "Domain"}
+_KNOWN_FIELDS = {"Company Name", "Aliases", "Affiliate of", "Created", "Ignore", "Domain", "Deleted"}
 
 # Same denylist entity-domain-extraction's own build_entities_report.py
 # uses -- kept in sync by hand, not imported (per-Skill self-containment).
@@ -189,6 +190,16 @@ def _render_entry(lines: list[str], entry: dict) -> None:
     lines.append("")
     lines.append(f"\tDomain: {f.get('Domain', '')}")
     lines.append("")
+    # 2026-08-27, operator: a real hard-DELETE of a row removed its Domain
+    # from _already_tracked_domains, so a noise domain (SharePoint, Teams
+    # notification senders) kept getting rediscovered every scan --
+    # "they will keep surfacing and I know they will never be a company."
+    # Deleted: Yes is a soft delete instead -- the row (and its Domain)
+    # stays, so this check keeps it out of `tracked` forever; the app's
+    # own Settings > Vault > Entities UI hides Deleted: Yes rows rather
+    # than removing them.
+    lines.append(f"\tDeleted: {f.get('Deleted', 'No')}")
+    lines.append("")
     lines.append("")
 
 
@@ -310,7 +321,16 @@ def main() -> int:
     args = parser.parse_args()
 
     vault_path = Path(args.vault_path)
-    entities_path = vault_path / "Work" / args.entities_name
+    # Settings/Entities.md, under the app's own .second-brain data folder
+    # (relocated 2026-08-27, operator: "it should be in the Settings
+    # folder... lots of Agents are Accessing this file") -- no longer
+    # Work/Entities.md. Same vault-relative-literal convention
+    # vault_manager.py's own Templates lookup already uses for this same
+    # folder; if the operator ever relocates their App Database Folder off
+    # the vault from Second Brain's own System settings page, this script
+    # (and every other Entities.md consumer in this Skill) keeps looking
+    # here -- a known, disclosed limitation, not a bug.
+    entities_path = vault_path / ".second-brain" / "Settings" / args.entities_name
     if not entities_path.exists():
         print(json.dumps({"error": f"{entities_path} does not exist -- run entity-domain-extraction first"}))
         return 1
