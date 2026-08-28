@@ -45,9 +45,18 @@ entities.py` -- this Manager holds zero raw file calls of its own now
 real data_access module, from the start). Only the PARSE/RENDER of
 Entities.md's own `### <heading>` format stays here -- that's business
 shaping of the store's raw text, not I/O.
+
+2026-08-28, later same day: folded in `vault_search.py` too (browse/
+tag-filter/note-detail/ranked-search/graph -- REQ-SB-02-US-01/ADR-026),
+its only real caller (`vault_search_router.py`) migrated. It was
+already built entirely on top of `get_index()` plus `vault_writer.py`
+(a real data_access module) for on-demand body reads -- no raw I/O of
+its own to retrofit, a pure logic fold.
 """
 from __future__ import annotations
 
+import math
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -118,6 +127,111 @@ def _build_entry(path) -> dict:
         ),
         "incoming_wikilinks": [],
     }
+
+
+# ---------------------------------------------------------------------------
+# Browse/search (folded in from vault_search.py) -- pure functions over an
+# already-fetched index dict, no `self` needed.
+# ---------------------------------------------------------------------------
+
+_DEFAULT_PAGE_SIZE = 20
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
+# Title/tags outweigh an incidental body mention (ADR-026, the story's
+# own worked example) -- tuning constants, adjustable without a
+# superseding ADR.
+_FIELD_WEIGHTS = {"title": 3.0, "tags": 2.0, "body": 1.0}
+_BM25_K1 = 1.5
+_BM25_B = 0.75
+_DEFAULT_SEARCH_LIMIT = 20
+
+
+def _title_for(entry: dict) -> str:
+    """subject when present (Email/Meeting notes); otherwise the note's
+    own filename stem -- Customer/Person/Partner hub notes carry no
+    "subject" frontmatter field at all."""
+    return entry["frontmatter"].get("subject") or entry["stem"]
+
+
+def _kind_for(entry: dict) -> str:
+    return entry["frontmatter"].get("type", "Unknown")
+
+
+def _summary(entry: dict) -> dict:
+    return {
+        "stem": entry["stem"],
+        "title": _title_for(entry),
+        "kind": _kind_for(entry),
+        "tags": entry["tags"],
+    }
+
+
+def _resolve_forward_links(entry: dict, index: dict[str, dict]) -> list[dict]:
+    """entry["outgoing_wikilinks"] is deliberately RAW, unresolved target
+    text -- resolution only happens here, at read time, against the
+    target's own entry, applying the identical case-insensitive
+    stem-matching rule the backlink-deriving rebuild pass uses. An
+    unresolved target (a dangling link, or a manually-authored free-text
+    wikilink) is simply omitted -- no crash, no fabricated entry."""
+    stems_by_lower_stem = {stem.lower(): stem for stem in index}
+    resolved = []
+    seen_stems: set[str] = set()
+    for target in entry["outgoing_wikilinks"]:
+        matched_stem = stems_by_lower_stem.get(target.lower())
+        if matched_stem is None or matched_stem == entry["stem"] or matched_stem in seen_stems:
+            continue
+        seen_stems.add(matched_stem)
+        resolved.append(_summary(index[matched_stem]))
+    return resolved
+
+
+def _resolve_backlinks(entry: dict, index: dict[str, dict]) -> list[dict]:
+    """entry["incoming_wikilinks"] is already a list of resolved source
+    stems (rebuild_index's own backlink-inversion pass) -- a direct
+    lookup, no re-matching needed."""
+    return [_summary(index[stem]) for stem in entry["incoming_wikilinks"] if stem in index]
+
+
+def _resolve_forward_link_stems(entry: dict, index: dict[str, dict]) -> list[str]:
+    """Same case-insensitive stem-matching rule as _resolve_forward_links,
+    factored out so get_graph() can emit {"source", "target"} edges
+    without paying for a full _summary() resolve per target. Dangling/
+    self targets are silently omitted -- identical posture to
+    _resolve_forward_links, not a new rule."""
+    stems_by_lower_stem = {stem.lower(): stem for stem in index}
+    matched_stems = []
+    for target in entry["outgoing_wikilinks"]:
+        matched_stem = stems_by_lower_stem.get(target.lower())
+        if matched_stem is None or matched_stem == entry["stem"]:
+            continue
+        matched_stems.append(matched_stem)
+    return matched_stems
+
+
+def _tokenize(text: str) -> list[str]:
+    return _TOKEN_RE.findall(text.lower())
+
+
+def _field_tokens(entry: dict, body_by_stem: dict[str, str]) -> dict[str, list[str]]:
+    return {
+        "title": _tokenize(_title_for(entry)),
+        "tags": _tokenize(" ".join(entry["tags"])),
+        "body": _tokenize(body_by_stem.get(entry["stem"], "")),
+    }
+
+
+def _bm25_term_score(term: str, doc_tokens: list[str], avg_len: float, doc_freq: int, total_docs: int) -> float:
+    """Standard BM25 term score for one field of one document -- see
+    ADR-026 for the full mechanism/alternatives reasoning."""
+    if total_docs == 0 or doc_freq == 0:
+        return 0.0
+    term_freq = doc_tokens.count(term)
+    if term_freq == 0:
+        return 0.0
+    idf = math.log(1 + (total_docs - doc_freq + 0.5) / (doc_freq + 0.5))
+    doc_len = len(doc_tokens) or 1
+    numerator = term_freq * (_BM25_K1 + 1)
+    denominator = term_freq + _BM25_K1 * (1 - _BM25_B + _BM25_B * doc_len / avg_len)
+    return idf * (numerator / denominator)
 
 
 class VaultManager:
@@ -419,3 +533,134 @@ class VaultManager:
         target["fields"]["Deleted"] = "Yes"
         target["fields"]["Ignore"] = "Yes"
         self._save_entities(entries)
+
+    # -- Browse/search (folded in from vault_search.py) ----------------
+
+    def list_notes(self, page: int = 1, page_size: int = _DEFAULT_PAGE_SIZE, tag: str | None = None) -> dict:
+        """Browse all notes, or narrow to one exact tag (case-sensitive
+        match against the tag strings this project's own capture
+        pipelines already write, e.g. "customer/masdar", "kind/email").
+        Sorted by stem -- the one field every entry always has. An empty
+        result (no notes at all, or a real tag with zero matches)
+        returns "notes": [] honestly."""
+        entries = list(self.get_index().values())
+        if tag is not None:
+            entries = [entry for entry in entries if tag in entry["tags"]]
+        entries.sort(key=lambda entry: entry["stem"])
+
+        total = len(entries)
+        start = (page - 1) * page_size
+        page_entries = entries[start:start + page_size]
+        return {
+            "total": total, "page": page, "page_size": page_size,
+            "notes": [_summary(entry) for entry in page_entries],
+        }
+
+    def list_tags(self) -> dict:
+        """The real, current list of tags that actually exist in the
+        index (with counts), sorted by count descending then tag name."""
+        counts: dict[str, int] = {}
+        for entry in self.get_index().values():
+            for tag in entry["tags"]:
+                counts[tag] = counts.get(tag, 0) + 1
+        tags = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+        return {"tags": [{"tag": tag, "count": count} for tag, count in tags]}
+
+    def list_scope_suggestions(self) -> dict:
+        """Composes list_tags() with vault_writer.list_known_kinds() into
+        one combined, un-merged {"tags", "folders"} payload for the
+        Agent Settings Vault Scope field's own typeahead. No q= filter --
+        always the full current snapshot; keystroke filtering is a
+        frontend concern."""
+        tags = self.list_tags()["tags"]
+        folders = vault_writer.list_known_kinds()
+        return {"tags": tags, "folders": folders}
+
+    def get_graph(self) -> dict:
+        """The Vault knowledge graph screen's own {"nodes", "edges"}
+        snapshot, zero new indexing/caching. Nodes reuse _summary()
+        verbatim; edges reuse the same case-insensitive stem-matching
+        rule forward-link resolution already applies, dangling/self
+        targets silently omitted. No pagination/filter params -- kind-
+        filtering and name search are the frontend's own client-side
+        concern over this one fetched snapshot."""
+        index = self.get_index()
+        nodes = [_summary(entry) for entry in index.values()]
+        edges = [
+            {"source": entry["stem"], "target": matched_stem}
+            for entry in index.values()
+            for matched_stem in _resolve_forward_link_stems(entry, index)
+        ]
+        return {"nodes": nodes, "edges": edges}
+
+    def get_note_detail(self, stem: str) -> dict | None:
+        """One note's frontmatter/tags/real body text plus its resolved
+        forward-link/backlink lists. None for an unknown stem. `body` is
+        read fresh from disk (the index's own entries never store it)."""
+        index = self.get_index()
+        entry = index.get(stem)
+        if entry is None:
+            return None
+        body = vault_writer.read_note(Path(entry["path"]))[1]
+        return {
+            "stem": entry["stem"], "title": _title_for(entry), "kind": _kind_for(entry),
+            "frontmatter": entry["frontmatter"], "tags": entry["tags"], "body": body,
+            "forward_links": _resolve_forward_links(entry, index),
+            "backlinks": _resolve_backlinks(entry, index),
+        }
+
+    def resolve_asset_path(self, stem: str, filename: str) -> Path | None:
+        """Resolves a real, co-located asset file (image, etc.) sitting
+        next to a note's own .md on disk -- a File note's own Obsidian-
+        style `![[slide-14.png]]` embeds resolve exactly this way: capture
+        writes the note AND its referenced images into the SAME folder.
+        None for an unknown stem, a filename that isn't a real file in
+        that EXACT folder, or (defense in depth against a crafted
+        `filename` path segment) one that would resolve outside the
+        note's own folder -- never serves an arbitrary vault path, only a
+        real sibling of a real, already-indexed note."""
+        index = self.get_index()
+        entry = index.get(stem)
+        if entry is None:
+            return None
+        note_dir = Path(entry["path"]).resolve().parent
+        candidate = (note_dir / filename).resolve()
+        if candidate.parent != note_dir or not candidate.is_file():
+            return None
+        return candidate
+
+    def search(self, query: str, limit: int = _DEFAULT_SEARCH_LIMIT) -> dict:
+        """Field-weighted BM25-style ranked search over every currently-
+        indexed note's title/tags/body (ADR-026). Body text is read
+        fresh from disk per candidate note; title/tags come directly
+        from the already-in-memory index. An empty results list for a
+        query matching nothing is an honest empty state, not a distinct
+        code path."""
+        query_tokens = _tokenize(query)
+        index = self.get_index()
+        entries = list(index.values())
+        if not query_tokens or not entries:
+            return {"query": query, "results": []}
+
+        body_by_stem = {entry["stem"]: vault_writer.read_note(Path(entry["path"]))[1] for entry in entries}
+        field_tokens_by_stem = {entry["stem"]: _field_tokens(entry, body_by_stem) for entry in entries}
+
+        scores: dict[str, float] = {stem: 0.0 for stem in field_tokens_by_stem}
+        for field, weight in _FIELD_WEIGHTS.items():
+            field_token_lists = {stem: tokens[field] for stem, tokens in field_tokens_by_stem.items()}
+            total_docs = len(field_token_lists)
+            avg_len = (sum(len(tokens) for tokens in field_token_lists.values()) / total_docs) or 1
+            for term in set(query_tokens):
+                doc_freq = sum(1 for tokens in field_token_lists.values() if term in tokens)
+                for stem, tokens in field_token_lists.items():
+                    scores[stem] += weight * _bm25_term_score(term, tokens, avg_len, doc_freq, total_docs)
+
+        ranked_stems = sorted(
+            (stem for stem, score in scores.items() if score > 0),
+            key=lambda stem: (-scores[stem], stem),
+        )[:limit]
+        results = [
+            {**_summary(index[stem]), "rank": rank, "score": round(scores[stem], 4)}
+            for rank, stem in enumerate(ranked_stems, start=1)
+        ]
+        return {"query": query, "results": results}

@@ -18,6 +18,17 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- refactor: cleaned up the last stray `business/vault_*.py` files.
+  Deleted 3 confirmed-dead one-off/retired scripts —
+  `vault_filing_methodology.py` (orphaned when the old LangGraph "Vault
+  Filing Expert" was retired), `vault_provisioning.py`, and
+  `vault_restructure.py` (both already zero-caller one-off migrations).
+  Folded the 4th, `vault_search.py` (browse/tag-filter/note-detail/
+  ranked-search/graph), into `VaultManager` the same way earlier
+  vault_*.py modules were — its one real caller
+  (`vault_search_router.py`) migrated, the module deleted. Verified
+  live: `/vault-search/*` (status/notes/note-detail/asset/search/tags/
+  scope-suggestions/graph) all still correct against real data.
 - refactor: `PipelineManager`'s own raw I/O fixed — new
   `data_access/pipelines.py` owns the real `pipelines/<id>.json` reads;
   `PipelineManager` itself holds zero raw file calls now, only
