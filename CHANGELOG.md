@@ -18,6 +18,41 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: `SkillManager`/`ToolManager` (`app/business/core/skills/`,
+  `app/business/core/tools/`) built as real Core entities. Skill content
+  (`SKILL.md`+`scripts/`) lives in the checked-in `Hermes-Provisioning/
+  skills/` template repo (`data_access/skills.py`); metadata (name,
+  description, Tool grouping, `deployed_to`, `mutates`, `origin`) lives
+  in the pre-existing Registry `Tools/<tool>/Skills/` tree
+  (`data_access/tools.py`), the same tree the Agents Map's Skills panel
+  already reads. `SkillManager` supports create/update/deploy/undeploy/
+  delete (fanning out to `app.hermes.skills.HermesSkills` per deployed
+  profile) and `sync_from_hermes()` — a cron-callable drift-catcher that
+  sweeps every real Hermes profile for skills under an already-known
+  category and files a genuinely new one under the catch-all "jarvis"
+  Tool. `ToolManager` is a generic create/update/delete gateway; Tools
+  are user-creatable, not a fixed set.
+- fix: reconciled real drift between `Hermes-Provisioning/skills/` and
+  live Hermes state across all 25 real profiles, found during the
+  pre-build sweep above — 2 skills missing `SKILL.md` entirely, 9 stale
+  script/doc files, and 2 real skills (`pricing/azure-cost-calculator`,
+  `sales/macc-forecast-generator`) that existed live under categories
+  never checked into the repo at all. Deleted 2 dead Registry catalog
+  entries (`outlook/gather_emails`, `web/web-search`) backing no real
+  skill anywhere.
+- fix: `ProviderManager._seed_state()` was reading its real .env-backed
+  seed values (`compass_api_key`, `anthropic_api_key`, etc.) directly
+  from `app.config.settings`, bypassing `data_access` — moved into a new
+  `data_access/providers.py::seed_defaults()`; the Manager now holds no
+  raw settings/file access at all.
+- refactor: second stray-file pass over `app/business/`. Deleted
+  `demo_taxonomy.py` (old ADR-041 taxonomy fixture data, zero mentions
+  anywhere), `tag_backfill.py` (one-off migration, only ever referenced
+  as a naming precedent in other docstrings), and the whole
+  `business/langgraph/` (a 2026-08-20 LangGraph proof-of-concept,
+  already flagged dead in an earlier pass but never actually deleted)
+  and `business/pipelines/` (a 0-byte empty package, superseded by
+  `business/core/pipelines/`) packages.
 - feat: `ProviderManager` (`app/business/core/provider/`) built as a
   real Core entity — the sole gateway onto Second Brain's own known LLM
   provider credentials (Compass, Anthropic Claude), kept for a
