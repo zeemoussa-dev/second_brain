@@ -18,6 +18,37 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- refactor: `agents_map_adapter.py`'s own hand-rolled real-agent
+  composition (a second, parallel derivation of type/section/
+  depends_on/is_background_agent straight from the Registry) is now
+  delegated to `AgentManager` — new shared
+  `business/core/agents/agent_presentation.py` (`to_summary_dict`/
+  `to_detail_dict`) replaces the two independent copies of this same
+  dict-shaping that used to live separately in `agents_router.py` and
+  `agents_map_adapter.py`. `list_agent_summaries()`/`get_agent_detail()`
+  now exclude Hub agents too (same reasoning as the map — a Hub isn't a
+  real @mention/routing target), fixing the same class of duplication
+  for Cockpit's own moderator/mention-resolution system
+  (`business/cockpit/chat_turn.py`/`moderator.py`) that `GET /agents`
+  was already fixed for. Deleted the now-fully-dead per-field helpers
+  this exposed (`_is_background_agent`/`_agent_display_name`/
+  `_section_id_by_name`/`_agent_section`/`_agent_section_id`/
+  `_agent_type`/`_agent_depends_on`/`_skill_to_capability`); Pipeline
+  composition (`_visual`/`_short_excerpt`/`_pipeline_to_summary`) is
+  unchanged, still this file's own concern.
+- feat: `AgentManager.get_expert_agents()` — every real `type: "expert"`
+  Agent. `moderator.py`'s `match_customer_expert`/
+  `suggest_expert_for_question`/`match_domain_experts` (all three "which
+  real Expert" scans) call it directly instead of pulling the full
+  agent+Pipeline roster and filtering `type != "expert"` themselves;
+  `route_question` (needs the full brought-in roster, which can include
+  non-Expert types) correctly stayed on the full roster. Verified live
+  against real Registry/Hermes data: 15 real experts (0 hubs),
+  `suggest_expert_for_question` correctly matches a real Azure-costing
+  question to `azure-calculator`, `chat_turn._resolve_mention`/
+  `_agent_name` resolve correctly (exact id, case-insensitive name,
+  honest `None` on no match), `get_agent_detail` correct for a real
+  agent/a real Pipeline/an unknown id.
 - fix: the Agents Map's Hub-agent duplication (a Hub rendering both as
   its Section's own SectionHub center node AND an ordinary ring/fan
   dot) is now fixed on the backend, not the frontend. Added

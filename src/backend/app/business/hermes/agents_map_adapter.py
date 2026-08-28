@@ -44,7 +44,8 @@ used to live in this file and onto the real `data/` tree
 (`app/data_access/registry/loader.py`'s `RegistryLoader`): every agent
 added used to mean a hand-edit here; now it means a real file under
 `<vault>/.second-brain/data/Sections/<Section>/Agents/<agent>/
-Agent-config.json`. An agent not yet present in the Registry (not yet
+Agent.json` (2026-08-28: one merged file, was Agent-config.json +
+Agent-visual.json). An agent not yet present in the Registry (not yet
 migrated, or the Registry hasn't finished booting) falls through to the
 exact same defaults the old dicts' own `.get(agent_id, default)` calls
 always used -- worker / Data Gatherer / no deps / not background / the
@@ -53,19 +54,34 @@ for anything not yet in the tree. `agent_visual_registry`/`_visual`
 below is UNCHANGED -- icon/color stays a separately CRUD-editable store
 (VisualPicker's own live edit path), not yet folded into this same
 push/pull loop.
+
+**2026-08-28:** `list_agent_summaries`/`get_agent_detail`'s real-agent
+composition (everything this file used to derive by hand from the
+Registry -- type/section/depends_on/is_background_agent/display_name)
+now delegates to `AgentManager` (`business/core/agents/agent_manager.py`)
+instead of re-deriving it here a second time; `_registry_agent` below
+survives only for `list_agent_skill_summaries`' own skill-id lookup,
+which has no AgentManager equivalent yet. Pipelines stay this file's own
+concern (AgentManager deliberately doesn't cover them), so `_visual`/
+`_short_excerpt`/`_pipeline_to_summary` are unchanged.
 """
 from __future__ import annotations
 
 import re
 
-from app.business import agent_visual_registry, section_registry
-from app.business.hermes.client import HermesAgent, HermesSkill, get_client
+from app.business import agent_visual_registry
+from app.business.core.agents.agent_manager import AgentManager
+from app.business.core.agents.agent_presentation import to_detail_dict, to_summary_dict
+from app.business.core.pipelines.pipeline_manager import PipelineManager
+from app.business.core.sections.section_manager import SectionManager
+from app.business.hermes.client import get_client
 from app.data_access.registry import loader as registry_loader
 from app.data_access.registry.schemas import Agent as RegistryAgent
-from app.data_access.system.pipelines import registry as pipeline_registry
 
 _WORKING_MODE = "autonomous"
-_SECTION_NAME = "Data Gatherer"
+_section_manager = SectionManager()
+_pipeline_manager = PipelineManager()
+_agent_manager = AgentManager()
 
 
 def _registry_agent(agent_id: str) -> RegistryAgent | None:
@@ -77,55 +93,6 @@ def _registry_agent(agent_id: str) -> RegistryAgent | None:
     if registry is None:
         return None
     return registry.agents.get(agent_id)
-
-
-def _is_background_agent(agent_id: str) -> bool:
-    agent = _registry_agent(agent_id)
-    return agent.config.is_background_agent if agent is not None else False
-
-
-def _agent_display_name(agent_id: str, fallback: str) -> str:
-    agent = _registry_agent(agent_id)
-    return agent.config.name if agent is not None else fallback
-
-
-def _section_id_by_name(name: str) -> str:
-    """A real Section's own id, resolved by name via section_registry
-    (ADR-014) -- never a bare string literal, so a rename in Settings can
-    never silently desync this mapping."""
-    for section in section_registry.list_sections():
-        if section["name"] == name:
-            return section["id"]
-    # First call before section_registry has ever seeded/created this name
-    # -- create_section is idempotent-collapse-on-collision, always safe.
-    return section_registry.create_section(name)["id"]
-
-
-def _agent_section(agent_id: str) -> tuple[str, str]:
-    """(section_id, section_name) -- from the Registry when this agent has
-    been migrated into the data/ tree, else the same Data Gatherer default
-    the old _AGENT_SECTION dict always fell back to for an unlisted id."""
-    registry_entry = _registry_agent(agent_id)
-    if registry_entry is not None and registry_entry.section_id is not None:
-        registry = registry_loader.get_registry()
-        section = registry.sections.get(registry_entry.section_id) if registry else None
-        if section is not None:
-            return section.id, section.name
-    return _section_id_by_name(_SECTION_NAME), _SECTION_NAME
-
-
-def _agent_section_id(agent_id: str) -> str:
-    return _agent_section(agent_id)[0]
-
-
-def _agent_type(agent_id: str) -> str:
-    agent = _registry_agent(agent_id)
-    return agent.config.type if agent is not None else "worker"
-
-
-def _agent_depends_on(agent_id: str) -> list[str]:
-    agent = _registry_agent(agent_id)
-    return agent.config.depends_on if agent is not None else []
 
 
 def _short_excerpt(text: str, max_len: int = 140) -> str:
@@ -160,44 +127,6 @@ def _visual(agent_id: str, default_icon: str) -> tuple[str, str | None]:
 def update_agent_visual(agent_id: str, icon: str | None, color: str | None) -> dict | None:
     agent_visual_registry.set_agent_visual(agent_id, icon=icon, color=color)
     return get_agent_detail(agent_id)
-
-
-def _to_summary(agent: HermesAgent, section_id: str) -> dict:
-    icon, color = _visual(agent.id, agent.icon)
-    return {
-        "id": agent.id,
-        "name": _agent_display_name(agent.id, agent.name),
-        "type": _agent_type(agent.id),
-        "section_id": section_id,
-        # False for every real Hermes agent EXCEPT the ones in
-        # _BACKGROUND_AGENTS above (2026-08-22, corrected same day --
-        # operator: "We Hided all Agents Panel in UI and Kept it only
-        # live for Experts Bring it back for all agents"). The original
-        # "specialists run as relayed workers, so they're background" idea
-        # had a real side effect nobody wanted: layoutAgents.ts's own
-        # addressableAgents filter excludes is_background_agent entries
-        # from the map ring ENTIRELY, so opp-manager/notes-manager/
-        # files-manager weren't just visually de-emphasized, they were
-        # unclickable -- no way to ever open their own AgentDetailPanel.
-        # Primary opting back into that same exclusion (2026-08-24) is a
-        # deliberate, different reason: it now has its own dedicated
-        # Chat tab, not accidental collateral from a shared "specialists
-        # are background" rule.
-        "is_background_agent": _is_background_agent(agent.id),
-        "icon": icon,
-        "color": color,
-        # SHORT excerpt for the map's own hover card -- operator, 2026-08-22:
-        # "it should be description not the full prompt". The full text is
-        # `prompt` on AgentDetail (Settings tab / Overview), a separate field.
-        "description": agent.short_description or None,
-        "working_mode": _WORKING_MODE,
-        "depends_on": _agent_depends_on(agent.id),
-        "branch_target_agent_id": None,
-    }
-
-
-def _skill_to_capability(skill: HermesSkill) -> dict:
-    return {"id": skill.id, "label": skill.name, "kind": "skill", "tool": skill.category}
 
 
 def _registry_skill_catalog() -> dict[str, dict]:
@@ -241,7 +170,7 @@ def _pipeline_to_summary(pipeline) -> dict:
         "id": pipeline.id,
         "name": pipeline.name,
         "type": "worker",
-        "section_id": _section_id_by_name(pipeline.section),
+        "section_id": pipeline.section_id,
         "is_background_agent": False,
         "icon": icon,
         "color": color,
@@ -256,15 +185,29 @@ def list_pipeline_refs() -> list[dict]:
     """Every real Pipeline's own {id, name} -- lets the frontend discover
     which /agents entries need their own /jobs fetch+splice, without
     guessing from AgentSummary's own icon/type fields."""
-    return [{"id": p.id, "name": p.name} for p in pipeline_registry.list_pipelines()]
+    return [{"id": p.id, "name": p.name} for p in _pipeline_manager.get_all()]
 
 
 def list_agent_summaries() -> list[dict]:
-    summaries = [
-        _to_summary(agent, _agent_section_id(agent.id)) for agent in get_client().profiles.get_all()
-    ]
-    summaries.extend(_pipeline_to_summary(p) for p in pipeline_registry.list_pipelines())
-    return summaries
+    """Every real, addressable Agent (via AgentManager, same composition
+    `agents_router.py`'s own `GET /agents` uses) plus every Pipeline, in
+    one flat roster -- Cockpit's own @mention resolution
+    (`business/cockpit/chat_turn.py`) and moderator routing
+    (`business/cockpit/moderator.py`) need both kinds together (a
+    question can route to a Pipeline just like any worker). Hub agents
+    excluded (2026-08-28), same reasoning as the map: a Hub isn't a real
+    addressable expert/worker, it's the Section's own entry point, so it
+    was never a real candidate for @mention or routing either."""
+    return [to_summary_dict(a) for a in _agent_manager.get_all(exclude_types=["hub"])] + list_pipeline_summaries()
+
+
+def list_pipeline_summaries() -> list[dict]:
+    """Just the Pipeline-shaped half of list_agent_summaries() above --
+    AgentManager (business/core/agents/) does NOT cover Pipelines (a
+    separate concept, deliberately not folded in yet), so
+    agents_router.py composes real agents via AgentManager plus this for
+    the map's own Pipeline nodes."""
+    return [_pipeline_to_summary(p) for p in _pipeline_manager.get_all()]
 
 
 def get_pipeline_job_tree(pipeline_id: str) -> list[dict] | None:
@@ -272,23 +215,22 @@ def get_pipeline_job_tree(pipeline_id: str) -> list[dict] | None:
     referencing sibling Step ids directly (no pipeline-id prefix needed --
     scoped to one Pipeline's own job-tree fetch, same as the original
     email-capture-pipeline Job ids were bare)."""
-    pipeline = pipeline_registry.get_pipeline(pipeline_id)
+    pipeline = _pipeline_manager.get_by_id(pipeline_id)
     if pipeline is None:
         return None
-    section_id = _section_id_by_name(pipeline.section)
     return [
         {
             "id": step.id, "name": step.name, "depends_on": step.depends_on,
-            "section_id": section_id, "type": step.type,
+            "section_id": pipeline.section_id, "type": step.type,
         }
         for step in pipeline.steps
     ]
 
 
 def get_agent_detail(agent_id: str) -> dict | None:
-    pipeline = pipeline_registry.get_pipeline(agent_id)
+    pipeline = _pipeline_manager.get_by_id(agent_id)
     if pipeline is not None:
-        section_id = _section_id_by_name(pipeline.section)
+        section = _section_manager.get_by_id(pipeline.section_id)
         icon, color = _visual(pipeline.id, "conveyor_belt")
         return {
             "id": pipeline.id,
@@ -296,8 +238,8 @@ def get_agent_detail(agent_id: str) -> dict | None:
             "type": "worker",
             "settings": [],
             "capabilities": [],
-            "section_id": section_id,
-            "section_name": pipeline.section,
+            "section_id": pipeline.section_id,
+            "section_name": section.name if section is not None else pipeline.section_id,
             "provider_id": None,
             "provider_name": None,
             "provider_available": True,
@@ -311,32 +253,10 @@ def get_agent_detail(agent_id: str) -> dict | None:
             "prompt": pipeline.description or None,
             "guardrails": "",
         }
-    agent = get_client().profiles.find_by_id(agent_id)
+    agent = _agent_manager.get_by_id(agent_id)
     if agent is None:
         return None
-    section_id, section_name = _agent_section(agent.id)
-    icon, color = _visual(agent.id, agent.icon)
-    return {
-        "id": agent.id,
-        "name": _agent_display_name(agent.id, agent.name),
-        "type": _agent_type(agent.id),
-        "settings": [],
-        "capabilities": [_skill_to_capability(s) for s in agent.skills],
-        "section_id": section_id,
-        "section_name": section_name,
-        "provider_id": agent.provider or None,
-        "provider_name": agent.provider or None,
-        "provider_available": True,
-        "keywords": [],
-        "working_mode": _WORKING_MODE,
-        "scope": [],
-        "is_background_agent": _is_background_agent(agent.id),
-        "icon": icon,
-        "color": color,
-        "description": agent.short_description or None,
-        "prompt": agent.description or None,
-        "guardrails": "",
-    }
+    return to_detail_dict(agent)
 
 
 def list_all_skill_summaries() -> list[dict]:
@@ -344,7 +264,7 @@ def list_all_skill_summaries() -> list[dict]:
 
 
 def list_agent_skill_summaries(agent_id: str) -> list[dict] | None:
-    """The agent's own real `skill_ids` (Agent-config.json), resolved
+    """The agent's own real `skill_ids` (Agent.json), resolved
     against the curated Registry catalog -- 404 (`None`) only when the
     agent doesn't exist in Hermes at all; an agent that exists but has no
     distinctive Skill of its own (most of them, honestly) gets `[]`, not

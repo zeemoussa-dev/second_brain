@@ -33,9 +33,14 @@ from __future__ import annotations
 
 import re
 
-from app.business import section_registry, vault_indexing
+from app.business import vault_indexing
+from app.business.core.agents.agent_manager import AgentManager
+from app.business.core.sections.section_manager import SectionManager
 from app.business.hermes import agents_map_adapter
 from app.data_access import vault_writer
+
+_section_manager = SectionManager()
+_agent_manager = AgentManager()
 
 _CUSTOMER_SECTION_ID = vault_writer.tag_slug("Customer")
 
@@ -100,8 +105,12 @@ def match_customer_expert(subject_note_stem: str) -> str | None:
     if not customer:
         return None
     candidate_agent_id = f"{vault_writer.tag_slug(customer)}-expert"
-    for summary in agents_map_adapter.list_agent_summaries():
-        if summary["id"] == candidate_agent_id and summary["section_id"] == _CUSTOMER_SECTION_ID:
+    # A real customer Expert is always `type: "expert"` by this app's own
+    # naming convention -- AgentManager.get_expert_agents() (2026-08-28)
+    # scopes this lookup to exactly that population instead of scanning
+    # the full agent+Pipeline roster for one id.
+    for agent in _agent_manager.get_expert_agents():
+        if agent.id == candidate_agent_id and agent.section_id == _CUSTOMER_SECTION_ID:
             return candidate_agent_id
     return None
 
@@ -128,10 +137,8 @@ def match_customer_fallback_agent(subject_note_stem: str) -> str | None:
     entry = vault_indexing.get_index().get(subject_note_stem)
     if entry is None or not _subject_customer(entry):
         return None
-    section = next(
-        (s for s in section_registry.list_sections() if s["id"] == _CUSTOMER_SECTION_ID), None,
-    )
-    return (section or {}).get("fallback_agent_id") or None
+    section = _section_manager.get_by_id(_CUSTOMER_SECTION_ID)
+    return section.fallback_agent_id if section is not None else None
 
 
 def route_question(question_text: str, candidate_agent_ids: list[str]) -> dict:
@@ -193,14 +200,14 @@ def suggest_expert_for_question(question_text: str, exclude_agent_ids: list[str]
         return None
     best_agent_id = None
     best_score = 0
-    for summary in agents_map_adapter.list_agent_summaries():
-        if summary["type"] != "expert" or summary["id"] in exclude_agent_ids:
+    for agent in _agent_manager.get_expert_agents():
+        if agent.id in exclude_agent_ids:
             continue
-        agent_tokens = _tokenize(f"{summary['name']} {summary['description'] or ''}")
+        agent_tokens = _tokenize(f"{agent.name} {agent.description or ''}")
         overlap = len(question_tokens & agent_tokens)
         if overlap > best_score:
             best_score = overlap
-            best_agent_id = summary["id"]
+            best_agent_id = agent.id
     return best_agent_id
 
 
@@ -214,10 +221,8 @@ def match_domain_experts(subject_note_stem: str) -> list[str]:
     if not subject_tokens:
         return []
     matched_agent_ids: list[str] = []
-    for summary in agents_map_adapter.list_agent_summaries():
-        if summary["type"] != "expert":
-            continue
-        agent_tokens = _tokenize(f"{summary['name']} {summary['description'] or ''}")
+    for agent in _agent_manager.get_expert_agents():
+        agent_tokens = _tokenize(f"{agent.name} {agent.description or ''}")
         if subject_tokens & agent_tokens:
-            matched_agent_ids.append(summary["id"])
+            matched_agent_ids.append(agent.id)
     return matched_agent_ids
