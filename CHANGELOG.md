@@ -18,6 +18,36 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: `ProviderManager` (`app/business/core/provider/`) built as a
+  real Core entity — the sole gateway onto Second Brain's own known LLM
+  provider credentials (Compass, Anthropic Claude), kept for a
+  not-yet-built future use (provisioning a brand-new Hermes install),
+  not for live per-agent routing (Hermes owns that directly now).
+  Folds in `provider_registry.py`'s real credential/endpoint/model data
+  while dropping its dead per-agent assignment tracking entirely — that
+  mechanism silently deleted every real assignment on every read
+  because it reconciled against `agent_registry.py`, the retired
+  pre-Hermes agent model (empty since 2026-08-22). Also found: `/providers`
+  has had no backend route since the Hermes-pivot cleanup — the real
+  frontend Providers panel has been calling a 404 in production.
+  Deleted `agent_registry.py` and `provider_registry.py` outright
+  (fully superseded), and the dead frontend `ProvidersCard.tsx`/
+  `SettingsProvidersPage.tsx`/`/settings/providers` route+nav entry.
+- refactor: `system_health.py` moved to `business/logic/`, sourcing
+  real data from `ProviderManager` instead of the two retired
+  registries above. Dropped `disabled_agents` entirely — no real
+  equivalent exists in the Hermes world (every real Hermes agent has
+  some real model configured by construction). Also cleaned up orphaned
+  `vault_writer.py` state functions found in passing:
+  `load_providers_state`/`save_providers_state`/
+  `load_agents_registry_state`/`save_agents_registry_state` (dead once
+  their only callers were removed) and `load_sections_state`/
+  `save_sections_state` (already-orphaned leftovers from the earlier
+  SectionManager retrofit). Verified live: `GET /system-health` returns
+  real Provider data, a full scratch Provider CRUD lifecycle via
+  `ProviderManager`, the System Health and Settings pages render
+  correctly with the dead UI removed, zero real network requests to
+  `/providers` anywhere in the frontend.
 - refactor: cleaned up the last stray `business/vault_*.py` files.
   Deleted 3 confirmed-dead one-off/retired scripts —
   `vault_filing_methodology.py` (orphaned when the old LangGraph "Vault

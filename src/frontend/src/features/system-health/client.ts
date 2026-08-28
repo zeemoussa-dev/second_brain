@@ -8,19 +8,10 @@ export interface SystemHealthProvider {
   credential_set: boolean;
   is_default: boolean;
   has_real_client: boolean;
-  agent_ids: string[];
-  agent_names: string[];
-}
-
-export interface SystemHealthDisabledAgent {
-  agent_id: string;
-  agent_name: string;
-  provider_name: string | null;
 }
 
 export interface SystemHealthResponse {
   providers: SystemHealthProvider[];
-  disabled_agents: SystemHealthDisabledAgent[];
 }
 
 export function fetchSystemHealth(): Promise<SystemHealthResponse> {

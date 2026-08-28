@@ -72,14 +72,11 @@ _PROCESSED_EMAILS_FILE = "processed_email_ids.json"
 _CONVERSATIONS_FILE = "conversation_index.json"
 _LAST_CAPTURE_RUN_FILE = "last_capture_run.json"
 _AGENT_HISTORY_FILE = "agent_communication_history.json"
-_AGENT_SECTIONS_FILE = "agent_sections.json"
-_AGENT_PROVIDERS_FILE = "agent_providers.json"
 _AGENT_MEMORY_FILE = "agent_memory.json"
 _AGENT_SKILLS_FILE = "agent_skills.json"
 _AGENT_KEYWORDS_FILE = "agent_keywords.json"
 _AGENT_WORKING_MODES_FILE = "agent_working_modes.json"
 _AGENT_PENDING_APPROVALS_FILE = "agent_pending_approvals.json"
-_AGENTS_REGISTRY_FILE = "agents_registry.json"
 _AGENT_KNOWLEDGE_GAPS_FILE = "agent_knowledge_gaps.json"
 _COCKPIT_THREADS_FILE = "cockpit_threads.json"
 _COCKPIT_CHAT_FILE = "cockpit_chat.json"
@@ -1547,48 +1544,6 @@ def load_agent_history(agent_id: str) -> list[dict]:
     return _load_agent_history_index().get(agent_id, [])
 
 
-def _sections_state_path():
-    state_dir = settings.second_brain_data_path
-    state_dir.mkdir(parents=True, exist_ok=True)
-    return state_dir / _AGENT_SECTIONS_FILE
-
-
-def load_sections_state() -> dict | None:
-    """Pure I/O — returns None if agent_sections.json doesn't exist yet
-    (no default content is computed here, per ADR-003; the non-trivial
-    starting-5-sections default is a business-layer decision, owned by
-    app/business/section_registry.py, ADR-014 point 1)."""
-    path = _sections_state_path()
-    if not path.exists():
-        return None
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def save_sections_state(state: dict) -> None:
-    path = _sections_state_path()
-    path.write_text(json.dumps(state, indent=2), encoding="utf-8")
-
-
-def _providers_state_path():
-    state_dir = settings.second_brain_data_path
-    state_dir.mkdir(parents=True, exist_ok=True)
-    return state_dir / _AGENT_PROVIDERS_FILE
-
-
-def load_providers_state() -> dict | None:
-    """Pure I/O — returns None if agent_providers.json doesn't exist yet
-    (no default content is computed here, per ADR-003; the non-trivial
-    pre-seeded Compass entry is a business-layer decision, owned by
-    app/business/provider_registry.py, ADR-014 point 1)."""
-    path = _providers_state_path()
-    if not path.exists():
-        return None
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def save_providers_state(state: dict) -> None:
-    path = _providers_state_path()
-    path.write_text(json.dumps(state, indent=2), encoding="utf-8")
 
 
 def _agent_memory_path():
@@ -1649,29 +1604,6 @@ def load_skills_state() -> dict | None:
 
 def save_skills_state(state: dict) -> None:
     path = _skills_state_path()
-    path.write_text(json.dumps(state, indent=2), encoding="utf-8")
-
-
-def _agents_registry_state_path():
-    state_dir = settings.second_brain_data_path
-    state_dir.mkdir(parents=True, exist_ok=True)
-    return state_dir / _AGENTS_REGISTRY_FILE
-
-
-def load_agents_registry_state() -> dict | None:
-    """Pure I/O — returns None if agents_registry.json doesn't exist
-    yet (no default content is computed here, per ADR-003; the
-    {"created_agents": {}} seed shape and the seed-plus-persisted
-    merge with _SEED_AGENTS are business-layer decisions owned by
-    app/business/agent_registry.py, ADR-030)."""
-    path = _agents_registry_state_path()
-    if not path.exists():
-        return None
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def save_agents_registry_state(state: dict) -> None:
-    path = _agents_registry_state_path()
     path.write_text(json.dumps(state, indent=2), encoding="utf-8")
 
 

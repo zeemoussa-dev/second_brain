@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.business import system_health
+from app.business.logic import system_health
 
 router = APIRouter(prefix="/system-health")
 

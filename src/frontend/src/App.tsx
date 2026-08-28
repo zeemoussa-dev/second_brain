@@ -11,7 +11,6 @@ import { MyDayApprovalsPage } from './pages/MyDayApprovalsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { SettingsSystemPage } from './pages/SettingsSystemPage';
 import { SettingsSectionsPage } from './pages/SettingsSectionsPage';
-import { SettingsProvidersPage } from './pages/SettingsProvidersPage';
 import { SettingsVaultPage } from './pages/SettingsVaultPage';
 import { SettingsVaultEntitiesPage } from './pages/SettingsVaultEntitiesPage';
 import { SettingsVaultTemplatesPage } from './pages/SettingsVaultTemplatesPage';
@@ -43,7 +42,6 @@ function App() {
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/system" element={<SettingsSystemPage />} />
           <Route path="/settings/sections" element={<SettingsSectionsPage />} />
-          <Route path="/settings/providers" element={<SettingsProvidersPage />} />
           <Route path="/settings/vault" element={<SettingsVaultPage />} />
           <Route path="/settings/vault/entities" element={<SettingsVaultEntitiesPage />} />
           <Route path="/settings/vault/templates" element={<SettingsVaultTemplatesPage />} />

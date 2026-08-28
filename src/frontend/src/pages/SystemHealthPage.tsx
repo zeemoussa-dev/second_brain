@@ -6,8 +6,6 @@ import {
 import { fetchHermesStatus, type HermesServerStatus } from '../features/hermes-ops/client';
 
 function AppStatusTab({ health, onRefresh }: { health: SystemHealthResponse; onRefresh: () => void }) {
-  const hasIssues = health.disabled_agents.length > 0;
-
   return (
     <>
       <p className="text-muted" style={{ fontSize: 'var(--font-size-sm)' }}>
@@ -28,45 +26,16 @@ function AppStatusTab({ health, onRefresh }: { health: SystemHealthResponse; onR
       </p>
 
       <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
-        <h2>Health Issues</h2>
-        {hasIssues ? (
-          <div className="item-list">
-            {health.disabled_agents.map((agent) => (
-              <div className="item-row" key={agent.agent_id}>
-                <div className="item-row-main">
-                  <span className="item-row-title">
-                    {agent.agent_name} <span className="badge badge-danger">Disabled</span>
-                  </span>
-                  <span className="item-row-meta">
-                    Selected Provider ({agent.provider_name ?? 'none'}) has no
-                    real client configured yet.
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="empty-state">
-            <div className="empty-state-icon">&#10003;</div>
-            <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)' }}>
-              No Health Issues
-            </p>
-            <p style={{ margin: 'var(--space-1) 0 0' }}>
-              Every agent's selected Provider has a real client configured.
-            </p>
-          </div>
-        )}
-      </div>
-
-      <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
         <h2>Providers</h2>
         <p
           className="text-muted"
           style={{ fontSize: 'var(--font-size-sm)', marginTop: 'calc(-1 * var(--space-3))' }}
         >
-          Rolled up per distinct Provider, from each agent's own selection.
-          "Available" means a real client is configured for it — not that it
-          has been verified reachable right now.
+          The LLM provider credentials Second Brain knows about — kept for
+          provisioning a Hermes install, not for live per-agent routing
+          (Hermes owns that directly now). "Available" means a real client
+          is configured for it — not that it has been verified reachable
+          right now.
         </p>
         <div className="item-list">
           {health.providers.map((provider) => (
@@ -81,9 +50,8 @@ function AppStatusTab({ health, onRefresh }: { health: SystemHealthResponse; onR
                   )}
                 </span>
                 <span className="item-row-meta">
-                  {provider.agent_names.length > 0
-                    ? `Selected by ${provider.agent_names.length} agent(s) (${provider.agent_names.join(', ')})`
-                    : 'Not currently selected by any agent'}
+                  {provider.endpoint} · {provider.model} ·{' '}
+                  {provider.credential_set ? 'credential set' : 'no credential set'}
                 </span>
               </div>
             </div>
