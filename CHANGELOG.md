@@ -18,6 +18,42 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: real per-customer Indexes (`Adnoc`, `Masdar`, `TAQA`) created and
+  linked to their respective Customer Expert agents via
+  `preferred_index_ids`; each agent given a "say you don't know rather
+  than guessing" guardrail and a customer-tag-only Vault Scope. Verified
+  live against all 3 real agents via direct `hermes chat` calls.
+- fix: Vault Scope + Guardrails agent editing (`AgentDetailPanel.tsx`/
+  `CreateAgentWizardModal.tsx`) had never actually worked for any real
+  agent — two stacked bugs. `PATCH /agents/{agent_id}`'s request body
+  model only declared `icon`/`color`, so `scope`/`guardrails`/
+  `section_id`/`is_background_agent` were silently dropped by FastAPI
+  (always 200 OK, never an error). Separately, `AgentManager._to_agent()`
+  hardcoded `guardrails=None`/`scope={}` on every read regardless of real
+  SOUL.md content. Fixed both: `agent_manager.py` gained
+  `_split_soul_sections()` (real parsing, the exact inverse of the
+  existing `_soul_text()` composer); `agents_router.py`'s body model
+  renamed `AgentUpdateBody` and extended with the real, already-backed
+  fields, plus a new `_classify_scope()` that splits the frontend's flat
+  scope list back into `{folders, tags}` by real membership against the
+  live vault's own tag/folder snapshot. Verified live via disposable
+  scratch agents at both the Manager layer and the real HTTP route.
+  `POST /agents` (real Agent creation) is still a confirmed, separate,
+  unfixed 404 — out of scope for this pass.
+- design: `html-prototype/first-run-onboarding.html` — new prototype screen
+  for REQ-SB-84's one UI-facing part (Fresh-Machine Provisioning's
+  first-run onboarding wizard). Collects only the vault path (the one
+  Settings field with no default/auto-seed path); shows Providers
+  (Compass, Anthropic Claude — auto-seeded from required `.env` settings)
+  and Sections (the real starting 6) read-only rather than as forms, since
+  both already auto-seed in code and provider-credential collection is the
+  provisioning script's job per the requirement text, not the frontend's;
+  adds a boot-stage checklist step matching `registry/loader.py`'s real
+  5-stage cold-boot order. `html-prototype/index.html` updated with a new
+  catalog card linking it. Flagged in `REVIEW-QUEUE.md` for human browser
+  sign-off (designer always flags) — pending approval before `/spec` runs
+  on REQ-SB-84.
+
 - feat: `SkillManager`/`ToolManager` (`app/business/core/skills/`,
   `app/business/core/tools/`) built as real Core entities. Skill content
   (`SKILL.md`+`scripts/`) lives in the checked-in `Hermes-Provisioning/

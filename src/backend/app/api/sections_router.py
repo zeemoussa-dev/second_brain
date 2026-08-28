@@ -28,7 +28,7 @@ class SectionUpdateBody(BaseModel):
     # Each field: omitted (key absent from the JSON body, the default
     # None) = leave unchanged; for icon/color/subtitle, "" (explicit
     # empty string) = clear the value back to unset. Mirrors
-    # AgentVisualUpdateBody's own convention (agents_router.py). `folders`
+    # AgentUpdateBody's own convention (agents_router.py). `folders`
     # is a list, not a string -- omitted (None) = leave unchanged, any
     # real list (including []) replaces it wholesale, no empty-string
     # sentinel needed.

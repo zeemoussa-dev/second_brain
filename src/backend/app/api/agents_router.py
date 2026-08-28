@@ -6,12 +6,22 @@ own chat/create/action-trigger machinery, none of which has a real
 Hermes-side counterpart yet). Same URL surface the frontend already calls
 (agentsApiClient.ts), so no frontend rewiring is needed for list/detail.
 
-Mostly read-only -- no create/action-trigger/job/knowledge-gap endpoints
-(AgentDetailPanel.tsx shows those tabs disabled for a Hermes-sourced agent
-rather than this router faking support for them). Real exceptions:
-icon/color (PATCH, Visual tab, 2026-08-22) -- genuinely Second-Brain-owned
-presentation data (agent_visual_registry.py, untouched from before this
-retrofit), never written back to Hermes; and Chat (POST .../chat,
+No create/action-trigger/job/knowledge-gap endpoints (AgentDetailPanel.tsx
+shows those tabs disabled for a Hermes-sourced agent rather than this
+router faking support for them) -- POST /agents (real Agent creation)
+does not exist yet either, a separate, real gap CreateAgentWizardModal.tsx
+already assumes is there (confirmed live, 2026-08-28: it 404s). PATCH
+DOES cover real, structural fields now, not just icon/color -- found
+live the same day that AgentDetailPanel.tsx's own Vault Scope/Guardrails/
+Section editing had been calling this route with `scope`/`guardrails`/
+`section_id`/`is_background_agent` in its body all along, silently
+dropped because this router's own body model never declared them
+(FastAPI/Pydantic ignores unknown fields rather than erroring) -- so
+AgentManager, which already fully supported all of these, never once
+saw a real submission. Real exceptions: icon/color (PATCH, Visual tab,
+2026-08-22) -- genuinely Second-Brain-owned presentation data
+(agent_visual_registry.py, untouched from before this retrofit), never
+written back to Hermes; and Chat (POST .../chat,
 2026-08-23; POST .../chat/reset, 2026-08-24) -- the pre-existing per-agent
 Chat tab in AgentDetailPanel.tsx was calling this route already, but it
 had never been implemented against Hermes; wired to the real Hermes
@@ -60,17 +70,57 @@ from pydantic import BaseModel
 
 from app.business.core.agents.agent_manager import AgentManager
 from app.business.core.agents.agent_presentation import to_detail_dict, to_summary_dict
+from app.business.core.vault.vault_manager import VaultManager
 from app.business.hermes import agents_map_adapter, chat_sessions
 from app.business.hermes.client import HermesUnavailableError, get_client
 from app.business.logic import agent_chat_stream
 
+_vault_manager = VaultManager()
 
-class AgentVisualUpdateBody(BaseModel):
+
+def _classify_scope(entries: list[str]) -> dict:
+    """Splits the frontend's flat Vault Scope list back into
+    {folders, tags} against the REAL current vault snapshot (same source
+    the Vault Scope field's own typeahead uses, vault_search_router.py's
+    /scope-suggestions) -- both folders and tags can contain "/" in this
+    app's real data (e.g. "Work/Customers" vs "customer/masdar"), so a
+    syntactic guess isn't reliable; a real membership check is. An entry
+    matching neither (e.g. the vault has no notes under it yet) defaults
+    to folder, the more common case, rather than being silently dropped."""
+    suggestions = _vault_manager.list_scope_suggestions()
+    known_tags = {t["tag"] for t in suggestions["tags"]}
+    known_folders = set(suggestions["folders"])
+    folders: list[str] = []
+    tags: list[str] = []
+    for raw in entries:
+        entry = raw.strip()
+        if not entry:
+            continue
+        if entry in known_tags and entry not in known_folders:
+            tags.append(entry)
+        else:
+            folders.append(entry)
+    return {"folders": folders, "tags": tags}
+
+
+class AgentUpdateBody(BaseModel):
     # None (field omitted) = leave unchanged; "" (explicit empty string) =
     # clear the override back to default -- agent_visual_registry.py's own
     # convention, unchanged from before this retrofit.
     icon: str | None = None
     color: str | None = None
+    # 2026-08-28 fix: these 4 were already sent by the real, live
+    # AgentDetailPanel.tsx/CreateAgentWizardModal.tsx (updateAgentAssignment)
+    # but silently dropped -- this body model never declared them, so
+    # FastAPI/Pydantic ignored them rather than erroring, and neither
+    # AgentManager nor Hermes ever saw a single real submission. `scope`
+    # stays the frontend's own flat list shape (AgentDetail.scope); split
+    # into {folders, tags} via _classify_scope before reaching AgentManager.
+    section_id: str | None = None
+    is_background_agent: bool | None = None
+    prompt: str | None = None
+    guardrails: str | None = None
+    scope: list[str] | None = None
 
 
 class ChatMessageBody(BaseModel):
@@ -116,11 +166,17 @@ def get_agent(agent_id: str) -> dict:
 
 
 @router.patch("/{agent_id}")
-def update_agent_visual(agent_id: str, body: AgentVisualUpdateBody) -> dict:
-    agent = _agent_manager.update(agent_id, icon=body.icon, color=body.color)
+def update_agent(agent_id: str, body: AgentUpdateBody) -> dict:
+    scope = _classify_scope(body.scope) if body.scope is not None else None
+    agent = _agent_manager.update(
+        agent_id, icon=body.icon, color=body.color, section_id=body.section_id,
+        is_background_agent=body.is_background_agent, prompt=body.prompt,
+        guardrails=body.guardrails, scope=scope,
+    )
     if agent is not None:
         return to_detail_dict(agent)
     # Not a real Hermes agent -- same Pipeline fallback as get_agent above.
+    # Pipelines have no scope/guardrails/section_id concept, icon/color only.
     updated = agents_map_adapter.update_agent_visual(agent_id, icon=body.icon, color=body.color)
     if updated is None:
         raise HTTPException(status_code=404, detail=f"Unknown agent: {agent_id!r}")
