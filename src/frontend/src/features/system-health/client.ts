@@ -18,24 +18,9 @@ export interface SystemHealthDisabledAgent {
   provider_name: string | null;
 }
 
-export interface SystemHealthSchedulingEntry {
-  agent_id: string;
-  capability_id: string;
-  has_run: boolean;
-  running: boolean;
-  started_at: string | null;
-  finished_at: string | null;
-  last_outcome: 'success' | 'error' | 'skipped' | null;
-  last_error_message: string | null;
-  last_duration_seconds: number | null;
-  elapsed_seconds: number | null;
-}
-
 export interface SystemHealthResponse {
-  mcp: { reachable: boolean };
   providers: SystemHealthProvider[];
   disabled_agents: SystemHealthDisabledAgent[];
-  scheduling: SystemHealthSchedulingEntry[];
 }
 
 export function fetchSystemHealth(): Promise<SystemHealthResponse> {

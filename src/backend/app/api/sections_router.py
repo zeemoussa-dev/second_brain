@@ -10,10 +10,14 @@ four fields."""
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.business import section_registry
+from app.business.core.agents.agent_manager import AgentManager
+from app.business.core.sections.section import Section
+from app.business.core.sections.section_manager import SectionManager
 from app.business.hermes import agents_map_adapter
 
 router = APIRouter(prefix="/sections")
+_section_manager = SectionManager()
+_agent_manager = AgentManager()
 
 
 class SectionCreateBody(BaseModel):
@@ -58,20 +62,37 @@ def _blocked_delete_message(name: str, blocked_by_agent_ids: list[str]) -> str:
     )
 
 
+def _agent_ids_by_section() -> dict[str, list[str]]:
+    """Real cross-manager composition (operator: "cross managers work is
+    the business logic") -- SectionManager itself never reaches into
+    Agent data (the ownership split), so this lives here, at the
+    caller. Fixes GET /sections' own long-standing `agent_ids: []`
+    bug: the field existed, but nothing ever filled it in from the
+    real, live Registry-backed section_id AgentManager already
+    resolves for every agent."""
+    by_section: dict[str, list[str]] = {}
+    for agent in _agent_manager.get_all():
+        by_section.setdefault(agent.section_id, []).append(agent.id)
+    return by_section
+
+
 @router.get("")
-def list_sections() -> list[dict]:
-    return section_registry.list_sections()
+def list_sections() -> list[Section]:
+    agent_ids_by_section = _agent_ids_by_section()
+    sections = _section_manager.get_all()
+    for section in sections:
+        section.agent_ids = agent_ids_by_section.get(section.id, [])
+    return sections
 
 
 @router.post("")
-def create_section(body: SectionCreateBody) -> dict:
-    section = section_registry.create_section(body.name)
-    return {**section, "agent_ids": []}
+def create_section(body: SectionCreateBody) -> Section:
+    return _section_manager.create(body.name)
 
 
 @router.patch("/{section_id}")
-def update_section(section_id: str, body: SectionUpdateBody) -> dict:
-    section = section_registry.update_section(
+def update_section(section_id: str, body: SectionUpdateBody) -> Section:
+    section = _section_manager.update(
         section_id, name=body.name, icon=body.icon, color=body.color,
         subtitle=body.subtitle, description=body.description, folders=body.folders,
         fallback_agent_id=body.fallback_agent_id,
@@ -83,14 +104,26 @@ def update_section(section_id: str, body: SectionUpdateBody) -> dict:
 
 @router.delete("/{section_id}")
 def delete_section(section_id: str) -> dict:
-    sections_by_id = {s["id"]: s for s in section_registry.list_sections()}
-    section = sections_by_id.get(section_id)
+    section = _section_manager.get_by_id(section_id)
     if section is None:
         raise HTTPException(status_code=404, detail="Unknown section")
-    result = section_registry.delete_section(section_id)
+    # AgentManager's own picture is fuller than SectionManager.delete()'s
+    # internal Registry-only check -- it also resolves an agent not yet
+    # migrated into the data/ tree (falls through to its real default
+    # Section rather than being invisible to a Registry-only scan).
+    # Checked here, at the cross-manager caller, not inside SectionManager
+    # itself. SectionManager.delete()'s own Registry check still runs
+    # underneath as a real, independent safety net either way.
+    blocked_by_agent_ids = _agent_ids_by_section().get(section_id, [])
+    if blocked_by_agent_ids:
+        raise HTTPException(
+            status_code=409,
+            detail=_blocked_delete_message(section.name, blocked_by_agent_ids),
+        )
+    result = _section_manager.delete(section_id)
     if not result["deleted"]:
         raise HTTPException(
             status_code=409,
-            detail=_blocked_delete_message(section["name"], result["blocked_by_agent_ids"]),
+            detail=_blocked_delete_message(section.name, result["blocked_by_agent_ids"]),
         )
     return {"deleted": True}

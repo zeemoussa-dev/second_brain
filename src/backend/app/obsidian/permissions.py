@@ -16,32 +16,13 @@ _HUMAN_OWNED_HEADERS: frozenset[str] = frozenset({
 })
 
 _CALLER_ALLOW_LISTS: dict[str, frozenset[str]] = {
-    "email_classification.thread_match_merge": frozenset({"## Summary", "## Related"}),
-    "thread_summary_backfill.backfill_thread_summaries": frozenset({"## Summary"}),
-    "project_customer_synthesizer.synthesize_project": frozenset({"## Glimpse"}),
-    "project_customer_synthesizer.synthesize_customer": frozenset({"## Glimpse"}),
-    "project_customer_synthesizer.finalize_background_amendment_proposal": frozenset({"## Background"}),
-    # Stage 2's real Compass-backed judgment, full reconstruction from
-    # every raw message on every call. "## Related" ownership transferred
-    # wholesale to librarian_housekeeping.populate_thread_related_links,
-    # below, in the SAME change -- never a window where both callers
-    # could write "## Related" simultaneously.
-    "email_classification.synthesize_thread": frozenset({"## Summary"}),
-    # The Files/OKF companion's own `## Summary` write.
-    "email_classification.write_file_companion": frozenset({"## Summary"}),
-    # The redesigned Meeting Capture's own `## Summary` regeneration
-    # (one-time vs. recurring, frontmatter-only logistics).
-    "meeting_classification.classify_recent_meetings": frozenset({"## Summary"}),
-    # The Librarian's Files/OKF backfill Job, the sole owner of a
-    # Thread's own structured ## Files section.
-    "librarian_housekeeping.backfill_files": frozenset({"## Files"}),
-    # The Librarian's sole ownership of ## Related going forward,
-    # registered in the SAME change that narrows
-    # email_classification.synthesize_thread's own entry above.
-    "librarian_housekeeping.populate_thread_related_links": frozenset({"## Related"}),
-    # The Librarian's Bidirectional Thread <-> Message Linking Job, the
-    # sole owner of a Thread's own structured ## Messages section.
-    "librarian_housekeeping.link_thread_messages": frozenset({"## Messages"}),
+    # meeting_classification.classify_recent_meetings, every
+    # librarian_housekeeping.* entry, and every email_classification.*/
+    # thread_summary_backfill.*/project_customer_synthesizer.* entry
+    # retired 2026-08-27 along with those now-deleted modules -- email/
+    # meeting capture, Librarian housekeeping, and thread/customer
+    # synthesis moved fully to Hermes-native Skills, nothing in this
+    # backend calls them anymore.
 }
 
 

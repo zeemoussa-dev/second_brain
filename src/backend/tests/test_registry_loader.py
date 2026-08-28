@@ -2,10 +2,12 @@
 verified (curl/browser) a real fail-loud validator, hot-reload, and
 Section/Background agent placement resolver with zero automated
 regression coverage. Isolated from the real vault via a temp directory
-(`_isolated_vault` monkeypatches `settings.vault_path`) -- never writes
-into the operator's real `.second-brain/data/`. `system_health.
-mcp_mount_reachable` is stubbed too, so these tests never depend on (or
-make a real network call to) a live backend process on port 8001.
+(`_isolated_vault` monkeypatches `settings.second_brain_data_path` --
+`data_root()`'s real source since the System settings page decoupled it
+from `settings.vault_path`) -- never writes into the operator's real
+`.second-brain/data/`. `loader._hermes_reachable` is stubbed too, so
+these tests never depend on (or make a real network call to) a live
+Hermes gateway.
 """
 from __future__ import annotations
 
@@ -16,14 +18,14 @@ from pathlib import Path
 
 import pytest
 
-from app.business import system_health
 from app.data_access.registry import loader as registry_loader
 
 
 @pytest.fixture(autouse=True)
 def _isolated_vault(tmp_path, monkeypatch):
     monkeypatch.setattr(registry_loader.settings, "vault_path", tmp_path)
-    monkeypatch.setattr(system_health, "mcp_mount_reachable", lambda: True)
+    monkeypatch.setattr(registry_loader.settings, "second_brain_data_path", tmp_path / ".second-brain")
+    monkeypatch.setattr(registry_loader, "_hermes_reachable", lambda: True)
     # loader.py keeps process-wide module state (_registry/_status/
     # _last_seen_fingerprint), not request-scoped -- reset it so one
     # test's boot outcome can never leak into the next.
@@ -47,16 +49,16 @@ def _seed_minimal_valid_tree(vault_root: Path) -> Path:
     _write_json(data / "Sections" / "tech" / "Section.json", {"id": "tech", "name": "Technology"})
 
     section_agent = data / "Sections" / "tech" / "Agents" / "azure-expert"
-    _write_json(section_agent / "Agent-config.json", {"id": "azure-expert", "name": "Azure Expert", "type": "expert"})
-    _write_json(section_agent / "Agent-visual.json", {"icon": "cloud", "color": None})
+    _write_json(section_agent / "Agent.json", {
+        "id": "azure-expert", "name": "Azure Expert", "type": "expert", "icon": "cloud", "color": None,
+    })
     (section_agent / "soul.md").write_text("You are Azure Expert.", encoding="utf-8")
 
     background_agent = data / "Background" / "Agents" / "default"
-    _write_json(
-        background_agent / "Agent-config.json",
-        {"id": "default", "name": "Primary", "type": "worker", "is_background_agent": True},
-    )
-    _write_json(background_agent / "Agent-visual.json", {"icon": "hub", "color": None})
+    _write_json(background_agent / "Agent.json", {
+        "id": "default", "name": "Primary", "type": "worker", "is_background_agent": True,
+        "icon": "hub", "color": None,
+    })
     (background_agent / "soul.md").write_text("You are Primary.", encoding="utf-8")
 
     tool_dir = data / "Tools" / "vault"
@@ -104,7 +106,7 @@ def test_boot_succeeds_on_completely_empty_tree(_isolated_vault):
 
 def test_boot_fails_loud_on_missing_required_field(_isolated_vault):
     data = _seed_minimal_valid_tree(_isolated_vault)
-    agent_config = data / "Sections" / "tech" / "Agents" / "azure-expert" / "Agent-config.json"
+    agent_config = data / "Sections" / "tech" / "Agents" / "azure-expert" / "Agent.json"
     _write_json(agent_config, {"id": "azure-expert", "type": "expert"})  # no "name"
 
     asyncio.run(registry_loader.boot())
@@ -119,7 +121,7 @@ def test_boot_fails_loud_on_missing_required_field(_isolated_vault):
 
 def test_boot_fails_loud_on_invalid_agent_type(_isolated_vault):
     data = _seed_minimal_valid_tree(_isolated_vault)
-    agent_config = data / "Sections" / "tech" / "Agents" / "azure-expert" / "Agent-config.json"
+    agent_config = data / "Sections" / "tech" / "Agents" / "azure-expert" / "Agent.json"
     _write_json(agent_config, {"id": "azure-expert", "name": "Azure Expert", "type": "bogus-type"})
 
     asyncio.run(registry_loader.boot())
@@ -146,7 +148,7 @@ def test_failed_boot_does_not_replace_previous_good_registry(_isolated_vault):
     assert registry_loader.get_boot_status()["state"] == "ready"
     good_registry = registry_loader.get_registry()
 
-    agent_config = data / "Sections" / "tech" / "Agents" / "azure-expert" / "Agent-config.json"
+    agent_config = data / "Sections" / "tech" / "Agents" / "azure-expert" / "Agent.json"
     _write_json(agent_config, {"id": "azure-expert", "type": "expert"})  # break it
     asyncio.run(registry_loader.boot(mode="hot_reload"))
 
@@ -170,7 +172,7 @@ def test_tree_fingerprint_changes_when_a_file_is_edited(_isolated_vault):
     data = _seed_minimal_valid_tree(_isolated_vault)
     before = registry_loader._tree_fingerprint()
 
-    agent_config = data / "Sections" / "tech" / "Agents" / "azure-expert" / "Agent-config.json"
+    agent_config = data / "Sections" / "tech" / "Agents" / "azure-expert" / "Agent.json"
     new_mtime = agent_config.stat().st_mtime + 5  # force a real mtime delta, not timing-dependent
     os.utime(agent_config, (new_mtime, new_mtime))
 

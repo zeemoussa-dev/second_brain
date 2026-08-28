@@ -1,45 +1,16 @@
 """Read-only aggregation of Second Brain's own operational signals for
-the System Health view (REQ-SB-31-US-01, extended REQ-SB-68-US-01) --
-writes no new persisted state at all, composes only already-existing/
-already-computed signals from provider_registry, agent_registry, and
-agent_schedule_registry, plus one local, in-process GET /mcp
-reachability check. Recompute fresh on every call -- no caching
-(Scenario 7, REQ-SB-31-US-01).
+the System Health view (REQ-SB-31-US-01) -- writes no new persisted
+state at all, composes only already-existing/already-computed signals
+from provider_registry and agent_registry. Recompute fresh on every
+call -- no caching (Scenario 7, REQ-SB-31-US-01).
 
-REQ-SB-68-US-01-T03 dropped the "last_capture_run" key/vault_writer
-import: agent_schedule_registry.get_job_run_states()'s own richer
-"scheduling" list supersedes the former single aggregate finished_at
-timestamp this module used to read directly via vault_writer."""
-import httpx
-
-from app.business import agent_registry, agent_schedule_registry, provider_registry
-
-# Same hardcoded loopback host:port agent_orchestration/mcp_client.py
-# already calls -- this project's own documented port convention
-# (tools/run-backend.cmd --port 8001), not a new port-discovery
-# mechanism.
-_MCP_MOUNT_URL = "http://127.0.0.1:8001/mcp"
-
-
-def mcp_mount_reachable() -> bool:
-    """True only on the mount's own proven "alive" signal (a bare GET
-    correctly returns HTTP 406 Not Acceptable when the mount is alive --
-    confirmed live 2026-08-12, see architecture.md). Any other status
-    code, connection error, or timeout is honestly reported as
-    unreachable -- never a fabricated True.
-
-    follow_redirects=True is required here -- live-discovered correction
-    (this task's own Implementation Log): a bare GET /mcp (no trailing
-    slash) actually 307-redirects to /mcp/ first, which only then answers
-    406; httpx.get()'s own default (follow_redirects=False) stops at the
-    307 and would falsely report the mount unreachable even when it is
-    genuinely healthy. The story's own "confirmed live" 406 finding used a
-    client (browser/PowerShell) that follows redirects automatically."""
-    try:
-        response = httpx.get(_MCP_MOUNT_URL, timeout=3.0, follow_redirects=True)
-    except httpx.HTTPError:
-        return False
-    return response.status_code == 406
+2026-08-27: dropped the "mcp" reachability check (the /mcp mount it
+probed was deleted -- Second Brain is fully agentic via Hermes now, no
+in-process MCP server of its own left to check) and the "scheduling"
+key (agent_schedule_registry.py, whose own skill-dispatch mechanism it
+reported on, was deleted the same pass -- superseded by Hermes' own
+native cron scheduling)."""
+from app.business import agent_registry, provider_registry
 
 
 def list_disabled_agents() -> list[dict]:
@@ -75,14 +46,6 @@ def _providers_with_agent_names() -> list[dict]:
 
 def get_system_health() -> dict:
     return {
-        "mcp": {"reachable": mcp_mount_reachable()},
         "providers": _providers_with_agent_names(),
         "disabled_agents": list_disabled_agents(),
-        # REQ-SB-68-US-01 / ADR-045 point 5 -- replaces the former
-        # "last_capture_run" key (a single, aggregate finished_at
-        # timestamp) with the richer per-covered-job running/duration/
-        # outcome list. agent_schedule_registry.get_job_run_states()
-        # recomputes fresh on every call, exactly like every other
-        # signal in this dict.
-        "scheduling": agent_schedule_registry.get_job_run_states(),
     }

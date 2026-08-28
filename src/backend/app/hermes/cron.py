@@ -95,16 +95,26 @@ class HermesCron:
     def __init__(self, config: HermesConfig) -> None:
         self._config = config
 
-    def _jobs_json_path(self) -> Path:
-        return self._config.home_path / "cron" / "jobs.json"
+    def _profile_dir(self, profile_id: str | None) -> Path:
+        """A cron job can live under a NAMED profile's own cron/, not
+        just the shared default/root one -- confirmed live, 2026-08-28:
+        `meeting-capture-recurring` runs under the `meeting-prep-agent`
+        profile, invisible to every call here before this existed
+        (hardcoded to `home_path` alone). `None`/omitted keeps the
+        original default-profile-only behavior."""
+        home = self._config.home_path
+        return home if profile_id is None else home / "profiles" / profile_id
 
-    def _executions_db_path(self) -> Path:
-        return self._config.home_path / "cron" / "executions.db"
+    def _jobs_json_path(self, profile_id: str | None = None) -> Path:
+        return self._profile_dir(profile_id) / "cron" / "jobs.json"
 
-    def list_cron_jobs(self) -> list[CronJob]:
-        """Every real cron job Hermes has defined, [] (never raises) if
-        jobs.json doesn't exist yet."""
-        path = self._jobs_json_path()
+    def _executions_db_path(self, profile_id: str | None = None) -> Path:
+        return self._profile_dir(profile_id) / "cron" / "executions.db"
+
+    def list_cron_jobs(self, profile_id: str | None = None) -> list[CronJob]:
+        """Every real cron job this profile (default, when omitted) has
+        defined, [] (never raises) if jobs.json doesn't exist yet."""
+        path = self._jobs_json_path(profile_id)
         if not path.is_file():
             return []
         try:
@@ -113,16 +123,16 @@ class HermesCron:
             return []
         return [_job_from_raw(raw) for raw in data.get("jobs", [])]
 
-    def get_cron_job(self, job_id: str) -> CronJob | None:
-        for job in self.list_cron_jobs():
+    def get_cron_job(self, job_id: str, profile_id: str | None = None) -> CronJob | None:
+        for job in self.list_cron_jobs(profile_id):
             if job.id == job_id:
                 return job
         return None
 
-    def list_cron_executions(self, job_id: str, limit: int = 20) -> list[CronExecution]:
+    def list_cron_executions(self, job_id: str, limit: int = 20, profile_id: str | None = None) -> list[CronExecution]:
         """Real run history for one job, most recent first. [] (never
         raises) if executions.db doesn't exist yet."""
-        path = self._executions_db_path()
+        path = self._executions_db_path(profile_id)
         if not path.is_file():
             return []
         try:
@@ -142,7 +152,7 @@ class HermesCron:
         finally:
             con.close()
 
-    def _output_report_path(self, job_id: str, execution: CronExecution) -> Path | None:
+    def _output_report_path(self, job_id: str, execution: CronExecution, profile_id: str | None = None) -> Path | None:
         """The one real per-run markdown report for this execution -- filed
         under its `finished_at` timestamp. None if the run never finished
         or the file isn't there."""
@@ -152,7 +162,7 @@ class HermesCron:
             finished = datetime.fromisoformat(execution.finished_at)
         except ValueError:
             return None
-        candidate = self._config.home_path / "cron" / "output" / job_id / f"{finished.strftime('%Y-%m-%d_%H-%M-%S')}.md"
+        candidate = self._profile_dir(profile_id) / "cron" / "output" / job_id / f"{finished.strftime('%Y-%m-%d_%H-%M-%S')}.md"
         return candidate if candidate.is_file() else None
 
     def _log_session_tag(self, job_id: str, execution: CronExecution) -> str | None:
@@ -164,12 +174,12 @@ class HermesCron:
             return None
         return f"cron_{job_id}_{started.strftime('%Y%m%d_%H%M%S')}"
 
-    def get_execution_detail(self, job_id: str, execution: CronExecution) -> dict:
+    def get_execution_detail(self, job_id: str, execution: CronExecution, profile_id: str | None = None) -> dict:
         """The real per-run report (if the run finished and wrote one)
         plus a matching excerpt of raw agent.log lines carrying this
         run's own session tag -- both keyed off the SAME real execution
         row, so nothing here is guessed or approximated."""
-        report_path = self._output_report_path(job_id, execution)
+        report_path = self._output_report_path(job_id, execution, profile_id)
         report_markdown = None
         if report_path is not None:
             try:
@@ -180,7 +190,7 @@ class HermesCron:
         tag = self._log_session_tag(job_id, execution)
         log_lines: list[str] = []
         if tag is not None:
-            log_path = self._config.home_path / "logs" / "agent.log"
+            log_path = self._profile_dir(profile_id) / "logs" / "agent.log"
             try:
                 with log_path.open("rb") as f:
                     f.seek(0, 2)

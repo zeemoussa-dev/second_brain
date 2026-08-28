@@ -372,6 +372,11 @@ export function layoutAgents(agents: AgentSummary[], sectionList: SectionSummary
   // REQ-SB-51-US-01 -- a Background Agent never occupies a ring slot,
   // counts toward VISIBLE_SLOT_CAP crowding, or appears in a cluster
   // marker: excluded here, before agentsBySection is built, not after.
+  // Hub agents (2026-08-28) are excluded upstream of this component
+  // entirely -- GET /agents never includes them (AgentManager.get_all's
+  // own exclude_types, business logic, not a frontend filter) -- so
+  // `agents` here structurally never contains one; no client-side
+  // filter needed on top.
   const backgroundAgents = agents.filter((agent) => isBackgroundAgent(agent));
   const addressableAgents = agents.filter((agent) => !isBackgroundAgent(agent));
 

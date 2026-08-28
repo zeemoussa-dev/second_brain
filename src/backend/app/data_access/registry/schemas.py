@@ -20,26 +20,21 @@ class SectionConfig:
 
 
 @dataclass
-class AgentVisual:
-    icon: str | None
-    color: str | None
-
-
-@dataclass
 class AgentConfig:
     id: str
     name: str
-    type: str  # "worker" | "producer" | "expert"
+    type: str  # "worker" | "producer" | "expert" | "hub"
     is_background_agent: bool
     depends_on: list[str] = field(default_factory=list)
     provider_id: str | None = None
     skill_ids: list[str] = field(default_factory=list)
+    icon: str | None = None
+    color: str | None = None
 
 
 @dataclass
 class Agent:
     config: AgentConfig
-    visual: AgentVisual
     soul: str  # real prompt/identity text (soul.md contents)
     section_id: str | None  # None for Background/Agents entries
 

@@ -38,6 +38,11 @@ interface SectionHubProps {
   // the oversized hit-region below so AgentsMapCanvas can drive one shared
   // hoveredSectionId. Omitted at the drill-down call site.
   onHoverChange?: (hovering: boolean) => void;
+  // Section View drill-down only (operator, 2026-08-28: "the Hub Node...
+  // should be 2.5x bigger" than the Agents around it there) — applies
+  // `.hub-node--large` (agents-map.css). Omitted (false) at every other
+  // call site, matching `.agent-node`'s own identical `large` prop shape.
+  large?: boolean;
 }
 
 export function SectionHub({
@@ -48,6 +53,7 @@ export function SectionHub({
   dimmed,
   isHovered,
   onHoverChange,
+  large,
 }: SectionHubProps) {
   const radius = radiusOverride ?? HUB_RADIUS;
   const angle = section.hubAngleDeg + (angleOffsetDeg ?? 0);
@@ -94,7 +100,7 @@ export function SectionHub({
         />
         <button
           type="button"
-          className={`hub-node${dimmed ? ' is-dimmed' : ''}${isHovered ? ' is-hovered' : ''}`}
+          className={`hub-node${large ? ' hub-node--large' : ''}${dimmed ? ' is-dimmed' : ''}${isHovered ? ' is-hovered' : ''}`}
           style={style}
           data-section-id={section.id}
           aria-label={section.hubLabel}
@@ -115,7 +121,7 @@ export function SectionHub({
   }
 
   return (
-    <div className="hub-node" style={style} aria-label={section.hubLabel} title={section.hubLabel}>
+    <div className={`hub-node${large ? ' hub-node--large' : ''}`} style={style} aria-label={section.hubLabel} title={section.hubLabel}>
       <span className="material-symbols-outlined hub-node-icon" aria-hidden="true">{iconGlyph}</span>
     </div>
   );

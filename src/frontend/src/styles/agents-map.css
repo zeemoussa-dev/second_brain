@@ -515,13 +515,40 @@
 .hub-node--producer { --hub-color: var(--agent-color-producer); }
 .hub-node--expert   { --hub-color: var(--agent-color-expert); }
 
+/* Section View drill-down only (operator, 2026-08-28: "the Hub Node in
+   the Drill down View is very small compared to Agents around it
+   should be 2.5x bigger") — reverses the earlier "Hub stays the same
+   visual size in both views" decision referenced in the comment below;
+   that's no longer true specifically for this view. 2.5x
+   `.agent-node--large`'s own 3.75% width (9.375%), not 2.5x the base
+   `.hub-node`'s 5% — the ask was "bigger than the Agents around it in
+   THIS view," and those Agents are already the --large variant here.
+   Icon/type-label font sizes scaled up proportionally alongside the
+   width so they stay legible at the bigger size, same reasoning
+   `.agent-node--large` already used for its own icon. See
+   SectionDrilldown.tsx's own `large` prop on its <SectionHub> call, and
+   its DRILLDOWN_HUB_VISUAL_RADIUS (trims connector lines to this
+   bigger circle's real edge, not the old, now-wrong smaller one). */
+.hub-node--large {
+  width: 9.375%;
+  padding: var(--space-1) var(--space-2);
+}
+
+.hub-node--large .hub-node-icon {
+  font-size: 1.375rem;
+}
+
+.hub-node--large .hub-node-type {
+  font-size: 0.75rem;
+}
+
 /* 25% of the Hub's own width (operator, 2026-08-15: "The Agents Should
    be 25% the size of the Hub") — Hub is 5% (agents-map.css's own
-   .hub-node), so 5% * .25 = 1.25%. Same value everywhere now (overview
-   AND drill-down), since the Hub itself no longer differs in size
-   between those two views either (an earlier pass) — .agent-node--
-   compact's own width override below is gone for the same reason: it
-   would just be re-declaring this identical number. */
+   .hub-node), so 5% * .25 = 1.25%. Same value in the overview; the
+   drill-down's own Hub size diverges again as of the `.hub-node--large`
+   rule just above (2026-08-28) — .agent-node--compact's own width
+   override below is still gone, since Agents themselves are unaffected
+   by that change, only the Hub. */
 .agent-node {
   position: absolute;
   /* Opts back into pointer events despite inheriting `pointer-events:

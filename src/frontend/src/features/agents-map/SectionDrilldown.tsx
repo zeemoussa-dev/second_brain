@@ -55,15 +55,20 @@ interface SectionDrilldownProps {
 const DRILLDOWN_HUB_RADIUS = 32;
 // How far below the Hub's own point the title block sits.
 const DRILLDOWN_TITLE_OFFSET = 11;
-// Hub's own real visual footprint (5% width / 2) — matches
-// AgentsMapCanvas.tsx's own HUB_VISUAL_RADIUS exactly, since the Hub
-// stays the same visual size in the drill-down as the overview (an
+// Hub's own real visual footprint in THIS view -- half of
+// `.hub-node--large`'s own 9.375% width (agents-map.css), NOT
+// AgentsMapCanvas.tsx's own HUB_VISUAL_RADIUS -- the Hub no longer
+// stays the same visual size between the overview and this view
+// (2026-08-28: "the Hub Node in the Drill down View is very small
+// compared to Agents around it, should be 2.5x bigger" reversed that
 // earlier decision). Used to pull the Hub-side line endpoint to its own
 // EDGE, not its center (operator, 2026-08-15: "the Connection Goes to
-// the Center of the HUb not to the Edge" — the exact same fix the
-// overview's own Hub<->Agent lines already got, just never carried over
-// to this view).
-const DRILLDOWN_HUB_VISUAL_RADIUS = 2.5;
+// the Center of the HUb not to the Edge") -- same "take care of the
+// connections" reasoning DRILLDOWN_AGENT_VISUAL_RADIUS_LARGE_TYPE below
+// already applied when Expert/Producer nodes got the same 2x treatment;
+// a line trimmed by the OLD, smaller radius would stop short of this
+// bigger circle's real edge instead of touching it.
+const DRILLDOWN_HUB_VISUAL_RADIUS = 4.6875;
 // Half of `.agent-node--large`'s own 3.75% width (agents-map.css) — same
 // edge-not-center derivation as DRILLDOWN_HUB_VISUAL_RADIUS above, but for
 // the AGENT end of a line (operator, 2026-08-16: "the Lines move to the
@@ -99,6 +104,10 @@ const FOCUS_ZOOM_SCALE = 3;
 
 export function SectionDrilldown({ section, sections, agents, dependencyEdges, onBack, onNavigate, onSelectAgent, selectedAgentId, onOpenSectionSettings }: SectionDrilldownProps) {
   const sectionAgents = layoutSectionDrilldown(
+    // Hub agents never appear in `agents` at all -- excluded upstream in
+    // AgentManager.get_all (2026-08-28, business logic, not a frontend
+    // filter); this Section's own SectionHub center node below already
+    // represents it.
     agents.filter((agent) => agent.sectionId === section.id),
   );
   const hasAgents = sectionAgents.length > 0;
@@ -324,6 +333,7 @@ export function SectionDrilldown({ section, sections, agents, dependencyEdges, o
           <SectionHub
             section={section}
             radiusOverride={DRILLDOWN_HUB_RADIUS}
+            large
             // Cancels the Section's own overview hubAngleDeg so this
             // Hub always lands at DRILLDOWN_HUB_ANGLE_DEG (straight
             // down from center) regardless of where it sat on the

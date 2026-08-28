@@ -30,13 +30,13 @@ import json
 import time
 from pathlib import Path
 
-from app.business import system_health
+import httpx
+
 from app.config import settings
 from app.data_access.registry.errors import RegistryLoadError
 from app.data_access.registry.schemas import (
     Agent,
     AgentConfig,
-    AgentVisual,
     ProviderConfig,
     Registry,
     SectionConfig,
@@ -79,7 +79,7 @@ def get_registry() -> Registry | None:
 
 def agent_data_dir(agent_id: str) -> Path | None:
     """The real on-disk folder for this agent's own data/ files
-    (`Agent-config.json`/`Agent-visual.json`/`soul.md`), or None if it
+    (`Agent.json`/`soul.md`), or None if it
     hasn't been migrated into the tree yet. Centralizes the
     Section-vs-Background placement lookup so a business-layer store that
     wants to dual-write one of an agent's own files (e.g.
@@ -150,17 +150,14 @@ def _load_sections() -> dict[str, SectionConfig]:
 
 
 def _load_one_agent(agent_dir: Path, section_id: str | None) -> Agent:
-    config_path = agent_dir / "Agent-config.json"
-    visual_path = agent_dir / "Agent-visual.json"
+    config_path = agent_dir / "Agent.json"
     soul_path = agent_dir / "soul.md"
 
     config_raw = _require_json(config_path)
     agent_id = str(_require_field(config_raw, "id", config_path))
     agent_type = str(_require_field(config_raw, "type", config_path))
-    if agent_type not in ("worker", "producer", "expert"):
-        raise RegistryLoadError(config_path, f"'type' must be worker/producer/expert, got '{agent_type}'")
-
-    visual_raw = _require_json(visual_path)
+    if agent_type not in ("worker", "producer", "expert", "hub"):
+        raise RegistryLoadError(config_path, f"'type' must be worker/producer/expert/hub, got '{agent_type}'")
 
     if not soul_path.is_file():
         raise RegistryLoadError(soul_path, "file not found")
@@ -177,8 +174,9 @@ def _load_one_agent(agent_dir: Path, section_id: str | None) -> Agent:
             depends_on=list(config_raw.get("depends_on", [])),
             provider_id=config_raw.get("provider_id"),
             skill_ids=list(config_raw.get("skill_ids", [])),
+            icon=config_raw.get("icon"),
+            color=config_raw.get("color"),
         ),
-        visual=AgentVisual(icon=visual_raw.get("icon"), color=visual_raw.get("color")),
         soul=soul,
         section_id=section_id,
     )
@@ -279,6 +277,19 @@ def _tree_fingerprint() -> str:
     return json.dumps(entries)
 
 
+def _hermes_reachable() -> bool:
+    """Plain GET against Hermes' own base URL -- mirrors
+    system_settings._check_hermes_reachable's identical real-reachability
+    check (2026-08-27: this used to probe Second Brain's own now-deleted
+    in-process /mcp mount instead of Hermes itself, a naming/semantic bug
+    -- "checking_hermes" never actually checked Hermes)."""
+    try:
+        httpx.get(settings.hermes_base_url.rstrip("/") + "/", timeout=5.0)
+        return True
+    except httpx.HTTPError:
+        return False
+
+
 async def boot(mode: str = "cold_boot") -> None:
     """Runs every stage in order, updating `_status` as it goes. Never
     raises out to the caller -- a fire-and-forget asyncio.create_task
@@ -289,7 +300,7 @@ async def boot(mode: str = "cold_boot") -> None:
     _reset_status(mode)
     try:
         _set_stage("checking_hermes", "in_progress")
-        reachable = await asyncio.to_thread(system_health.mcp_mount_reachable)
+        reachable = await asyncio.to_thread(_hermes_reachable)
         _status["hermes_reachable"] = reachable
         _set_stage("checking_hermes", "done")
 

@@ -18,6 +18,206 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix: the Agents Map's Hub-agent duplication (a Hub rendering both as
+  its Section's own SectionHub center node AND an ordinary ring/fan
+  dot) is now fixed on the backend, not the frontend. Added
+  `AgentManager.get_all(*, exclude_types=None)` and a new general-purpose
+  `AgentManager.get_section_agents(section_id, *, include_types=None,
+  exclude_types=None)`; `agents_router.py`'s `GET /agents` now calls
+  `get_all(exclude_types=["hub"])`, so a Hub agent is never returned to
+  any caller as an ordinary agent in the first place. A first attempt at
+  this fix lived in the frontend (a type filter in `layoutAgents.ts`/
+  `SectionDrilldown.tsx`) and was fully reverted — "which agents a given
+  caller should see" is business logic and belongs on `AgentManager`, not
+  duplicated as a one-off UI filter. Verified live: `GET /agents` returns
+  24 (21 real agents + 3 pipelines, 0 hub-type, down from 28), all 9
+  backend tests pass, and the Sales section drilldown's DOM shows only
+  its 2 real agents in the ring with no hub-type `agent-node` while the
+  `hub-node hub-node--large` center node still renders correctly.
+- feat: creating a Section now creates its own Hub Agent —
+  `SectionManager.create()` calls `AgentManager.create()` (a deliberate
+  Manager-to-Manager exception, lazily imported to avoid a circular
+  import) to make a `type="hub"` agent, then links it back as the
+  Section's own `fallback_agent_id`. `AgentManager.create()` also
+  defaults a new agent's `depends_on` to its Section's Hub agent when
+  omitted, so every new agent is a specialist of its Hub by default.
+  Retroactively fixed the 4 pre-existing hand-built hub agents
+  (`customer-hub`/`industry-hub`/`technology-hub`/`sales-hub`), which
+  were all `type: worker` and mis-placed under `data-gatherer` — now
+  correctly typed `hub` and placed under their real sections. Verified
+  live end-to-end (scratch section→hub→specialist chain, zero leftover
+  artifacts) and against real production data (`GET /sections` shows
+  correct per-section counts summing to the same 28 total agents,
+  `customer-hub` renders as type HUB on the Agents Map).
+- feat: `Pipeline` now links to its real Hermes cron job —
+  `cron_job_id`/`cron_profile_id` (stored on the 3 real pipeline JSON
+  files) compose live `cron_enabled`/`cron_schedule`/`cron_last_run_at`/
+  `cron_next_run_at`/`cron_last_status` via `HermesCron`, replacing what
+  used to be unstructured prose inside `description`. `HermesCron`
+  (`app/hermes/cron.py`) gained an optional `profile_id` param on all 4
+  methods — confirmed live that not every cron job lives on the default
+  profile (`meeting-capture-recurring` runs under `meeting-prep-agent`'s
+  own cron), backward compatible with the existing caller. Verified
+  live: all 3 pipelines resolve correct real cron status including the
+  cross-profile case, `GET /agents` unchanged (28 total), Agents Map
+  unchanged in the browser.
+- feat: `AgentManager.regenerate_specialists_section(agent_id)` —
+  generates/updates a marker-delimited `## Your own specialists` block
+  in an agent's real SOUL.md, listing every agent whose `depends_on`
+  points at it, matching the exact hand-written relay format
+  (`terminal(hermes -p ...)` template + one bullet per child). Explicit,
+  separate call only — never automatic inside `create`/`update`.
+  Idempotent (safe to re-run as `depends_on` changes; a re-run with the
+  same children is byte-identical; zero children removes the block
+  entirely). Verified live against disposable scratch agents through
+  generate/re-run/shrink/remove, zero leftover artifacts.
+- fix: `azure-expert`'s real SOUL.md now instructs it to chain a real
+  architecture from `azure-enterprise-architect` into `azure-calculator`
+  for sizing when a request needs both design and cost — previously the
+  two specialists were relayed to independently with no hand-off.
+  Verified against the real Hermes profile file (180 → 190 lines,
+  rest byte-identical).
+- refactor: every real agent's Registry data is now ONE file,
+  `Agent.json`, replacing the separate `Agent-config.json`/
+  `Agent-visual.json` pair — `AgentVisual` deleted from
+  `registry/schemas.py` (icon/color are now plain fields on
+  `AgentConfig`; confirmed nothing real ever read the Registry's own
+  `Agent.visual`, same as the earlier `Agent.soul` finding).
+  `loader.py`/`AgentManager`/`agent_visual_registry.py` all updated to
+  read/write the merged file. All 21 real agent folders migrated live
+  (old two-file format merged into `Agent.json`, old files deleted) —
+  confirmed the Registry genuinely fails to boot beforehand, then boots
+  clean afterward with real data intact. `tests/test_registry_loader.py`
+  fixture updated to match. Verified live: `GET /agents` unchanged (28
+  total), a real icon/color PATCH round-tripped correctly, Agents Map
+  unchanged in the browser.
+- fix: `GET /sections` now returns real `agent_ids` per section —
+  `sections_router.py` composes `AgentManager.get_all()` grouped by
+  `section_id` (cross-manager business logic, not something
+  `SectionManager` computes itself). The dead `assignments` dict (empty
+  since 2026-08-27) is fully removed from `SectionManager`'s persisted
+  state, not just unused. `delete_section`'s blocking check upgraded to
+  use `AgentManager`'s fuller picture (catches an agent not yet migrated
+  into the Registry) ahead of `SectionManager.delete()`'s own
+  Registry-only check, which still runs underneath as an independent
+  safety net. Verified live: Settings → Sections shows real "N agent(s)
+  assigned" counts for the first time.
+- feat: `PipelineManager` (`app/business/core/pipelines/pipeline_manager.py`)
+  built, read-only. Folds in and replaces
+  `data_access/system/pipelines/{registry,schema}.py` (both deleted —
+  zero write methods, exactly one real caller). `Pipeline.section` (a
+  raw Section name string on disk) is now `Pipeline.section_id`,
+  resolved once at read time via `SectionManager` instead of every
+  caller re-resolving it. `agents_map_adapter.py` migrated onto it at
+  all 5 of its real pipeline call sites. Verified live: `/pipelines`,
+  `/agents` (28 total, unchanged), `/agents/{id}/jobs`, and
+  `/agents/{id}` detail for a pipeline all correct; Agents Map unchanged
+  in the browser.
+- feat: `agents_router.py` migrated onto `AgentManager`. `GET /agents`
+  composes real agents (via `AgentManager.get_all()`) plus Pipelines
+  (via a new small `agents_map_adapter.list_pipeline_summaries()`
+  wrapper — Pipelines aren't covered by `AgentManager`). `GET
+  /agents/{id}`/`PATCH /agents/{id}` try `AgentManager` first, falling
+  through to the pre-existing Pipeline-aware path unchanged for a
+  Pipeline id. `AgentDetail.provider_id`/`provider_name` now reflects
+  `managed_by` (`"hermes"`) instead of Hermes' raw provider string, per
+  the already-approved schema change. Verified live: 25 real agents + 3
+  pipelines = 28 total (matches exactly), the Agents Map is unchanged in
+  the browser, PATCH works for both a real agent and a Pipeline id.
+- feat: `AgentManager` (`app/business/core/agents/agent_manager.py`) built
+  out, read and write sides. `get_all`/`get_by_id` compose a real `Agent`
+  from Hermes profiles (name/description/model/reasoning_effort/skills/
+  the real SOUL.md text as `prompt`), the Registry (section_id/type/
+  depends_on/is_background_agent), and `agent_visual_registry.py`
+  (icon/color, kept as its own module, not folded in).
+  `create`/`update`/`delete` wire up real `HermesClient`/`HermesProfiles`
+  library primitives (`create_profile`/`delete_profile`/
+  `describe_profile`/`update`/`write_soul`) that existed but had zero
+  callers until now, plus a new writer for `Agent-config.json`/
+  `Agent-visual.json`/`soul.md` (nothing in the app ever wrote these
+  before). `type` gained a 4th value, `hub` (the agent representing a
+  Section) — `data_access/registry/loader.py`'s fail-loud type
+  validation and `registry/schemas.py` updated to accept it, otherwise
+  the Registry would fail to boot on the first real hub agent.
+  `working_mode` (`autonomous`/`human_in_loop`) and `managed_by`
+  (`hermes`) are real fields now, not fabricated. `prompt`+`guardrails`+
+  `scope` compose into one real Hermes `SOUL.md` write. Verified live:
+  created/updated (including a real section move)/deleted a disposable
+  Hermes profile end-to-end, confirmed zero leftover artifacts in both
+  the real Hermes profile directory and the Registry tree afterward.
+- refactor: deleted `business/agent_prompts.py` (fully dead, zero
+  callers) and `vault_writer.py`'s `load_agent_scope`/`save_agent_scope`/
+  `load_all_agent_scopes` (zero callers) — both disconnected fragments
+  of the prompt/guardrails/scope concept `AgentManager`'s SOUL.md
+  composer now actually implements.
+- feat: `SectionManager` (`app/business/core/sections/section_manager.py`)
+  is now the sole gateway for Section data — `Section` gained the
+  missing `agent_ids` field, `GET /sections` now returns typed
+  `list[Section]` (real OpenAPI schema instead of `dict`), and
+  `POST`/`PATCH`/`DELETE /sections/{id}` were rewired through the
+  Manager too. The old standalone `business/section_registry.py` was
+  folded into `SectionManager` and deleted — its 3 real callers
+  (`sections_router.py`, `cockpit/moderator.py`,
+  `hermes/agents_map_adapter.py`) now go through `SectionManager`
+  instead. `SectionManager` owns its own `agent_sections.json` I/O
+  directly rather than routing through `vault_writer.py` (a retirement
+  target — new Managers shouldn't deepen its reach), and imports
+  `tag_slug` from its real home (`app.obsidian.tags`). Dropped, not
+  ported forward: the dead self-heal loop in `_load_state` and
+  `get_agent_section`/`set_agent_section` (zero callers). Verified
+  live: all 6 real sections still load correctly through the relocated
+  file I/O, Agents Map renders unchanged, all 9 backend tests pass.
+- refactor: deleted the last 2 dead root-level `data_access/` files —
+  `email_staging.py` (Outlook-fetched-but-not-yet-processed email
+  staging store, orphaned once the old email-capture pipeline was
+  removed) and `upload_storage.py` (ephemeral chat-attachment
+  upload/summarize buffer, `REQ-SB-28-US-01`, superseded by Cockpit
+  Documents' `vault_manager.py`-based persistent upload) — both
+  confirmed zero real callers anywhere in the app. `data_access/` root
+  now holds only `vault_writer.py` (the live, heavily-used JSON state
+  store) alongside its already-organized `registry/`/`system/`/
+  `templates/`/`vault/` subpackages.
+- fix: `tests/test_registry_loader.py`'s `_isolated_vault` fixture only
+  monkeypatched `settings.vault_path`, but `loader.data_root()` reads
+  `settings.second_brain_data_path` (decoupled from `vault_path` in an
+  earlier pass) — so 8 of 9 tests in that file silently ran against the
+  real vault's real data instead of an isolated temp tree. Fixture now
+  also monkeypatches `settings.second_brain_data_path` to the temp dir;
+  all 9 tests pass, verified the real vault received no writes from the
+  run.
+- refactor: "fully agentic" cleanup pass — deleted every Second-Brain-native
+  orchestration mechanism now superseded by Hermes' own native
+  scheduling/dispatch/agent-orchestration. Removed the in-process `/mcp`
+  MCP tool server (`api/mcp_server.py` + its 6 registered tools,
+  `vault_write_tools.py`, `scope_query_tools.py`, `vault_query_tools.py`),
+  the custom skill-dispatch registry (`skill_tools.py`, `skill_registry.py`,
+  `agent_schedule_registry.py`), the LangGraph-based `agent_orchestration/`
+  package, the now-vestigial `scheduling/` package
+  (`capture_scheduler.py` + `default_schedules.json`, orphaned once its only
+  reader was gone), the dead Compass/Anthropic/Outlook DAL clients
+  (`data_access/{compass,anthropic,outlook_com}_client.py`), and a further
+  cascade of orphaned business-layer modules confirmed to have zero live
+  callers app-wide (`project_customer_synthesizer.py`,
+  `todo_classification.py`, `email_classification.py`,
+  `thread_summary_backfill.py`, `knowledge_gap_tracking.py`,
+  `working_mode_registry.py`, `pending_approval_registry.py`,
+  `vault_filing_expert.py`, `agent_chat.py`, `background_agent_registry.py`,
+  `agent_keywords.py`, `scope_registry.py`,
+  `cockpit/{threads,person_note_proposals,attachments}.py`) — 26 files plus
+  1 package, all confirmed dead via a full reachability trace, not import
+  proximity. `main.py`'s lifespan no longer enters the `/mcp` mount's
+  session manager or dispatches default schedules; `obsidian/permissions.py`
+  dropped its now-dead `_CALLER_ALLOW_LISTS` entries for the deleted
+  modules.
+- fix: `data_access/registry/loader.py`'s boot `"checking_hermes"` stage
+  was calling `system_health.mcp_mount_reachable()` — a leftover that
+  actually probed the backend's own (now-deleted) `/mcp` mount, never
+  Hermes itself. Replaced with a real reachability check against
+  `settings.hermes_base_url`. `GET /system-health` no longer returns
+  `mcp`/`scheduling` keys (both backed by deleted modules);
+  `SystemHealthPage.tsx` dropped its "MCP / Agent-orchestration path" card
+  and "Scheduling" section to match — Hermes' own reachability is already
+  covered by that page's separate "Hermes Status" tab.
 - fix: three follow-up bugs found earlier this session, fixed directly.
   (1) `hermes_client.py`'s only session-token mechanism (scraping
   `window.__HERMES_SESSION_TOKEN__` out of `GET /`'s HTML) silently

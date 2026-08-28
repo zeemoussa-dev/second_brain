@@ -14,18 +14,25 @@ _DEFAULT_VISUAL = {"icon": None, "color": None}
 
 
 def _write_registry_agent_visual(agent_id: str, entry: dict) -> None:
-    """Keeps the Registry's own `Agent-visual.json` (REQ-SB-80) in sync
-    with this store's real icon/color override -- same reasoning/shape as
-    section_registry.py's `_write_registry_section_json`: additive,
-    one-way, picked up by RegistryLoader's own hot-reload poll. A silent
-    no-op for an agent not yet migrated into the data/ tree (nothing to
-    write to yet) -- this store's own `.second-brain/agent_visuals.json`
-    stays the real CRUD source of truth regardless."""
+    """Keeps the Registry's own `Agent.json` (REQ-SB-80 -- one file per
+    agent now, icon/color merged in alongside id/name/type/etc, not a
+    separate Agent-visual.json) in sync with this store's real icon/color
+    override -- same reasoning/shape as section_registry.py's
+    `_write_registry_section_json`: additive, one-way, picked up by
+    RegistryLoader's own hot-reload poll. A silent no-op for an agent not
+    yet migrated into the data/ tree (nothing to write to yet) -- this
+    store's own `.second-brain/agent_visuals.json` stays the real CRUD
+    source of truth regardless."""
     agent_dir = registry_loader.agent_data_dir(agent_id)
     if agent_dir is None:
         return
-    agent_dir.mkdir(parents=True, exist_ok=True)
-    (agent_dir / "Agent-visual.json").write_text(json.dumps(entry, indent=2), encoding="utf-8")
+    config_path = agent_dir / "Agent.json"
+    if not config_path.is_file():
+        return
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config["icon"] = entry.get("icon")
+    config["color"] = entry.get("color")
+    config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
 
 
 def _load_state() -> dict:

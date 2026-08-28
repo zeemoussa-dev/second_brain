@@ -79,8 +79,6 @@ _AGENT_SKILLS_FILE = "agent_skills.json"
 _AGENT_KEYWORDS_FILE = "agent_keywords.json"
 _AGENT_WORKING_MODES_FILE = "agent_working_modes.json"
 _AGENT_PENDING_APPROVALS_FILE = "agent_pending_approvals.json"
-_AGENT_SCOPES_FILE = "agent_scopes.json"
-_AGENT_PROMPTS_FILE = "agent_prompts.json"
 _AGENTS_REGISTRY_FILE = "agents_registry.json"
 _AGENT_KNOWLEDGE_GAPS_FILE = "agent_knowledge_gaps.json"
 _COCKPIT_THREADS_FILE = "cockpit_threads.json"
@@ -89,7 +87,8 @@ _AGENT_BACKGROUND_FLAGS_FILE = "agent_background_flags.json"
 _AGENT_VISUALS_FILE = "agent_visuals.json"
 _AGENT_SCHEDULES_FILE = "agent_schedules.json"
 _JOB_RUN_STATE_FILE = "job_run_state.json"
-_MEETING_THREAD_LINK_CONFIG_FILE = "meeting_thread_link_config.json"
+
+
 def build_tags(customer: str, kind: str) -> list[str]:
     """Hierarchical Obsidian tags mirroring the folder structure, so notes
     stay findable by customer/kind via search/graph view independent of
@@ -1419,31 +1418,6 @@ def rename_thread_directory(old_directory: Path, new_directory: Path) -> Path:
     return new_concept_path
 
 
-def _meeting_thread_link_config_path():
-    state_dir = settings.second_brain_data_path
-    state_dir.mkdir(parents=True, exist_ok=True)
-    return state_dir / _MEETING_THREAD_LINK_CONFIG_FILE
-
-
-def load_meeting_thread_link_config() -> dict | None:
-    """Pure I/O — returns None if meeting_thread_link_config.json doesn't
-    exist yet (no default content is computed here, per ADR-003; the
-    self-healing attendee_overlap_floor/one_on_one_carve_out_enabled/
-    date_proximity_days defaults are a business-layer decision, owned by
-    app/business/meeting_thread_link_config.py, mirroring
-    working_mode_registry._load_state()'s own seeded-default shape — a
-    single flat record, not a per-id store)."""
-    path = _meeting_thread_link_config_path()
-    if not path.exists():
-        return None
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def save_meeting_thread_link_config(config: dict) -> None:
-    path = _meeting_thread_link_config_path()
-    path.write_text(json.dumps(config, indent=2), encoding="utf-8")
-
-
 _PARTNERS_SUBFOLDER = f"{_WORK_ROOT}/Partners"
 _PARTNER_HUB_NOTE_BASELINE_KEYS = ("type", "partner", "tags", "affiliate_of")
 
@@ -2086,83 +2060,6 @@ def record_task_note(entry_id: str, stem: str) -> None:
     path = _task_note_index_path()
     index = load_task_note_index()
     index[entry_id] = stem
-    path.write_text(json.dumps(index, indent=2), encoding="utf-8")
-
-
-def _agent_scopes_path():
-    state_dir = settings.second_brain_data_path
-    state_dir.mkdir(parents=True, exist_ok=True)
-    return state_dir / _AGENT_SCOPES_FILE
-
-
-def _load_agent_scopes_index() -> dict[str, list[str]]:
-    path = _agent_scopes_path()
-    if not path.exists():
-        return {}
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def load_agent_scope(agent_id: str) -> list[str]:
-    """Pure I/O -- returns [] if agent_scopes.json doesn't exist yet, or
-    if agent_id has no entry in it. Mirrors load_agent_keywords's own
-    "no assignment yet is the ordinary starting state" reasoning
-    (ADR-017 point 2/4) -- an agent with no assigned scope has no bounded
-    vault query access (REQ-SB-29-US-01 Scenario 6), not a seeded
-    default."""
-    return _load_agent_scopes_index().get(agent_id, [])
-
-
-def save_agent_scope(agent_id: str, scope: list[str]) -> None:
-    """Whole-list replace for agent_id's own entry -- mirrors
-    save_agent_keywords's exact free-text kv-list editing UX; no
-    incremental add/remove-one-scope-entry primitive exists or is
-    needed."""
-    path = _agent_scopes_path()
-    index = _load_agent_scopes_index()
-    index[agent_id] = scope
-    path.write_text(json.dumps(index, indent=2), encoding="utf-8")
-
-
-def load_all_agent_scopes() -> dict[str, list[str]]:
-    """Whole-file read -- mirrors load_all_agent_keywords's own shape,
-    kept for parity/future consumers."""
-    return _load_agent_scopes_index()
-
-
-_DEFAULT_AGENT_PROMPT_RECORD = {"prompt": None, "guardrails": ""}
-
-
-def _agent_prompts_path():
-    state_dir = settings.second_brain_data_path
-    state_dir.mkdir(parents=True, exist_ok=True)
-    return state_dir / _AGENT_PROMPTS_FILE
-
-
-def _load_agent_prompts_index() -> dict[str, dict]:
-    path = _agent_prompts_path()
-    if not path.exists():
-        return {}
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def load_agent_prompt_record(id: str) -> dict:
-    """Pure I/O -- returns {"prompt": None, "guardrails": ""} if
-    agent_prompts.json doesn't exist yet, or if id has no entry in it
-    (REQ-SB-66-US-01-T01, mirrors load_agent_keywords's own "no
-    assignment yet is the ordinary starting state" self-healing-default
-    shape). id covers both a real Agent id and a real Job id uniformly
-    -- one flat namespace, no special-casing between the two."""
-    return _load_agent_prompts_index().get(id, dict(_DEFAULT_AGENT_PROMPT_RECORD))
-
-
-def save_agent_prompt_record(id: str, record: dict) -> None:
-    """Whole-record replace for id's own entry -- mirrors
-    save_agent_keywords's exact whole-value-replace convention; no
-    incremental merge primitive exists or is needed. Never touches any
-    OTHER id's own stored entry (no cross-id bleed)."""
-    path = _agent_prompts_path()
-    index = _load_agent_prompts_index()
-    index[id] = record
     path.write_text(json.dumps(index, indent=2), encoding="utf-8")
 
 

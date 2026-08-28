@@ -60,6 +60,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from app.business.core.agents.agent_manager import AgentManager
+from app.business.core.agents.agent_presentation import to_detail_dict, to_summary_dict
 from app.business.hermes import agents_map_adapter, chat_sessions
 from app.business.hermes.client import HermesUnavailableError, get_client
 
@@ -78,6 +80,7 @@ class ChatMessageBody(BaseModel):
 
 router = APIRouter(prefix="/agents")
 pipelines_router = APIRouter(prefix="/pipelines")
+_agent_manager = AgentManager()
 
 
 @pipelines_router.get("")
@@ -87,19 +90,38 @@ def list_pipelines() -> list[dict]:
 
 @router.get("")
 def list_agents() -> list[dict]:
-    return agents_map_adapter.list_agent_summaries()
+    # Pipelines aren't a real Hermes profile -- AgentManager doesn't
+    # cover them (deliberately, not yet), so they're composed in
+    # separately here rather than swapping the whole endpoint over.
+    # A Hub agent (2026-08-28) is excluded via AgentManager's own
+    # exclude_types -- it's already rendered as its Section's own
+    # SectionHub center node on the map, so this endpoint never returns
+    # it as an ordinary agent in the first place (business logic, not a
+    # frontend filter).
+    agents = _agent_manager.get_all(exclude_types=["hub"])
+    return [to_summary_dict(a) for a in agents] + agents_map_adapter.list_pipeline_summaries()
 
 
 @router.get("/{agent_id}")
 def get_agent(agent_id: str) -> dict:
-    agent = agents_map_adapter.get_agent_detail(agent_id)
-    if agent is None:
+    agent = _agent_manager.get_by_id(agent_id)
+    if agent is not None:
+        return to_detail_dict(agent)
+    # Not a real Hermes agent -- fall through to the Pipeline-aware path
+    # (agents_map_adapter.get_agent_detail already checks pipeline_registry
+    # first internally).
+    detail = agents_map_adapter.get_agent_detail(agent_id)
+    if detail is None:
         raise HTTPException(status_code=404, detail=f"Unknown agent: {agent_id!r}")
-    return agent
+    return detail
 
 
 @router.patch("/{agent_id}")
 def update_agent_visual(agent_id: str, body: AgentVisualUpdateBody) -> dict:
+    agent = _agent_manager.update(agent_id, icon=body.icon, color=body.color)
+    if agent is not None:
+        return to_detail_dict(agent)
+    # Not a real Hermes agent -- same Pipeline fallback as get_agent above.
     updated = agents_map_adapter.update_agent_visual(agent_id, icon=body.icon, color=body.color)
     if updated is None:
         raise HTTPException(status_code=404, detail=f"Unknown agent: {agent_id!r}")
