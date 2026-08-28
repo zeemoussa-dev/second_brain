@@ -1,19 +1,21 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.business import vault_entities, vault_index_config, vault_indexing, vault_templates
+from app.business.core.vault.vault import Vault
+from app.business.core.vault.vault_manager import DuplicateEntityError, EntityNotFoundError, VaultManager
 
 router = APIRouter(prefix="/vault")
+_vault_manager = VaultManager()
 
 
 @router.get("/overview")
-def get_overview() -> dict:
-    return vault_indexing.get_overview()
+def get_overview() -> Vault:
+    return _vault_manager.get_overview()
 
 
 @router.get("/index-config")
 def get_index_config() -> dict:
-    return vault_index_config.get_index_config()
+    return _vault_manager.get_index_config()
 
 
 class UpdateIndexConfigBody(BaseModel):
@@ -22,17 +24,17 @@ class UpdateIndexConfigBody(BaseModel):
 
 @router.patch("/index-config/{folder_name}")
 def update_index_config(folder_name: str, body: UpdateIndexConfigBody) -> dict:
-    return vault_index_config.set_folder_included(folder_name, body.included)
+    return _vault_manager.set_folder_included(folder_name, body.included)
 
 
 @router.get("/templates")
 def list_templates() -> dict:
-    return {"templates": vault_templates.list_templates()}
+    return {"templates": _vault_manager.list_templates()}
 
 
 @router.get("/entities")
 def list_entities() -> dict:
-    return {"entities": vault_entities.list_entities()}
+    return {"entities": _vault_manager.list_entities()}
 
 
 class CreateEntityBody(BaseModel):
@@ -46,8 +48,8 @@ class CreateEntityBody(BaseModel):
 @router.post("/entities")
 def create_entity(body: CreateEntityBody) -> dict:
     try:
-        return vault_entities.create_entity(body.name, body.section, body.domain, body.aliases, body.affiliate_of)
-    except vault_entities.DuplicateEntityError as exc:
+        return _vault_manager.create_entity(body.name, body.section, body.domain, body.aliases, body.affiliate_of)
+    except DuplicateEntityError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -65,17 +67,17 @@ class UpdateEntityBody(BaseModel):
 @router.patch("/entities/{name}")
 def update_entity(name: str, body: UpdateEntityBody) -> dict:
     try:
-        return vault_entities.update_entity(name, body.model_dump(exclude_none=True))
-    except vault_entities.EntityNotFoundError as exc:
+        return _vault_manager.update_entity(name, body.model_dump(exclude_none=True))
+    except EntityNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-    except vault_entities.DuplicateEntityError as exc:
+    except DuplicateEntityError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
 
 
 @router.delete("/entities/{name}")
 def delete_entity(name: str) -> dict:
     try:
-        vault_entities.delete_entity(name)
-    except vault_entities.EntityNotFoundError as exc:
+        _vault_manager.delete_entity(name)
+    except EntityNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     return {"deleted": True}

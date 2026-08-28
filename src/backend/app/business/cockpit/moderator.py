@@ -33,14 +33,15 @@ from __future__ import annotations
 
 import re
 
-from app.business import vault_indexing
 from app.business.core.agents.agent_manager import AgentManager
 from app.business.core.sections.section_manager import SectionManager
+from app.business.core.vault.vault_manager import VaultManager
 from app.business.hermes import agents_map_adapter
 from app.data_access import vault_writer
 
 _section_manager = SectionManager()
 _agent_manager = AgentManager()
+_vault_manager = VaultManager()
 
 _CUSTOMER_SECTION_ID = vault_writer.tag_slug("Customer")
 
@@ -98,7 +99,7 @@ def _subject_customer(entry: dict) -> str | None:
 
 
 def match_customer_expert(subject_note_stem: str) -> str | None:
-    entry = vault_indexing.get_index().get(subject_note_stem)
+    entry = _vault_manager.get_index().get(subject_note_stem)
     if entry is None:
         return None
     customer = _subject_customer(entry)
@@ -134,7 +135,7 @@ def match_customer_fallback_agent(subject_note_stem: str) -> str | None:
     never conflated."""
     if match_customer_expert(subject_note_stem) is not None:
         return None
-    entry = vault_indexing.get_index().get(subject_note_stem)
+    entry = _vault_manager.get_index().get(subject_note_stem)
     if entry is None or not _subject_customer(entry):
         return None
     section = _section_manager.get_by_id(_CUSTOMER_SECTION_ID)
@@ -212,7 +213,7 @@ def suggest_expert_for_question(question_text: str, exclude_agent_ids: list[str]
 
 
 def match_domain_experts(subject_note_stem: str) -> list[str]:
-    entry = vault_indexing.get_index().get(subject_note_stem)
+    entry = _vault_manager.get_index().get(subject_note_stem)
     if entry is None:
         return []
     subject_tokens = _tokenize(entry["stem"])

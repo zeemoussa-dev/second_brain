@@ -4,7 +4,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.business import vault_indexing
+from app.business.core.vault.vault_manager import VaultManager
 from app.api.agents_router import pipelines_router, router as agents_router
 from app.api.boot_router import router as boot_router
 from app.api.cockpit_router import router as cockpit_router
@@ -40,6 +40,9 @@ from app.data_access.system.tools import registry as tools_registry
 # capture_scheduler.py itself is left in place, unused, rather than
 # deleted -- same precedent librarian_housekeeping.py's own now-orphaned
 # bootstrap function already set two lines below.
+
+
+_vault_manager = VaultManager()
 
 
 @asynccontextmanager
@@ -98,7 +101,7 @@ async def lifespan(app: FastAPI):
         # read-heavy full-vault scan (confirmed live: ~1,126 notes,
         # comfortably sub-second) that would otherwise tie up the event
         # loop for its own duration if awaited directly on it.
-        asyncio.create_task(asyncio.to_thread(vault_indexing.rebuild_index))
+        asyncio.create_task(asyncio.to_thread(_vault_manager.rebuild_index))
         yield
 
 

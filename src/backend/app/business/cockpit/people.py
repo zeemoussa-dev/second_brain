@@ -22,11 +22,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.business import people_extraction, vault_indexing
+from app.business import people_extraction
+from app.business.core.vault.vault_manager import VaultManager
 from app.vault import vault_manager as vm
 from app.data_access import vault_writer
 
 _ATTENDEE_FIELD_BY_KIND = {"meeting": "attendees", "email": "recipients"}
+_vault_manager = VaultManager()
 
 
 def _normalize_person_item(raw_item) -> dict:
@@ -65,7 +67,7 @@ def _normalize_person_item(raw_item) -> dict:
     match = vault_writer.WIKILINK_PATTERN.fullmatch(raw_item.strip())
     if match is None:
         return {}
-    entry = vault_indexing.get_index().get(match.group(1))
+    entry = _vault_manager.get_index().get(match.group(1))
     if entry is None:
         return {}
     frontmatter = entry["frontmatter"]
@@ -117,7 +119,7 @@ def _related_section_people(path: str) -> list[dict]:
     section_text = vm.get_section_content(Path(path), "Related")
     people = []
     for target in vault_writer.extract_wikilink_targets(section_text):
-        entry = vault_indexing.get_index().get(target)
+        entry = _vault_manager.get_index().get(target)
         if entry is None or entry["frontmatter"].get("type") != "Person":
             continue
         people.append({"name": entry["frontmatter"].get("name"), "email": entry["frontmatter"].get("email")})
@@ -125,7 +127,7 @@ def _related_section_people(path: str) -> list[dict]:
 
 
 def resolve_people_chips(subject_kind: str, subject_note_stem: str) -> list[dict]:
-    entry = vault_indexing.get_index().get(subject_note_stem)
+    entry = _vault_manager.get_index().get(subject_note_stem)
     if entry is None:
         return []
     if subject_kind == "email":

@@ -1,15 +1,17 @@
 """HTTP surface for browse/tag-filter/note-detail/ranked-search
 (REQ-SB-02-US-01) -- delegates to app.business.vault_search/
-vault_indexing only, HTTP-only, no data_access/filesystem access of its
+VaultManager only, HTTP-only, no data_access/filesystem access of its
 own (ADR-003)."""
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
-from app.business import vault_indexing, vault_search
+from app.business import vault_search
+from app.business.core.vault.vault_manager import VaultManager
 
 router = APIRouter(prefix="/vault-search")
+_vault_manager = VaultManager()
 
 
 @router.get("/status")
@@ -18,7 +20,7 @@ def get_status() -> dict:
     indexed=false means the entire browse/search surface should render
     the honest "nothing indexed yet" state instead of any list/search
     UI."""
-    last_rebuilt_at = vault_indexing.get_last_rebuilt_at()
+    last_rebuilt_at = _vault_manager.get_last_rebuilt_at()
     return {"indexed": last_rebuilt_at is not None, "last_rebuilt_at": last_rebuilt_at}
 
 

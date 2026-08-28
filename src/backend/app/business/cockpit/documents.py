@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.business import vault_indexing
+from app.business.core.vault.vault_manager import VaultManager
 from app.config import settings
 from app.vault import vault_manager as vm
 
@@ -37,13 +37,15 @@ _FILE_TEMPLATE_ID = "file"
 
 MAX_UPLOAD_SIZE_BYTES = 25 * 1024 * 1024  # 25 MB -- generous for a screenshot/PDF, not unbounded
 
+_vault_manager = VaultManager()
+
 
 def _subject_note_name(subject_note_stem: str) -> str | None:
     """The subject note's own real relative note_name under Work/ (e.g.
     "Meetings/2026-10-13-PSS Team Get together") -- derived from its
     REAL indexed path, never reconstructed/guessed from the stem, so this
     stays correct even if a folder name carries a collision suffix."""
-    entry = vault_indexing.get_index().get(subject_note_stem)
+    entry = _vault_manager.get_index().get(subject_note_stem)
     if entry is None:
         return None
     folder = Path(entry["path"]).parent

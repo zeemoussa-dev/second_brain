@@ -10,14 +10,15 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
-from app.business import vault_indexing
+from app.business.core.vault.vault_manager import VaultManager
 from app.data_access import vault_writer
 
 _PERSONAL_NOTES_HEADER = "## Personal Notes"
+_vault_manager = VaultManager()
 
 
 def add_person_note(subject_note_stem: str, text: str) -> dict:
-    entry = vault_indexing.get_index().get(subject_note_stem)
+    entry = _vault_manager.get_index().get(subject_note_stem)
     if entry is None:
         raise HTTPException(status_code=404, detail="Unknown note")
     line = f"- **{date.today().isoformat()}:** {text}"

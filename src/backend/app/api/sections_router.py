@@ -6,18 +6,18 @@ user-mutable grouping concept (ADR-014), never data Hermes owns or
 reports. PATCH extended 2026-08-23 (operator: "the Hub can be
 clicked and has its own Settings... Section Color and Icon, Description
 and Name") from a name-only rename into a general update covering all
-four fields."""
+four fields. The real cross-manager composition (Section<->Agent) and
+delete-blocking rule live in business/logic/section_agents.py, not here
+(2026-08-28, API layer holds no business logic)."""
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.business.core.agents.agent_manager import AgentManager
 from app.business.core.sections.section import Section
 from app.business.core.sections.section_manager import SectionManager
-from app.business.hermes import agents_map_adapter
+from app.business.logic import section_agents
 
 router = APIRouter(prefix="/sections")
 _section_manager = SectionManager()
-_agent_manager = AgentManager()
 
 
 class SectionCreateBody(BaseModel):
@@ -41,48 +41,9 @@ class SectionUpdateBody(BaseModel):
     fallback_agent_id: str | None = None
 
 
-def _blocked_delete_message(name: str, blocked_by_agent_ids: list[str]) -> str:
-    # `agent_registry` (the now-fully-retired pre-Hermes agent model) is
-    # deliberately NOT used here -- it's empty and knows nothing about a
-    # real Hermes agent id, which `delete_section`'s own blocking check
-    # now also detects (REQ-SB-80). Resolved via the SAME adapter the
-    # rest of the app uses for a real agent's friendly display name;
-    # falls back to the bare id in the genuinely-impossible case a
-    # blocking id resolves to neither a Pipeline nor a real Hermes agent.
-    names = [
-        (agents_map_adapter.get_agent_detail(aid) or {}).get("name", aid)
-        for aid in blocked_by_agent_ids
-    ]
-    count = len(names)
-    joined = ", ".join(names)
-    return (
-        f'Can\'t delete "{name}" — {count} agent{"s" if count != 1 else ""} '
-        f'({joined}) {"are" if count != 1 else "is"} still assigned to this '
-        "section. Move them to a different section first, then try again."
-    )
-
-
-def _agent_ids_by_section() -> dict[str, list[str]]:
-    """Real cross-manager composition (operator: "cross managers work is
-    the business logic") -- SectionManager itself never reaches into
-    Agent data (the ownership split), so this lives here, at the
-    caller. Fixes GET /sections' own long-standing `agent_ids: []`
-    bug: the field existed, but nothing ever filled it in from the
-    real, live Registry-backed section_id AgentManager already
-    resolves for every agent."""
-    by_section: dict[str, list[str]] = {}
-    for agent in _agent_manager.get_all():
-        by_section.setdefault(agent.section_id, []).append(agent.id)
-    return by_section
-
-
 @router.get("")
 def list_sections() -> list[Section]:
-    agent_ids_by_section = _agent_ids_by_section()
-    sections = _section_manager.get_all()
-    for section in sections:
-        section.agent_ids = agent_ids_by_section.get(section.id, [])
-    return sections
+    return section_agents.list_sections_with_agent_ids()
 
 
 @router.post("")
@@ -104,26 +65,9 @@ def update_section(section_id: str, body: SectionUpdateBody) -> Section:
 
 @router.delete("/{section_id}")
 def delete_section(section_id: str) -> dict:
-    section = _section_manager.get_by_id(section_id)
-    if section is None:
+    try:
+        return section_agents.delete_section(section_id)
+    except section_agents.SectionNotFoundError:
         raise HTTPException(status_code=404, detail="Unknown section")
-    # AgentManager's own picture is fuller than SectionManager.delete()'s
-    # internal Registry-only check -- it also resolves an agent not yet
-    # migrated into the data/ tree (falls through to its real default
-    # Section rather than being invisible to a Registry-only scan).
-    # Checked here, at the cross-manager caller, not inside SectionManager
-    # itself. SectionManager.delete()'s own Registry check still runs
-    # underneath as a real, independent safety net either way.
-    blocked_by_agent_ids = _agent_ids_by_section().get(section_id, [])
-    if blocked_by_agent_ids:
-        raise HTTPException(
-            status_code=409,
-            detail=_blocked_delete_message(section.name, blocked_by_agent_ids),
-        )
-    result = _section_manager.delete(section_id)
-    if not result["deleted"]:
-        raise HTTPException(
-            status_code=409,
-            detail=_blocked_delete_message(section.name, result["blocked_by_agent_ids"]),
-        )
-    return {"deleted": True}
+    except section_agents.SectionBlockedError as exc:
+        raise HTTPException(status_code=409, detail=exc.message)

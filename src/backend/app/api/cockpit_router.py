@@ -13,49 +13,35 @@ Research Expert is designed (separate, later discussion).
 `POST /person/{stem}/notes` (2026-08-25, operator: "Notes about the
 person during the meeting, saved to their note is needed") is a real,
 narrowly-scoped exception to the "stub only" rule that still applies to
-`overview.summary`/`overview.articles` -- see business/cockpit/notes.py."""
+`overview.summary`/`overview.articles` -- see business/cockpit/notes.py.
+
+The real view composition and upload validation live in
+business/logic/cockpit_view.py, not here (2026-08-28, API layer holds
+no business logic)."""
 from __future__ import annotations
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
-from app.business import my_day, vault_indexing
-from app.business.cockpit import chat_store, chat_turn, documents, notes, people
+from app.business.cockpit import chat_store, chat_turn, notes
+from app.business.core.vault.vault_manager import VaultManager
+from app.business.logic import cockpit_view
 
 router = APIRouter(prefix="/cockpit")
+_vault_manager = VaultManager()
 
 
-def _subject_with_resolved_customer(entry: dict) -> dict:
-    """A Thread's own real frontmatter never carries a `customer` field
-    (found live 2026-08-27, operator: "Fix the People/Received field gap
-    on Threads") -- only a `customer/<slug>` tag, same convention
-    `my_day.py`'s own Calendar/Email projections already resolve through
-    `customer_name_by_tag`/`customer_from_tags`. A Meeting note that DOES
-    carry a real `customer` frontmatter value is left untouched (never
-    overwritten by the tag-derived one)."""
-    subject = dict(entry["frontmatter"])
-    if not subject.get("customer"):
-        customer = my_day.customer_from_tags(entry["tags"], my_day.customer_name_by_tag())
-        if customer:
-            subject["customer"] = customer
-    return subject
+def _require_known_note(subject_note_stem: str) -> None:
+    if _vault_manager.get_index().get(subject_note_stem) is None:
+        raise HTTPException(status_code=404, detail="Unknown note")
 
 
 @router.get("/{subject_kind}/{subject_note_stem}")
 def get_cockpit(subject_kind: str, subject_note_stem: str) -> dict:
-    entry = vault_indexing.get_index().get(subject_note_stem)
-    if entry is None:
+    try:
+        return cockpit_view.build_cockpit_view(subject_kind, subject_note_stem)
+    except cockpit_view.UnknownSubjectError:
         raise HTTPException(status_code=404, detail="Unknown note")
-    return {
-        "subject": _subject_with_resolved_customer(entry),
-        "people": people.resolve_people_chips(subject_kind, subject_note_stem),
-        "overview": {
-            "summary": None,
-            "related_documents": documents.list_documents(subject_note_stem),
-            "articles": [],
-        },
-        "thread": chat_store.get_thread(subject_kind, subject_note_stem),
-    }
 
 
 class AddPersonNoteBody(BaseModel):
@@ -75,15 +61,13 @@ class RosterBringInBody(BaseModel):
 def bring_in_roster_agent(
     subject_kind: str, subject_note_stem: str, body: RosterBringInBody
 ) -> dict:
-    if vault_indexing.get_index().get(subject_note_stem) is None:
-        raise HTTPException(status_code=404, detail="Unknown note")
+    _require_known_note(subject_note_stem)
     return chat_store.bring_in_agent(subject_kind, subject_note_stem, body.agent_id)
 
 
 @router.delete("/{subject_kind}/{subject_note_stem}/roster/{agent_id}")
 def remove_roster_agent(subject_kind: str, subject_note_stem: str, agent_id: str) -> dict:
-    if vault_indexing.get_index().get(subject_note_stem) is None:
-        raise HTTPException(status_code=404, detail="Unknown note")
+    _require_known_note(subject_note_stem)
     return chat_store.remove_agent(subject_kind, subject_note_stem, agent_id)
 
 
@@ -100,8 +84,7 @@ async def send_message(subject_kind: str, subject_note_stem: str, body: SendMess
     fast (never waits on the real Hermes turn) — `{"thread": ..., "answering":
     {"agent_id", "agent_name"} | None}` — so the caller can show the user's
     own message and an "X is typing..." indicator immediately."""
-    if vault_indexing.get_index().get(subject_note_stem) is None:
-        raise HTTPException(status_code=404, detail="Unknown note")
+    _require_known_note(subject_note_stem)
     return await chat_turn.send_user_message(subject_kind, subject_note_stem, body.text)
 
 
@@ -114,27 +97,17 @@ async def upload_document(
     it (operator, 2026-08-27) -- see `business/cockpit/documents.py` for
     the real write path (vault_manager's own `file` Template, same shape
     `capture-files` already uses, nested under this subject's own real
-    folder)."""
-    if vault_indexing.get_index().get(subject_note_stem) is None:
-        raise HTTPException(status_code=404, detail="Unknown note")
+    folder). Validation and the chat-confirmation side effect live in
+    business/logic/cockpit_view.py; this endpoint only reads the
+    uploaded bytes off the request and maps the outcome to HTTP."""
     content = await file.read()
-    if not content:
+    try:
+        return cockpit_view.upload_document(
+            subject_kind, subject_note_stem, file.filename or "upload", content, caption,
+        )
+    except cockpit_view.UnknownSubjectError:
+        raise HTTPException(status_code=404, detail="Unknown note")
+    except cockpit_view.EmptyUploadError:
         raise HTTPException(status_code=400, detail="Empty file")
-    if len(content) > documents.MAX_UPLOAD_SIZE_BYTES:
-        size_mb = len(content) / (1024 * 1024)
-        raise HTTPException(status_code=400, detail=f"File too large ({size_mb:.1f} MB) — the limit is 25 MB.")
-    result = documents.save_document(subject_note_stem, file.filename or "upload", content, caption)
-    # Real, visible confirmation right in the live chat (operator, 2026-08-27:
-    # "I will need to upload a file or a Screenshot while I am in the
-    # meeting") -- so attaching something during the meeting reads the
-    # same way as any other real event in the conversation, not a silent
-    # background write only visible by later checking the Documents tab.
-    # "this meeting"/"this email" -- found live 2026-08-27 testing the
-    # Inbox Cockpit: this message hardcoded "meeting" regardless of
-    # subject_kind, wrong for an email/Thread upload.
-    subject_label = "meeting" if subject_kind == "meeting" else "email"
-    chat_store.append_message(
-        subject_kind, subject_note_stem, speaker="system",
-        text=f"📎 Attached “{result['filename']}” to this {subject_label}.",
-    )
-    return result
+    except cockpit_view.UploadTooLargeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))

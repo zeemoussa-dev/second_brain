@@ -10,8 +10,10 @@ import math
 import re
 from pathlib import Path
 
-from app.business import vault_indexing
+from app.business.core.vault.vault_manager import VaultManager
 from app.data_access import vault_writer
+
+_vault_manager = VaultManager()
 
 _DEFAULT_PAGE_SIZE = 20
 
@@ -51,7 +53,7 @@ def list_notes(
     zero matches) returns "notes": [] honestly -- Scenario 6 is this
     same function returning a correctly-empty list, not a distinct code
     path."""
-    entries = list(vault_indexing.get_index().values())
+    entries = list(_vault_manager.get_index().values())
     if tag is not None:
         entries = [entry for entry in entries if tag in entry["tags"]]
     entries.sort(key=lambda entry: entry["stem"])
@@ -86,7 +88,7 @@ def list_tags() -> dict:
     tag string to type (the approved prototype's own fixed chip buttons
     are illustrative-only, not a real discovery mechanism)."""
     counts: dict[str, int] = {}
-    for entry in vault_indexing.get_index().values():
+    for entry in _vault_manager.get_index().values():
         for tag in entry["tags"]:
             counts[tag] = counts.get(tag, 0) + 1
     tags = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
@@ -148,7 +150,7 @@ def get_graph() -> dict:
     applies, dangling/self targets silently omitted. No pagination/filter
     params -- kind-filtering and name search are the frontend's own
     client-side concern over this one fetched snapshot."""
-    index = vault_indexing.get_index()
+    index = _vault_manager.get_index()
     nodes = [_summary(entry) for entry in index.values()]
     edges = [
         {"source": entry["stem"], "target": matched_stem}
@@ -166,7 +168,7 @@ def get_note_detail(stem: str) -> dict | None:
     search()'s own identical read -- ADR-026) -- 2026-08-23, operator:
     "when I click on a node The Next View should be the MD file it self
     displayed in a nice HTML formatting"."""
-    index = vault_indexing.get_index()
+    index = _vault_manager.get_index()
     entry = index.get(stem)
     if entry is None:
         return None
@@ -199,7 +201,7 @@ def resolve_asset_path(stem: str, filename: str) -> Path | None:
     `/` in a single path segment) one that would resolve outside the
     note's own folder -- never serves an arbitrary vault path, only a
     real sibling of a real, already-indexed note."""
-    index = vault_indexing.get_index()
+    index = _vault_manager.get_index()
     entry = index.get(stem)
     if entry is None:
         return None
@@ -263,7 +265,7 @@ def search(query: str, limit: int = _DEFAULT_SEARCH_LIMIT) -> dict:
     matching nothing is Scenario 5's own honest empty state, not a
     distinct code path."""
     query_tokens = _tokenize(query)
-    index = vault_indexing.get_index()
+    index = _vault_manager.get_index()
     entries = list(index.values())
     if not query_tokens or not entries:
         return {"query": query, "results": []}

@@ -1,53 +1,27 @@
 """Explicit, on-demand vault re-index trigger (REQ-SB-01-US-01,
 ESC-021 resolved trigger path (a)) -- alongside the scheduler-tick
 refresh T04 wires up separately. HTTP-only, delegates to business/
-(ADR-003).
-
-Also triggers the separate, disk-persisted agent-facing index
-(Hermes-Provisioning/skills/vault-rebuild/vault-index,
-Implementation/Plans/2026-08-27-vault-index-and-section-agents.md) via
-`hermes cron run vault-index-rebuild` -- the SAME job the recurring
-schedule fires, so there is exactly one real rebuild path for agents,
-never a second one that could drift from it. Fire-and-forget: an
-agent-mediated run (real LLM reasoning through Hermes' own skill-
-invocation loop, even for a mechanical skill) can take meaningfully
-longer than this endpoint's own fast in-process rebuild below, so the
-response never waits on it -- confirmed live, 2026-08-27, both rebuilds
-independently."""
+(ADR-003). The real dual-rebuild orchestration (this backend's own
+in-process index plus the disk-persisted agent-facing index) lives in
+business/logic/vault_index_rebuild.py, not here."""
 from __future__ import annotations
-
-from datetime import datetime, timezone
 
 from fastapi import APIRouter
 
-from app.business import vault_indexing
-from app.business.hermes.client import get_client
+from app.business.logic import vault_index_rebuild
 
 router = APIRouter(prefix="/vault-index")
-
-
-def _trigger_agent_index_rebuild() -> None:
-    # Best-effort -- the backend's own rebuild below must still succeed
-    # either way; get_client().cli.run_cron_job already swallows "no real
-    # Hermes install at the configured path" and any launch failure.
-    get_client().cli.run_cron_job("vault-index-rebuild")
 
 
 @router.post("/rebuild")
 def rebuild_vault_index() -> dict:
     """Plain (non-async) handler -- FastAPI/Starlette runs a synchronous
-    route handler in its own threadpool automatically, so this blocking,
-    read-heavy full-vault scan never blocks the event loop, with no
-    manual asyncio.to_thread call needed at this layer (unlike
-    capture_scheduler.py's run_capture_if_idle, which isn't reached
-    through an HTTP request at all). Independent of capture_scheduler.
-    _capture_run_lock -- that lock guards overlapping *vault-writing*
-    capture runs, a concern this read-only, side-effect-free rebuild
-    does not share (ADR-024)."""
-    index = vault_indexing.rebuild_index()
-    _trigger_agent_index_rebuild()
-    return {
-        "notes_indexed": len(index),
-        "rebuilt_at": datetime.now(timezone.utc).isoformat(),
-        "agent_index_rebuild_triggered": True,
-    }
+    route handler in its own threadpool automatically, so
+    vault_index_rebuild's own blocking, read-heavy full-vault scan never
+    blocks the event loop, with no manual asyncio.to_thread call needed
+    at this layer (unlike capture_scheduler.py's run_capture_if_idle,
+    which isn't reached through an HTTP request at all). Independent of
+    capture_scheduler._capture_run_lock -- that lock guards overlapping
+    *vault-writing* capture runs, a concern this read-only, side-effect-
+    free rebuild does not share (ADR-024)."""
+    return vault_index_rebuild.rebuild_vault_index()

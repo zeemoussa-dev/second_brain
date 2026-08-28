@@ -17,8 +17,11 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from app.business import customer_hub_linking, partner_hub_linking, vault_indexing
+from app.business import customer_hub_linking, partner_hub_linking
+from app.business.core.vault.vault_manager import VaultManager
 from app.data_access import vault_writer
+
+_vault_manager = VaultManager()
 
 # Well-known personal/free email-provider domains — deliberately a fixed,
 # hardcoded set (unlike list_known_customers/list_known_kinds, which are
@@ -296,7 +299,7 @@ def find_person_note_by_name(person_name: str) -> dict | None:
     note, never guesses at the nearest-sounding name (Scenario 4).
     Returns {"note_path": str, "name": str} or None."""
     normalized_target = re.sub(r"\s+", "", person_name).lower()
-    for entry in vault_indexing.get_index().values():
+    for entry in _vault_manager.get_index().values():
         frontmatter = entry["frontmatter"]
         if frontmatter.get("type") != "Person":
             continue

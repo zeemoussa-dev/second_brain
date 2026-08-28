@@ -19,3 +19,8 @@ class Template:
     frontmatter_defaults: dict = field(default_factory=dict)
     note_own_folder: bool = False
     note_filename_plain: bool = False
+    # Set only when this Template's own Template.json failed to parse --
+    # still returned (never silently skipped) so a broken template is
+    # visible instead of invisible, same discipline TemplateManager's
+    # own list-all always applied.
+    error: str | None = None

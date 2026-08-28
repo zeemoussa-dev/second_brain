@@ -18,6 +18,78 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- refactor: `TemplateManager` (`app/business/core/templates/`) built as
+  the sole business-layer gateway onto Template data, folding in and
+  retiring `data_access/templates/registry.py`'s `get_template`/
+  `list_templates` — only one real caller existed
+  (`VaultManager.list_templates()`, now delegating to it instead of
+  re-reading `Template.json` itself). Found live: `get_template()` had
+  ZERO real callers anywhere — the actual template-loading path for
+  every real vault write (e.g. `business/cockpit/documents.py`) goes
+  through a completely different function, `app/vault/vault_manager.py`'s
+  own low-level `load_template()`; both packages' docstrings now
+  explicitly warn not to confuse the two. Raw I/O lives in a new, thin
+  `data_access/templates.py` (`list_template_ids`/`read_template_json`)
+  — a correction to this session's own earlier "Managers own their file
+  I/O directly" precedent (operator: "Managers understand Entities, Data
+  Access understands stores... I/O always happens in Data Access"), so
+  `TemplateManager` itself holds zero raw file calls, only entity-shaping
+  and the malformed-entry error-visibility policy (a `sections` entry
+  with an unexpected shape, or unparsable JSON, still returns a visible
+  `Template(error=...)` rather than crashing the whole listing or
+  disappearing silently). `SectionManager`/`AgentManager`/`VaultManager`
+  (built earlier this session, before this correction) still do raw I/O
+  directly — known, disclosed, not yet retrofitted. Verified live: `GET
+  /vault/templates` returns all 7 real templates with correct section
+  counts, `TemplateManager().get_by_id('meeting')` returns correctly
+  typed `TemplateSection` objects, an unknown id returns `None`.
+- refactor: `VaultManager` (`app/business/core/vault/`) built as the
+  sole gateway onto Vault data — fully absorbs and retires
+  `vault_indexing.py`, `vault_index_config.py`, `vault_templates.py`,
+  and `vault_entities.py`. All real call sites migrated (24 across 13
+  files, including `main.py`'s boot-time rebuild, the Registry loader's
+  reachability, `moderator.py`, `vault_search.py`, `people_extraction.py`,
+  and several `business/cockpit/*` modules) — no second door left onto
+  the same data. `Vault` stays a genuine singleton (`get_overview() ->
+  Vault`), a deliberate deviation from the other Core entities'
+  `Array<Entity>` convention since there's exactly one vault. The note
+  index's own real in-memory state is kept as module-level globals
+  inside the new file (not instance attributes) so every one of the 13
+  independently-instantiated `VaultManager()` calls shares the same
+  index — confirmed live. Also deleted `business/glimpse_first_qa.py`,
+  a fully orphaned dead module (zero real callers anywhere, left over
+  from `app/api/mcp_server.py`'s earlier deletion). `app.business.core.
+  vault` and `app.vault` (the real, untouched low-level Obsidian write
+  engine) are two unrelated things sharing the word "vault" — both
+  packages' own docstrings now explicitly warn not to confuse them.
+  Verified live: `GET /vault/overview`, `/vault-search/status`,
+  `/vault/index-config` (round-tripping toggle), `/vault/templates`,
+  full `/vault/entities` CRUD (including the soft-delete landing on
+  disk), and downstream consumers `GET /my-day/summary`/`GET /cockpit/
+  meeting/<real stem>` all correct against real data.
+- refactor: `app/api/*.py` routers now hold zero business logic. Audited
+  all 14 router files; extracted real logic out of the 5 that had any
+  into new `business/logic/` modules — `my_day_window.py` (the day-in-
+  window validation `my_day_router.py` used to compute inline),
+  `vault_index_rebuild.py` (the dual in-process + agent-facing-Hermes-
+  cron rebuild orchestration), `section_agents.py` (the cross-manager
+  Section↔Agent composition and blocked-delete message-building),
+  `agent_chat_stream.py` (the SSE chat-stream event interpretation and
+  the lock/session orchestration around one streamed turn), and
+  `cockpit_view.py` (subject/customer resolution, the 4-source Cockpit
+  view composition, and document-upload validation + its chat
+  confirmation side effect). Each router's own remaining job is calling
+  the extracted function once and mapping its domain exception to an
+  HTTP status — that mapping stays in the router; it's the API layer's
+  actual job, not business logic. Router line counts: 333→218
+  (`agents_router.py`), 129→73 (`sections_router.py`), 140→112
+  (`cockpit_router.py`), 42→33 (`my_day_router.py`), 53→27
+  (`vault_index_router.py`). Verified live against real data for every
+  extraction: sections still compose `agent_ids` correctly, an
+  out-of-window `day` still 400s, a blocked section delete still 409s
+  with correct real agent names, a real Cockpit view still composes all
+  4 sources, a vault-index rebuild still triggers both real paths, an
+  unknown-agent chat stream still 404s before reaching the stream logic.
 - refactor: `agents_map_adapter.py`'s own hand-rolled real-agent
   composition (a second, parallel derivation of type/section/
   depends_on/is_background_agent straight from the Registry) is now

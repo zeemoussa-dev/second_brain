@@ -23,8 +23,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from app.business import vault_indexing
+from app.business.core.vault.vault_manager import VaultManager
 from app.data_access import vault_writer
+
+_vault_manager = VaultManager()
 
 _WINDOW_DAYS_BEFORE = 3
 _WINDOW_DAYS_AFTER = 3
@@ -54,7 +56,7 @@ def customer_name_by_tag() -> dict[str, str]:
     pairing (a Thread's own frontmatter has no `customer` field at all,
     only the tag) rather than a second reimplementation."""
     mapping: dict[str, str] = {}
-    for entry in vault_indexing.get_index().values():
+    for entry in _vault_manager.get_index().values():
         if entry["frontmatter"].get("type") not in ("Customer", "Partner"):
             continue
         name = entry["frontmatter"].get("name")
@@ -92,7 +94,7 @@ def _latest_sender_by_conversation() -> dict[str, str]:
     sender as a reasonable, honest best-effort answer rather than
     fabricating one or leaving the field permanently blank."""
     latest: dict[str, tuple[str, str]] = {}
-    for entry in vault_indexing.get_index().values():
+    for entry in _vault_manager.get_index().values():
         frontmatter = entry["frontmatter"]
         if frontmatter.get("type") != "RawMessage":
             continue
@@ -120,7 +122,7 @@ def _meeting_series_lookup() -> dict[str, dict]:
     series folder name is a truncated prefix of the full
     `calendar_series_id` frontmatter value, not an exact match to it."""
     lookup: dict[str, dict] = {}
-    for entry in vault_indexing.get_index().values():
+    for entry in _vault_manager.get_index().values():
         frontmatter = entry["frontmatter"]
         if frontmatter.get("type") != "Meeting" or frontmatter.get("start"):
             continue  # only the undated series-container note, never an occurrence
@@ -132,7 +134,7 @@ def _series_folder_name_for(path_str: str) -> str:
     return Path(path_str).parent.parent.name
 
 
-def _compute_window() -> tuple[str, str]:
+def compute_window() -> tuple[str, str]:
     """Returns (window_start, window_end) as 'YYYY-MM-DD' strings, 3 days
     before through 3 days after the app/server host's current local
     calendar date (REQ-SB-22-US-01 Scenario 4/AC-04). Called fresh on
@@ -171,7 +173,7 @@ def _resolve_day_bounds(day: str | None) -> tuple[str, str]:
     re-derive "today" or re-clamp, so a fresh call always reflects
     whatever the caller asked for."""
     if day is None:
-        return _compute_window()
+        return compute_window()
     return day, day
 
 
@@ -196,7 +198,7 @@ def list_email_items(day: str | None = None) -> list[dict]:
     customer_lookup = customer_name_by_tag()
     sender_lookup = _latest_sender_by_conversation()
     items = []
-    for entry in vault_indexing.get_index().values():
+    for entry in _vault_manager.get_index().values():
         frontmatter = entry["frontmatter"]
         if frontmatter.get("type") != "Thread":
             continue
@@ -230,7 +232,7 @@ def list_calendar_items(day: str | None = None) -> list[dict]:
     customer_lookup = customer_name_by_tag()
     series_lookup = _meeting_series_lookup()
     items = []
-    for entry in vault_indexing.get_index().values():
+    for entry in _vault_manager.get_index().values():
         frontmatter = entry["frontmatter"]
         if frontmatter.get("type") != "Meeting":
             continue
@@ -293,7 +295,7 @@ def summary(day: str | None = None) -> dict:
     todo.count now reflects real list_todo_items() data — unwindowed
     (unlike emails/calendar), since a Task has no natural "occurred
     near now" framing (REQ-SB-09, ADR-027)."""
-    window_start, window_end = _compute_window()
+    window_start, window_end = compute_window()
     return {
         "emails": {"count": len(list_email_items(day))},
         "calendar": {"count": len(list_calendar_items(day))},
