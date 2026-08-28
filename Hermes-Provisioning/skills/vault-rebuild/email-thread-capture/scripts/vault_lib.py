@@ -504,8 +504,23 @@ def write_file_link_companion(
 # docstring point 2: no company/Customer/Partner matching or hub-linking
 # here, deliberately) ────────────────────────────────────────────────────
 
+def _looks_like_real_email(value: str) -> bool:
+    """A LegacyExchangeDN (Outlook's own fallback address when
+    GetExchangeUser() resolution fails for an EX-type sender, e.g.
+    "/o=ExchangeLabs/ou=Exchange Administrative Group
+    (FYDIBOHF23SPDLT)/cn=Recipients/cn=...") has no "@" and starts with
+    "/" -- trusting it as a real address is the same live BUG-036 the
+    meeting-capture Skill's own identical copy of this function hit
+    (found live 2026-08-23 on a meeting attendee); guarded here too per
+    this file's own "kept in sync by hand" convention, even though no
+    email-sourced instance has manifested on disk yet."""
+    return "@" in value and not value.startswith("/")
+
+
 def person_note_dedup_key(name: str, email: str | None) -> str:
-    return email.lower() if email else _slugify(name.lower())
+    if email and _looks_like_real_email(email):
+        return email.lower()
+    return _slugify(name.lower())
 
 
 def find_person_note_path(vault_path: Path, dedup_key: str) -> Path | None:
@@ -569,13 +584,19 @@ def ensure_bare_person_note(
     contact must never be silently swallowed by this list)."""
     if not email:
         return None
-    if email.strip().lower() in _load_person_ignore_list(vault_path):
+    # A garbage-DN "email" (see _looks_like_real_email) still counts as
+    # "present" for the blank check above -- Outlook DID return
+    # something -- but from here on it's cleaned to "" so neither the
+    # dedup key nor the stored frontmatter value ever trusts it as a real
+    # address (BUG-036).
+    clean_email = email if _looks_like_real_email(email) else ""
+    if clean_email.strip().lower() in _load_person_ignore_list(vault_path):
         return None
-    dedup_key = person_note_dedup_key(name, email)
+    dedup_key = person_note_dedup_key(name, clean_email or None)
     existing_path = find_person_note_path(vault_path, dedup_key)
     tags = ["kind/person"]
     baseline = {
-        "type": "Person", "name": name, "email": email or "",
+        "type": "Person", "name": name, "email": clean_email,
         "phone": "", "linkedin": "",
         "department": department or "", "role": role or "", "company": company or "",
         "tags": tags,

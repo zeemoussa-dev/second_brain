@@ -28,6 +28,16 @@ import sys
 
 from outlook_lib import OutlookUnavailable, list_recent_mail
 
+# A real email body/subject can carry a Unicode character (found live,
+# 2026-08-24: U+202F NARROW NO-BREAK SPACE, a real typographic space
+# some senders' own signatures use) that Windows' default console
+# codepage (cp1252, not UTF-8) can't encode -- printing the JSON output
+# without this crashed the WHOLE capture run on that one email, a
+# pre-existing bug this surfaced while verifying the Sent Mail fix
+# below, not caused by it (any Inbox email with the same character
+# would have hit it too).
+sys.stdout.reconfigure(encoding="utf-8")
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()

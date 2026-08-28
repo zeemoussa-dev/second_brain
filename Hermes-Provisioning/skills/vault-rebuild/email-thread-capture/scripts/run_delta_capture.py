@@ -59,7 +59,13 @@ def ensure_pywin32():
 
 
 def run_script(args: list[str]) -> tuple[int, str, str]:
-    proc = subprocess.run([PYTHON] + args, cwd=SCRIPTS_DIR, capture_output=True, text=True)
+    # encoding="utf-8" explicit on BOTH sides of this subprocess boundary
+    # (list_recent_emails.py's own sys.stdout.reconfigure, 2026-08-24) --
+    # `text=True` alone decodes using the OS locale's preferred encoding
+    # (cp1252 on this machine, not UTF-8), which would still choke on a
+    # real Unicode character in an email subject/body even after the
+    # child side was fixed to WRITE utf-8 bytes correctly.
+    proc = subprocess.run([PYTHON] + args, cwd=SCRIPTS_DIR, capture_output=True, text=True, encoding="utf-8")
     return proc.returncode, proc.stdout, proc.stderr
 
 

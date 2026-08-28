@@ -18,6 +18,13 @@ import sys
 
 from outlook_lib import OutlookUnavailable, list_calendar_events
 
+# Same real crash as email-thread-capture's own list_recent_emails.py
+# (2026-08-24): a meeting subject/location/attendee name can carry a
+# Unicode character Windows' default console codepage (cp1252) can't
+# encode; printing the JSON output without this would crash the whole
+# capture run on that one event.
+sys.stdout.reconfigure(encoding="utf-8")
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()

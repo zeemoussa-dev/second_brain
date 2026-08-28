@@ -122,7 +122,9 @@ def _iter_opportunity_notes(vault_path: Path):
     customers_root = vault_path / "Work" / "Customers"
     if not customers_root.exists():
         return
-    for md_path in customers_root.glob("*/Opportunities/*/*.md"):
+    # Search recursively to support affiliate/subcompany nesting like
+    # Work/Customers/<Parent>/Affiliates/<Affiliate>/Opportunities/<Title>/<Title>.md
+    for md_path in customers_root.rglob("Opportunities/*/*.md"):
         if md_path.is_file() and md_path.parent.name == md_path.stem:
             yield md_path
 

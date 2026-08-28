@@ -32,6 +32,19 @@ import win32com.client
 _MAX_BODY_CHARS = 50_000
 _MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
 _OL_FOLDER_INBOX = 6
+# Sent Mail (2026-08-24, operator: "We didn't pull the outbox to the
+# threads... I guess its a must") -- a Thread only had the RECEIVED half
+# of a real conversation; Mahmoud's own replies/forwards, sitting in
+# this folder, were never captured, silently omitted, no error.
+# Confirmed live: `ReceivedTime` is populated on a real Sent Item too
+# (Outlook sets it close to `SentOn`, not just on Inbox items), so it
+# works as the same real sort/restrict field for both folders -- no
+# conditional SentOn/ReceivedTime branching needed. Also confirmed live:
+# a real Sent Item's own `SenderEmailAddress` comes back as a raw
+# Exchange DN string, not a clean SMTP address -- already handled by
+# `_resolve_sender()`'s own existing EX-type `GetExchangeUser()`
+# resolution below, reused unchanged for this folder too.
+_OL_FOLDER_SENT_MAIL = 5
 _OL_MEETING_RECIPIENT_REQUIRED = 1
 _OL_MEETING_RECIPIENT_OPTIONAL = 2
 
@@ -188,49 +201,64 @@ def resolve_mail_recipients(item) -> list[dict]:
     return _resolve_attendees(item)
 
 
+def _list_folder_mail(folder, limit: int, since: str | None, before: str | None) -> list[dict]:
+    """One folder's own real, filtered/restricted read -- extracted so
+    `list_recent_mail` can call this identically for Inbox and Sent Mail
+    (2026-08-24 fix, see `_OL_FOLDER_SENT_MAIL`'s own comment) rather
+    than duplicating the restrict/iterate/filter logic per folder."""
+    items = folder.Items
+    items.Sort("[ReceivedTime]", True)
+    restrictions = []
+    if since is not None:
+        since_dt = datetime.fromisoformat(since)
+        restrictions.append(f"[ReceivedTime] >= '{since_dt.strftime('%m/%d/%Y %H:%M %p')}'")
+    if before is not None:
+        before_dt = datetime.fromisoformat(before)
+        restrictions.append(f"[ReceivedTime] < '{before_dt.strftime('%m/%d/%Y %H:%M %p')}'")
+    if restrictions:
+        items = items.Restrict(" AND ".join(restrictions))
+    results: list[dict] = []
+    for item in items:
+        try:
+            message_class = getattr(item, "MessageClass", "") or ""
+            if message_class.startswith(_MEETING_MESSAGE_CLASS_PREFIX):
+                continue
+            sender = _resolve_sender(item)
+            results.append({
+                "id": item.EntryID,
+                "subject": item.Subject or "",
+                "sender_name": sender["name"],
+                "sender_email": sender["email"],
+                "sender_department": sender["department"],
+                "sender_job_title": sender["job_title"],
+                "sender_company_name": sender["company_name"],
+                "received": str(item.ReceivedTime),
+                "body": (item.Body or "").strip()[:_MAX_BODY_CHARS],
+                "attachments": _extract_attachments(item),
+                "conversation_id": getattr(item, "ConversationID", None) or "",
+                "recipients": resolve_mail_recipients(item),
+            })
+        except Exception:
+            continue
+        if len(results) >= limit:
+            break
+    return results
+
+
 def list_recent_mail(
     limit: int = 10, since: str | None = None, before: str | None = None,
 ) -> list[dict]:
     pythoncom.CoInitialize()
     try:
         ns = _connect_namespace()
-        inbox = ns.GetDefaultFolder(_OL_FOLDER_INBOX)
-        items = inbox.Items
-        items.Sort("[ReceivedTime]", True)
-        restrictions = []
-        if since is not None:
-            since_dt = datetime.fromisoformat(since)
-            restrictions.append(f"[ReceivedTime] >= '{since_dt.strftime('%m/%d/%Y %H:%M %p')}'")
-        if before is not None:
-            before_dt = datetime.fromisoformat(before)
-            restrictions.append(f"[ReceivedTime] < '{before_dt.strftime('%m/%d/%Y %H:%M %p')}'")
-        if restrictions:
-            items = items.Restrict(" AND ".join(restrictions))
-        results: list[dict] = []
-        for item in items:
-            try:
-                message_class = getattr(item, "MessageClass", "") or ""
-                if message_class.startswith(_MEETING_MESSAGE_CLASS_PREFIX):
-                    continue
-                sender = _resolve_sender(item)
-                results.append({
-                    "id": item.EntryID,
-                    "subject": item.Subject or "",
-                    "sender_name": sender["name"],
-                    "sender_email": sender["email"],
-                    "sender_department": sender["department"],
-                    "sender_job_title": sender["job_title"],
-                    "sender_company_name": sender["company_name"],
-                    "received": str(item.ReceivedTime),
-                    "body": (item.Body or "").strip()[:_MAX_BODY_CHARS],
-                    "attachments": _extract_attachments(item),
-                    "conversation_id": getattr(item, "ConversationID", None) or "",
-                    "recipients": resolve_mail_recipients(item),
-                })
-            except Exception:
-                continue
-            if len(results) >= limit:
-                break
-        return results
+        # Inbox (received) + Sent Mail (Mahmoud's own replies/forwards) --
+        # each queried for up to `limit` on its own, since the real mix
+        # between the two in any given window is unknown ahead of time;
+        # merged and re-sorted below, THEN trimmed to the real `limit`,
+        # so a page never silently favors one folder over the other.
+        inbox_results = _list_folder_mail(ns.GetDefaultFolder(_OL_FOLDER_INBOX), limit, since, before)
+        sent_results = _list_folder_mail(ns.GetDefaultFolder(_OL_FOLDER_SENT_MAIL), limit, since, before)
+        merged = sorted(inbox_results + sent_results, key=lambda e: e["received"], reverse=True)
+        return merged[:limit]
     finally:
         pythoncom.CoUninitialize()

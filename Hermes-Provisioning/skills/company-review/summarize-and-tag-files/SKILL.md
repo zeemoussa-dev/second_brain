@@ -68,7 +68,7 @@ For each File:
    - `.pdf` -- the `pdf`/`nano-pdf` skill (OCR the `ocr-and-documents`
      skill if it's a scanned/image-only PDF with no text layer).
    - `.docx` -- the `docx` skill.
-   - `.pptx` -- the `powerpoint` skill.
+   - `.pptx` -- the `pptx` skill.
    - `.xlsx` -- the `xlsx` skill.
    - image formats (`.jpg`/`.png`/etc.) -- vision/image reading.
    - a genuinely unreadable format (`.vcf`/`.pkpass`/`.ics`/`.zip`/no
@@ -136,49 +136,6 @@ own parent Thread's `## Files` section -- the existing bare
 replaced in place (idempotent, never duplicated) rather than a separate
 log file, since Threads don't get their own Log/Captures companion
 files.
-
-## Job 2: Add more detail (and diagrams) to an already-summarized File
-
-Triggered when Mahmoud wants a deeper pass on a File you (or an earlier
-turn) already summarized -- e.g. "look closer at that deck." **This is the
-ONLY place further analysis output goes -- never a new file, never sent
-anywhere.** Read the real file again (same per-format tooling as Job 1),
-write your detailed findings as real prose (with your own `[[wikilinks]]`,
-same convention as the Summary), `write_file` a scratch JSON payload
-`{"file_path": "<the File's own real captured file path>", "details":
-"<your detailed findings>"}`, then call the SAME script with `--append`:
-
-```
-terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\skills\\company-review\\summarize-and-tag-files\\scripts\\apply_file_review.py\" --vault-path \"C:\\myWorx\\Moussa MD\\Moussa Brain\" --append --input-file <scratch path>")
-```
-
-This appends a `## Details` section to the File's existing note (creating
-it on the first pass, appending further points on a later one) -- the
-`## Summary` from Job 1 stays untouched above it.
-
-**If the file contains an architecture diagram, system diagram, or similar
-visual worth seeing (not just describing)**, render THAT specific
-slide/page to a real image first:
-
-- **`.pptx`** -- use THIS Skill's own `render_pptx_slide_win32.py`, not the
-  `powerpoint` Skill's `pptx_render.py`. That one needs LibreOffice
-  (`soffice`) + poppler, which cannot be installed in this environment
-  (confirmed 2026-08-22); `render_pptx_slide_win32.py` drives the REAL,
-  locally-installed PowerPoint via COM instead (pywin32, already present
-  in the Hermes venv from the Outlook integration) -- full fidelity, no
-  LibreOffice needed, verified live. Only render the specific slide
-  numbers worth it:
-  `terminal(command="python \"...\\summarize-and-tag-files\\scripts\\render_pptx_slide_win32.py\" --pptx \"<deck path>\" --slides \"3,12\" --outdir <scratch dir>")`
-- **`.pdf`** -- the `pdf`/`nano-pdf` skill's own page-to-image conversion
-  (`pdf_page_image.py`, pypdfium2-based, unaffected by the LibreOffice gap).
-
-Then pass the rendered image(s) in the same payload: `{"file_path": "...",
-"details": "...", "images": [{"source_path": "<rendered PNG path>"}, ...]}`
--- the script copies each into the File's own folder (handling name
-collisions) and embeds it (`![[filename]]`) right after your `details`
-text. Put any caption you want IN `details` itself, since the embed always
-lands after it -- you don't know the final (possibly collision-suffixed)
-filename in advance, so never write the `![[...]]` syntax yourself.
 
 ## Pitfalls
 

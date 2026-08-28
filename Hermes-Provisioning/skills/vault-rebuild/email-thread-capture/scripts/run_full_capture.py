@@ -62,7 +62,9 @@ def ensure_pywin32():
 
 def run_script(args: list[str]) -> tuple[int, str, str]:
     """Run a script in SCRIPTS_DIR and return (code, stdout, stderr)."""
-    proc = subprocess.run([PYTHON] + args, cwd=SCRIPTS_DIR, capture_output=True, text=True)
+    # encoding="utf-8" explicit on BOTH sides of this subprocess boundary
+    # -- see run_delta_capture.py's own identical fix/comment, 2026-08-24.
+    proc = subprocess.run([PYTHON] + args, cwd=SCRIPTS_DIR, capture_output=True, text=True, encoding="utf-8")
     return proc.returncode, proc.stdout, proc.stderr
 
 

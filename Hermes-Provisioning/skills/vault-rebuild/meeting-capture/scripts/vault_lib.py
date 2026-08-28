@@ -304,6 +304,41 @@ def meeting_directory_for_new(vault_path: Path, subject: str, start: str, is_rec
     return _unique_meeting_directory(vault_path, base_stem, calendar_id)
 
 
+def rename_meeting_series_if_needed(vault_path: Path, directory: Path, subject: str, series_id: str) -> Path:
+    """Self-healing repair for a recurring series' own concept
+    directory+file, mirroring email-thread-capture's own rename_thread.py
+    (BUG-036, found live 2026-08-23): a series first captured before this
+    Skill's 2026-08-21 rewrite (or by any future code path that ever again
+    passes a raw Outlook id through as the folder name) gets stuck at that
+    raw name FOREVER, because resolve_meeting_directory's own dedup-by-
+    calendar_series_id scan always finds and reuses that same directory on
+    every later occurrence -- new occurrence files land inside it, real
+    and correctly named, but the series' own folder+concept-file never
+    self-corrects. Called on every ingest (idempotent, cheap no-op once
+    already correct) rather than as a one-off migration, so any future
+    regression of this kind heals itself on the next capture run instead
+    of silently persisting like the original bug did.
+
+    No other note in the vault wikilinks a Meeting concept note by its own
+    stem (attendee/thread links all point the other way, or store a bare
+    conversation_id string -- see link_meeting_to_thread.py), so unlike
+    rename_thread_directory this never needs to touch any file outside
+    `directory` itself."""
+    correct_slug = _slugify(subject)
+    if directory.name == correct_slug:
+        return directory  # already correct -- the common case, every run
+    new_directory = directory.parent / correct_slug
+    if new_directory.exists() and new_directory != directory:
+        suffix = hashlib.sha256(series_id.encode("utf-8")).hexdigest()[:8]
+        reserved = len(suffix) + 1  # "-" + suffix
+        truncated = subject[: max(1, 80 - reserved)]
+        new_directory = directory.parent / _slugify(f"{truncated}-{suffix}")
+    old_slug = directory.name
+    directory.rename(new_directory)
+    (new_directory / f"{old_slug}.md").rename(new_directory / f"{new_directory.name}.md")
+    return new_directory
+
+
 def build_meeting_tags(customer: str | None) -> list[str]:
     """Mirrors every other note kind's own self-tag shape. Deliberately
     does NOT derive `customer` at capture time (operator, 2026-08-21:
@@ -475,8 +510,24 @@ def add_attendee_to_frontmatter(meeting_note_path: Path, person_stem: str) -> bo
 # email-thread-capture's own vault_lib.py -- duplicated, not shared, per
 # this codebase's own per-Skill self-containment convention) ────────────
 
+def _looks_like_real_email(value: str) -> bool:
+    """A LegacyExchangeDN (Outlook's own fallback address when
+    GetExchangeUser() resolution fails for an EX-type meeting attendee,
+    e.g. "/o=ExchangeLabs/ou=Exchange Administrative Group
+    (FYDIBOHF23SPDLT)/cn=Recipients/cn=...") has no "@" and starts with
+    "/" -- trusting it as a real address produced a real, live Person
+    note filed under its own raw DN as filename/dedup key (BUG-036,
+    found live 2026-08-23: "Work/People/-o=exchangelabs-ou=exchange
+    administrative group (fydibohf23spdlt)-cn=recipients.md", even
+    though the SAME note's own `name` field already held the real,
+    readable "nalsulaimani")."""
+    return "@" in value and not value.startswith("/")
+
+
 def person_note_dedup_key(name: str, email: str | None) -> str:
-    return email.lower() if email else _slugify(name.lower())
+    if email and _looks_like_real_email(email):
+        return email.lower()
+    return _slugify(name.lower())
 
 
 def find_person_note_path(vault_path: Path, dedup_key: str) -> Path | None:
@@ -515,13 +566,19 @@ def ensure_bare_person_note(
     Skill's own vault_lib.py docstring)."""
     if not email:
         return None
-    if email.strip().lower() in _load_person_ignore_list(vault_path):
+    # A garbage-DN "email" (see _looks_like_real_email) still counts as
+    # "present" for the blank check above -- Outlook DID return
+    # something -- but from here on it's cleaned to "" so neither the
+    # dedup key nor the stored frontmatter value ever trusts it as a real
+    # address (BUG-036).
+    clean_email = email if _looks_like_real_email(email) else ""
+    if clean_email.strip().lower() in _load_person_ignore_list(vault_path):
         return None
-    dedup_key = person_note_dedup_key(name, email)
+    dedup_key = person_note_dedup_key(name, clean_email or None)
     existing_path = find_person_note_path(vault_path, dedup_key)
     tags = ["kind/person"]
     baseline = {
-        "type": "Person", "name": name, "email": email or "",
+        "type": "Person", "name": name, "email": clean_email,
         "phone": "", "linkedin": "",
         "department": department or "", "role": role or "", "company": company or "",
         "tags": tags,
