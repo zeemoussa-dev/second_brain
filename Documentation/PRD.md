@@ -4350,3 +4350,57 @@ per "one Expert per Customer today"). -->
 this same session (mirrors REQ-SB-80's own placeholder-vs-built
 distinction: a real, working capability can exist before its formal
 spec catches up). See CHANGELOG.md for the real, verified build.
+
+---
+
+### REQ-SB-84: Fresh-Machine Provisioning — Deployment Guide, Install Script, First-Run Onboarding
+
+Today, standing up Second Brain on a new machine is undocumented tribal
+knowledge — the existing deployment guide describes an architecture
+that predates the Hermes pivot and no longer matches what actually
+runs. The operator wants a real, repeatable path from a brand-new PC to
+a working install: a deployment guide that reflects the current
+(Hermes-backed) architecture, and a provisioning script that walks
+through it.
+
+The script's job: detect whether Hermes is already installed on this
+machine. If not, install it (the real, current Hermes Agent installer).
+If it is (or once it is), collect whatever it still needs configured —
+starting with which LLM provider(s) to enable (Compass, or any other
+provider the operator wants, not a fixed list) and their real
+credentials. Then install Second Brain itself, backend and frontend.
+
+A brand-new install has nothing preseeded — no vault pointed at, no
+Sections, none of the app's own working state. Before the frontend is
+usable it needs a first-run flow that collects exactly what a fresh
+install is genuinely missing (starting with the vault location) and
+gets the app into a real, working starting state, not a blank/broken
+one.
+
+<!-- Raised 2026-08-28, operator, verbatim: "Now i want to start a
+provisioning tool, Lets say i want to have this deployed in a brand new
+PC, I need a deployement guide, and a deployement script that check if
+I have hermis installed if yes they it askes for the parapeters needed,
+if no it install hermes then collect things like compass or whatever
+LLM i will enable, then it install the system (front and back end) then
+at the front end it should before it starts collect all needed stuff
+like the location of the vault, preseed it and sections bla bla bla you
+shouldknow what the system doesn't have by default when it firsts run."
+Grounded before speccing: the real Hermes Agent (github.com/
+NousResearch/hermes-agent) is a git+venv install with its own `hermes
+setup`/`hermes model`/`hermes doctor` CLI; Windows install is
+`iex (irm https://hermes-agent.nousresearch.com/install.ps1)`. A
+non-interactive/scripted path for registering a CUSTOM provider
+(Compass-shaped, not a Nous Portal login) isn't exposed via a
+documented CLI flag — this repo's own `Hermes-Provisioning/
+config/custom_providers.yaml` (applied once by hand, confirmed working)
+is the real, already-proven mechanism, and is the intended reuse point
+rather than reverse-engineering an undocumented flag. Also found and
+in scope for this requirement: `Documentation/DeploymentGuide.md` is
+fully stale (describes deleted Outlook-COM/LangGraph/`/mcp`-secret
+architecture), and `SELF_EMAIL` is a required `.env` setting with zero
+real callers left in the app — both get fixed as part of this
+requirement, not left for a separate pass, since an accurate
+provisioning script needs an accurate, current required-config list. -->
+
+**Acceptance:** To be drafted as Gherkin at `/spec`.

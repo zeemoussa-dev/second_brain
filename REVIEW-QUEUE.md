@@ -7870,3 +7870,37 @@ each story's own `## Notes` for the authorization breadcrumb.)
   pairing so the already-scheduled cron job can actually start firing.
   → `Implementation/Sprints/SPRINT-077-moderator-roster-recommendation-and-meeting-prep-agent.md`
 
+- [ ] 2026-08-28 · **Prototype update: first-run-onboarding.html (REQ-SB-84)** · needs browser sign-off
+  Plain English: designed the one UI-facing part of REQ-SB-84 (Fresh-Machine
+  Provisioning) — the first-run onboarding wizard a user sees the very
+  first time Second Brain's frontend opens against a brand-new, empty
+  install. The deployment guide and install script (the requirement's
+  other two parts) are non-UI and untouched here. Key design decisions:
+  (1) the wizard's ONLY real input is the vault path — `config.py`'s
+  `vault_path` is the sole Settings field with no default and no auto-seed
+  path anywhere in the codebase; (2) it deliberately does NOT include an
+  add-a-provider form — `ProviderManager` always auto-seeds Compass +
+  Anthropic Claude from already-required `.env` settings the instant it's
+  first read, and per the requirement's own text, collecting those
+  credentials is the provisioning SCRIPT's job, not the frontend's, so
+  Providers show read-only with a link to the existing Settings Providers
+  card (REQ-SB-19) instead of duplicating it; (3) Sections are likewise
+  shown read-only (they auto-seed the real starting 6: Customer, Librarian,
+  Industry, Technology, Data Gatherer, Sales) — not a form either; (4) a
+  new boot-stage checklist step reuses `registry/loader.py`'s real 5-stage
+  cold-boot order verbatim, per that file's own docstring intent ("a
+  frontend BootScreen never has to guess what's happening"). `SELF_EMAIL`
+  is explicitly NOT designed for (dead field, slated for removal by this
+  same requirement) and `hermes_mcp_shared_secret` is explicitly NOT a
+  frontend field (inter-service, set via `.env` by the install script).
+  Composed entirely from existing tokens/components (`.card`,
+  `.state-switcher`, `.kv-list`, `.item-list`, `.badge*`, `.empty-state`,
+  `.input`/label, `.btn*`) — no new CSS. Deliberately has no sidebar nav
+  (reached once, before the app shell's own nav is meaningful) and is not
+  added to any other screen's shared sidebar — linked only from
+  `index.html`'s catalog.
+  **What to do:** open `html-prototype/first-run-onboarding.html` in a
+  browser and review (also see the updated `html-prototype/index.html`
+  catalog card). Once approved, run `/spec` on REQ-SB-84.
+  → html-prototype/first-run-onboarding.html
+

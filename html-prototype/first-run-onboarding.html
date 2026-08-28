@@ -1,0 +1,265 @@
+<!--
+  Screen: First-Run Onboarding Wizard (REQ-SB-84 — the one UI-facing part of
+  "Fresh-Machine Provisioning"; the deployment guide and install script are
+  non-UI and out of this pass's scope).
+
+  Grounded in real code, not invented (read before drawing anything):
+    - src/backend/app/config.py — Settings' own required-with-no-default
+      fields are compass_base_url/compass_api_key/compass_model,
+      anthropic_api_key/anthropic_model, vault_path, self_email,
+      hermes_mcp_shared_secret. Per this same requirement's own PRD note,
+      self_email is a dead field being deleted, not designed for here.
+    - src/backend/app/data_access/providers.py — ProviderManager's
+      seed_defaults() ALWAYS seeds Compass + Anthropic Claude straight off
+      those same required Settings fields the instant ProviderManager is
+      first read — meaning by the time this wizard's page can even load,
+      the backend has already booted successfully, which is only possible
+      if compass_*/anthropic_*/hermes_mcp_shared_secret already exist in
+      .env. Per REQ-SB-84's own PRD text, collecting those IS the
+      provisioning SCRIPT's job ("collect things like compass or whatever
+      LLM i will enable" happens BEFORE "it install the system"), not the
+      frontend's. So this screen deliberately does NOT include an
+      add-a-provider form — that would both duplicate settings.html's
+      already-existing Providers card (REQ-SB-19) and contradict the real
+      seeding order. Providers show here as a read-only confirmation with a
+      link to Settings, not a fillable step.
+    - src/backend/app/business/core/sections/section_manager.py — Sections
+      are likewise auto-seeded on first read (the real starting 6:
+      Customer, Librarian, Industry, Technology, Data Gatherer, Sales) —
+      also read-only confirmation here, never a form. (This corrects the
+      PRD requirement text's own framing of "no Sections" as something to
+      collect — the real code already answers that automatically.)
+    - src/backend/app/data_access/registry/loader.py — the ONE field with
+      no default and no seeding path anywhere in the codebase is
+      vault_path: nothing can guess where a user's Obsidian vault lives.
+      That is this wizard's real, singular required INPUT. loader.py's own
+      boot() reports staged progress (checking_hermes -> loading_sections
+      -> loading_agents -> loading_skills -> loading_providers) specifically
+      "so a frontend BootScreen never has to guess what's happening" (its
+      own docstring) — Step 2 below is exactly that BootScreen, using the
+      real stage ids/order. A `failed` boot state (RegistryLoadError) is
+      deliberately NOT drawn here — data/Sections and data/Background/Agents
+      both tolerate a missing directory by returning empty, so a genuinely
+      fresh install (no data/ tree yet) cannot produce a load failure; that
+      state belongs on a later, populated System Health, not first-run.
+
+  Reused, nothing net-new in styles.css: `.main` (centered via inline
+  max-width/margin, the same inline-style-composition convention every
+  other screen already uses rather than inventing a `.onboarding-shell`
+  class for a one-off center layout), `.state-switcher`/[data-state-panel]
+  (reused THREE independent times on one page: the outer step nav, the
+  Vault step's not-entered/valid/invalid sub-states, and the Setting-Up
+  step's booting/ready sub-states — app.js's existing delegated wiring
+  handles nested/multiple groups with zero changes, already proven safe by
+  System Health's two independent groups), `.card`, `.input`/label pairs
+  (copied from settings.html's own Vault field), `.badge`/`.badge-success`/
+  `.badge-warning`/`.badge-danger` (including the existing "recolor a plain
+  `.badge` inline via a real token" technique settings.html's Compass
+  "Default" chip already established, reused here for a neutral "Pending"
+  boot-stage chip), `.kv-list`/`.kv-row`/`.kv-key` (Settings' own
+  Vault/Connections card shape, reused for the Ready-step summary),
+  `.item-list`/`.item-row`/`.item-row-main`/`.item-row-title`/
+  `.item-row-meta` (boot-stage checklist rows), `.empty-state` (not-yet-
+  entered vault framing), `.btn`/`.btn-primary`, `.mono`, `.text-muted`.
+  New: none.
+
+  Deliberately has NO `.sidebar`/nav — per SCREEN_INSTRUCTIONS.md's shared-
+  shell rule this is a considered exception, not an oversight: every other
+  nav destination (Agents Map, My Day, Settings, System Health, Agent
+  Activity, Browse & Search) assumes a vault + working state that doesn't
+  exist yet at this exact moment, so surfacing them as live nav here would
+  invite navigating into a broken app mid-setup. Same reasoning
+  meeting-cockpit.html/inbox-cockpit.html already used for "not a top-level
+  nav destination" — this screen is reached once, before the shell nav is
+  meaningful, and is linked from index.html's catalog only, not added to
+  every other screen's shared sidebar list.
+
+  Buildable states drawn (grounded, not invented): vault path not yet
+  entered / valid / invalid-path (mirrors settings.html's own Vault
+  ok/error pair); boot in progress / boot ready (loader.py's real `state`
+  values, minus the unreachable `failed` case explained above); Hermes
+  reachable / not yet reachable (loader.py's own `hermes_reachable` flag —
+  an honest state if the provisioning script's Hermes install step hasn't
+  finished yet, not something this screen can fix, just report).
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>First-Run Setup — Second Brain</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="main" style="max-width: 640px; margin: 0 auto;">
+
+    <div style="text-align: center; margin-bottom: var(--space-6);">
+      <h1>Welcome to Second Brain</h1>
+      <p class="text-muted">This machine's install is brand new — a couple of things before it's usable.</p>
+    </div>
+
+    <div class="state-switcher" data-group="onboarding-step" style="justify-content: center;">
+      <button type="button" class="btn btn-primary" data-state-target="vault">1. Vault</button>
+      <button type="button" class="btn" data-state-target="setup">2. Setting up</button>
+      <button type="button" class="btn" data-state-target="ready">3. Ready</button>
+    </div>
+
+    <!-- ==================================================================
+         Step 1 — Vault location. The one field nothing can default or
+         auto-seed (config.py's vault_path: no default anywhere).
+         ================================================================== -->
+    <section data-state-panel data-group="onboarding-step" data-state="vault" class="active">
+      <div class="card" style="margin-bottom: var(--space-4);">
+        <h2>Point Second Brain at your Obsidian vault</h2>
+        <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: calc(-1 * var(--space-3));">This is the one thing Second Brain genuinely can't guess — every note it indexes and serves comes from this folder. Everything else (Sections, LLM Providers) is already set up for you; see Step 3.</p>
+
+        <div class="state-switcher" data-group="vault-step-state">
+          <button type="button" class="btn btn-primary" data-state-target="empty">Not entered yet</button>
+          <button type="button" class="btn" data-state-target="valid">Valid path</button>
+          <button type="button" class="btn" data-state-target="invalid">Invalid path</button>
+        </div>
+
+        <section data-state-panel data-group="vault-step-state" data-state="empty" class="active">
+          <label class="text-muted" for="vaultPathEmpty" style="font-size: var(--font-size-sm);">Vault directory</label>
+          <input class="input" id="vaultPathEmpty" type="text" placeholder="C:/Users/you/Obsidian/SecondBrain" style="margin: var(--space-1) 0 var(--space-2);" />
+          <div class="empty-state" style="padding: var(--space-4) var(--space-2);">
+            <p style="margin: 0;">Enter the full path to your Obsidian vault folder to continue.</p>
+          </div>
+        </section>
+
+        <section data-state-panel data-group="vault-step-state" data-state="valid">
+          <label class="text-muted" for="vaultPathValid" style="font-size: var(--font-size-sm);">Vault directory</label>
+          <input class="input" id="vaultPathValid" type="text" value="C:/Users/you/Obsidian/SecondBrain" style="margin: var(--space-1) 0 var(--space-2);" />
+          <p style="margin: 0;"><span class="badge badge-success">Found</span> <span class="text-muted" style="font-size: var(--font-size-sm);">This folder exists — indexing starts as soon as setup finishes.</span></p>
+        </section>
+
+        <section data-state-panel data-group="vault-step-state" data-state="invalid">
+          <label class="text-muted" for="vaultPathInvalid" style="font-size: var(--font-size-sm);">Vault directory</label>
+          <input class="input" id="vaultPathInvalid" type="text" value="C:/Users/you/Obsidian/Missing" style="margin: var(--space-1) 0 var(--space-2);" />
+          <p style="margin: 0;"><span class="badge badge-danger">Not found</span> <span class="text-muted" style="font-size: var(--font-size-sm);">Second Brain can't find a directory at this path — check it and try again.</span></p>
+        </section>
+      </div>
+      <div style="text-align: right;">
+        <button type="button" class="btn btn-primary">Continue &rarr;</button>
+      </div>
+    </section>
+
+    <!-- ==================================================================
+         Step 2 — Setting up. loader.py's real cold-boot stage list, in its
+         real order, PLUS the real hermes_reachable check that's already
+         the boot's very first stage — "a frontend BootScreen never has to
+         guess what's happening" per that file's own docstring.
+         ================================================================== -->
+    <section data-state-panel data-group="onboarding-step" data-state="setup">
+      <div class="card" style="margin-bottom: var(--space-4);">
+        <h2>Setting up your workspace</h2>
+        <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: calc(-1 * var(--space-3));">Second Brain is loading its Sections, Agents, Skills, and Providers — this runs the same way on every open, not just this first one.</p>
+
+        <div class="state-switcher" data-group="setup-step-state">
+          <button type="button" class="btn btn-primary" data-state-target="booting">Booting</button>
+          <button type="button" class="btn" data-state-target="ready">Ready</button>
+        </div>
+
+        <section data-state-panel data-group="setup-step-state" data-state="booting" class="active">
+          <div class="item-list">
+            <div class="item-row">
+              <div class="item-row-main"><span class="item-row-title">Checking Hermes connection</span></div>
+              <span class="badge badge-success">Done</span>
+            </div>
+            <div class="item-row">
+              <div class="item-row-main"><span class="item-row-title">Loading Sections</span></div>
+              <span class="badge badge-success">Done</span>
+            </div>
+            <div class="item-row">
+              <div class="item-row-main"><span class="item-row-title">Loading Agents</span></div>
+              <span class="badge badge-warning">In progress</span>
+            </div>
+            <div class="item-row">
+              <div class="item-row-main"><span class="item-row-title">Loading Skills</span></div>
+              <span class="badge" style="background: var(--color-surface-raised); color: var(--color-text-muted);">Pending</span>
+            </div>
+            <div class="item-row">
+              <div class="item-row-main"><span class="item-row-title">Loading Providers</span></div>
+              <span class="badge" style="background: var(--color-surface-raised); color: var(--color-text-muted);">Pending</span>
+            </div>
+          </div>
+        </section>
+
+        <section data-state-panel data-group="setup-step-state" data-state="ready">
+          <div class="item-list" style="margin-bottom: var(--space-3);">
+            <div class="item-row">
+              <div class="item-row-main"><span class="item-row-title">Checking Hermes connection</span></div>
+              <span class="badge badge-success">Done</span>
+            </div>
+            <div class="item-row">
+              <div class="item-row-main"><span class="item-row-title">Loading Sections</span></div>
+              <span class="badge badge-success">Done</span>
+            </div>
+            <div class="item-row">
+              <div class="item-row-main"><span class="item-row-title">Loading Agents</span></div>
+              <span class="badge badge-success">Done</span>
+            </div>
+            <div class="item-row">
+              <div class="item-row-main"><span class="item-row-title">Loading Skills</span></div>
+              <span class="badge badge-success">Done</span>
+            </div>
+            <div class="item-row">
+              <div class="item-row-main"><span class="item-row-title">Loading Providers</span></div>
+              <span class="badge badge-success">Done</span>
+            </div>
+          </div>
+          <p class="text-muted" style="font-size: var(--font-size-sm);">All 5 stages complete — a brand-new install has no Sections/Agents/Skills on disk yet, so this finishes in under a second (an empty tree, not an error).</p>
+        </section>
+      </div>
+      <div style="display: flex; justify-content: space-between;">
+        <button type="button" class="btn">&larr; Back</button>
+        <button type="button" class="btn btn-primary">Continue &rarr;</button>
+      </div>
+    </section>
+
+    <!-- ==================================================================
+         Step 3 — Ready. Summary only, no new form fields: Vault (just
+         collected), Hermes (read-only status, honest either way), Providers
+         and Sections (both already auto-seeded, per the breadcrumb above —
+         confirmation + a link into Settings, never a fillable form here).
+         ================================================================== -->
+    <section data-state-panel data-group="onboarding-step" data-state="ready">
+      <div class="state-switcher" data-group="ready-step-state">
+        <button type="button" class="btn btn-primary" data-state-target="hermes-ok">Hermes reachable</button>
+        <button type="button" class="btn" data-state-target="hermes-down">Hermes not reachable yet</button>
+      </div>
+
+      <section data-state-panel data-group="ready-step-state" data-state="hermes-ok" class="active">
+        <div class="card" style="margin-bottom: var(--space-4);">
+          <h2>You're set up</h2>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Vault</span><span class="mono">C:/Users/you/Obsidian/SecondBrain</span></div>
+            <div class="kv-row"><span class="kv-key">Hermes</span><span class="badge badge-success">Reachable</span></div>
+            <div class="kv-row"><span class="kv-key">Providers</span><span>Compass, Anthropic Claude — configured by the install script</span></div>
+            <div class="kv-row"><span class="kv-key">Sections</span><span>6 starting sections created automatically</span></div>
+          </div>
+          <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: var(--space-3);">Customer, Librarian, Industry, Technology, Data Gatherer, Sales — Second Brain's own starting groupings, ready for agents. Add more Providers or rename Sections any time from <a href="settings.html">Settings</a>. Nothing else to fill in — indexing begins the moment you enter the app.</p>
+        </div>
+      </section>
+
+      <section data-state-panel data-group="ready-step-state" data-state="hermes-down">
+        <div class="card" style="margin-bottom: var(--space-4);">
+          <h2>Almost set up</h2>
+          <div class="kv-list">
+            <div class="kv-row"><span class="kv-key">Vault</span><span class="mono">C:/Users/you/Obsidian/SecondBrain</span></div>
+            <div class="kv-row"><span class="kv-key">Hermes</span><span class="badge badge-danger">Not reachable</span></div>
+            <div class="kv-row"><span class="kv-key">Providers</span><span>Compass, Anthropic Claude — configured by the install script</span></div>
+            <div class="kv-row"><span class="kv-key">Sections</span><span>6 starting sections created automatically</span></div>
+          </div>
+          <p class="text-muted" style="font-size: var(--font-size-sm); margin-top: var(--space-3);">Second Brain itself is ready, but Hermes (the external multi-channel tool it integrates with) isn't answering yet — you can still enter the app; chat/comms features that route through Hermes will report unavailable until it's reachable. Re-run the provisioning script's Hermes step, or open <a href="settings.html">Settings</a> once it's up.</p>
+        </div>
+      </section>
+
+      <div style="text-align: center;">
+        <a class="btn btn-primary" href="agents-map.html" style="text-decoration: none; padding: var(--space-3) var(--space-6);">Enter Second Brain &rarr;</a>
+      </div>
+    </section>
+
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

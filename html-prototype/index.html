@@ -36,6 +36,13 @@
   (meeting-cockpit.html, inbox-cockpit.html). No nav-item change — neither
   Cockpit is a top-level nav destination, both are reached by clicking a
   My Day row (my-day-calendar.html/my-day-emails.html).
+  Revision 2026-08-28 (REQ-SB-84 design pass): added a catalog card below
+  pointing at the new first-run-onboarding.html — pending browser sign-off.
+  No nav-item change, deliberately — this screen is reached once, before
+  the app shell's nav is meaningful (no vault/Sections/Providers exist
+  yet), same "not a top-level nav destination" reasoning the Cockpit
+  screens above already established; see the new file's own top-of-file
+  breadcrumb for the full rationale.
 -->
 <!doctype html>
 <html lang="en">
@@ -248,6 +255,40 @@
             on the page (middle), and the same Agents/research pattern
             (left).</li>
         </ul>
+      </div>
+
+      <div class="card" style="margin-top: var(--space-4);">
+        <strong>REQ-SB-84 — Fresh-Machine Provisioning: First-Run Onboarding Wizard — pending browser sign-off</strong>
+        <p class="text-muted">
+          A new <a href="first-run-onboarding.html">first-run-onboarding.html</a>
+          screen — the one UI-facing part of REQ-SB-84 (the deployment guide
+          and install script are non-UI, out of prototype scope). Shown the
+          very first time the frontend opens against a brand-new, empty
+          install. Grounded directly in the real data model, not the PRD
+          requirement text's own assumptions: <span class="mono">config.py</span>'s
+          <span class="mono">vault_path</span> is the one field with no
+          default and no auto-seed path anywhere in the codebase, so it's the
+          wizard's only real input (Step 1). Providers (Compass, Anthropic
+          Claude) are always auto-seeded from already-required
+          <span class="mono">.env</span> settings the instant
+          <span class="mono">ProviderManager</span> is first read — collecting
+          those is the provisioning SCRIPT's job per the requirement's own
+          text, not this screen's, so Step 3 shows them read-only with a link
+          to Settings rather than duplicating settings.html's existing
+          Providers form. Sections likewise auto-seed (the real starting 6:
+          Customer, Librarian, Industry, Technology, Data Gatherer, Sales) —
+          also read-only here. Step 2 is a real boot-stage checklist matching
+          <span class="mono">registry/loader.py</span>'s own 5-stage cold-boot
+          order verbatim (that file's own docstring: "a frontend BootScreen
+          never has to guess what's happening"). Three independent
+          state-switcher groups demonstrate every buildable state: vault
+          not-entered/valid/invalid-path, boot booting/ready, and Hermes
+          reachable/not-yet-reachable. Composed entirely from existing
+          tokens/components — no new CSS. Deliberately has no sidebar nav and
+          is not added to any other screen's shared sidebar (see the file's
+          own breadcrumb) — reached once, before the shell's nav is
+          meaningful.
+        </p>
       </div>
     </main>
   </div>
