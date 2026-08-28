@@ -18,6 +18,46 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- refactor: `PipelineManager`'s own raw I/O fixed — new
+  `data_access/pipelines.py` owns the real `pipelines/<id>.json` reads;
+  `PipelineManager` itself holds zero raw file calls now, only
+  section-name resolution and cron composition. Verified live: all 3
+  real pipelines still resolve correctly with live cron status, `GET
+  /agents` unchanged.
+- feat: `IndexManager` (`app/business/core/index/`) built — a real,
+  user-defined, scoped vault index (folders, tags, depth, storage path,
+  a real Hermes cron schedule), distinct from `VaultManager`'s own
+  single whole-vault in-memory index. `create()` deploys a generalized
+  build engine (new `Hermes-Provisioning/skills/vault-rebuild/vault-index/
+  scripts/index_builder_lib.py`, parameterizing the existing
+  `build_vault_index.py`'s own logic) plus a tiny per-Index stub script,
+  then creates a real `hermes cron create --script --no-agent` job (new
+  `HermesCli.create_cron_job`/`edit_cron_job`/`remove_cron_job`,
+  verified live against the real installed CLI). `delete()` removes the
+  cron job, the built output file, the stub script, and the definition,
+  in that order. The pre-existing global structural index
+  (`vault-index-rebuild`) was registered as a real Index record via the
+  new `register_existing()` (definition-only, zero cron mutation — the
+  real job keeps running exactly as it already did) rather than
+  replaced. `Agent` gained `preferred_index_ids`, plus
+  `AgentManager.regenerate_index_guidance_section()` — same explicit,
+  idempotent, marker-delimited SOUL.md shape as the existing
+  `regenerate_specialists_section`. All raw I/O lives in the new
+  `data_access/indexes.py`, following the layering correction from the
+  start. This same commit also completes `AgentManager`'s own layering-
+  correction retrofit (its Agent.json/soul.md writes and folder deletes
+  now go through `data_access/registry/writer.py`, introduced alongside
+  `SectionManager`'s own equivalent fix in the previous commit) — landed
+  together since both touch `agent_manager.py`. Verified live
+  end-to-end: a full disposable Index's create→list→get→delete
+  lifecycle (cron job and deployed script both confirmed to actually
+  appear/disappear), a real triggered run producing a real,
+  correctly-scoped 105-note output file, the Agent guidance block
+  generating/re-running idempotently/clearing correctly, and the real
+  `vault-index-rebuild` job confirmed completely untouched after
+  registration. Not yet built (disclosed, not silently skipped): no
+  HTTP router/API surface yet, no dedicated consult-index tool for an
+  agent (guidance-text-only, as scoped).
 - refactor: layering correction — `SectionManager`, `AgentManager`, and
   `VaultManager` no longer do raw file I/O directly; each now calls a
   dedicated `data_access/` module instead (operator: "Managers

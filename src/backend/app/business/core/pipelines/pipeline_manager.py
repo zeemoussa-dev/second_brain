@@ -26,16 +26,22 @@ lives on the shared default/root profile -- `meeting-capture-recurring`
 runs under `meeting-prep-agent`'s own cron, invisible to a default-only
 lookup, which is why `HermesCron` itself gained profile scoping
 alongside this.
+
+Raw I/O (2026-08-28 layering correction, operator: "Managers understand
+Entities, Data Access understands stores... I/O always happens in Data
+Access") lives in `data_access/pipelines.py` -- this file holds zero raw
+file calls, only entity-shaping and cron composition. Fixed after the
+fact (found in passing while building IndexManager's own cron
+composition, which reads the same pattern this file established) --
+not part of the original SectionManager/AgentManager/VaultManager
+retrofit, which was scoped to those three only.
 """
 from __future__ import annotations
-
-import json
-from pathlib import Path
 
 from app.business.core.pipelines.pipeline import Pipeline, PipelineStep
 from app.business.core.sections.section_manager import SectionManager
 from app.business.hermes.client import get_client
-from app.config import settings
+from app.data_access import pipelines as pipelines_data
 
 _FALLBACK_SECTION_NAME = "Data Gatherer"
 
@@ -44,16 +50,10 @@ class PipelineManager:
     def __init__(self) -> None:
         self._section_manager = SectionManager()
 
-    def _definitions_dir(self) -> Path:
-        return settings.second_brain_data_path / "pipelines"
-
     def _section_id_by_name(self, name: str) -> str:
         for section in self._section_manager.get_all():
             if section.name == name:
                 return section.id
-        # Same idempotent-collapse-on-collision fallback SectionManager's
-        # own callers already use -- a Pipeline referencing an unknown/
-        # blank Section name still resolves to something real.
         return self._section_manager.create(name or _FALLBACK_SECTION_NAME).id
 
     def _cron_status(self, cron_job_id: str | None, cron_profile_id: str | None) -> dict:
@@ -73,8 +73,7 @@ class PipelineManager:
             "cron_last_status": job.last_status,
         }
 
-    def _load_pipeline(self, path: Path) -> Pipeline:
-        data = json.loads(path.read_text(encoding="utf-8"))
+    def _to_pipeline(self, pipeline_id: str, data: dict) -> Pipeline:
         steps = [
             PipelineStep(
                 id=step["id"], name=step["name"],
@@ -97,10 +96,18 @@ class PipelineManager:
         )
 
     def get_all(self) -> list[Pipeline]:
-        definitions_dir = self._definitions_dir()
-        if not definitions_dir.is_dir():
-            return []
-        return [self._load_pipeline(path) for path in sorted(definitions_dir.glob("*.json"))]
+        pipelines = []
+        for pipeline_id in pipelines_data.list_pipeline_ids():
+            try:
+                data = pipelines_data.read_pipeline_json(pipeline_id)
+            except (OSError, ValueError):
+                continue
+            pipelines.append(self._to_pipeline(pipeline_id, data))
+        return pipelines
 
     def get_by_id(self, pipeline_id: str) -> Pipeline | None:
-        return next((p for p in self.get_all() if p.id == pipeline_id), None)
+        try:
+            data = pipelines_data.read_pipeline_json(pipeline_id)
+        except (OSError, ValueError):
+            return None
+        return self._to_pipeline(pipeline_id, data)

@@ -31,3 +31,10 @@ class Agent:
 
     skill_ids: list[str] = field(default_factory=list)
     depends_on: list[str] = field(default_factory=list)
+    # Real Index ids (business/core/index/) this agent should consult
+    # FIRST when looking for data in the vault -- pure association today
+    # (2026-08-28, operator: "Just the association + prompt text"), no
+    # dedicated consult-index tool/skill built yet. Woven into the real
+    # SOUL.md as guidance text via AgentManager.regenerate_index_guidance_section
+    # (explicit, separate call -- same shape as regenerate_specialists_section).
+    preferred_index_ids: list[str] = field(default_factory=list)

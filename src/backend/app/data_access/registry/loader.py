@@ -176,6 +176,7 @@ def _load_one_agent(agent_dir: Path, section_id: str | None) -> Agent:
             skill_ids=list(config_raw.get("skill_ids", [])),
             icon=config_raw.get("icon"),
             color=config_raw.get("color"),
+            preferred_index_ids=list(config_raw.get("preferred_index_ids", [])),
         ),
         soul=soul,
         section_id=section_id,

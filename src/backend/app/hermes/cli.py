@@ -1,10 +1,11 @@
 """Subprocess wrapper for Hermes' own CLI binary (`hermes.exe`) -- the
 only real way to reach some Hermes operations (profile create/delete,
 which do more than a plain mkdir: cloning copies config.yaml/.env/SOUL.md/
-skills; gateway/dashboard process control). Anything with no CLI
-equivalent (SOUL.md content, this app's own custom SKILL.md files) is
-direct file I/O instead, over in profiles.py/skills.py -- never guessed
-or half-reimplemented here.
+skills; gateway/dashboard process control; cron job create/edit/remove,
+which mutate the real scheduler state HermesCron -- app/hermes/cron.py --
+only ever reads). Anything with no CLI equivalent (SOUL.md content, this
+app's own custom SKILL.md files) is direct file I/O instead, over in
+profiles.py/skills.py -- never guessed or half-reimplemented here.
 
 Real command surface (confirmed live against this machine's own
 install, `hermes <command> --help`):
@@ -12,14 +13,22 @@ install, `hermes <command> --help`):
     hermes gateway {start, stop, restart, status, setup, ...}
     hermes dashboard [--port] [--host] [--no-open] [--stop] [--status]
     hermes status [--deep]
-    hermes cron {run, ...}
+    hermes cron {create/add, edit, remove/rm/delete, run, list, ...}
 """
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
 from app.hermes.config import HermesConfig
+
+# "Created job: <id>" -- the real, live-confirmed first line of `hermes
+# cron create`'s own stdout (2026-08-28, verified against a real
+# disposable job, immediately removed). No --json output mode exists on
+# this command (confirmed against its own --help), so the id is parsed
+# from this exact prefix rather than guessed from job list diffing.
+_CREATED_JOB_ID_RE = re.compile(r"Created job:\s*(\S+)")
 
 
 class HermesCLI:
@@ -75,6 +84,44 @@ class HermesCLI:
     # -- Cron --------------------------------------------------------
     def run_cron_job(self, job_name: str) -> bool:
         return self._run_background(["cron", "run", job_name])
+
+    def create_cron_job(
+        self, schedule: str, *, name: str | None = None, script: str | None = None,
+        no_agent: bool = False, prompt: str | None = None, deliver: str | None = None,
+    ) -> tuple[str | None, str]:
+        """Real `hermes cron create` (confirmed live, 2026-08-28: a
+        disposable test job's own stdout starts with `Created job:
+        <id>`, then removed). Returns (job_id, raw output) -- job_id is
+        None on failure (no real id was ever created) or if the real
+        output ever stops matching this exact prefix, never fabricated
+        from a guess."""
+        args = ["cron", "create", schedule]
+        if name:
+            args += ["--name", name]
+        if script:
+            args += ["--script", script]
+        if no_agent:
+            args.append("--no-agent")
+        if prompt:
+            args.append(prompt)
+        if deliver:
+            args += ["--deliver", deliver]
+        success, output = self._run(args)
+        if not success:
+            return None, output
+        match = _CREATED_JOB_ID_RE.search(output)
+        return (match.group(1) if match else None), output
+
+    def edit_cron_job(self, job_id: str, *, schedule: str | None = None, name: str | None = None) -> tuple[bool, str]:
+        args = ["cron", "edit", job_id]
+        if schedule is not None:
+            args += ["--schedule", schedule]
+        if name is not None:
+            args += ["--name", name]
+        return self._run(args)
+
+    def remove_cron_job(self, job_id: str) -> tuple[bool, str]:
+        return self._run(["cron", "remove", job_id])
 
     # -- Profiles (create/delete/describe do more than a file write --
     # --clone copies config.yaml/.env/SOUL.md/skills too) -------------

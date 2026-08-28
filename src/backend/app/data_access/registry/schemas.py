@@ -30,6 +30,9 @@ class AgentConfig:
     skill_ids: list[str] = field(default_factory=list)
     icon: str | None = None
     color: str | None = None
+    # Real Index ids (business/core/index/) this agent should consult
+    # first when looking for data in the vault (2026-08-28).
+    preferred_index_ids: list[str] = field(default_factory=list)
 
 
 @dataclass
