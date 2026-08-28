@@ -31,13 +31,14 @@ provider_registry.py and system_health.py, both retired/fixed the same
 pass). Delete is now unconditional too -- no more blocked-by-agent-ids
 check, since there is no real assignment left to block on.
 
-Raw I/O lives in data_access/providers.py, per the 2026-08-28 layering
-correction -- this file holds zero raw file calls.
+Raw I/O -- including reading the real .env-backed seed VALUES, not just
+the JSON file -- lives entirely in data_access/providers.py, per the
+2026-08-28 layering correction; this file holds zero raw file/settings
+reads of its own.
 """
 from __future__ import annotations
 
 from app.business.core.provider.provider import Provider
-from app.config import settings as app_settings
 from app.data_access import providers as providers_data
 from app.obsidian.tags import tag_slug
 
@@ -52,19 +53,7 @@ _REAL_CLIENT_PROVIDER_IDS = {"compass", "anthropic-claude"}
 
 class ProviderManager:
     def _seed_state(self) -> dict:
-        compass = {
-            "id": _DEFAULT_PROVIDER_ID, "name": "Compass",
-            "endpoint": app_settings.compass_base_url,
-            "credential": app_settings.compass_api_key,
-            "model": app_settings.compass_model,
-        }
-        anthropic_claude = {
-            "id": _ANTHROPIC_PROVIDER_ID, "name": "Anthropic Claude",
-            "endpoint": "https://api.anthropic.com",
-            "credential": app_settings.anthropic_api_key,
-            "model": app_settings.anthropic_model,
-        }
-        state = {"providers": [compass, anthropic_claude]}
+        state = providers_data.seed_defaults()
         providers_data.save_state(state)
         return state
 
