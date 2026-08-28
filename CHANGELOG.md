@@ -18,6 +18,24 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- refactor: layering correction — `SectionManager`, `AgentManager`, and
+  `VaultManager` no longer do raw file I/O directly; each now calls a
+  dedicated `data_access/` module instead (operator: "Managers
+  understand Entities, Data Access understands stores... I/O always
+  happens in Data Access"). New `data_access/sections.py`
+  (`agent_sections.json`), `data_access/registry/writer.py`
+  (Section.json/Agent.json/soul.md writes + folder deletes — shared
+  between Section/Agent since both write into the same Registry tree,
+  also owns the write-target `agent_dir()` path formula moved out of
+  `AgentManager`), `data_access/vault_index_config.py`
+  (`index_config.json`), `data_access/entities.py` (`Entities.md`'s raw
+  text — the `### <heading>` parse/render stays in `VaultManager`, that
+  part is business shaping, not I/O). `VaultManager`'s note-index
+  rebuild was already compliant (routed through `vault_writer.py` from
+  the start). Verified live: a full scratch Section→Hub-Agent
+  create/update/delete round-trip (confirmed the real `Agent.json` on
+  disk correctly gets `type: "hub"`), a `/vault/index-config` toggle
+  round-trip, and a scratch `/vault/entities` create+delete.
 - refactor: `TemplateManager` (`app/business/core/templates/`) built as
   the sole business-layer gateway onto Template data, folding in and
   retiring `data_access/templates/registry.py`'s `get_template`/

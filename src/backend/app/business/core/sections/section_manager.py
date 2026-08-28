@@ -9,21 +9,26 @@ was folded in here and deleted, not kept as a second layer underneath.
 Does NOT route through vault_writer.py -- vault_writer.py is a
 retirement target (operator: "our job is to retire vault_writer as well
 its there because its everywhere"), so a new Manager adding itself as
-one more caller of it would work against that goal, not toward it. This
-Manager reads/writes its own state file directly instead. registry_loader
-stays the real live Registry this cross-checks against for delete-safety
--- that's RegistryLoader's own concern, unrelated to vault_writer.
+one more caller of it would work against that goal, not toward it.
+registry_loader stays the real live Registry this cross-checks against
+for delete-safety -- that's RegistryLoader's own concern, unrelated to
+vault_writer.
+
+Raw I/O (2026-08-28 layering correction, operator: "Managers understand
+Entities, Data Access understands stores... I/O always happens in Data
+Access") lives in `data_access/sections.py` (this Manager's own
+`agent_sections.json` state) and `data_access/registry/writer.py` (the
+Section.json push-mirror, shared with AgentManager since both write into
+the same Registry tree) -- this file holds zero raw file calls, only
+entity-shaping, seeding, and the delete-blocking check.
 """
 from __future__ import annotations
 
-import json
-
 from app.business.core.sections.section import Section
-from app.config import settings
+from app.data_access import sections as sections_data
 from app.data_access.registry import loader as registry_loader
+from app.data_access.registry import writer as registry_writer
 from app.obsidian.tags import tag_slug
-
-_SECTIONS_STATE_FILE = "agent_sections.json"
 
 # 2026-08-22 (operator's own real taxonomy, verbatim): "Our Sections will
 # be (Customer, Liberian, Industry, Technology, Data Gatherer, Sales)" --
@@ -54,35 +59,19 @@ def _write_registry_section_json(section: dict) -> None:
     truth (id/creation/agent-assignment-for-the-old-model); this is a
     one-way push of its own metadata subset, mirroring the "Second Brain
     pushes to targets it owns" shape REQ-SB-80 established, scoped
-    narrowly to the one place a stale Registry copy was a real, live risk."""
-    path = registry_loader.data_root() / "Sections" / section["id"] / "Section.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            {
-                "id": section["id"],
-                "name": section["name"],
-                "icon": section.get("icon"),
-                "color": section.get("color"),
-                "subtitle": section.get("subtitle"),
-                "description": section.get("description"),
-                "folders": section.get("folders", []),
-                "fallback_agent_id": section.get("fallback_agent_id"),
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-
-
-def _state_path():
-    state_dir = settings.second_brain_data_path
-    state_dir.mkdir(parents=True, exist_ok=True)
-    return state_dir / _SECTIONS_STATE_FILE
-
-
-def _save_state(state: dict) -> None:
-    _state_path().write_text(json.dumps(state, indent=2), encoding="utf-8")
+    narrowly to the one place a stale Registry copy was a real, live
+    risk. The actual write is registry_writer.write_section_json --
+    this function's own job is deciding WHICH fields go into it."""
+    registry_writer.write_section_json(section["id"], {
+        "id": section["id"],
+        "name": section["name"],
+        "icon": section.get("icon"),
+        "color": section.get("color"),
+        "subtitle": section.get("subtitle"),
+        "description": section.get("description"),
+        "folders": section.get("folders", []),
+        "fallback_agent_id": section.get("fallback_agent_id"),
+    })
 
 
 def _seed_state() -> dict:
@@ -95,7 +84,7 @@ def _seed_state() -> dict:
         for name in _STARTING_SECTION_NAMES
     ]
     state = {"sections": sections}
-    _save_state(state)
+    sections_data.save_state(state)
     for section in sections:
         _write_registry_section_json(section)
     return state
@@ -104,10 +93,8 @@ def _seed_state() -> dict:
 def _load_state() -> dict:
     """Seeds the starting 6 sections on first read (persisting
     immediately)."""
-    path = _state_path()
-    if not path.exists():
-        return _seed_state()
-    return json.loads(path.read_text(encoding="utf-8"))
+    state = sections_data.load_state()
+    return state if state is not None else _seed_state()
 
 
 class SectionManager:
@@ -160,7 +147,7 @@ class SectionManager:
                 "folders": [], "fallback_agent_id": None,
             }
             state["sections"].append(section)
-            _save_state(state)
+            sections_data.save_state(state)
             _write_registry_section_json(section)
 
             from app.business.core.agents.agent_manager import AgentManager
@@ -222,7 +209,7 @@ class SectionManager:
                     section["folders"] = folders
                 if fallback_agent_id is not None:
                     section["fallback_agent_id"] = fallback_agent_id or None
-                _save_state(state)
+                sections_data.save_state(state)
                 _write_registry_section_json(section)
                 return self.get_by_id(section_id)
         return None
@@ -252,5 +239,5 @@ class SectionManager:
         if blocked_by_agent_ids:
             return {"deleted": False, "blocked_by_agent_ids": blocked_by_agent_ids}
         state["sections"] = [s for s in state["sections"] if s["id"] != section_id]
-        _save_state(state)
+        sections_data.save_state(state)
         return {"deleted": True, "blocked_by_agent_ids": []}
