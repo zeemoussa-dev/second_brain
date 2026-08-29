@@ -18,6 +18,15 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix: `SectionDetailPanel.tsx` audit — added `subtitle`/`folders`/
+  `fallback_agent_id` (all already real, already-wired fields the panel
+  never rendered) and a real `agent_ids` list (was a bare count).
+  Backend/type already fully supported all of this; only the panel
+  component needed updating. Verified live in the browser. Found (not
+  fixed — separate, pre-existing, out of scope) a real bug in
+  `AgentsMapPage.tsx`: `selectedAgentId`/`selectedSectionId` are
+  independent state, so a Section Hub click never clears a previously-
+  open Agent panel and both can render at once.
 - fix: `AgentDetailPanel.tsx` audit — added `tools`/`depends_on`/
   `preferred_index_ids` to `to_detail_dict()` and the panel (Overview +
   editable Settings fields); fixed the Overview Guardrails row (was

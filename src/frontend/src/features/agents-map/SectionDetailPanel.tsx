@@ -33,6 +33,17 @@ export function SectionDetailPanel({ sectionId, onClose, onSectionUpdated }: Sec
   const [descriptionDraft, setDescriptionDraft] = useState('');
   const [savingName, setSavingName] = useState(false);
   const [savingDescription, setSavingDescription] = useState(false);
+  // 2026-08-29 audit -- subtitle/folders/fallback_agent_id were all real,
+  // already-wired fields (both the backend and SectionSummary itself
+  // already had them) that this panel simply never surfaced; folders/
+  // fallback_agent_id were already editable in Settings > Sections
+  // (SectionsCard.tsx) but not here, subtitle was missing everywhere.
+  const [subtitleDraft, setSubtitleDraft] = useState('');
+  const [savingSubtitle, setSavingSubtitle] = useState(false);
+  const [foldersDraft, setFoldersDraft] = useState('');
+  const [savingFolders, setSavingFolders] = useState(false);
+  const [fallbackAgentIdDraft, setFallbackAgentIdDraft] = useState('');
+  const [savingFallbackAgentId, setSavingFallbackAgentId] = useState(false);
 
   useEffect(() => {
     setSection(null);
@@ -41,10 +52,16 @@ export function SectionDetailPanel({ sectionId, onClose, onSectionUpdated }: Sec
       setSection(found);
       setNameDraft(found?.name ?? '');
       setDescriptionDraft(found?.description ?? '');
+      setSubtitleDraft(found?.subtitle ?? '');
+      setFoldersDraft((found?.folders ?? []).join(', '));
+      setFallbackAgentIdDraft(found?.fallback_agent_id ?? '');
     });
   }, [sectionId]);
 
-  async function applyUpdate(fields: { name?: string; icon?: string; color?: string; description?: string }) {
+  async function applyUpdate(fields: {
+    name?: string; icon?: string; color?: string; description?: string;
+    subtitle?: string; folders?: string[]; fallback_agent_id?: string;
+  }) {
     const updated = await updateSection(sectionId, fields);
     setSection(updated);
     onSectionUpdated?.();
@@ -68,6 +85,34 @@ export function SectionDetailPanel({ sectionId, onClose, onSectionUpdated }: Sec
       await applyUpdate({ description: descriptionDraft.trim() });
     } finally {
       setSavingDescription(false);
+    }
+  }
+
+  async function handleSaveSubtitle() {
+    setSavingSubtitle(true);
+    try {
+      await applyUpdate({ subtitle: subtitleDraft.trim() });
+    } finally {
+      setSavingSubtitle(false);
+    }
+  }
+
+  async function handleSaveFolders() {
+    setSavingFolders(true);
+    try {
+      const folders = foldersDraft.split(',').map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+      await applyUpdate({ folders });
+    } finally {
+      setSavingFolders(false);
+    }
+  }
+
+  async function handleSaveFallbackAgentId() {
+    setSavingFallbackAgentId(true);
+    try {
+      await applyUpdate({ fallback_agent_id: fallbackAgentIdDraft.trim() });
+    } finally {
+      setSavingFallbackAgentId(false);
     }
   }
 
@@ -124,12 +169,24 @@ export function SectionDetailPanel({ sectionId, onClose, onSectionUpdated }: Sec
                       <span>{section.name}</span>
                     </div>
                     <div className="kv-row">
+                      <span className="kv-key">Subtitle</span>
+                      <span>{section.subtitle || 'No subtitle set yet'}</span>
+                    </div>
+                    <div className="kv-row">
                       <span className="kv-key">Description</span>
                       <span>{section.description || 'No description set yet'}</span>
                     </div>
                     <div className="kv-row">
-                      <span className="kv-key">Agents</span>
-                      <span>{section.agent_ids.length}</span>
+                      <span className="kv-key">Folders</span>
+                      <span>{section.folders.length > 0 ? section.folders.join(', ') : 'No folders assigned yet'}</span>
+                    </div>
+                    <div className="kv-row">
+                      <span className="kv-key">Fallback agent</span>
+                      <span>{section.fallback_agent_id || 'None set'}</span>
+                    </div>
+                    <div className="kv-row">
+                      <span className="kv-key">Agents ({section.agent_ids.length})</span>
+                      <span>{section.agent_ids.length > 0 ? section.agent_ids.join(', ') : 'No agents assigned yet'}</span>
                     </div>
                   </div>
                 </div>
@@ -171,6 +228,67 @@ export function SectionDetailPanel({ sectionId, onClose, onSectionUpdated }: Sec
                   >
                     Save
                   </button>
+
+                  <h3 style={{ marginTop: 'var(--space-4)' }}>Subtitle</h3>
+                  <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                    <input
+                      className="input"
+                      style={{ width: '100%' }}
+                      placeholder="Shown under the Section's title on the Agents Map"
+                      value={subtitleDraft}
+                      onChange={(event) => setSubtitleDraft(event.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={savingSubtitle || subtitleDraft.trim() === (section.subtitle ?? '')}
+                      onClick={handleSaveSubtitle}
+                    >
+                      Save
+                    </button>
+                  </div>
+
+                  <h3 style={{ marginTop: 'var(--space-4)' }}>Folders</h3>
+                  <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                    <input
+                      className="input"
+                      style={{ width: '100%' }}
+                      placeholder="e.g. Customers, Opportunities"
+                      value={foldersDraft}
+                      onChange={(event) => setFoldersDraft(event.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={savingFolders || foldersDraft.trim() === section.folders.join(', ')}
+                      onClick={handleSaveFolders}
+                    >
+                      Save
+                    </button>
+                  </div>
+                  <span className="item-row-meta">Which top-level vault folders this Section's own content index covers.</span>
+
+                  <h3 style={{ marginTop: 'var(--space-4)' }}>Fallback agent</h3>
+                  <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                    <input
+                      className="input"
+                      style={{ width: '100%' }}
+                      placeholder="e.g. customer-hub"
+                      value={fallbackAgentIdDraft}
+                      onChange={(event) => setFallbackAgentIdDraft(event.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={savingFallbackAgentId || fallbackAgentIdDraft.trim() === (section.fallback_agent_id ?? '')}
+                      onClick={handleSaveFallbackAgentId}
+                    >
+                      Save
+                    </button>
+                  </div>
+                  <span className="item-row-meta">
+                    Answers when a mentioned entity in this Section has no dedicated Expert. Leave blank for none.
+                  </span>
 
                   <h3 style={{ marginTop: 'var(--space-4)' }}>Icon &amp; Color</h3>
                   <VisualPicker
