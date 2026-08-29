@@ -30,6 +30,15 @@ from app.hermes.config import HermesConfig
 # from this exact prefix rather than guessed from job list diffing.
 _CREATED_JOB_ID_RE = re.compile(r"Created job:\s*(\S+)")
 
+# `hermes tools list`'s own real per-line shape, confirmed live
+# (2026-08-29, e.g. "  ✓ enabled  web  🔍 Web Search & Scraping"), under
+# both its "Built-in toolsets" and "Plugin toolsets" sections. No --json
+# mode exists here either (confirmed against its own --help) -- this
+# parses the real, stable text. The "MCP servers:" section's own lines
+# ("  outlook  all tools enabled") never start with a checkmark, so they
+# never match and are naturally excluded.
+_TOOL_LINE_RE = re.compile(r"^\s*[✓✗]\s+(enabled|disabled)\s+(\S+)", re.MULTILINE)
+
 
 class HermesCLI:
     def __init__(self, config: HermesConfig) -> None:
@@ -80,6 +89,19 @@ class HermesCLI:
         except OSError:
             return False
         return True
+
+    def _profile_args(self, profile_id: str | None) -> list[str]:
+        """The real `-p <profile>` prefix `hermes` needs to target any
+        profile other than the default/root one -- confirmed live
+        (2026-08-29) that every OTHER method in this class implicitly
+        only ever targets the default profile (none of them take a
+        profile_id at all); tools management is the first real need for
+        per-profile CLI targeting. "default"/None both mean the root
+        profile, which needs no `-p` flag at all (confirmed live, same
+        convention HermesSkills._profile_dir already uses)."""
+        if profile_id is None or profile_id == "default":
+            return []
+        return ["-p", profile_id]
 
     # -- Cron --------------------------------------------------------
     def run_cron_job(self, job_name: str) -> bool:
@@ -215,3 +237,23 @@ class HermesCLI:
         if deep:
             args.append("--deep")
         return self._run(args, timeout=60.0)
+
+    # -- Tools (per-profile toolset enable/disable) ---------------------
+    def list_tools(self, profile_id: str | None = None) -> dict[str, bool]:
+        """Real `hermes [-p <profile>] tools list` -- {toolset_name:
+        enabled}. Empty dict on a real failure (missing install, profile
+        not found), never fabricated."""
+        success, output = self._run(self._profile_args(profile_id) + ["tools", "list"])
+        if not success:
+            return {}
+        return {name: status == "enabled" for status, name in _TOOL_LINE_RE.findall(output)}
+
+    def enable_tools(self, names: list[str], profile_id: str | None = None) -> tuple[bool, str]:
+        if not names:
+            return True, ""
+        return self._run(self._profile_args(profile_id) + ["tools", "enable", *names])
+
+    def disable_tools(self, names: list[str], profile_id: str | None = None) -> tuple[bool, str]:
+        if not names:
+            return True, ""
+        return self._run(self._profile_args(profile_id) + ["tools", "disable", *names])

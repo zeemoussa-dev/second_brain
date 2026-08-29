@@ -38,3 +38,14 @@ class Agent:
     # SOUL.md as guidance text via AgentManager.regenerate_index_guidance_section
     # (explicit, separate call -- same shape as regenerate_specialists_section).
     preferred_index_ids: list[str] = field(default_factory=list)
+    # Real, currently-ENABLED Hermes toolset names for this profile (e.g.
+    # "terminal", "file", "web") -- the 3rd real Agent axis alongside
+    # section_id (identity) and scope (vault data access), confirmed via
+    # `hermes tools list` (2026-08-29, operator: "we now have a hub...
+    # what's the purpose" discussion -> Tools/"Powers" identified as a
+    # real, untracked gap). Populated only on a single-agent read
+    # (get_by_id) -- NOT on get_all()'s own bulk list, since reading it
+    # is a real subprocess call per agent, not a cheap in-memory one;
+    # always [] on a list-composed Agent, never a false "no tools" signal
+    # to trust for that case.
+    tools: list[str] = field(default_factory=list)

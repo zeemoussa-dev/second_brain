@@ -154,10 +154,20 @@ class AgentManager:
                 return section.id
         return self._section_manager.create(_FALLBACK_SECTION_NAME).id
 
-    def _to_agent(self, hermes_agent: HermesAgent) -> Agent:
+    def _to_agent(self, hermes_agent: HermesAgent, *, include_tools: bool = False) -> Agent:
         registry_agent = self._registry_agent(hermes_agent.id)
         visual = agent_visual_registry.get_agent_visual(hermes_agent.id)
         raw_soul = get_client().profiles.read_soul(hermes_agent.id)
+        # `include_tools` -- reading real tools state is a real subprocess
+        # call per agent (`hermes tools list`), not a cheap in-memory
+        # read like scope/skill_ids -- only get_by_id() (one agent) pays
+        # that cost; get_all()'s own bulk composition (every real
+        # profile, every list call) never does, or GET /agents would
+        # slow down by a subprocess spawn per agent on every request.
+        tools = (
+            sorted(name for name, enabled in get_client().cli.list_tools(hermes_agent.id).items() if enabled)
+            if include_tools else []
+        )
         core_prompt, guardrails, scope = (
             _split_soul_sections(raw_soul) if raw_soul else (raw_soul, None, {"folders": [], "tags": []})
         )
@@ -182,6 +192,7 @@ class AgentManager:
             skill_ids=[skill.id for skill in hermes_agent.skills],
             depends_on=registry_agent.config.depends_on if registry_agent is not None else [],
             preferred_index_ids=registry_agent.config.preferred_index_ids if registry_agent is not None else [],
+            tools=tools,
         )
 
     def get_all(self, *, exclude_types: list[str] | None = None) -> list[Agent]:
@@ -201,7 +212,7 @@ class AgentManager:
         hermes_agent = get_client().profiles.find_by_id(agent_id)
         if hermes_agent is None:
             return None
-        return self._to_agent(hermes_agent)
+        return self._to_agent(hermes_agent, include_tools=True)
 
     def get_section_agents(
         self, section_id: str, *, include_types: list[str] | None = None, exclude_types: list[str] | None = None,
@@ -384,6 +395,21 @@ class AgentManager:
             parts.append("## Scope\n\n" + "\n".join(scope_lines))
         return "\n\n".join(parts)
 
+    def _apply_tools(self, agent_id: str, tools: list[str], current_enabled: set[str]) -> None:
+        """Diffs the real current enabled toolset against the requested
+        one and applies exactly the delta. `tools` is a full REPLACE --
+        "this is exactly what should be enabled" -- same declarative
+        convention scope's own folders/tags lists already use, not an
+        additive patch."""
+        wanted = set(tools)
+        to_enable = sorted(wanted - current_enabled)
+        to_disable = sorted(current_enabled - wanted)
+        client = get_client()
+        if to_enable:
+            client.cli.enable_tools(to_enable, profile_id=agent_id)
+        if to_disable:
+            client.cli.disable_tools(to_disable, profile_id=agent_id)
+
     def _write_registry_agent(
         self, agent_id: str, *, section_id: str, is_background_agent: bool,
         config: dict, icon: str | None, color: str | None, soul_text: str,
@@ -417,6 +443,7 @@ class AgentManager:
         guardrails: str | None = None,
         scope: dict | None = None,
         preferred_index_ids: list[str] | None = None,
+        tools: list[str] | None = None,
         clone_from: str = "default",
     ) -> Agent:
         """Real Hermes-side profile creation (`hermes profile create
@@ -432,7 +459,9 @@ class AgentManager:
         azure-expert's own children. Never applied when creating the Hub
         itself (`type == "hub"`, would depend on its own not-yet-set id)
         or when the Section has no Hub yet (falls through to `[]`,
-        same as before)."""
+        same as before). `tools` (omitted = whatever the cloned profile
+        already has, e.g. Primary's own full toolset) is diffed against
+        the real toolset the clone inherited, not blindly re-applied."""
         if depends_on is None and type != "hub":
             section = self._section_manager.get_by_id(section_id)
             if section is not None and section.fallback_agent_id:
@@ -450,6 +479,9 @@ class AgentManager:
             },
             icon=None, color=None, soul_text=soul_text,
         )
+        if tools is not None:
+            inherited = {name_ for name_, enabled in get_client().cli.list_tools(agent_id).items() if enabled}
+            self._apply_tools(agent_id, tools, inherited)
         self._reload_registry()
         return self.get_by_id(agent_id)
 
@@ -471,13 +503,15 @@ class AgentManager:
         guardrails: str | None = None,
         scope: dict | None = None,
         preferred_index_ids: list[str] | None = None,
+        tools: list[str] | None = None,
     ) -> Agent | None:
         """Same omitted-vs-explicit convention as SectionManager.update:
         `None` (field omitted) = leave unchanged. Dispatches to whichever
         real system actually owns the field -- Hermes for description/
         model/reasoning_effort/prompt+guardrails+scope, the Registry for
         name/section_id/type/is_background_agent/depends_on, visual
-        registry for icon/color -- never a single flat write.
+        registry for icon/color, Hermes' own real per-profile toolset
+        state (via HermesCLI) for `tools` -- never a single flat write.
 
         Real, confirmed data-corruption bug fixed 2026-08-29: `current`
         used to be read straight from whatever the Registry cache
@@ -562,6 +596,13 @@ class AgentManager:
             )
             registry_writer.delete_dir(old_dir)
             self._reload_registry()
+
+        if tools is not None:
+            # `current.tools` is already the real, live enabled set --
+            # get_by_id (above) populates it via include_tools=True, so
+            # this is a real diff against actual current state, not a
+            # second `hermes tools list` round trip.
+            self._apply_tools(agent_id, tools, set(current.tools))
 
         return self.get_by_id(agent_id)
 

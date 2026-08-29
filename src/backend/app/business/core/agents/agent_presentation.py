@@ -47,4 +47,5 @@ def to_detail_dict(agent: Agent) -> dict:
         "is_background_agent": agent.is_background_agent,
         "icon": agent.icon, "color": agent.color, "description": agent.description,
         "prompt": agent.prompt, "guardrails": agent.guardrails or "",
+        "tools": agent.tools,
     }

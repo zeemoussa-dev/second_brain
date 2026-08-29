@@ -18,6 +18,15 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: `tools` wired as a real 3rd `Agent` field, alongside `section_id`
+  and `scope` — real, per-profile Hermes toolset state
+  (`HermesCLI.list_tools/enable_tools/disable_tools`, `HermesCLI`'s
+  first-ever per-profile `-p` targeting). `get_by_id()` reads real
+  state; `get_all()` skips it for performance (one subprocess call per
+  agent otherwise). `create()`/`update(tools=[...])` both take a full
+  declarative replace, diffed against real current state. Wired through
+  `POST /agents`/`PATCH /agents/{id}`/`to_detail_dict`. Verified live at
+  both the Manager and HTTP layers.
 - fix: real production change — disabled `web`/`browser`/`image_gen`/
   `bfl`/`tts`/`computer_use`/`code_execution` toolsets on all 30 real
   non-Primary agents (kept `terminal`/`file`/`skills`/`cronjob`/`todo`/

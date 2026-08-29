@@ -123,6 +123,10 @@ class AgentUpdateBody(BaseModel):
     prompt: str | None = None
     guardrails: str | None = None
     scope: list[str] | None = None
+    # 2026-08-29: real, currently-ENABLED Hermes toolset names (e.g.
+    # "terminal", "file") -- a full REPLACE when provided, same
+    # declarative convention as `scope`, not an additive patch.
+    tools: list[str] | None = None
 
 
 class AgentCreateBody(BaseModel):
@@ -143,6 +147,7 @@ class AgentCreateBody(BaseModel):
     guardrails: str | None = None
     scope: list[str] | None = None
     preferred_index_ids: list[str] | None = None
+    tools: list[str] | None = None
     clone_from: str = "default"
 
 
@@ -172,7 +177,8 @@ def create_agent(body: AgentCreateBody) -> dict:
         body.id, name=body.name, section_id=body.section_id, type=body.type,
         is_background_agent=body.is_background_agent, depends_on=body.depends_on,
         description=body.description, prompt=body.prompt, guardrails=body.guardrails,
-        scope=scope, preferred_index_ids=body.preferred_index_ids, clone_from=body.clone_from,
+        scope=scope, preferred_index_ids=body.preferred_index_ids, tools=body.tools,
+        clone_from=body.clone_from,
     )
     return to_detail_dict(agent)
 
@@ -216,7 +222,7 @@ def update_agent(agent_id: str, body: AgentUpdateBody) -> dict:
     agent = _agent_manager.update(
         agent_id, icon=body.icon, color=body.color, section_id=body.section_id,
         is_background_agent=body.is_background_agent, prompt=body.prompt,
-        guardrails=body.guardrails, scope=scope,
+        guardrails=body.guardrails, scope=scope, tools=body.tools,
     )
     if agent is not None:
         return to_detail_dict(agent)
