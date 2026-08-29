@@ -140,6 +140,14 @@ export function SectionDetailPanel({ sectionId, onClose, onSectionUpdated }: Sec
             &times;
           </button>
         </div>
+        {!section && (
+          <div className="side-panel-body">
+            <div className="side-panel-loading" data-testid="section-detail-loading">
+              <span className="side-panel-loading-spinner" aria-hidden="true" />
+              Loading section…
+            </div>
+          </div>
+        )}
         {section && (
           <>
             <div className="side-panel-title">

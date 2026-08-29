@@ -18,6 +18,32 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix: 5 real UI bugs/usability issues in the Agent/Section detail side
+  panels, reported by the operator from live use:
+  - Both panels rendered fully blank (not even header/tabs) while their
+    detail fetch was in flight — added a real `.side-panel-loading`
+    spinner state.
+  - `AgentDetailPanel.tsx`'s Capabilities section is now a collapsible
+    `.section-collapse-header` (bigger label, filling rule, trailing
+    arrow), defaulting collapsed, expanding on click to reveal the
+    built-in list + `SkillsTree`.
+  - `SkillsTree.tsx` had no dedicated CSS at all — added a real
+    stylesheet, and redesigned the per-row action per spec: a single
+    Grant button docked right, disabling + relabeling "Granted" once
+    held, instead of toggling to a per-row Revoke button (revoke now
+    happens only via the existing checkbox + bulk-action bar). Removed
+    the now-dead `onRevokeSkill` prop/`handleRevokeSkill` handler.
+  - Fixed the Vault Scope suggestions dropdown staying permanently
+    visible and overlapping the Tools row beneath it — it rendered
+    whenever the committed value happened to match a real tag/folder
+    (e.g. `"customer/adnoc"` matching itself), with no focus guard at
+    all. Now gated on real input focus.
+  - `.kv-list .kv-row` (`settings.css`) gained `flex-wrap` so a long
+    comma-joined value (Vault scope, Tools, a Section's Agent list) wraps
+    onto its own line(s) instead of overflowing/getting clipped on a
+    single line.
+  Verified live against the real `adnoc-expert` agent; `npx tsc --noEmit`
+  clean on every touched file.
 - fix: `SectionDetailPanel.tsx` audit — added `subtitle`/`folders`/
   `fallback_agent_id` (all already real, already-wired fields the panel
   never rendered) and a real `agent_ids` list (was a bare count).

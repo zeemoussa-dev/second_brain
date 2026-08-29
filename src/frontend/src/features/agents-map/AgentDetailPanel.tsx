@@ -143,6 +143,14 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [runningNowCapabilityId, setRunningNowCapabilityId] = useState<string | null>(null);
+  // 2026-08-29 UI bug list, item 2 -- "Capabilities" starts collapsed;
+  // clicking its header reveals the built-in list + SkillsTree beneath it.
+  const [capabilitiesExpanded, setCapabilitiesExpanded] = useState(false);
+  // 2026-08-29 UI bug list, item 4 -- the suggestions dropdown used to key
+  // off scopeDraft alone, so a committed value that happened to also be a
+  // real tag (e.g. "customer/adnoc") matched itself and stayed rendered,
+  // permanently overlapping the row beneath it. Gate it on real focus too.
+  const [scopeInputFocused, setScopeInputFocused] = useState(false);
 
   useEffect(() => {
     setAgent(null); // clear stale content immediately on agent switch
@@ -280,20 +288,13 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
     onAgentUpdated?.();
   }
 
-  async function handleRevokeSkill(skillId: string) {
-    await revokeAgentSkill(agentId, skillId);
-    const updated = await fetchAgent(agentId);
-    setAgent(updated);
-    onAgentUpdated?.();
-  }
-
   // Multi-select bulk actions (REQ-SB-48-US-01-T02) -- N sequential calls to
   // the same single-Skill grantAgentSkill/revokeAgentSkill primitive
-  // handleGrantSkill/handleRevokeSkill above already use, never a new batch
-  // endpoint; one combined refetch after the whole batch rather than one per
-  // Skill (handleGrantSkill/handleRevokeSkill themselves stay unchanged, so
-  // the existing per-row Grant/Revoke buttons keep their exact prior
-  // behavior).
+  // handleGrantSkill above already uses, never a new batch endpoint; one
+  // combined refetch after the whole batch rather than one per Skill. Bulk
+  // revoke is now the only revoke path (2026-08-29 UI bug list, item 3
+  // removed the per-row Revoke button in favor of Grant-disables-in-place +
+  // this checkbox/bulk-action mechanism).
   async function handleBulkGrantSkills(skillIds: string[]) {
     for (const skillId of skillIds) {
       await grantAgentSkill(agentId, skillId);
@@ -515,6 +516,12 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
           </>
         )}
         <div className="side-panel-body">
+          {!agent && (
+            <div className="side-panel-loading" data-testid="agent-detail-loading">
+              <span className="side-panel-loading-spinner" aria-hidden="true" />
+              Loading agent…
+            </div>
+          )}
           {agent && (
             <div className="side-panel-agent" data-agent-detail={agent.id}>
               {activeTab === 'overview' && (
@@ -673,11 +680,15 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
                           style={{ minWidth: 220 }}
                           value={scopeDraft}
                           onChange={(event) => setScopeDraft(event.target.value)}
-                          onBlur={handleScopeCommit}
+                          onFocus={() => setScopeInputFocused(true)}
+                          onBlur={() => {
+                            handleScopeCommit();
+                            setScopeInputFocused(false);
+                          }}
                           placeholder="No vault scope assigned yet"
                           data-testid="vault-scope-input"
                         />
-                        {getFilteredScopeSuggestions().length > 0 && (
+                        {scopeInputFocused && getFilteredScopeSuggestions().length > 0 && (
                           <ul
                             className="scope-suggestions-list"
                             data-testid="vault-scope-suggestions"
@@ -783,26 +794,41 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
                   </div>
 
                   <div className="side-panel-section">
-                    <h3>Capabilities</h3>
-                    <div className="kv-list">
-                      {agent.capabilities
-                        .filter((capability) => capability.kind === 'action')
-                        .map((capability) => (
-                          <div className="kv-row" key={capability.id}>
-                            <span className="kv-key">{capability.label}</span>
-                            <span className="text-muted">Built-in</span>
-                          </div>
-                        ))}
-                    </div>
-                    {skillCatalog && (
-                      <SkillsTree
-                        mode="manage"
-                        skills={buildSkillsTreeItems(skillCatalog, agent.capabilities)}
-                        onGrantSkill={handleGrantSkill}
-                        onRevokeSkill={handleRevokeSkill}
-                        onGrantSkills={handleBulkGrantSkills}
-                        onRevokeSkills={handleBulkRevokeSkills}
-                      />
+                    <button
+                      type="button"
+                      className="section-collapse-header"
+                      aria-expanded={capabilitiesExpanded}
+                      data-testid="capabilities-collapse-toggle"
+                      onClick={() => setCapabilitiesExpanded((expanded) => !expanded)}
+                    >
+                      <span className="section-collapse-title">Capabilities</span>
+                      <span className="section-collapse-line" aria-hidden="true" />
+                      <span className="section-collapse-arrow" aria-hidden="true">
+                        {capabilitiesExpanded ? '▾' : '▸'}
+                      </span>
+                    </button>
+                    {capabilitiesExpanded && (
+                      <>
+                        <div className="kv-list">
+                          {agent.capabilities
+                            .filter((capability) => capability.kind === 'action')
+                            .map((capability) => (
+                              <div className="kv-row" key={capability.id}>
+                                <span className="kv-key">{capability.label}</span>
+                                <span className="text-muted">Built-in</span>
+                              </div>
+                            ))}
+                        </div>
+                        {skillCatalog && (
+                          <SkillsTree
+                            mode="manage"
+                            skills={buildSkillsTreeItems(skillCatalog, agent.capabilities)}
+                            onGrantSkill={handleGrantSkill}
+                            onGrantSkills={handleBulkGrantSkills}
+                            onRevokeSkills={handleBulkRevokeSkills}
+                          />
+                        )}
+                      </>
                     )}
                   </div>
                 </>

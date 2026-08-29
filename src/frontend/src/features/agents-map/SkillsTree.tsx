@@ -42,11 +42,13 @@ export interface SkillsTreeSkill {
 interface SkillsTreeManageProps {
   mode: 'manage';
   skills: SkillsTreeSkill[];
-  /** Per-row single-Skill grant/revoke — the exact existing one-at-a-time
+  /** Per-row single-Skill grant — the exact existing one-at-a-time
    * mechanism the flat Capabilities list already used before this tree
-   * (Scenario 8's own "unchanged by this task" mechanism). */
+   * (Scenario 8's own "unchanged by this task" mechanism). No per-row
+   * revoke counterpart (2026-08-29 UI bug list, item 3): Grant disables
+   * in place once granted, and revoking happens via the checkbox + bulk
+   * action bar below instead of a dedicated Revoke button per row. */
   onGrantSkill: (skillId: string) => void;
-  onRevokeSkill: (skillId: string) => void;
   /** Multi-select bulk actions — the caller composes N sequential calls to
    * the same single-Skill grant/revoke primitive above; SkillsTree itself
    * never calls a batch endpoint (Scenarios 5/6). */
@@ -107,7 +109,7 @@ interface ManageSelection {
   ids: Set<string>;
 }
 
-function SkillsTreeManageView({ skills, onGrantSkill, onRevokeSkill, onGrantSkills, onRevokeSkills }: SkillsTreeManageProps) {
+function SkillsTreeManageView({ skills, onGrantSkill, onGrantSkills, onRevokeSkills }: SkillsTreeManageProps) {
   const { collapsedTools, toggleCollapse } = useSkillsTreeCollapse();
   const [selection, setSelection] = useState<ManageSelection | null>(null);
 
@@ -172,16 +174,19 @@ function SkillsTreeManageView({ skills, onGrantSkill, onRevokeSkill, onGrantSkil
                       aria-label={`Select ${skill.name}`}
                     />
                     <span className="skills-tree-icon" aria-hidden="true">{icon}</span>
-                    <span className="kv-key">{skill.name}</span>
-                    {skill.granted ? (
-                      <button type="button" className="btn btn-danger" onClick={() => onRevokeSkill(skill.id)}>
-                        Revoke
-                      </button>
-                    ) : (
-                      <button type="button" className="btn btn-primary" onClick={() => onGrantSkill(skill.id)}>
-                        Grant
-                      </button>
-                    )}
+                    <span className="skills-tree-name">{skill.name}</span>
+                    {/* 2026-08-29 UI bug list, item 3 -- Grant always sits on
+                        the right and disables once granted; revoking a
+                        granted skill happens via the checkbox + bulk action
+                        bar below (unchanged mechanism), not a per-row button. */}
+                    <button
+                      type="button"
+                      className="btn btn-primary skills-tree-grant-btn"
+                      disabled={skill.granted}
+                      onClick={() => onGrantSkill(skill.id)}
+                    >
+                      {skill.granted ? 'Granted' : 'Grant'}
+                    </button>
                   </div>
                 ))}
               </div>

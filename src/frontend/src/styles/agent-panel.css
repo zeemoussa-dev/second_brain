@@ -110,6 +110,75 @@
 .side-panel-section { margin-bottom: var(--space-6); }
 .side-panel-section h3 { margin-bottom: var(--space-2); }
 
+/* 2026-08-29 UI bug list, item 1 -- the panel used to render nothing at
+   all (not even its own header/tabs) while its detail fetch was in
+   flight, reading as a broken/empty panel rather than a loading one. */
+.side-panel-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  flex: 1;
+  padding: var(--space-8) 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.side-panel-loading-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  animation: sidePanelSpin 0.7s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .side-panel-loading-spinner { animation: none; }
+}
+
+@keyframes sidePanelSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* 2026-08-29 UI bug list, item 2 -- reusable collapsible section header:
+   a bigger label, a rule filling the remaining width, and a trailing
+   arrow. Currently only Capabilities uses this, but it's written generic
+   (not .capabilities-*) since the same "big header + line + arrow"
+   pattern is a natural fit for other dense side-panel sections later. */
+.section-collapse-header {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text);
+  text-align: left;
+}
+
+.section-collapse-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.section-collapse-header:hover .section-collapse-title { color: var(--color-accent); }
+
+.section-collapse-line {
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+
+.section-collapse-arrow {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
 /* The Chat tab's own section fills all available vertical space instead
    of the fixed max-height the combined-tab layout needed. */
 .side-panel-section--chat {
@@ -612,4 +681,90 @@
 
 .visual-picker-reset {
   margin-top: var(--space-4);
+}
+
+/* ==========================================================================
+   Skills tree (SkillsTree.tsx) — 2026-08-29 UI bug list, item 3: this
+   component had no dedicated styling at all before now (bare .kv-row
+   borders + unstyled checkboxes/buttons), which read as "condensed" and
+   out of place next to the rest of the panel's own visual language.
+   ========================================================================== */
+
+.skills-tree {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.skills-tree-group {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.skills-tree-group-header {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-raised);
+  border: none;
+  cursor: pointer;
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-align: left;
+}
+
+.skills-tree-group-header:hover { color: var(--color-accent); }
+
+.skills-tree-group-name { flex: 1; }
+
+.skills-tree-collapse-indicator { color: var(--color-text-muted); }
+
+.skills-tree-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.skills-tree-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-top: 1px solid var(--color-border);
+  font-size: var(--font-size-sm);
+}
+
+.skills-tree-row[data-granted="true"] { background: color-mix(in srgb, var(--color-success) 6%, transparent); }
+
+.skills-tree-checkbox { flex-shrink: 0; }
+.skills-tree-icon { flex-shrink: 0; font-size: 1rem; }
+
+.skills-tree-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Grant always docks right (bug list item 3's own spec); once granted it
+   disables in place rather than swapping to a Revoke button — revoking a
+   granted skill happens through the checkbox + bulk action bar below. */
+.skills-tree-grant-btn {
+  flex-shrink: 0;
+  padding: 2px var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+.skills-tree-bulk-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-1);
 }
