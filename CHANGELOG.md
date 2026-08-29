@@ -18,6 +18,13 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix: `AgentDetailPanel.tsx` audit — added `tools`/`depends_on`/
+  `preferred_index_ids` to `to_detail_dict()` and the panel (Overview +
+  editable Settings fields); fixed the Overview Guardrails row (was
+  showing a hardcoded generic sentence instead of the real value);
+  converted the non-functional Working Mode and Keywords controls to
+  honest read-only display (neither has any real backend field or
+  storage — both silently dropped every edit before this).
 - feat: `tools` wired as a real 3rd `Agent` field, alongside `section_id`
   and `scope` — real, per-profile Hermes toolset state
   (`HermesCLI.list_tools/enable_tools/disable_tools`, `HermesCLI`'s

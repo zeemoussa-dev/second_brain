@@ -127,6 +127,12 @@ class AgentUpdateBody(BaseModel):
     # "terminal", "file") -- a full REPLACE when provided, same
     # declarative convention as `scope`, not an additive patch.
     tools: list[str] | None = None
+    # 2026-08-29 fix: AgentManager.update() already fully supported both
+    # of these -- neither was ever declared on this body model, so the
+    # Agent Detail Panel had no real way to edit either (same silently-
+    # dropped-field bug class as the scope/guardrails fix above).
+    depends_on: list[str] | None = None
+    preferred_index_ids: list[str] | None = None
 
 
 class AgentCreateBody(BaseModel):
@@ -223,6 +229,7 @@ def update_agent(agent_id: str, body: AgentUpdateBody) -> dict:
         agent_id, icon=body.icon, color=body.color, section_id=body.section_id,
         is_background_agent=body.is_background_agent, prompt=body.prompt,
         guardrails=body.guardrails, scope=scope, tools=body.tools,
+        depends_on=body.depends_on, preferred_index_ids=body.preferred_index_ids,
     )
     if agent is not None:
         return to_detail_dict(agent)

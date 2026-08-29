@@ -79,9 +79,6 @@ const WORKING_MODE_LABELS: Record<AgentDetail['working_mode'], string> = {
   manual: 'Manual',
 };
 
-const GUARDRAILS_STATEMENT =
-  "Replies are grounded in what this agent's own tools actually find in the vault — it honestly says it doesn't know rather than guessing.";
-
 // Same formatting as AgentActivityPage.tsx's own (duplicated per this
 // codebase's small-helper convention, ADR-002) -- Hermes session
 // timestamps are real UNIX epoch seconds, not pre-formatted strings.
@@ -118,8 +115,10 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
   const [sections, setSections] = useState<SectionSummary[] | null>(null);
   const [skillCatalog, setSkillCatalog] = useState<SkillSummary[] | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
-  const [keywordsDraft, setKeywordsDraft] = useState('');
   const [scopeDraft, setScopeDraft] = useState('');
+  const [toolsDraft, setToolsDraft] = useState('');
+  const [dependsOnDraft, setDependsOnDraft] = useState('');
+  const [preferredIndexIdsDraft, setPreferredIndexIdsDraft] = useState('');
   const [promptDraft, setPromptDraft] = useState('');
   const [guardrailsDraft, setGuardrailsDraft] = useState('');
   const [scopeSuggestions, setScopeSuggestions] = useState<ScopeSuggestions | null>(null);
@@ -149,8 +148,10 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
     setAgent(null); // clear stale content immediately on agent switch
     setHistory(null); // clear the previous agent's history on switch
     setActiveTab('overview');
-    setKeywordsDraft('');
     setScopeDraft('');
+    setToolsDraft('');
+    setDependsOnDraft('');
+    setPreferredIndexIdsDraft('');
     setPromptDraft('');
     setGuardrailsDraft('');
     setScopeSuggestions(null); // clear the previous agent's suggestion snapshot on switch
@@ -167,8 +168,10 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
     setScheduleError(null);
     fetchAgent(agentId).then((detail) => {
       setAgent(detail);
-      setKeywordsDraft(detail.keywords.join(', '));
       setScopeDraft(detail.scope.join(', '));
+      setToolsDraft(detail.tools.join(', '));
+      setDependsOnDraft(detail.depends_on.join(', '));
+      setPreferredIndexIdsDraft(detail.preferred_index_ids.join(', '));
       setPromptDraft(detail.prompt ?? '');
       setGuardrailsDraft(detail.guardrails);
     });
@@ -228,12 +231,6 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
 
   async function handleSectionChange(sectionId: string) {
     const updated = await updateAgentAssignment(agentId, { section_id: sectionId });
-    setAgent(updated);
-    onAgentUpdated?.();
-  }
-
-  async function handleWorkingModeChange(workingMode: string) {
-    const updated = await updateAgentAssignment(agentId, { working_mode: workingMode });
     setAgent(updated);
     onAgentUpdated?.();
   }
@@ -315,15 +312,37 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
     onAgentUpdated?.();
   }
 
-  async function handleKeywordsCommit() {
-    const keywords = keywordsDraft
+  async function handleToolsCommit() {
+    const tools = toolsDraft
       .split(',')
-      .map((keyword) => keyword.trim())
-      .filter((keyword) => keyword.length > 0);
-    const updated = await updateAgentAssignment(agentId, { keywords });
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+    const updated = await updateAgentAssignment(agentId, { tools });
     setAgent(updated);
     onAgentUpdated?.();
-    setKeywordsDraft(updated.keywords.join(', '));
+    setToolsDraft(updated.tools.join(', '));
+  }
+
+  async function handleDependsOnCommit() {
+    const dependsOn = dependsOnDraft
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+    const updated = await updateAgentAssignment(agentId, { depends_on: dependsOn });
+    setAgent(updated);
+    onAgentUpdated?.();
+    setDependsOnDraft(updated.depends_on.join(', '));
+  }
+
+  async function handlePreferredIndexIdsCommit() {
+    const preferredIndexIds = preferredIndexIdsDraft
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+    const updated = await updateAgentAssignment(agentId, { preferred_index_ids: preferredIndexIds });
+    setAgent(updated);
+    onAgentUpdated?.();
+    setPreferredIndexIdsDraft(updated.preferred_index_ids.join(', '));
   }
 
   async function handleScopeCommit() {
@@ -518,11 +537,27 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
                     </div>
                     <div className="kv-row" data-testid="overview-guardrails">
                       <span className="kv-key">Guardrails</span>
-                      <span>{GUARDRAILS_STATEMENT}</span>
+                      <span>{agent.guardrails || 'No guardrails set yet'}</span>
                     </div>
                     <div className="kv-row" data-testid="overview-scope">
                       <span className="kv-key">Vault scope</span>
                       <span>{agent.scope.length > 0 ? agent.scope.join(', ') : 'No vault scope assigned yet'}</span>
+                    </div>
+                    <div className="kv-row" data-testid="overview-tools">
+                      <span className="kv-key">Tools</span>
+                      <span>{agent.tools.length > 0 ? agent.tools.join(', ') : 'No tools enabled'}</span>
+                    </div>
+                    <div className="kv-row" data-testid="overview-depends-on">
+                      <span className="kv-key">Relays to</span>
+                      <span>{agent.depends_on.length > 0 ? agent.depends_on.join(', ') : 'Nothing — stands alone'}</span>
+                    </div>
+                    <div className="kv-row" data-testid="overview-preferred-indexes">
+                      <span className="kv-key">Preferred indexes</span>
+                      <span>
+                        {agent.preferred_index_ids.length > 0
+                          ? agent.preferred_index_ids.join(', ')
+                          : 'None linked'}
+                      </span>
                     </div>
                   </div>
                   {agent.type === 'expert' && (
@@ -601,15 +636,16 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
                       )}
                       <div className="kv-row">
                         <span className="kv-key">Working mode</span>
-                        <select
-                          className="input kv-select"
-                          value={agent.working_mode}
-                          onChange={(event) => handleWorkingModeChange(event.target.value)}
-                        >
-                          <option value="autonomous">Autonomous</option>
-                          <option value="supervised">Supervised</option>
-                          <option value="manual">Manual</option>
-                        </select>
+                        {/* Read-only (2026-08-29) -- AgentManager.update() has
+                            no working_mode parameter at all; this editable
+                            dropdown sent a PATCH body field the backend
+                            silently dropped and always returned the
+                            hardcoded "autonomous" default regardless of what
+                            was selected. No real per-agent store exists yet
+                            (the intended real backing is Hermes' own
+                            approval.request/respond mechanism, not yet
+                            wired -- see AgentManager's own module docstring). */}
+                        <span>{WORKING_MODE_LABELS[agent.working_mode]}</span>
                       </div>
                       <div className="kv-row" data-testid="background-agent-row">
                         <span className="kv-key">Background Agent</span>
@@ -621,15 +657,13 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
                       </div>
                       <div className="kv-row">
                         <span className="kv-key">Keywords</span>
-                        <input
-                          type="text"
-                          className="input kv-select"
-                          style={{ minWidth: 220 }}
-                          value={keywordsDraft}
-                          onChange={(event) => setKeywordsDraft(event.target.value)}
-                          onBlur={handleKeywordsCommit}
-                          placeholder="No keywords assigned yet"
-                        />
+                        {/* Read-only (2026-08-29) -- AgentManager.update()
+                            has no keywords parameter at all; this editable
+                            input sent a PATCH body field the backend
+                            silently dropped, and to_detail_dict() always
+                            returns [] regardless of what was typed here. No
+                            real design/backing exists for this field yet. */}
+                        <span className="text-muted">Not yet implemented</span>
                       </div>
                       <div className="kv-row" style={{ position: 'relative' }}>
                         <span className="kv-key">Vault scope</span>
@@ -680,6 +714,45 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
                             ))}
                           </ul>
                         )}
+                      </div>
+                      <div className="kv-row">
+                        <span className="kv-key">Tools</span>
+                        <input
+                          type="text"
+                          className="input kv-select"
+                          style={{ minWidth: 220 }}
+                          value={toolsDraft}
+                          onChange={(event) => setToolsDraft(event.target.value)}
+                          onBlur={handleToolsCommit}
+                          placeholder="No tools enabled"
+                          data-testid="tools-input"
+                        />
+                      </div>
+                      <div className="kv-row">
+                        <span className="kv-key">Relays to</span>
+                        <input
+                          type="text"
+                          className="input kv-select"
+                          style={{ minWidth: 220 }}
+                          value={dependsOnDraft}
+                          onChange={(event) => setDependsOnDraft(event.target.value)}
+                          onBlur={handleDependsOnCommit}
+                          placeholder="Stands alone — no agent to relay to"
+                          data-testid="depends-on-input"
+                        />
+                      </div>
+                      <div className="kv-row">
+                        <span className="kv-key">Preferred indexes</span>
+                        <input
+                          type="text"
+                          className="input kv-select"
+                          style={{ minWidth: 220 }}
+                          value={preferredIndexIdsDraft}
+                          onChange={(event) => setPreferredIndexIdsDraft(event.target.value)}
+                          onBlur={handlePreferredIndexIdsCommit}
+                          placeholder="None linked"
+                          data-testid="preferred-index-ids-input"
+                        />
                       </div>
                       <div className="kv-row">
                         <span className="kv-key">Prompt</span>

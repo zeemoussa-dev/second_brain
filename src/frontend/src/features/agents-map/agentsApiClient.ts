@@ -68,6 +68,20 @@ export interface AgentDetail {
   // (T02/T03), never returned here.
   prompt: string | null;
   guardrails: string;
+  // 2026-08-29 -- real, currently-ENABLED Hermes toolset names for this
+  // profile (e.g. "terminal", "file"). A full REPLACE list on write, not
+  // an additive patch.
+  tools: string[];
+  // 2026-08-29 -- who this agent relays UP to (real specialists-relay
+  // direction, confirmed live: a child's own depends_on points at its
+  // parent, e.g. energy-expert.depends_on == ["industry-expert"]) --
+  // NOT the older LangGraph-era pipeline-predecessor meaning
+  // AgentSummary's own same-named field still documents; that one is a
+  // separate, still-unbuilt concept.
+  depends_on: string[];
+  // 2026-08-29 -- real Index ids (business/core/index/) this agent
+  // should consult first when looking for data in the vault.
+  preferred_index_ids: string[];
 }
 
 export function fetchAgent(agentId: string): Promise<AgentDetail> {
@@ -89,6 +103,9 @@ export function updateAgentAssignment(
     color?: string;
     prompt?: string;
     guardrails?: string;
+    tools?: string[];
+    depends_on?: string[];
+    preferred_index_ids?: string[];
   },
 ): Promise<AgentDetail> {
   return apiFetch<AgentDetail>(`/agents/${agentId}`, {
