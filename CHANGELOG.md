@@ -18,6 +18,15 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: Vault Scope extended to 13 more real agents (4 Section Hubs +
+  9 Domain Experts), each mapped individually against the real, current
+  vault tag landscape rather than a uniform rule — `technology-hub` is
+  folder-scoped instead of tag-scoped (future-proof as new tags get
+  added under it); `azure-calculator`/`compass-solutions` left unscoped
+  (no real matching tag exists for either); the 7 cross-cutting/utility
+  agents left unscoped by design (each needs cross-customer reach).
+  Verified live: every agent's scope round-trips correctly and each real
+  `SOUL.md` has exactly one `## Scope` heading, no duplication.
 - feat: real per-customer Indexes (`Adnoc`, `Masdar`, `TAQA`) created and
   linked to their respective Customer Expert agents via
   `preferred_index_ids`; each agent given a "say you don't know rather
