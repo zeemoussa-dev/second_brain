@@ -214,6 +214,16 @@ class AgentManager:
             return None
         return self._to_agent(hermes_agent, include_tools=True)
 
+    def list_tool_catalog(self) -> list[str]:
+        """The full real toolset catalog Hermes knows about -- names
+        only, agent-independent. Every real profile shares the same
+        fixed catalog (confirmed live against `adnoc-expert`'s own
+        26-toolset state, see the 2026-08-29 Tools MEMORY.md entry);
+        only which of those are enabled varies per profile, which is
+        why the default profile's own `list_tools()` keys are enough
+        here -- no need to union across every real profile."""
+        return sorted(get_client().cli.list_tools(None).keys())
+
     def get_section_agents(
         self, section_id: str, *, include_types: list[str] | None = None, exclude_types: list[str] | None = None,
     ) -> list[Agent]:

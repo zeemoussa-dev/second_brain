@@ -3,14 +3,21 @@ import {
   fetchAgent,
   fetchAgentHistory,
   fetchAgentKnowledgeGaps,
+  fetchAgentList,
   researchKnowledgeGap,
   resolveKnowledgeGap,
   updateAgentAssignment,
   type AgentDetail,
   type AgentHistoryEntry,
+  type AgentSummary,
   type KnowledgeGapsResponse,
 } from './agentsApiClient';
 import { fetchSections, type SectionSummary } from '../settings/settingsApiClient';
+import { FieldEditorModal } from './FieldEditorModal';
+import { ChecklistPicker, type ChecklistItem } from './ChecklistPicker';
+import { TagTreePicker } from './TagTreePicker';
+import { fetchToolCatalog } from './toolsApiClient';
+import { fetchIndexes, type IndexSummary } from './indexesApiClient';
 import {
   fetchPendingApproval,
   approvePendingApproval,
@@ -151,6 +158,27 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
   // real tag (e.g. "customer/adnoc") matched itself and stayed rendered,
   // permanently overlapping the row beneath it. Gate it on real focus too.
   const [scopeInputFocused, setScopeInputFocused] = useState(false);
+  // 2026-08-29 (operator: "we need a Big Pop up so we can fill the
+  // fields that needs a space to fill") -- which field's big-popup
+  // editor is currently open, if any. Each opens its own array-shaped
+  // draft below (initialized from the real agent field on open), kept
+  // separate from the existing comma-string row drafts above so the
+  // inline row editors are untouched by this.
+  const [openFieldEditor, setOpenFieldEditor] = useState<
+    null | 'prompt' | 'guardrails' | 'scope' | 'tools' | 'dependsOn' | 'preferredIndexes'
+  >(null);
+  const [savingFieldEditor, setSavingFieldEditor] = useState(false);
+  const [scopeEditorDraft, setScopeEditorDraft] = useState<string[]>([]);
+  const [toolsEditorDraft, setToolsEditorDraft] = useState<string[]>([]);
+  const [dependsOnEditorDraft, setDependsOnEditorDraft] = useState<string[]>([]);
+  const [preferredIndexIdsEditorDraft, setPreferredIndexIdsEditorDraft] = useState<string[]>([]);
+  // Catalogs for the pickers above -- fetched lazily the first time their
+  // own editor opens (each is a real, shared, agent-independent list;
+  // no reason to fetch it for every agent detail load if the popup is
+  // never opened), then kept for the rest of this panel's lifetime.
+  const [toolCatalog, setToolCatalog] = useState<string[] | null>(null);
+  const [agentCatalog, setAgentCatalog] = useState<AgentSummary[] | null>(null);
+  const [indexCatalog, setIndexCatalog] = useState<IndexSummary[] | null>(null);
 
   useEffect(() => {
     setAgent(null); // clear stale content immediately on agent switch
@@ -369,6 +397,68 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
     setAgent(updated);
     onAgentUpdated?.();
     setGuardrailsDraft(updated.guardrails);
+  }
+
+  function openScopeEditor() {
+    setScopeEditorDraft(agent?.scope ?? []);
+    setOpenFieldEditor('scope');
+  }
+
+  function openToolsEditor() {
+    setToolsEditorDraft(agent?.tools ?? []);
+    setOpenFieldEditor('tools');
+    if (!toolCatalog) fetchToolCatalog().then(setToolCatalog);
+  }
+
+  function openDependsOnEditor() {
+    setDependsOnEditorDraft(agent?.depends_on ?? []);
+    setOpenFieldEditor('dependsOn');
+    if (!agentCatalog) fetchAgentList().then(setAgentCatalog);
+  }
+
+  function openPreferredIndexesEditor() {
+    setPreferredIndexIdsEditorDraft(agent?.preferred_index_ids ?? []);
+    setOpenFieldEditor('preferredIndexes');
+    if (!indexCatalog) fetchIndexes().then(setIndexCatalog);
+  }
+
+  function toggleInDraft(setter: (updater: (prev: string[]) => string[]) => void, id: string) {
+    setter((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  async function handleSaveFieldEditor() {
+    if (!openFieldEditor) return;
+    setSavingFieldEditor(true);
+    try {
+      if (openFieldEditor === 'prompt') {
+        await handlePromptCommit();
+      } else if (openFieldEditor === 'guardrails') {
+        await handleGuardrailsCommit();
+      } else if (openFieldEditor === 'scope') {
+        const updated = await updateAgentAssignment(agentId, { scope: scopeEditorDraft });
+        setAgent(updated);
+        onAgentUpdated?.();
+        setScopeDraft(updated.scope.join(', '));
+      } else if (openFieldEditor === 'tools') {
+        const updated = await updateAgentAssignment(agentId, { tools: toolsEditorDraft });
+        setAgent(updated);
+        onAgentUpdated?.();
+        setToolsDraft(updated.tools.join(', '));
+      } else if (openFieldEditor === 'dependsOn') {
+        const updated = await updateAgentAssignment(agentId, { depends_on: dependsOnEditorDraft });
+        setAgent(updated);
+        onAgentUpdated?.();
+        setDependsOnDraft(updated.depends_on.join(', '));
+      } else if (openFieldEditor === 'preferredIndexes') {
+        const updated = await updateAgentAssignment(agentId, { preferred_index_ids: preferredIndexIdsEditorDraft });
+        setAgent(updated);
+        onAgentUpdated?.();
+        setPreferredIndexIdsDraft(updated.preferred_index_ids.join(', '));
+      }
+      setOpenFieldEditor(null);
+    } finally {
+      setSavingFieldEditor(false);
+    }
   }
 
   // REQ-SB-50-US-01-T02 -- the last, uncommitted comma-separated token is
@@ -688,6 +778,15 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
                           placeholder="No vault scope assigned yet"
                           data-testid="vault-scope-input"
                         />
+                        <button
+                          type="button"
+                          className="kv-expand-btn"
+                          aria-label="Edit Vault scope in a bigger view"
+                          data-testid="expand-vault-scope"
+                          onClick={openScopeEditor}
+                        >
+                          <span className="material-symbols-outlined">open_in_full</span>
+                        </button>
                         {scopeInputFocused && getFilteredScopeSuggestions().length > 0 && (
                           <ul
                             className="scope-suggestions-list"
@@ -738,6 +837,15 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
                           placeholder="No tools enabled"
                           data-testid="tools-input"
                         />
+                        <button
+                          type="button"
+                          className="kv-expand-btn"
+                          aria-label="Edit Tools in a bigger view"
+                          data-testid="expand-tools"
+                          onClick={openToolsEditor}
+                        >
+                          <span className="material-symbols-outlined">open_in_full</span>
+                        </button>
                       </div>
                       <div className="kv-row">
                         <span className="kv-key">Relays to</span>
@@ -751,6 +859,15 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
                           placeholder="Stands alone — no agent to relay to"
                           data-testid="depends-on-input"
                         />
+                        <button
+                          type="button"
+                          className="kv-expand-btn"
+                          aria-label="Edit Relays to in a bigger view"
+                          data-testid="expand-depends-on"
+                          onClick={openDependsOnEditor}
+                        >
+                          <span className="material-symbols-outlined">open_in_full</span>
+                        </button>
                       </div>
                       <div className="kv-row">
                         <span className="kv-key">Preferred indexes</span>
@@ -764,6 +881,15 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
                           placeholder="None linked"
                           data-testid="preferred-index-ids-input"
                         />
+                        <button
+                          type="button"
+                          className="kv-expand-btn"
+                          aria-label="Edit Preferred indexes in a bigger view"
+                          data-testid="expand-preferred-indexes"
+                          onClick={openPreferredIndexesEditor}
+                        >
+                          <span className="material-symbols-outlined">open_in_full</span>
+                        </button>
                       </div>
                       <div className="kv-row">
                         <span className="kv-key">Prompt</span>
@@ -776,6 +902,15 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
                           placeholder="No prompt override set — using the default"
                           data-testid="settings-prompt-input"
                         />
+                        <button
+                          type="button"
+                          className="kv-expand-btn"
+                          aria-label="Edit Prompt in a bigger view"
+                          data-testid="expand-prompt"
+                          onClick={() => setOpenFieldEditor('prompt')}
+                        >
+                          <span className="material-symbols-outlined">open_in_full</span>
+                        </button>
                       </div>
                       <div className="kv-row">
                         <span className="kv-key">Guardrails</span>
@@ -789,6 +924,15 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
                           placeholder="No guardrails set yet"
                           data-testid="settings-guardrails-input"
                         />
+                        <button
+                          type="button"
+                          className="kv-expand-btn"
+                          aria-label="Edit Guardrails in a bigger view"
+                          data-testid="expand-guardrails"
+                          onClick={() => setOpenFieldEditor('guardrails')}
+                        >
+                          <span className="material-symbols-outlined">open_in_full</span>
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -1104,6 +1248,127 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
           )}
         </div>
       </aside>
+      {openFieldEditor === 'prompt' && (
+        <FieldEditorModal
+          title="Prompt"
+          onClose={() => setOpenFieldEditor(null)}
+          onSave={handleSaveFieldEditor}
+          saving={savingFieldEditor}
+        >
+          <textarea
+            className="input field-editor-textarea"
+            value={promptDraft}
+            onChange={(event) => setPromptDraft(event.target.value)}
+            placeholder="No prompt override set — using the default"
+            data-testid="field-editor-prompt-textarea"
+          />
+        </FieldEditorModal>
+      )}
+      {openFieldEditor === 'guardrails' && (
+        <FieldEditorModal
+          title="Guardrails"
+          onClose={() => setOpenFieldEditor(null)}
+          onSave={handleSaveFieldEditor}
+          saving={savingFieldEditor}
+        >
+          <textarea
+            className="input field-editor-textarea"
+            value={guardrailsDraft}
+            onChange={(event) => setGuardrailsDraft(event.target.value)}
+            placeholder="No guardrails set yet"
+            data-testid="field-editor-guardrails-textarea"
+          />
+        </FieldEditorModal>
+      )}
+      {openFieldEditor === 'scope' && (
+        <FieldEditorModal
+          title="Vault scope"
+          description="Real tags and folders from the vault — select every one this agent should be able to see."
+          onClose={() => setOpenFieldEditor(null)}
+          onSave={handleSaveFieldEditor}
+          saving={savingFieldEditor}
+        >
+          {scopeSuggestions ? (
+            <>
+              <h4>Tags</h4>
+              <TagTreePicker
+                tags={scopeSuggestions.tags}
+                selectedTags={scopeEditorDraft}
+                onToggle={(tag) => toggleInDraft(setScopeEditorDraft, tag)}
+              />
+              <h4 style={{ marginTop: 'var(--space-4)' }}>Folders</h4>
+              <ChecklistPicker
+                items={scopeSuggestions.folders.map((folder): ChecklistItem => ({ id: folder, label: folder }))}
+                selectedIds={scopeEditorDraft}
+                onToggle={(folder) => toggleInDraft(setScopeEditorDraft, folder)}
+                emptyLabel="No real vault folders found yet."
+              />
+            </>
+          ) : (
+            <p className="text-muted">Loading real tags and folders…</p>
+          )}
+        </FieldEditorModal>
+      )}
+      {openFieldEditor === 'tools' && (
+        <FieldEditorModal
+          title="Tools"
+          description="Which real Hermes toolsets this agent is allowed to use."
+          onClose={() => setOpenFieldEditor(null)}
+          onSave={handleSaveFieldEditor}
+          saving={savingFieldEditor}
+        >
+          {toolCatalog ? (
+            <ChecklistPicker
+              items={toolCatalog.map((name): ChecklistItem => ({ id: name, label: name }))}
+              selectedIds={toolsEditorDraft}
+              onToggle={(name) => toggleInDraft(setToolsEditorDraft, name)}
+            />
+          ) : (
+            <p className="text-muted">Loading the real toolset catalog…</p>
+          )}
+        </FieldEditorModal>
+      )}
+      {openFieldEditor === 'dependsOn' && (
+        <FieldEditorModal
+          title="Relays to"
+          description="Which other real agents this agent can hand a request up to."
+          onClose={() => setOpenFieldEditor(null)}
+          onSave={handleSaveFieldEditor}
+          saving={savingFieldEditor}
+        >
+          {agentCatalog ? (
+            <ChecklistPicker
+              items={agentCatalog
+                .filter((candidate) => candidate.id !== agentId)
+                .map((candidate): ChecklistItem => ({ id: candidate.id, label: candidate.name, meta: candidate.type }))}
+              selectedIds={dependsOnEditorDraft}
+              onToggle={(id) => toggleInDraft(setDependsOnEditorDraft, id)}
+            />
+          ) : (
+            <p className="text-muted">Loading the real agent list…</p>
+          )}
+        </FieldEditorModal>
+      )}
+      {openFieldEditor === 'preferredIndexes' && (
+        <FieldEditorModal
+          title="Preferred indexes"
+          description="Which real Indexes this agent should consult first when looking for vault data."
+          onClose={() => setOpenFieldEditor(null)}
+          onSave={handleSaveFieldEditor}
+          saving={savingFieldEditor}
+        >
+          {indexCatalog ? (
+            <ChecklistPicker
+              items={indexCatalog.map((index): ChecklistItem => ({ id: index.id, label: index.name }))}
+              selectedIds={preferredIndexIdsEditorDraft}
+              onToggle={(id) => toggleInDraft(setPreferredIndexIdsEditorDraft, id)}
+              emptyLabel="No real Indexes exist yet."
+            />
+          ) : (
+            <p className="text-muted">Loading the real Index catalog…</p>
+          )}
+        </FieldEditorModal>
+      )}
     </>
   );
 }

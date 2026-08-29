@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { fetchSections, updateSection, type SectionSummary } from '../settings/settingsApiClient';
 import { VisualPicker } from './VisualPicker';
+import { FieldEditorModal } from './FieldEditorModal';
+import { ChecklistPicker, type ChecklistItem } from './ChecklistPicker';
+import { fetchScopeSuggestions, type ScopeSuggestions } from '../vault-browser/client';
 
 interface SectionDetailPanelProps {
   sectionId: string;
@@ -44,6 +47,15 @@ export function SectionDetailPanel({ sectionId, onClose, onSectionUpdated }: Sec
   const [savingFolders, setSavingFolders] = useState(false);
   const [fallbackAgentIdDraft, setFallbackAgentIdDraft] = useState('');
   const [savingFallbackAgentId, setSavingFallbackAgentId] = useState(false);
+  // 2026-08-29 (operator: "a Big Pop up so we can fill the fields that
+  // needs a space to fill") -- same big-popup pattern AgentDetailPanel.tsx
+  // now uses. Folders gets the real vault-folder checklist (same data
+  // source as the Vault Scope picker's own folder half); Description/
+  // Subtitle just get more room to type in.
+  const [openFieldEditor, setOpenFieldEditor] = useState<null | 'description' | 'subtitle' | 'folders'>(null);
+  const [savingFieldEditor, setSavingFieldEditor] = useState(false);
+  const [foldersEditorDraft, setFoldersEditorDraft] = useState<string[]>([]);
+  const [scopeSuggestions, setScopeSuggestions] = useState<ScopeSuggestions | null>(null);
 
   useEffect(() => {
     setSection(null);
@@ -57,6 +69,10 @@ export function SectionDetailPanel({ sectionId, onClose, onSectionUpdated }: Sec
       setFallbackAgentIdDraft(found?.fallback_agent_id ?? '');
     });
   }, [sectionId]);
+
+  useEffect(() => {
+    fetchScopeSuggestions().then(setScopeSuggestions);
+  }, []);
 
   async function applyUpdate(fields: {
     name?: string; icon?: string; color?: string; description?: string;
@@ -128,6 +144,33 @@ export function SectionDetailPanel({ sectionId, onClose, onSectionUpdated }: Sec
     // "" is the backend's own clear-to-default sentinel, same convention
     // AgentDetailPanel's handleVisualReset already relies on.
     await applyUpdate({ icon: '', color: '' });
+  }
+
+  function openFoldersEditor() {
+    setFoldersEditorDraft(section?.folders ?? []);
+    setOpenFieldEditor('folders');
+  }
+
+  function toggleFolderInDraft(folder: string) {
+    setFoldersEditorDraft((prev) => (prev.includes(folder) ? prev.filter((f) => f !== folder) : [...prev, folder]));
+  }
+
+  async function handleSaveFieldEditor() {
+    if (!openFieldEditor) return;
+    setSavingFieldEditor(true);
+    try {
+      if (openFieldEditor === 'description') {
+        await applyUpdate({ description: descriptionDraft.trim() });
+      } else if (openFieldEditor === 'subtitle') {
+        await applyUpdate({ subtitle: subtitleDraft.trim() });
+      } else if (openFieldEditor === 'folders') {
+        const updated = await applyUpdate({ folders: foldersEditorDraft });
+        setFoldersDraft(updated.folders.join(', '));
+      }
+      setOpenFieldEditor(null);
+    } finally {
+      setSavingFieldEditor(false);
+    }
   }
 
   return (
@@ -219,14 +262,25 @@ export function SectionDetailPanel({ sectionId, onClose, onSectionUpdated }: Sec
                   </div>
 
                   <h3 style={{ marginTop: 'var(--space-4)' }}>Description</h3>
-                  <textarea
-                    className="input"
-                    rows={3}
-                    style={{ width: '100%', resize: 'vertical' }}
-                    placeholder="What this Section is for — shown on its own Overview tab."
-                    value={descriptionDraft}
-                    onChange={(event) => setDescriptionDraft(event.target.value)}
-                  />
+                  <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                    <textarea
+                      className="input"
+                      rows={3}
+                      style={{ width: '100%', resize: 'vertical' }}
+                      placeholder="What this Section is for — shown on its own Overview tab."
+                      value={descriptionDraft}
+                      onChange={(event) => setDescriptionDraft(event.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="kv-expand-btn"
+                      aria-label="Edit Description in a bigger view"
+                      data-testid="expand-description"
+                      onClick={() => setOpenFieldEditor('description')}
+                    >
+                      <span className="material-symbols-outlined">open_in_full</span>
+                    </button>
+                  </div>
                   <button
                     type="button"
                     className="btn"
@@ -248,6 +302,15 @@ export function SectionDetailPanel({ sectionId, onClose, onSectionUpdated }: Sec
                     />
                     <button
                       type="button"
+                      className="kv-expand-btn"
+                      aria-label="Edit Subtitle in a bigger view"
+                      data-testid="expand-subtitle"
+                      onClick={() => setOpenFieldEditor('subtitle')}
+                    >
+                      <span className="material-symbols-outlined">open_in_full</span>
+                    </button>
+                    <button
+                      type="button"
                       className="btn"
                       disabled={savingSubtitle || subtitleDraft.trim() === (section.subtitle ?? '')}
                       onClick={handleSaveSubtitle}
@@ -265,6 +328,15 @@ export function SectionDetailPanel({ sectionId, onClose, onSectionUpdated }: Sec
                       value={foldersDraft}
                       onChange={(event) => setFoldersDraft(event.target.value)}
                     />
+                    <button
+                      type="button"
+                      className="kv-expand-btn"
+                      aria-label="Edit Folders in a bigger view"
+                      data-testid="expand-folders"
+                      onClick={openFoldersEditor}
+                    >
+                      <span className="material-symbols-outlined">open_in_full</span>
+                    </button>
                     <button
                       type="button"
                       className="btn"
@@ -312,6 +384,58 @@ export function SectionDetailPanel({ sectionId, onClose, onSectionUpdated }: Sec
           </>
         )}
       </aside>
+      {openFieldEditor === 'description' && (
+        <FieldEditorModal
+          title="Description"
+          onClose={() => setOpenFieldEditor(null)}
+          onSave={handleSaveFieldEditor}
+          saving={savingFieldEditor}
+        >
+          <textarea
+            className="input field-editor-textarea"
+            value={descriptionDraft}
+            onChange={(event) => setDescriptionDraft(event.target.value)}
+            placeholder="What this Section is for — shown on its own Overview tab."
+            data-testid="field-editor-description-textarea"
+          />
+        </FieldEditorModal>
+      )}
+      {openFieldEditor === 'subtitle' && (
+        <FieldEditorModal
+          title="Subtitle"
+          onClose={() => setOpenFieldEditor(null)}
+          onSave={handleSaveFieldEditor}
+          saving={savingFieldEditor}
+        >
+          <textarea
+            className="input field-editor-textarea"
+            value={subtitleDraft}
+            onChange={(event) => setSubtitleDraft(event.target.value)}
+            placeholder="Shown under the Section's title on the Agents Map"
+            data-testid="field-editor-subtitle-textarea"
+          />
+        </FieldEditorModal>
+      )}
+      {openFieldEditor === 'folders' && (
+        <FieldEditorModal
+          title="Folders"
+          description="Real top-level vault folders — select every one this Section's own content index covers."
+          onClose={() => setOpenFieldEditor(null)}
+          onSave={handleSaveFieldEditor}
+          saving={savingFieldEditor}
+        >
+          {scopeSuggestions ? (
+            <ChecklistPicker
+              items={scopeSuggestions.folders.map((folder): ChecklistItem => ({ id: folder, label: folder }))}
+              selectedIds={foldersEditorDraft}
+              onToggle={toggleFolderInDraft}
+              emptyLabel="No real vault folders found yet."
+            />
+          ) : (
+            <p className="text-muted">Loading real vault folders…</p>
+          )}
+        </FieldEditorModal>
+      )}
     </>
   );
 }

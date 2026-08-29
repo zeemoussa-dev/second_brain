@@ -11,11 +11,13 @@ from app.api.cockpit_router import router as cockpit_router
 from app.api.health_check_router import router as health_check_router
 from app.api.hermes_agents_router import router as hermes_agents_router
 from app.api.hermes_router import router as hermes_router
+from app.api.index_router import router as index_router
 from app.api.my_day_router import router as my_day_router
 from app.api.sections_router import router as sections_router
 from app.api.skills_router import router as skills_router
 from app.api.settings_system_router import router as settings_system_router
 from app.api.system_health_router import router as system_health_router
+from app.api.tools_router import router as tools_router
 from app.api.vault_index_router import router as vault_index_router
 from app.api.vault_router import router as vault_router
 from app.api.vault_search_router import router as vault_search_router
@@ -137,6 +139,8 @@ app.include_router(vault_router)
 app.include_router(agents_router)
 app.include_router(pipelines_router)
 app.include_router(skills_router)
+app.include_router(tools_router)
+app.include_router(index_router)
 
 # 2026-08-20 architecture pass -- Tools registry (data_access/system/
 # tools/): mounts every declared Tool's own MCP server at its own

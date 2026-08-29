@@ -768,3 +768,177 @@
   gap: var(--space-3);
   padding: var(--space-2) var(--space-1);
 }
+
+/* ==========================================================================
+   Field editor "big popup" (FieldEditorModal.tsx, 2026-08-29, operator:
+   "a Big Pop up so we can fill the fields that needs a space to fill") --
+   same overlay/header/close chrome convention as .wizard-modal* (see
+   CreateAgentWizardModal.tsx), but deliberately wider/taller: that one's
+   560px width IS the side panel's own width, not "bigger" for this.
+   ========================================================================== */
+
+.field-editor-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, black 55%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 70;
+}
+
+.field-editor-modal {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 60px color-mix(in srgb, var(--color-text) 20%, transparent);
+  width: min(720px, 94vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.field-editor-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.field-editor-modal-close {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.field-editor-modal-close:hover { color: var(--color-text); }
+
+.field-editor-modal-description {
+  margin: 0;
+  padding: 0 var(--space-4);
+  padding-top: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.field-editor-modal-body {
+  padding: var(--space-4);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.field-editor-modal-body h4 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.field-editor-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.field-editor-textarea {
+  width: 100%;
+  min-height: 40vh;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+/* ==========================================================================
+   Checklist picker (ChecklistPicker.tsx) — the generic option list a
+   FieldEditorModal's content renders for every flat-catalog field
+   (Tools, Relays to, Preferred indexes, and the flat-folder half of a
+   Vault Scope picker).
+   ========================================================================== */
+
+.checklist-picker {
+  display: flex;
+  flex-direction: column;
+  max-height: 45vh;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.checklist-picker-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+}
+
+.checklist-picker-row:last-child { border-bottom: none; }
+.checklist-picker-row:hover { background: var(--color-surface-raised); }
+
+.checklist-picker-label { flex: 1; }
+.checklist-picker-meta { color: var(--color-text-muted); font-size: 0.85em; }
+
+/* ==========================================================================
+   Tag tree picker (TagTreePicker.tsx) — the vault's real flat tag list,
+   grouped into a real hierarchy by "/" segments.
+   ========================================================================== */
+
+.tag-tree {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  max-height: 45vh;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+}
+
+.tag-tree-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 3px 0;
+  font-size: var(--font-size-sm);
+}
+
+.tag-tree-toggle {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 0;
+  width: 1rem;
+  flex-shrink: 0;
+}
+
+.tag-tree-group-label {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.tag-tree-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.tag-tree-count {
+  color: var(--color-text-muted);
+  font-size: 0.85em;
+}
+
+.tag-tree-children {
+  margin-left: var(--space-4);
+  border-left: 1px solid var(--color-border);
+  padding-left: var(--space-2);
+}

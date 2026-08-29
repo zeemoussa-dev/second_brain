@@ -18,6 +18,28 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: "big popup" field editors for every cramped list/long-text field
+  in the Agent/Section detail side panels — a small expand icon next to
+  Vault scope, Tools, Relays to, Preferred indexes, Prompt, Guardrails
+  (Agent) and Folders, Description, Subtitle (Section) opens a real,
+  wider modal (`FieldEditorModal.tsx`) instead of editing in a
+  single-line inline input.
+  - New generic `ChecklistPicker.tsx` (flat checkbox list) and
+    `TagTreePicker.tsx` (the vault's real flat tag list, grouped into a
+    real hierarchy by `/` segments client-side, select + save).
+  - New backend endpoints, both real gaps that had no HTTP surface
+    before: `GET /tools` (`tools_router.py`, the full agent-independent
+    Hermes toolset catalog) and `GET /indexes` (`index_router.py`,
+    `IndexManager` had Manager-level `get_all()` since 2026-08-28 but no
+    route until now).
+  - Vault Scope combines a tag tree + a folder checklist into one
+    picker (both real, from `vault-search/scope-suggestions`); Tools,
+    Relays to, and Preferred indexes each get a checklist over their
+    own real catalog; Section Folders reuses the same real folder list.
+  Verified live against real production data (`adnoc-expert`, the
+  Customers section) — a real save/revert round trip confirmed via
+  direct API calls, restoring the only real data touched. `npx tsc
+  --noEmit` clean on every touched/new file.
 - fix: 5 real UI bugs/usability issues in the Agent/Section detail side
   panels, reported by the operator from live use:
   - Both panels rendered fully blank (not even header/tabs) while their

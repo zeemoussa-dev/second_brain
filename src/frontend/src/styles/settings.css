@@ -218,7 +218,35 @@
 .kv-list .kv-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-1) var(--space-3); padding: var(--space-1) 0; border-bottom: 1px solid var(--color-border); }
 .kv-list .kv-row:last-child { border-bottom: none; }
 .kv-key { color: var(--color-text-muted); flex-shrink: 0; }
-.kv-list .kv-row > *:not(.kv-key) { flex: 1 1 200px; min-width: 0; text-align: right; word-break: break-word; }
+.kv-list .kv-row > *:not(.kv-key):not(.kv-expand-btn) { flex: 1 1 200px; min-width: 0; text-align: right; word-break: break-word; }
+
+/* 2026-08-29 (operator: "a Big Pop up so we can fill the fields that
+   needs a space to fill") -- small icon-button sitting inline in a
+   .kv-row next to a cramped field, opening FieldEditorModal for that
+   field. Deliberately excluded from the flex-stretch rule above (a
+   fixed-size icon button, not a value that should grow to fill the row). */
+.kv-expand-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.kv-expand-btn:hover {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  border-color: var(--color-accent);
+}
+
+.kv-expand-btn .material-symbols-outlined { font-size: 1rem; }
 
 /* ==========================================================================
    Generic item list — reused across the four My Day drill-down pages,
