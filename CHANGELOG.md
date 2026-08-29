@@ -18,6 +18,37 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix: real production change — disabled `web`/`browser`/`image_gen`/
+  `bfl`/`tts`/`computer_use`/`code_execution` toolsets on all 30 real
+  non-Primary agents (kept `terminal`/`file`/`skills`/`cronjob`/`todo`/
+  `memory`/`session_search`/`clarify`/`delegation`). `default` (Primary)
+  kept at full capability. A real, durable Hermes-side change
+  (`hermes tools enable/disable`), not yet tracked by this app's own
+  data model.
+- feat: `POST /agents/{agent_id}/specialists/regenerate` added — wires
+  `AgentManager.regenerate_specialists_section()` to the API; previously
+  callable only via direct Python, with no way to trigger it from the
+  frontend after `depends_on` changes.
+- fix: real data-corruption bug — `AgentManager.update()` could write a
+  duplicate `Agent.json` under the wrong Section when called as the
+  first `update()` in a fresh process (stale Registry cache fallback).
+  Caused "Customers had 3 Experts, now I can see only 1" (`adnoc-expert`/
+  `masdar-expert`/`customer-hub` all affected). Fixed at the root
+  (`update()` now reloads the Registry before reading current state);
+  the 3 real stray duplicates found and removed, their only genuinely
+  new data merged back into the correct copy first.
+- feat: `POST /agents` added — real Agent creation, previously missing
+  entirely (`CreateAgentWizardModal.tsx` had been 404ing). Thin wrapper
+  over the already-working `AgentManager.create()`.
+- fix: `AgentManager.create()`/`update()`/`delete()` now force a
+  Registry cache reload (`_reload_registry()`) right after writing,
+  before their own read-back — without this, a just-created/updated
+  agent's own response (and any immediate follow-up read) could show
+  stale pre-write data for up to the hot-reload poll's ~2s window.
+  Confirmed live via `POST /agents`.
+- fix: `POST /agents` with a duplicate id now returns a clean 409
+  instead of an uncaught `HermesUnavailableError` surfacing as a raw
+  500 with an exposed stack trace.
 - feat: Vault Scope extended to 13 more real agents (4 Section Hubs +
   9 Domain Experts), each mapped individually against the real, current
   vault tag landscape rather than a uniform rule — `technology-hub` is

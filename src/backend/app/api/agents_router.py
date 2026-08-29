@@ -6,12 +6,14 @@ own chat/create/action-trigger machinery, none of which has a real
 Hermes-side counterpart yet). Same URL surface the frontend already calls
 (agentsApiClient.ts), so no frontend rewiring is needed for list/detail.
 
-No create/action-trigger/job/knowledge-gap endpoints (AgentDetailPanel.tsx
-shows those tabs disabled for a Hermes-sourced agent rather than this
-router faking support for them) -- POST /agents (real Agent creation)
-does not exist yet either, a separate, real gap CreateAgentWizardModal.tsx
-already assumes is there (confirmed live, 2026-08-28: it 404s). PATCH
-DOES cover real, structural fields now, not just icon/color -- found
+No action-trigger/job/knowledge-gap endpoints (AgentDetailPanel.tsx shows
+those tabs disabled for a Hermes-sourced agent rather than this router
+faking support for them). POST /agents (2026-08-29) -- CreateAgentWizardModal.tsx
+had called it and 404'd since this router's own 2026-08-22 retrofit,
+confirmed live before fixing it -- now a thin wrapper over
+AgentManager.create(), which already supported everything the real
+frontend wizard sends. PATCH also covers real, structural fields now,
+not just icon/color -- found
 live the same day that AgentDetailPanel.tsx's own Vault Scope/Guardrails/
 Section editing had been calling this route with `scope`/`guardrails`/
 `section_id`/`is_background_agent` in its body all along, silently
@@ -123,6 +125,27 @@ class AgentUpdateBody(BaseModel):
     scope: list[str] | None = None
 
 
+class AgentCreateBody(BaseModel):
+    # 2026-08-29 fix: POST /agents never existed -- CreateAgentWizardModal.tsx
+    # has called it and 404'd since the router's own 2026-08-22 retrofit
+    # (that pass was deliberately read-mostly, see the module docstring).
+    # AgentManager.create() already supported all of this; this body model
+    # is the only genuinely new piece. `id` matches the real Hermes profile
+    # folder name AgentManager.create's own first positional arg expects.
+    id: str
+    name: str
+    section_id: str
+    type: str  # "worker" | "producer" | "expert" | "hub"
+    is_background_agent: bool = False
+    depends_on: list[str] | None = None
+    description: str | None = None
+    prompt: str | None = None
+    guardrails: str | None = None
+    scope: list[str] | None = None
+    preferred_index_ids: list[str] | None = None
+    clone_from: str = "default"
+
+
 class ChatMessageBody(BaseModel):
     message: str
 
@@ -130,6 +153,28 @@ class ChatMessageBody(BaseModel):
 router = APIRouter(prefix="/agents")
 pipelines_router = APIRouter(prefix="/pipelines")
 _agent_manager = AgentManager()
+
+
+@router.post("")
+def create_agent(body: AgentCreateBody) -> dict:
+    # 2026-08-29 fix: a duplicate id used to reach AgentManager.create(),
+    # which calls the real `hermes profile create` -- Hermes itself
+    # refuses (a real, correct "Profile already exists" error), but that
+    # came back through as an UNCAUGHT HermesUnavailableError -> a raw
+    # 500 with a full stack trace exposed to the client, confirmed live
+    # while building the Industry Expert tree. A pre-check + clean 409
+    # is the same shape every other real Manager's own duplicate/conflict
+    # case already uses in this router layer (e.g. sections_router.py).
+    if _agent_manager.get_by_id(body.id) is not None:
+        raise HTTPException(status_code=409, detail=f"Agent already exists: {body.id!r}")
+    scope = _classify_scope(body.scope) if body.scope is not None else None
+    agent = _agent_manager.create(
+        body.id, name=body.name, section_id=body.section_id, type=body.type,
+        is_background_agent=body.is_background_agent, depends_on=body.depends_on,
+        description=body.description, prompt=body.prompt, guardrails=body.guardrails,
+        scope=scope, preferred_index_ids=body.preferred_index_ids, clone_from=body.clone_from,
+    )
+    return to_detail_dict(agent)
 
 
 @pipelines_router.get("")
@@ -181,6 +226,27 @@ def update_agent(agent_id: str, body: AgentUpdateBody) -> dict:
     if updated is None:
         raise HTTPException(status_code=404, detail=f"Unknown agent: {agent_id!r}")
     return updated
+
+
+@router.post("/{agent_id}/specialists/regenerate")
+def regenerate_specialists(agent_id: str) -> dict:
+    """Wires AgentManager.regenerate_specialists_section -- confirmed
+    live, 2026-08-29 (built the Industry Expert tree end-to-end through
+    the API), that this had ZERO API exposure: depends_on itself was
+    settable via POST/PATCH, but the real, functional consequence (the
+    parent's own SOUL.md actually learning it has these children, and
+    how to reach one) required a direct Python call, with no way to
+    trigger it from the frontend or any other real caller. Deliberately
+    NOT triggered automatically inside create/update -- same operator
+    reasoning AgentManager's own docstring already states (depends_on
+    changes often while customizing; rewriting the parent's real prompt
+    on every edit would be too disruptive) -- this is the explicit,
+    on-demand trigger for that regeneration, callable whenever the real
+    child roster has actually changed."""
+    agent = _agent_manager.regenerate_specialists_section(agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail=f"Unknown agent: {agent_id!r}")
+    return to_detail_dict(agent)
 
 
 @router.post("/{agent_id}/chat")

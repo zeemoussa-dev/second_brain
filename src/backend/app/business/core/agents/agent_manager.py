@@ -54,6 +54,7 @@ only entity-shaping and orchestrating the real Hermes-side calls.
 """
 from __future__ import annotations
 
+import asyncio
 import re
 
 from app.business import agent_visual_registry
@@ -122,6 +123,24 @@ class AgentManager:
     def _registry_agent(self, agent_id: str) -> RegistryAgent | None:
         registry = registry_loader.get_registry()
         return registry.agents.get(agent_id) if registry is not None else None
+
+    def _reload_registry(self) -> None:
+        """Forces the Registry's in-memory cache to pick up a write this
+        Manager just made, before reading it straight back -- without
+        this, create()/update()'s own final get_by_id() call can return
+        stale pre-write data for up to the hot-reload poll's own ~2s
+        window (confirmed live, 2026-08-29: a real POST /agents response
+        showed type="worker"/section_id="data-gatherer" -- the exact
+        not-yet-migrated fallback _to_agent() uses -- for a real, already
+        create()-completed agent, self-corrected on the next read a
+        moment later). Every test this session already worked around
+        this by hand (`await registry_loader.boot()` between a mutation
+        and the next read) -- this moves that fix into the Manager
+        itself so every real caller (the API included) gets it for
+        free. Safe to call from a sync method invoked by a sync FastAPI
+        handler (runs in a worker thread, no already-running event loop
+        to conflict with)."""
+        asyncio.run(registry_loader.boot())
 
     def _section_id(self, agent_id: str, registry_agent: RegistryAgent | None) -> str:
         if registry_agent is not None and registry_agent.section_id is not None:
@@ -431,6 +450,7 @@ class AgentManager:
             },
             icon=None, color=None, soul_text=soul_text,
         )
+        self._reload_registry()
         return self.get_by_id(agent_id)
 
     def update(
@@ -457,7 +477,30 @@ class AgentManager:
         real system actually owns the field -- Hermes for description/
         model/reasoning_effort/prompt+guardrails+scope, the Registry for
         name/section_id/type/is_background_agent/depends_on, visual
-        registry for icon/color -- never a single flat write."""
+        registry for icon/color -- never a single flat write.
+
+        Real, confirmed data-corruption bug fixed 2026-08-29: `current`
+        used to be read straight from whatever the Registry cache
+        already had, which is None on a fresh process's very first
+        call -- `get_by_id` then falls back to type="worker"/section=
+        "Data Gatherer". Since `new_section_id` defaults to
+        `current.section_id` when omitted, that stale fallback both (a)
+        made `moved` compute False (comparing the same stale value
+        against itself) and (b) still got passed to
+        `_write_registry_agent`, which writes unconditionally -- so a
+        SECOND, duplicate Agent.json landed under Data Gatherer for the
+        real, correctly-placed agent, never deleted (delete_dir only
+        fires when `moved` is True). Confirmed live: exactly the 3 real
+        agents that happened to be the FIRST `update()` call in their
+        own fresh script process (`adnoc-expert`, `masdar-expert`,
+        `customer-hub`) had this real duplicate on disk, silently
+        shadowing the correct copy in the Registry's in-memory dict
+        (last-write-wins during its directory scan) -- which is exactly
+        why "Customers had 3 Experts, now I can see only 1" was a real,
+        reproducible symptom, not a display bug. Forcing a fresh reload
+        BEFORE reading `current` closes this for every future caller,
+        not just a hand-rolled workaround for this one script."""
+        self._reload_registry()
         current = self.get_by_id(agent_id)
         if current is None:
             return None
@@ -518,6 +561,7 @@ class AgentManager:
                 icon=new_icon, color=new_color, soul_text=soul_text,
             )
             registry_writer.delete_dir(old_dir)
+            self._reload_registry()
 
         return self.get_by_id(agent_id)
 
@@ -532,4 +576,5 @@ class AgentManager:
         agent_dir = registry_loader.agent_data_dir(agent_id)
         get_client().delete_profile(agent_id)
         registry_writer.delete_dir(agent_dir)
+        self._reload_registry()
         return {"deleted": True}
