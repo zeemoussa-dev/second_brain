@@ -18,6 +18,25 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: rebuilt Create Agent from scratch — the old wizard's `POST /agents`
+  payload never matched the real backend contract (missing required
+  `id`/`section_id`, wrong field names, an inert Trigger step), so
+  every submission 422'd; nothing about it worked.
+  - The "+" FAB now opens a real type-select menu (`AgentTypeMenu.tsx`)
+    — Expert, Producer, Worker, Pipeline, Section — with only Expert
+    wired to a real flow; the other four are visibly disabled
+    "Coming soon" entries, not hidden.
+  - New `CreateExpertWizardModal.tsx`, 6 grouped steps (Identity →
+    Knowledge & access → Tools & skills → Behavior → Appearance →
+    Review), each with its own icon and one-line context, reusing
+    every existing picker (`TagTreePicker`, `ChecklistPicker`,
+    `SkillsTree`, `VisualPicker`) rather than rebuilding them.
+  - Id auto-derives from Name as a real slug, always valid, updating
+    live even if manually edited.
+  - `createAgent()`'s request body now matches `AgentCreateBody`
+    field-for-field — `id`/`section_id`/`type` required, everything
+    else (description, prompt, guardrails, scope, tools, preferred
+    indexes, background-agent) optional and real.
 - fix: long text in side-panel list rows (Skills/tools names,
   Pipeline Step descriptions, and every other `.item-row` user) now
   wraps and grows its row instead of ellipsis-clipping or overflowing
