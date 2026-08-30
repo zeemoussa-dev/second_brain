@@ -18,6 +18,11 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: long free-text panel fields (Description, Purpose, Guardrails
+  on Agents; Subtitle/Description on Sections and Pipelines) now clamp
+  to 3 lines with a real "Read more"/"Show less" toggle instead of
+  running on unbounded and pushing the rest of the panel out of view.
+  Short values that never overflow 3 lines show no toggle at all.
 - feat: rebuilt Create Agent from scratch — the old wizard's `POST /agents`
   payload never matched the real backend contract (missing required
   `id`/`section_id`, wrong field names, an inert Trigger step), so
