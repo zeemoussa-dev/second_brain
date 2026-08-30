@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { fetchSections, updateSection, type SectionSummary } from '../settings/settingsApiClient';
 import { VisualPicker } from './VisualPicker';
 import { FieldEditorModal } from './FieldEditorModal';
+import { ExpandableText } from './ExpandableText';
 import { ChecklistPicker, type ChecklistItem } from './ChecklistPicker';
 import { fetchScopeSuggestions, type ScopeSuggestions } from '../vault-browser/client';
 
@@ -221,11 +222,11 @@ export function SectionDetailPanel({ sectionId, onClose, onSectionUpdated }: Sec
                     </div>
                     <div className="kv-row">
                       <span className="kv-key">Subtitle</span>
-                      <span>{section.subtitle || 'No subtitle set yet'}</span>
+                      <ExpandableText text={section.subtitle || 'No subtitle set yet'} />
                     </div>
                     <div className="kv-row">
                       <span className="kv-key">Description</span>
-                      <span>{section.description || 'No description set yet'}</span>
+                      <ExpandableText text={section.description || 'No description set yet'} />
                     </div>
                     <div className="kv-row">
                       <span className="kv-key">Folders</span>

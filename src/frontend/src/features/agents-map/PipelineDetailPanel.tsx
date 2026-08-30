@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { fetchPipelineDetail, type PipelineDetail } from './pipelinesApiClient';
 import { fetchSections, type SectionSummary } from '../settings/settingsApiClient';
 import { JobSettingsPanel } from './JobSettingsPanel';
+import { ExpandableText } from './ExpandableText';
 
 interface PipelineDetailPanelProps {
   pipelineId: string;
@@ -78,7 +79,7 @@ export function PipelineDetailPanel({ pipelineId, onClose, onHoverStep }: Pipeli
                 <div className="kv-list">
                   <div className="kv-row">
                     <span className="kv-key">Description</span>
-                    <span>{pipeline.description || 'No description set'}</span>
+                    <ExpandableText text={pipeline.description || 'No description set'} />
                   </div>
                   <div className="kv-row">
                     <span className="kv-key">Section</span>

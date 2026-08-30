@@ -14,6 +14,7 @@ import {
 } from './agentsApiClient';
 import { fetchSections, type SectionSummary } from '../settings/settingsApiClient';
 import { FieldEditorModal } from './FieldEditorModal';
+import { ExpandableText } from './ExpandableText';
 import { ChecklistPicker, type ChecklistItem } from './ChecklistPicker';
 import { TagTreePicker } from './TagTreePicker';
 import { fetchToolCatalog } from './toolsApiClient';
@@ -621,12 +622,12 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
                     {agent.description && (
                       <div className="kv-row" data-testid="overview-description">
                         <span className="kv-key">Description</span>
-                        <span>{agent.description}</span>
+                        <ExpandableText text={agent.description} />
                       </div>
                     )}
                     <div className="kv-row" data-testid="overview-purpose">
                       <span className="kv-key">Purpose</span>
-                      <span>{getAgentPurpose(agent)}</span>
+                      <ExpandableText text={getAgentPurpose(agent)} />
                     </div>
                     <div className="kv-row" data-testid="overview-working-mode">
                       <span className="kv-key">Working mode</span>
@@ -634,7 +635,7 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
                     </div>
                     <div className="kv-row" data-testid="overview-guardrails">
                       <span className="kv-key">Guardrails</span>
-                      <span>{agent.guardrails || 'No guardrails set yet'}</span>
+                      <ExpandableText text={agent.guardrails || 'No guardrails set yet'} />
                     </div>
                     <div className="kv-row" data-testid="overview-scope">
                       <span className="kv-key">Vault scope</span>

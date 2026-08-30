@@ -224,6 +224,45 @@
 .kv-key { color: var(--color-text-muted); flex-shrink: 0; }
 .kv-list .kv-row > *:not(.kv-key):not(.kv-expand-btn) { flex: 1 1 200px; min-width: 0; text-align: right; word-break: break-word; }
 
+/* Clamp-then-expand for a kv-row's own long free-text value (2026-08-30,
+   operator: "Purpose Description and any feild with long text (prompt)
+   should be showing 3 lines only with a read more to click on to expand
+   instead of covering half of the panel in text") -- a DIFFERENT call
+   than .item-row's own same-day "wrap in full, no cap" fix above: a
+   list row (Skills, Pipeline Steps) is already itemized/bounded by its
+   own row, but a kv-row's Description/Purpose/Guardrails value has no
+   such boundary, so a long one really does push every field below it
+   out of view -- the exact complaint here. `.expandable-text-wrapper`
+   matches `.kv-list .kv-row > *:not(...)` above (no class exclusion
+   needed) so it inherits that rule's own flex/min-width/text-align/
+   word-break for free -- only the clamp + toggle button are new. */
+.expandable-text-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.expandable-text {
+  white-space: pre-wrap;
+}
+
+.expandable-text--clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.expandable-text-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-accent);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
 /* 2026-08-29 (operator: "a Big Pop up so we can fill the fields that
    needs a space to fill") -- small icon-button sitting inline in a
    .kv-row next to a cramped field, opening FieldEditorModal for that
