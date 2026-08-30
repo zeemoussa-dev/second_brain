@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 // 2026-08-29 (operator: "we need to have a Big Pop up so we can fill
 // the fields that needs a space to fill") -- generic modal shell for
 // editing a single cramped side-panel field with real room. Same overlay/
-// header/close convention as CreateAgentWizardModal.tsx's own
+// header/close convention as the wizard's own (CreateExpertWizardModal.tsx)
 // .wizard-modal*, but a wider variant (.field-editor-modal) since the
 // wizard's own 560px width is exactly the side panel's own width -- not
 // "bigger" for this purpose. Content is fully controlled by the caller

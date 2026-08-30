@@ -333,12 +333,26 @@ export function researchKnowledgeGap(agentId: string, gapId: string): Promise<{ 
   return apiFetch(`/agents/${agentId}/knowledge-gaps/${gapId}/research`, { method: 'POST' });
 }
 
+// Matches AgentCreateBody (agents_router.py) field-for-field -- the
+// previous shape here (name/type/domain/purpose/trigger) never lined up
+// with the real backend model (id/section_id required and absent;
+// domain/purpose/trigger not real fields at all), so every submission
+// 422'd before AgentManager.create() ever ran. Rebuilt 2026-08-30
+// alongside the Create Agent wizard rebuild.
 export interface CreateAgentBody {
+  id: string;
   name: string;
-  type: 'worker' | 'expert' | 'producer';
-  domain?: string;
-  purpose?: string;
-  trigger?: string;
+  section_id: string;
+  type: 'worker' | 'expert' | 'producer' | 'hub';
+  is_background_agent?: boolean;
+  depends_on?: string[];
+  description?: string;
+  prompt?: string;
+  guardrails?: string;
+  scope?: string[];
+  preferred_index_ids?: string[];
+  tools?: string[];
+  clone_from?: string;
 }
 
 export function createAgent(body: CreateAgentBody): Promise<AgentDetail> {

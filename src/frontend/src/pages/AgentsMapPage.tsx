@@ -6,7 +6,8 @@ import { JobSettingsPanel } from '../features/agents-map/JobSettingsPanel';
 import { PipelineDetailPanel } from '../features/agents-map/PipelineDetailPanel';
 import { AgentsMapSearchPalette } from '../features/agents-map/AgentsMapSearchPalette';
 import { AgentsMapAboutPanel } from '../features/agents-map/AgentsMapAboutPanel';
-import { CreateAgentWizardModal } from '../features/agents-map/CreateAgentWizardModal';
+import { AgentTypeMenu, type AgentTypeMenuChoice } from '../features/agents-map/AgentTypeMenu';
+import { CreateExpertWizardModal } from '../features/agents-map/CreateExpertWizardModal';
 import { fetchAgentList, type AgentDetail, type JobTreeEntry } from '../features/agents-map/agentsApiClient';
 import { PageLoading } from '../components/PageLoading';
 import { fetchSections } from '../features/settings/settingsApiClient';
@@ -71,11 +72,17 @@ export function AgentsMapPage() {
   // selectedJob below disambiguates within selectedAgentId).
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   // REQ-SB-46-US-01-T01 — the popup wizard's own open/closed flag; the
-  // conditional mount below (`{isWizardOpen && <CreateAgentWizardModal .../>}`)
+  // conditional mount below (`{isWizardOpen && <CreateExpertWizardModal .../>}`)
   // is what makes Scenario 11's "closing discards the draft" true by
   // construction, mirroring this file's own existing
   // `{selectedAgentId && <AgentDetailPanel .../>}` pattern.
   const [isWizardOpen, setIsWizardOpen] = useState(false);
+  // 2026-08-30 (operator: "The Plus Should show a context menu ... to
+  // create Expert, Producer, Worker, Pipeline and Section") — the FAB's
+  // own type-select popover state, independent of isWizardOpen: the menu
+  // closes the instant a real choice opens its wizard (or on any outside
+  // click), never stacked on top of the wizard itself.
+  const [isTypeMenuOpen, setIsTypeMenuOpen] = useState(false);
 
   // Extracted so a newly created agent (T05's real onCreated call) can
   // re-run the exact same fetch/layout sequence the mount effect below
@@ -292,13 +299,22 @@ export function AgentsMapPage() {
         type="button"
         className="map-fab"
         data-testid="map-fab-create-agent"
-        onClick={() => setIsWizardOpen(true)}
+        onClick={() => setIsTypeMenuOpen(true)}
         aria-label="Create agent"
       >
         +
       </button>
+      {isTypeMenuOpen && (
+        <AgentTypeMenu
+          onClose={() => setIsTypeMenuOpen(false)}
+          onSelect={(choice: AgentTypeMenuChoice) => {
+            setIsTypeMenuOpen(false);
+            if (choice === 'expert') setIsWizardOpen(true);
+          }}
+        />
+      )}
       {isWizardOpen && (
-        <CreateAgentWizardModal
+        <CreateExpertWizardModal
           onClose={() => setIsWizardOpen(false)}
           onCreated={handleAgentCreated}
         />

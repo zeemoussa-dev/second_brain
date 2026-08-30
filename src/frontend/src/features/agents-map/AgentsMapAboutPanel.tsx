@@ -10,8 +10,8 @@ interface AgentsMapAboutPanelProps {
 // ~213-231), rewritten against this app's real Section/Hub/ring model
 // (concentric Worker/Expert/Producer rings via polarLayout.ts, not the
 // prototype's own hex/tree layout — see AgentsMapCanvas.tsx). Reuses
-// CreateAgentWizardModal.tsx's own .wizard-modal-* chrome classes rather
-// than duplicating a second centered-overlay/panel treatment.
+// the shared .wizard-modal-* chrome classes (CreateExpertWizardModal.tsx)
+// rather than duplicating a second centered-overlay/panel treatment.
 export function AgentsMapAboutPanel({ sectionCount, agentCount }: AgentsMapAboutPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
 
