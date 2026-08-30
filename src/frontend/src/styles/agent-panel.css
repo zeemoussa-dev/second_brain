@@ -744,12 +744,18 @@
 .skills-tree-checkbox { flex-shrink: 0; }
 .skills-tree-icon { flex-shrink: 0; font-size: 1rem; }
 
+/* Wraps instead of ellipsis-clipping (2026-08-30, operator: "Some
+   Sections in the panel has a very long text (Everywhere) once a text
+   reach 3 lines should have a wrapped text and view move to expand
+   that area") -- a real skill/tool name can be a long identifier-shaped
+   string, and the old single-line `overflow: hidden; text-overflow:
+   ellipsis; white-space: nowrap` clipped it outright with no way to
+   read the rest. `word-break: break-word` covers a long unbroken
+   identifier that has no natural wrap point on its own. */
 .skills-tree-name {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  word-break: break-word;
 }
 
 /* Grant always docks right (bug list item 3's own spec); once granted it

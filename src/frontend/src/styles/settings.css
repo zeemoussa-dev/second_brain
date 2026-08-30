@@ -12,6 +12,10 @@
   border-radius: 999px;
   font-size: var(--font-size-sm);
   font-weight: 600;
+  /* Never shrink -- a badge is a short fixed label; without this a
+     flex sibling growing to wrap long text (.item-row-main, 2026-08-30)
+     could squeeze the badge's own text instead. */
+  flex-shrink: 0;
 }
 
 .badge-success { background: color-mix(in srgb, var(--color-success) 20%, transparent); color: var(--color-success); }
@@ -265,9 +269,22 @@
   border-radius: var(--radius-sm);
 }
 
-.item-row-main { display: flex; flex-direction: column; gap: 2px; }
-.item-row-title { font-weight: 600; }
-.item-row-meta { font-size: var(--font-size-sm); color: var(--color-text-muted); }
+/* min-width: 0 (2026-08-30, operator: "Some Sections in the panel has
+   a very long text (Everywhere) once a text reach 3 lines should have
+   a wrapped text and view move to expand that area") -- a flex item's
+   default min-width is `auto` (its own content's natural width), which
+   blocks it from ever shrinking below a long unbroken title/description
+   and forces `.item-row` (a flex row, `.item-row-actions` on the other
+   side) to overflow instead of wrapping — the exact same class of bug
+   `.kv-list .kv-row` was fixed for above. `word-break: break-word` on
+   both text children is the other half: without it, a single long
+   token (an id-shaped skill name, a URL) still refuses to wrap even
+   with room to. No 3-line CAP is applied anywhere — "once it reaches 3
+   lines" reads as "whenever it needs multiple lines," not a hard clamp;
+   the row/panel already grows to fit any number of wrapped lines. */
+.item-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.item-row-title { font-weight: 600; word-break: break-word; }
+.item-row-meta { font-size: var(--font-size-sm); color: var(--color-text-muted); word-break: break-word; }
 
 /* ==========================================================================
    Settings entity rows (REQ-SB-18 Sections, REQ-SB-19 Providers) — a small,
