@@ -241,6 +241,22 @@
 .agents-map-lines .ring-circle     { fill: none; stroke: var(--color-border); stroke-width: 0.35; stroke-dasharray: 1.4 1.6; opacity: 0.6; }
 .agents-map-lines .boundary-circle { fill: none; stroke: var(--color-text-muted); stroke-width: 0.4; stroke-dasharray: 1.6 1.8; opacity: 0.55; }
 .agents-map-lines .section-boundary { stroke: var(--color-text-muted); stroke-width: 0.4; stroke-dasharray: 1.2 1.6; opacity: 0.5; }
+/* transition (2026-08-30, operator: "When I use the rotate button in
+   the agent map the Lines don't move with the sections they move
+   separately") -- the HTML nodes (.agent-node/.hub-node/.section-title)
+   all glide over 0.5s via their own top/left transition when
+   rotationDeg changes; these SVG line endpoints (recomputed from the
+   same rotated angle every render) had no transition of their own at
+   all, so they snapped to the new position INSTANTLY while the nodes
+   they connect to were still gliding -- the "lines move separately"
+   desync. Chromium/Firefox both support CSS transitions on SVG
+   geometry properties (x1/y1/x2/y2 for <line>), so a transition here is
+   enough -- same 0.5s ease timing as the nodes, no JS changes needed. */
+.agents-map-lines .spoke-line,
+.agents-map-lines .cluster-line {
+  transition: x1 0.5s ease, y1 0.5s ease, x2 0.5s ease, y2 0.5s ease;
+}
+
 .agents-map-lines .spoke-line      { stroke-width: 0.3; opacity: 0.5; }
 /* White, slimmer (operator, 2026-08-15: "Lines that Connects Agents
    should be White Slimmer") — was accent-colored at stroke-width 0.5;
@@ -652,6 +668,23 @@
    spread, both tinted from the node's own real --node-color. */
 .agent-node--large:hover {
   transform: translate(-50%, -50%) scale(1.2);
+  box-shadow:
+    0 0 16px 4px color-mix(in srgb, var(--node-color, var(--color-accent)) 45%, transparent),
+    0 0 0 6px color-mix(in srgb, var(--node-color, var(--color-accent)) 25%, transparent);
+  z-index: 5;
+}
+
+/* 2026-08-30 -- the pipeline-title label's own "whole pipeline zoom"
+   hover effect (SectionDrilldown.tsx only -- operator corrected this
+   mid-build to drill-down-only, "not in the map"), deliberately NOT a
+   :hover rule (see .pipeline-title's own comment: this is a JS-driven
+   group highlight across scattered nodes, applied via a real
+   className, not a pointer hovering this specific node). Same layered
+   box-shadow technique + scale as .agent-node--large:hover just above
+   (these nodes are always .agent-node--large ones here, a Pipeline's
+   Steps only ever render inside a Section's own drill-down). */
+.agent-node--pipeline-hover {
+  transform: translate(-50%, -50%) scale(1.3);
   box-shadow:
     0 0 16px 4px color-mix(in srgb, var(--node-color, var(--color-accent)) 45%, transparent),
     0 0 0 6px color-mix(in srgb, var(--node-color, var(--color-accent)) 25%, transparent);
@@ -1284,6 +1317,53 @@
 .map-overflow-marker.is-dimmed,
 .section-title.is-dimmed {
   opacity: 0.32;
+}
+
+/* Pipeline title label, Section drill-down only (2026-08-30, operator:
+   "Currently we don't have any Access to the pipeline... having the
+   pipeline title displayed on top of the first node of the pipeline...
+   Use the Same font as Section Title", then corrected: "should be only
+   Displayed in the drill down not in the map" -- SectionDrilldown.tsx
+   is the only real caller). Same --font-serif/uppercase/letter-spacing
+   treatment as .section-title above, one size down (--font-size-sm, not
+   --font-size-base) since it sits directly above one Step node rather
+   than out at its own dedicated ring the way .section-title itself
+   does. */
+.pipeline-title {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+  font-family: var(--font-serif);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text);
+  /* "drop the alpha to 60% and it goes to 90 when I Hover" (2026-08-30,
+     dropping the subtitle line this pass -- the Pipeline's own
+     description already lives in PipelineDetailPanel, no need to repeat
+     it on the map) -- the "less prominent by default" ask now lands
+     directly on the title's own opacity instead of a separate caption
+     line. */
+  opacity: 0.6;
+  z-index: 4;
+  transition: top 0.5s ease, left 0.5s ease, color 0.2s ease, transform 0.15s ease, opacity 0.2s ease;
+}
+
+/* "It should support a hover effect when i hover the text and the whole
+   pipeline zoom in a little bit" -- the label's OWN zoom+color+opacity
+   change; the "whole pipeline" half of this (every node in the chain)
+   is driven by AgentsMapCanvas.tsx's hoveredPipelineId state ->
+   AgentNode's own pipelineHighlighted prop ->
+   .agent-node--pipeline-hover below, not by CSS alone (the label and
+   its chain's nodes are scattered, non-adjacent DOM siblings, so no
+   pure-CSS sibling selector can reach them). */
+.pipeline-title.is-hovered {
+  color: var(--color-accent);
+  opacity: 0.9;
+  transform: translate(-50%, -50%) scale(1.15);
 }
 
 /* Per-Section spoke-line/cluster-line <g> groups (AgentsMapCanvas.tsx's own

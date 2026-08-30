@@ -182,10 +182,18 @@ def _pipeline_to_summary(pipeline) -> dict:
 
 
 def list_pipeline_refs() -> list[dict]:
-    """Every real Pipeline's own {id, name} -- lets the frontend discover
-    which /agents entries need their own /jobs fetch+splice, without
-    guessing from AgentSummary's own icon/type fields."""
-    return [{"id": p.id, "name": p.name} for p in _pipeline_manager.get_all()]
+    """Every real Pipeline's own {id, name, description} -- lets the
+    frontend discover which /agents entries need their own /jobs
+    fetch+splice, without guessing from AgentSummary's own icon/type
+    fields. `description` (2026-08-30, the new pipeline-title map label's
+    own subtitle line) reuses the same real-first-sentence excerpt
+    convention _pipeline_to_summary/get_agent_detail already apply to
+    this same field -- a Pipeline's own real description can run to a
+    full paragraph, too long for a compact floating label."""
+    return [
+        {"id": p.id, "name": p.name, "description": _short_excerpt(p.description) or None}
+        for p in _pipeline_manager.get_all()
+    ]
 
 
 def list_agent_summaries() -> list[dict]:

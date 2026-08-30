@@ -162,7 +162,6 @@ class ChatMessageBody(BaseModel):
 
 
 router = APIRouter(prefix="/agents")
-pipelines_router = APIRouter(prefix="/pipelines")
 _agent_manager = AgentManager()
 
 
@@ -187,11 +186,6 @@ def create_agent(body: AgentCreateBody) -> dict:
         clone_from=body.clone_from,
     )
     return to_detail_dict(agent)
-
-
-@pipelines_router.get("")
-def list_pipelines() -> list[dict]:
-    return agents_map_adapter.list_pipeline_refs()
 
 
 @router.get("")

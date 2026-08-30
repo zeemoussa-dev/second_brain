@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react';
 import type { AgentSection, MockAgent } from './mockAgents';
 import type { ClusterMarker, DependencyEdge } from './layoutAgents';
+import type { JobTreeEntry } from './agentsApiClient';
+import type { PipelineRef } from './pipelineJobTreeAdapter';
 import {
   HUB_RADIUS,
   RING_RADIUS,
@@ -63,6 +65,26 @@ interface AgentsMapCanvasProps {
   // Agent inside a drill-down to open its own detail panel" pattern rather
   // than overloading the overview Hub click with two different meanings.
   onSelectSection: (sectionId: string) => void;
+  // 2026-08-30 (operator: "Currently we don't have any Access to the
+  // pipeline") -- every real Pipeline's own {id, name, description} plus
+  // its own Job tree (Steps, each with real depends_on). NOT rendered
+  // here -- the operator corrected this mid-build ("The pipeline Title
+  // should be only Displayed in the drill down not in the map"), so
+  // this component only relays both straight through to
+  // SectionDrilldown, which does the real placement/hover work.
+  pipelineRefs: PipelineRef[];
+  pipelineJobTrees: Map<string, JobTreeEntry[]>;
+  onSelectPipeline: (pipelineId: string) => void;
+  // 2026-08-30 -- PipelineDetailPanel's own currently-hovered Step id
+  // (AgentsMapPage.tsx), relayed straight through to SectionDrilldown,
+  // which does the real focus-camera work. See that component's own
+  // prop comment for the full "why."
+  externalFocusAgentId?: string | null;
+  // 2026-08-30 -- PipelineDetailPanel's own currently-OPEN Pipeline id
+  // (AgentsMapPage.tsx's selectedPipelineId), relayed straight through
+  // to SectionDrilldown -- drives the idle ring/card fallback + the
+  // whole-chain camera fit. See that component's own prop comment.
+  pipelineFocusId?: string | null;
 }
 
 // Widened click-to-zoom target (REQ-SB-38-US-01) — BUG-002 Option D's
@@ -72,7 +94,10 @@ interface AgentsMapCanvasProps {
 // are always `${sectionId}-${type}-cluster`, never a bare sectionId).
 type ZoomTarget = { kind: 'section'; id: string } | { kind: 'cluster'; id: string };
 
-export function AgentsMapCanvas({ sections, agents, fullAgents, clusters, dependencyEdges, selectedAgentId, onSelectAgent, onSelectSection }: AgentsMapCanvasProps) {
+export function AgentsMapCanvas({
+  sections, agents, fullAgents, clusters, dependencyEdges, selectedAgentId, onSelectAgent, onSelectSection,
+  pipelineRefs, pipelineJobTrees, onSelectPipeline, externalFocusAgentId, pipelineFocusId,
+}: AgentsMapCanvasProps) {
   const hasAgents = sections.length > 0 && agents.length > 0;
 
   // Drill-down / semantic-zoom state (BUG-002 fix, Option D) — both local
@@ -535,6 +560,11 @@ export function AgentsMapCanvas({ sections, agents, fullAgents, clusters, depend
           onNavigate={handleNavigateSection}
           onSelectAgent={onSelectAgent}
           onOpenSectionSettings={onSelectSection}
+          pipelineRefs={pipelineRefs}
+          pipelineJobTrees={pipelineJobTrees}
+          onSelectPipeline={onSelectPipeline}
+          externalFocusAgentId={externalFocusAgentId}
+          pipelineFocusId={pipelineFocusId}
         />
       )}
       {activeCluster && activeClusterSection && (

@@ -18,6 +18,59 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: real Pipeline-level access on the Agents Map — a Pipeline (name,
+  description, real cron schedule/status, Steps) was completely
+  unreachable from the UI before this; Steps just spliced into ordinary
+  Agent nodes with no pipeline-level affordance anywhere.
+  - New `pipelines_router.py` (extracted out of `agents_router.py`,
+    matching the one-router-per-entity convention) — `GET /pipelines`
+    unchanged, new `GET /pipelines/{id}` returns the real `Pipeline`
+    dataclass (cron status + Steps included).
+  - New `PipelineDetailPanel.tsx` — Overview (description/section/cron
+    schedule+status+last/next-run) + a Steps list, each row opening the
+    existing `JobSettingsPanel`.
+  - New floating `.pipeline-title` label, Section drill-down only,
+    above each Pipeline's real entry-point Step — `.section-title`'s
+    own font, opacity dialed 0.6 → 0.9 on hover. Hovering/clicking it
+    highlights every node in that Pipeline's own chain
+    (`.agent-node--pipeline-hover`) and pans+zooms the camera to fit
+    the WHOLE chain end to end (not hiding under the open panel),
+    with the entry-point Step's own ring + description card shown by
+    default.
+  - Hovering a Step row inside `PipelineDetailPanel` zooms the camera
+    to that one Step specifically, at a DYNAMIC scale (not a fixed
+    3x) that keeps its own description card fully on screen — a real
+    measurement of the card's own rendered height, so a long
+    description gets a smaller zoom than a short one. Moving off the
+    row reverts to the whole-chain view.
+  - Same real, measured panel-clearance fix applies throughout (the
+    description card never overlaps the open panel's own edge).
+  - `.spoke-line`/`.cluster-line` (the Hub↔Agent connector lines) now
+    share the same `0.5s ease` transition the nodes already had, so
+    rotating the map no longer desyncs lines from the nodes they
+    connect to.
+  - Flagged, not fixed: clicking a Step to edit its own settings hits a
+    real 404 — `GET/PATCH /agents/{id}/jobs/{job_id}/settings` was
+    never rebuilt after the Hermes pivot.
+- feat: faded dot-grid background, system-wide, replacing the flat
+  `--color-bg` fill — moves/scales with the Agents Map canvas's own
+  pan+zoom (a real second copy of the same pattern on the canvas
+  itself, not just inherited from the page).
+- feat: Agents Map visual polish batch — themed scrollbars, corrected
+  node sizing, and a drill-down hover effect.
+  - Global themed, slim scrollbars (`tokens.css`) — `scrollbar-width:
+    thin`/`scrollbar-color` for Firefox, `::-webkit-scrollbar*` (8px,
+    muted thumb) for Chromium; no scrollbar CSS existed anywhere
+    before this.
+  - Agent node sizing now anchored to real Hub-size percentages
+    instead of ad-hoc multipliers: Expert/Producer = 40% of Hub size,
+    Worker = 22% of Hub size (both overview and Section drill-down).
+    `SectionDrilldown.tsx`'s own connector-line edge-trim radius
+    constants were updated to match.
+  - New zoom + glow + secondary-border hover effect on Agent nodes in
+    the Section drill-down view (unchanged in the crowded overview map
+    per a standing 2026-08-16 decision) — a layered box-shadow (blur +
+    a further-out crisp ring), tinted from each node's own real color.
 - feat: "big popup" field editors for every cramped list/long-text field
   in the Agent/Section detail side panels — a small expand icon next to
   Vault scope, Tools, Relays to, Preferred indexes, Prompt, Guardrails

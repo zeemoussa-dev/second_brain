@@ -11,6 +11,11 @@ import { fetchAgentJobs } from './agentsApiClient';
 export interface PipelineRef {
   id: string;
   name: string;
+  // 2026-08-30 -- the new pipeline-title map label's own subtitle line
+  // (a real, short excerpt of the Pipeline's own description, never the
+  // full text -- see list_pipeline_refs' own docstring). null when a
+  // Pipeline has no description set.
+  description: string | null;
 }
 
 export function fetchPipelineRefs(): Promise<PipelineRef[]> {

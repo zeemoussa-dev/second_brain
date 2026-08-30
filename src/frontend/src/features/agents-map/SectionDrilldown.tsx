@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { AgentSection, MockAgent } from './mockAgents';
-import { DRILLDOWN_HUB_ANGLE_DEG, polarToCartesian, pointTowards } from './polarLayout';
+import { DRILLDOWN_HUB_ANGLE_DEG, polarToCartesian, pointTowards, type Point } from './polarLayout';
 import { layoutSectionDrilldown, type DependencyEdge } from './layoutAgents';
 import { SectionHub } from './SectionHub';
 import { AgentNode } from './AgentNode';
+import type { JobTreeEntry } from './agentsApiClient';
+import type { PipelineRef } from './pipelineJobTreeAdapter';
 
 interface SectionDrilldownProps {
   section: AgentSection;
@@ -38,12 +40,47 @@ interface SectionDrilldownProps {
   // otherwise (a different Section's agent, or none) the canvas stays
   // at its normal framing.
   selectedAgentId: string | null;
+  // 2026-08-30 (operator: "when I hover in the panel it puts the agent
+  // i am hovering on in the focus... it would follow the path from the
+  // previous agent i hovered on to the new one") -- PipelineDetailPanel's
+  // own currently-hovered Step id, relayed down from AgentsMapPage.
+  // Drives the EXACT SAME click-to-focus camera (zoom+pan+ring) as
+  // selectedAgentId below, just from a hover in a different panel
+  // instead of a click on this canvas -- takes priority over
+  // selectedAgentId when both are set (effectiveFocusAgentId below),
+  // since a hover is the more IMMEDIATE signal of where attention
+  // should go right now.
+  externalFocusAgentId?: string | null;
   // 2026-08-23 -- opens SectionDetailPanel for this Section's own Hub.
   // Wired ONLY here (not the overview's SectionHub), so a click on the
   // already-non-interactive drill-down Hub gains a real behavior instead
   // of staying a dead click target, while the overview Hub keeps its
   // existing "zoom into this drill-down" meaning unchanged.
   onOpenSectionSettings: (sectionId: string) => void;
+  // 2026-08-30 (operator: "Currently we don't have any Access to the
+  // pipeline... having the pipeline title displayed on top of the first
+  // node of the pipeline" -- then corrected: "The pipeline Title should
+  // be only Displayed in the drill down not in the map") -- every real
+  // Pipeline's own {id, name, description} plus its own Job tree, used
+  // to place the floating pipeline-title label above its entry-point
+  // node (depends_on: []) and to resolve+highlight its whole chain on
+  // label hover. Filtered internally to whichever pipelines actually
+  // have their entry point in THIS Section (a Pipeline belongs to
+  // exactly one Section, same as any other Agent).
+  pipelineRefs: PipelineRef[];
+  pipelineJobTrees: Map<string, JobTreeEntry[]>;
+  onSelectPipeline: (pipelineId: string) => void;
+  // 2026-08-30 (operator: "even that the panel is still open which
+  // means i am still in the pipeline line view" / "camera needs to pan
+  // and zoom a bit if needed to keep the pipeline end to end visible")
+  // -- PipelineDetailPanel's own currently-open Pipeline id
+  // (AgentsMapPage.tsx's selectedPipelineId), independent of which Step
+  // (if any) is being hovered inside it. Drives two things while it's
+  // set: (1) the idle fallback for the ring/card -- default to the
+  // Pipeline's own entry-point Step rather than going blank whenever
+  // nothing else is actively hovered; (2) the camera fitting the WHOLE
+  // chain's real bounding box, not one node.
+  pipelineFocusId?: string | null;
 }
 
 // Hub now sits near the BOTTOM of the canvas, not literal center (operator,
@@ -69,20 +106,20 @@ const DRILLDOWN_TITLE_OFFSET = 11;
 // a line trimmed by the OLD, smaller radius would stop short of this
 // bigger circle's real edge instead of touching it.
 const DRILLDOWN_HUB_VISUAL_RADIUS = 4.6875;
-// Half of `.agent-node--large`'s own 3.75% width (agents-map.css) — same
+// Half of `.agent-node--large`'s own 2.06% width (agents-map.css,
+// 2026-08-30: 22% of the Hub's own drill-down size) — same
 // edge-not-center derivation as DRILLDOWN_HUB_VISUAL_RADIUS above, but for
 // the AGENT end of a line (operator, 2026-08-16: "the Lines move to the
 // center of the Agent not the edge" — Agents render much bigger here than
 // in the overview's tiny dots, so an untrimmed center endpoint is now
 // visually obvious).
-const DRILLDOWN_AGENT_VISUAL_RADIUS = 1.875;
-// Expert/Producer nodes render at 2x width in this view (agents-map.css's
-// own `.agent-node--large.agent-node--expert`/`--producer` rule, operator
-// 2026-08-25: "Experts and Producers to be 2x the current size... take
-// care of the connections") — a line trimmed by the flat radius above
-// would stop short of (or poke into) the now-bigger circle's real edge.
-// Half of that rule's own 7.5% width.
-const DRILLDOWN_AGENT_VISUAL_RADIUS_LARGE_TYPE = 3.75;
+const DRILLDOWN_AGENT_VISUAL_RADIUS = 1.03;
+// Expert/Producer nodes render bigger in this view (agents-map.css's own
+// `.agent-node--large.agent-node--expert`/`--producer` rule, 2026-08-30:
+// 40% of the Hub's own drill-down size) — a line trimmed by the flat
+// radius above would stop short of (or poke into) the bigger circle's
+// real edge. Half of that rule's own 3.75% width.
+const DRILLDOWN_AGENT_VISUAL_RADIUS_LARGE_TYPE = 1.875;
 
 function drilldownAgentVisualRadius(type: MockAgent['type']): number {
   return type === 'expert' || type === 'producer'
@@ -102,7 +139,10 @@ const FOCUS_ZOOM_SCALE = 3;
 // is positioned via the same top/left % point the focused node itself
 // uses.
 
-export function SectionDrilldown({ section, sections, agents, dependencyEdges, onBack, onNavigate, onSelectAgent, selectedAgentId, onOpenSectionSettings }: SectionDrilldownProps) {
+export function SectionDrilldown({
+  section, sections, agents, dependencyEdges, onBack, onNavigate, onSelectAgent, selectedAgentId, onOpenSectionSettings,
+  pipelineRefs, pipelineJobTrees, onSelectPipeline, externalFocusAgentId, pipelineFocusId,
+}: SectionDrilldownProps) {
   const sectionAgents = layoutSectionDrilldown(
     // Hub agents never appear in `agents` at all -- excluded upstream in
     // AgentManager.get_all (2026-08-28, business logic, not a frontend
@@ -111,6 +151,20 @@ export function SectionDrilldown({ section, sections, agents, dependencyEdges, o
     agents.filter((agent) => agent.sectionId === section.id),
   );
   const hasAgents = sectionAgents.length > 0;
+  const sectionAgentIds = new Set(sectionAgents.map((agent) => agent.id));
+  // 2026-08-30 -- only the real Pipelines whose own entry-point Step
+  // (depends_on: []) actually belongs to THIS Section (a Pipeline
+  // belongs to exactly one Section, same as any other Agent).
+  const sectionPipelines = pipelineRefs
+    .map((pipeline) => {
+      const entryStep = pipelineJobTrees.get(pipeline.id)?.find((step) => step.depends_on.length === 0);
+      return entryStep && sectionAgentIds.has(entryStep.id) ? { pipeline, entryStepId: entryStep.id } : null;
+    })
+    .filter((entry): entry is { pipeline: PipelineRef; entryStepId: string } => entry !== null);
+  const [hoveredPipelineId, setHoveredPipelineId] = useState<string | null>(null);
+  const hoveredPipelineJobIds = hoveredPipelineId
+    ? new Set(pipelineJobTrees.get(hoveredPipelineId)?.map((job) => job.id) ?? [])
+    : null;
   // Which Agent (if any) is currently hovered/zoomed (operator,
   // 2026-08-16: "show the Agent name we zoomed on and a Description of
   // that Agent if Exist below the name and the type") — drives the
@@ -131,6 +185,13 @@ export function SectionDrilldown({ section, sections, agents, dependencyEdges, o
   // 50 (no panel-awareness needed) whenever nothing is focused.
   const stageRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  // 2026-08-30 -- real measured size of the hover/focus info card
+  // (.agent-hover-card), used to compute a dynamic camera scale that
+  // keeps it on screen (see the camera effect below). offsetHeight is
+  // transform-immune (same reasoning as canvasEl.offsetWidth's own
+  // comment above) -- reflects the card's real NATURAL size regardless
+  // of whatever scale is currently applied to its zoomed ancestor.
+  const cardRef = useRef<HTMLDivElement | null>(null);
   const [focusTargetXPercent, setFocusTargetXPercent] = useState(50);
 
   const currentIndex = sections.findIndex((candidate) => candidate.id === section.id);
@@ -180,15 +241,78 @@ export function SectionDrilldown({ section, sections, agents, dependencyEdges, o
   const terminalAgents = sectionAgents.filter((agent) => !agentsWithSuccessor.has(agent.id));
   const hoveredAgent = hoveredAgentId ? sectionAgents.find((agent) => agent.id === hoveredAgentId) ?? null : null;
   const hoveredAgentPoint = hoveredAgent ? pointById.get(hoveredAgent.id) ?? null : null;
-  // Only resolves when the open panel's agent belongs to THIS Section —
-  // sectionAgents is already filtered down to it, so a different
-  // Section's own selectedAgentId correctly falls through to null here.
-  const focusedAgent = selectedAgentId ? sectionAgents.find((agent) => agent.id === selectedAgentId) ?? null : null;
+  // 2026-08-30 (operator: "even that the panel is still open which
+  // means i am still in the pipeline line view") -- while a Pipeline
+  // panel is open (pipelineFocusId), the ring/card default back to its
+  // own entry-point Step whenever nothing more specific is being
+  // hovered, instead of going blank the moment the cursor leaves an
+  // incidentally-hovered node.
+  const openPipelineEntryStepId = pipelineFocusId
+    ? sectionPipelines.find((entry) => entry.pipeline.id === pipelineFocusId)?.entryStepId ?? null
+    : null;
+  // externalFocusAgentId (a hovered Step row in PipelineDetailPanel)
+  // wins over the idle Pipeline fallback, which wins over selectedAgentId
+  // (an open AgentDetailPanel) -- each is a progressively less specific
+  // signal of where attention should go right now. Only resolves when
+  // the id belongs to THIS Section -- sectionAgents is already filtered
+  // down to it, so a different Section's own id correctly falls through
+  // to null here. Drives the INNER/OUTER ring + hover card -- the
+  // camera (below) is driven separately, since a Pipeline's own camera
+  // move fits its WHOLE chain, not just this one Step.
+  const effectiveFocusAgentId = externalFocusAgentId ?? openPipelineEntryStepId ?? selectedAgentId;
+  const focusedAgent = effectiveFocusAgentId ? sectionAgents.find((agent) => agent.id === effectiveFocusAgentId) ?? null : null;
   const focusedAgentPoint = focusedAgent ? pointById.get(focusedAgent.id) ?? null : null;
+  // 2026-08-30 (operator: "camera needs to pan and zoom a bit if needed
+  // to keep the pipeline end to end visible not hiding under the
+  // panel") -- while pipelineFocusId is open, the camera fits the
+  // WHOLE chain's real bounding box (every one of its own Job points),
+  // not one node -- resolving the earlier "3x zoom" mistake (see the
+  // MEMORY.md entry) the other direction: not zero camera movement,
+  // but a move that frames the whole pipeline instead of one Step.
+  const pipelineChainPoints = pipelineFocusId
+    ? (pipelineJobTrees.get(pipelineFocusId) ?? [])
+        .map((job) => pointById.get(job.id))
+        .filter((point): point is Point => point !== undefined)
+    : [];
+  // Single-Agent camera target -- the ORIGINAL real use case (an open
+  // AgentDetailPanel, selectedAgentId), PLUS (2026-08-30, operator:
+  // "hovering the job in the panel should zoom to the job (Same as
+  // before)") a REAL, ACTIVE Step-row hover in PipelineDetailPanel
+  // (externalFocusAgentId) -- deliberately NOT openPipelineEntryStepId
+  // (the idle ring/card fallback above), which must keep driving the
+  // whole-chain 'pipeline' camera mode below, not a single-node zoom,
+  // whenever nothing is actively being hovered. externalFocusAgentId
+  // wins when both it and selectedAgentId are set, matching
+  // effectiveFocusAgentId's own priority above.
+  const cameraTargetAgent = externalFocusAgentId
+    ? sectionAgents.find((agent) => agent.id === externalFocusAgentId) ?? null
+    : selectedAgentId
+      ? sectionAgents.find((agent) => agent.id === selectedAgentId) ?? null
+      : null;
+  const cameraTargetPoint = cameraTargetAgent ? pointById.get(cameraTargetAgent.id) ?? null : null;
+  // A real, active single-node target (hovered Step row, or an open
+  // AgentDetailPanel) always wins over the whole-chain fit -- only
+  // falls back to framing the whole pipeline when NEITHER applies
+  // (idle, panel open, nothing specific hovered).
+  const cameraMode: 'pipeline' | 'agent' | 'none' =
+    cameraTargetPoint ? 'agent' : pipelineChainPoints.length > 0 ? 'pipeline' : 'none';
+  const [cameraScale, setCameraScale] = useState(FOCUS_ZOOM_SCALE);
+  const [cameraCenterPoint, setCameraCenterPoint] = useState<Point | null>(null);
+  // Hover wins over focus when both happen to apply (e.g. the panel is
+  // open for one Agent while the cursor sits over a different one) —
+  // otherwise focus alone keeps the info card up for as long as the
+  // panel stays open, not just while actively hovering (operator:
+  // "Name is Visible" while the panel is open). Declared here (before
+  // the camera effect below) since that effect's own 'agent' mode
+  // measures THIS card's real rendered height via cardRef.
+  const activeAgent = hoveredAgent ?? focusedAgent;
+  const activeAgentPoint = hoveredAgent ? hoveredAgentPoint : focusedAgentPoint;
 
   useEffect(() => {
-    if (!focusedAgent) {
+    if (cameraMode === 'none') {
       setFocusTargetXPercent(50);
+      setCameraScale(FOCUS_ZOOM_SCALE);
+      setCameraCenterPoint(null);
       return;
     }
     const recompute = () => {
@@ -196,7 +320,7 @@ export function SectionDrilldown({ section, sections, agents, dependencyEdges, o
       const canvasEl = canvasRef.current;
       if (!stageEl || !canvasEl) return;
       // NOT canvasEl.getBoundingClientRect() — once focused, the canvas
-      // itself already carries the 3x pan/zoom `transform` (canvasStyle
+      // itself already carries the pan/zoom `transform` (canvasStyle
       // below), and getBoundingClientRect() reports the PAINTED
       // (post-transform) box, not the natural one percentages need to
       // be computed against. `.agents-map-stage` (this canvas's own
@@ -215,21 +339,86 @@ export function SectionDrilldown({ section, sections, agents, dependencyEdges, o
       // starts past it; only the panel's fixed-right width needs
       // accounting for here.
       const panelWidth = Math.min(560, window.innerWidth);
-      const visibleRightEdge = window.innerWidth - panelWidth;
+      // 2026-08-30 (operator: "The Agent is not in the center after
+      // calculating the size of both panels so sometimes it hides the
+      // text under the side panel") -- this used to center the NODE's
+      // own single point in the visible gap, ignoring that the hover/
+      // focus info card (.agent-hover-card) sitting next to it is its
+      // own real box (up to 200px wide, `transform: translate(-50%, 0)`
+      // -- up to 100px of that on the panel side), which ALSO gets
+      // stretched by the canvas's own FOCUS_ZOOM_SCALE (3x) since it's
+      // a child of the zoomed canvas -- a worst-case 300px of real
+      // on-screen overhang the old math never budgeted for, confirmed
+      // live (measured the card's own right edge landing ~115px past
+      // the panel's real left edge with the naive center-point math).
+      // Treating the panel as this much wider pulls the centered target
+      // left by half that, leaving the card's own real screen footprint
+      // room to clear the panel instead of just the node's bare point.
+      const hoverCardScreenBuffer = 300;
+      const visibleRightEdge = window.innerWidth - panelWidth - hoverCardScreenBuffer;
       const visibleCenterX = (naturalLeft + visibleRightEdge) / 2;
+      const visibleWidthPx = visibleRightEdge - naturalLeft;
+      const visibleHeightPx = stageRect.height;
       setFocusTargetXPercent(((visibleCenterX - naturalLeft) / naturalWidth) * 100);
+
+      if (cameraMode === 'pipeline') {
+        // "camera needs to pan and zoom a bit if needed to keep the
+        // pipeline end to end visible" -- fit every one of the chain's
+        // real points into one bounding box, scale down from the max
+        // 3x only as far as actually needed to keep the WHOLE box
+        // on screen, never below 1x (no reason to zoom OUT past the
+        // chain's own natural size just because it's small).
+        const xs = pipelineChainPoints.map((point) => point.x);
+        const ys = pipelineChainPoints.map((point) => point.y);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+        // Real margin around the chain's own extreme points, in % of
+        // the canvas -- covers the biggest real node radius
+        // (DRILLDOWN_AGENT_VISUAL_RADIUS_LARGE_TYPE) plus the
+        // pipeline-title label's own headroom above the entry point.
+        const paddingPercent = 10;
+        const bboxWidthPx = ((maxX - minX) + paddingPercent * 2) / 100 * naturalWidth;
+        const bboxHeightPx = ((maxY - minY) + paddingPercent * 2) / 100 * naturalWidth;
+        const fitScale = Math.min(visibleWidthPx / bboxWidthPx, visibleHeightPx / bboxHeightPx);
+        setCameraScale(Math.max(1, Math.min(FOCUS_ZOOM_SCALE, fitScale)));
+        setCameraCenterPoint({ x: (minX + maxX) / 2, y: (minY + maxY) / 2 });
+      } else if (cameraMode === 'agent' && cameraTargetAgent && cameraTargetPoint) {
+        // "I want that 3x to be more dynamic to maintain that the agent
+        // and agent title and description are in the center of the
+        // focus not cutted" -- the card's own REAL rendered height
+        // (cardRef, transform-immune) sets how far past the node the
+        // camera needs headroom for; a long description gets a smaller
+        // scale than a short one, rather than always assuming the
+        // fixed 3x this used to hardcode regardless of content.
+        const cardNaturalHeight = cardRef.current?.offsetHeight ?? 0;
+        const nodeRadiusPercent = drilldownAgentVisualRadius(cameraTargetAgent.type);
+        const cardTopOffsetPx = (nodeRadiusPercent + 3) / 100 * naturalWidth;
+        const neededBelowPx = cardTopOffsetPx + cardNaturalHeight + 16;
+        const maxScaleForCard = neededBelowPx > 0 ? (visibleHeightPx / 2) / neededBelowPx : FOCUS_ZOOM_SCALE;
+        setCameraScale(Math.max(1.5, Math.min(FOCUS_ZOOM_SCALE, maxScaleForCard)));
+        setCameraCenterPoint(cameraTargetPoint);
+      }
     };
     recompute();
     window.addEventListener('resize', recompute);
     return () => window.removeEventListener('resize', recompute);
-  }, [focusedAgent]);
-  // Hover wins over focus when both happen to apply (e.g. the panel is
-  // open for one Agent while the cursor sits over a different one) —
-  // otherwise focus alone keeps the info card up for as long as the
-  // panel stays open, not just while actively hovering (operator:
-  // "Name is Visible" while the panel is open).
-  const activeAgent = hoveredAgent ?? focusedAgent;
-  const activeAgentPoint = hoveredAgent ? hoveredAgentPoint : focusedAgentPoint;
+    // Every dependency here is a STABLE PRIMITIVE (id strings), never an
+    // object -- pipelineChainPoints/cameraTargetPoint/activeAgent
+    // itself are all freshly-computed object/array references on EVERY
+    // render (polarToCartesian always returns a new {x,y}; pointById is
+    // a new Map every render; layoutSectionDrilldown likely doesn't
+    // return the same agent object across renders either), so depending
+    // on any of them directly caused a real infinite loop (recompute ->
+    // setCameraScale/setCameraCenterPoint -> re-render -> a new object
+    // reference for that same conceptual value -> "changed" ->
+    // recompute again), confirmed live via React's own "Maximum update
+    // depth exceeded" error -- twice (pipelineChainPoints first, then
+    // cameraTargetPoint/activeAgent the same way). The effect body
+    // still reads the real, current objects via closure at call time;
+    // only the DEPENDENCY ARRAY needed to shed the unstable references.
+  }, [cameraMode, cameraTargetAgent?.id, pipelineFocusId, activeAgent?.id]);
   // Camera-style pan+zoom on the whole canvas (see FOCUS_ZOOM_SCALE's
   // own comment) — translate so the focused point lands at
   // (focusTargetXPercent, 50) — the panel-aware X target computed
@@ -242,9 +431,9 @@ export function SectionDrilldown({ section, sections, agents, dependencyEdges, o
   // `(focusTargetXPercent - 50)` correction term since scale() itself
   // still pivots around literal canvas-center, not around the shifted
   // target (verified algebraically, not just eyeballed).
-  const canvasStyle: CSSProperties | undefined = focusedAgentPoint
+  const canvasStyle: CSSProperties | undefined = cameraCenterPoint
     ? {
-        transform: `translate(${FOCUS_ZOOM_SCALE * (50 - focusedAgentPoint.x) + (focusTargetXPercent - 50)}%, ${FOCUS_ZOOM_SCALE * (50 - focusedAgentPoint.y)}%) scale(${FOCUS_ZOOM_SCALE})`,
+        transform: `translate(${cameraScale * (50 - cameraCenterPoint.x) + (focusTargetXPercent - 50)}%, ${cameraScale * (50 - cameraCenterPoint.y)}%) scale(${cameraScale})`,
       }
     : undefined;
 
@@ -367,9 +556,51 @@ export function SectionDrilldown({ section, sections, agents, dependencyEdges, o
               compact
               center={hubPoint}
               onHoverChange={(hovering) => setHoveredAgentId(hovering ? agent.id : null)}
-              focused={agent.id === selectedAgentId}
+              focused={agent.id === effectiveFocusAgentId}
+              pipelineHighlighted={hoveredPipelineJobIds?.has(agent.id) ?? false}
             />
           ))}
+          {/* Pipeline title label (2026-08-30, operator: "having the
+              pipeline title displayed on top of the first node of the
+              pipeline... Use the Same font as Section Title", then
+              "should be only Displayed in the drill down not in the
+              map") -- positioned at the entry-point Step's own already-
+              computed point (pointById), offset UPWARD past that node's
+              own real visual radius (drilldownAgentVisualRadius) so it
+              reads as sitting just above the node, not on top of it.
+              Same .section-title font treatment per the operator's own
+              explicit instruction; the subtitle line reuses
+              .section-title-subtitle's own smaller/muted treatment
+              ("the next should be smaller and a bit less Alpha by
+              Default"). Hovering zooms the label itself (CSS
+              .pipeline-title.is-hovered) AND highlights the whole
+              chain's own nodes (hoveredPipelineJobIds ->
+              AgentNode's pipelineHighlighted prop above -- a JS-driven
+              group highlight, not pure CSS, since the label and its
+              chain's nodes are non-adjacent DOM siblings). */}
+          {sectionPipelines.map(({ pipeline, entryStepId }) => {
+            const entryPoint = pointById.get(entryStepId);
+            const entryAgent = agentById.get(entryStepId);
+            if (!entryPoint || !entryAgent) return null;
+            const isHovered = hoveredPipelineId === pipeline.id;
+            const titleClassName = ['pipeline-title', isHovered ? 'is-hovered' : null].filter(Boolean).join(' ');
+            return (
+              <div
+                key={`${pipeline.id}-pipeline-title`}
+                className={titleClassName}
+                style={{
+                  top: `${entryPoint.y - drilldownAgentVisualRadius(entryAgent.type) - 3}%`,
+                  left: `${entryPoint.x}%`,
+                }}
+                onMouseEnter={() => setHoveredPipelineId(pipeline.id)}
+                onMouseLeave={() => setHoveredPipelineId(null)}
+                onClick={() => onSelectPipeline(pipeline.id)}
+                data-testid={`pipeline-title-${pipeline.id}`}
+              >
+                {pipeline.name}
+              </div>
+            );
+          })}
           {/* Title + subtitle, rendered near the Hub at the bottom
               (operator, 2026-08-15: "I want to Have the title and the
               Subtitle Rendered at the Bottom... with the Hub") — reuses
@@ -418,7 +649,7 @@ export function SectionDrilldown({ section, sections, agents, dependencyEdges, o
             };
             if (activeAgent.color) cardStyle['--node-color' as string] = activeAgent.color;
             return (
-              <div className={`agent-hover-card agent-hover-card--${activeAgent.type}`} style={cardStyle}>
+              <div ref={cardRef} className={`agent-hover-card agent-hover-card--${activeAgent.type}`} style={cardStyle}>
                 <span className="agent-hover-card-name">{activeAgent.label}</span>
                 <span className="agent-hover-card-type">{activeAgent.type}</span>
                 {activeAgent.description && (

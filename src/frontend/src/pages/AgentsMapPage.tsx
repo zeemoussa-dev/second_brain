@@ -3,6 +3,7 @@ import { AgentsMapCanvas } from '../features/agents-map/AgentsMapCanvas';
 import { AgentDetailPanel } from '../features/agents-map/AgentDetailPanel';
 import { SectionDetailPanel } from '../features/agents-map/SectionDetailPanel';
 import { JobSettingsPanel } from '../features/agents-map/JobSettingsPanel';
+import { PipelineDetailPanel } from '../features/agents-map/PipelineDetailPanel';
 import { AgentsMapSearchPalette } from '../features/agents-map/AgentsMapSearchPalette';
 import { AgentsMapAboutPanel } from '../features/agents-map/AgentsMapAboutPanel';
 import { CreateAgentWizardModal } from '../features/agents-map/CreateAgentWizardModal';
@@ -10,7 +11,12 @@ import { fetchAgentList, type AgentDetail, type JobTreeEntry } from '../features
 import { PageLoading } from '../components/PageLoading';
 import { fetchSections } from '../features/settings/settingsApiClient';
 import { layoutAgents, type ClusterMarker, type DependencyEdge } from '../features/agents-map/layoutAgents';
-import { spliceAllPipelineJobTrees, fetchAllPipelineJobTrees } from '../features/agents-map/pipelineJobTreeAdapter';
+import {
+  spliceAllPipelineJobTrees,
+  fetchAllPipelineJobTrees,
+  fetchPipelineRefs,
+  type PipelineRef,
+} from '../features/agents-map/pipelineJobTreeAdapter';
 import type { AgentSection, MockAgent } from '../features/agents-map/mockAgents';
 
 export function AgentsMapPage() {
@@ -38,8 +44,27 @@ export function AgentsMapPage() {
   // JobSettingsPanel needs the REAL parent, not a hardcoded one, to ask
   // the right /agents/{id}/jobs/{jobId}/settings endpoint.
   const [jobPipelineIds, setJobPipelineIds] = useState<Map<string, string>>(new Map());
+  // 2026-08-30 (operator: "Currently we don't have any Access to the
+  // pipeline") -- the SAME per-pipeline Job trees fetchAllPipelineJobTrees
+  // already builds (kept in full, not flattened, unlike `jobs` above) --
+  // AgentsMapCanvas.tsx needs each Job's own real `depends_on` to find
+  // the true entry point (depends_on: []), not just its id, for the new
+  // floating pipeline-title label's own placement + whole-chain hover
+  // highlight. `pipelineRefs` carries the label's own name/description.
+  const [pipelineJobTrees, setPipelineJobTrees] = useState<Map<string, JobTreeEntry[]>>(new Map());
+  const [pipelineRefs, setPipelineRefs] = useState<PipelineRef[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  // Pipeline title label's own click target — independent of
+  // selectedAgentId/selectedSectionId (a Pipeline label is never the
+  // same click target as an Agent node or a Section Hub).
+  const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
+  // 2026-08-30 (operator: "when I hover in the panel it puts the agent
+  // i am hovering on in the focus") -- PipelineDetailPanel's own
+  // currently-hovered Step id, relayed down to AgentsMapCanvas ->
+  // SectionDrilldown, which drives its existing click-to-focus camera
+  // from this instead of (or alongside) selectedAgentId.
+  const [hoveredStepId, setHoveredStepId] = useState<string | null>(null);
   // 2026-08-23 -- SectionDetailPanel's own id, independent of
   // selectedAgentId (a Section Hub and an Agent node are never the same
   // click target, so no id-collision handling is needed the way
@@ -66,8 +91,15 @@ export function AgentsMapPage() {
       // this Promise.all's own rejection, never the full blank-map
       // fallback below (REQ-SB-65-US-01-T02's own degrade constraint).
       fetchAllPipelineJobTrees(),
+      // A real, separate fetch from the one fetchAllPipelineJobTrees
+      // makes internally (it discards its own refs once it's built
+      // pipelineJobTrees) -- refs carry name/description, needed for
+      // the pipeline-title label itself, not just job splicing. Same
+      // degrade posture: an empty [] on failure just means no labels
+      // render, never blocks the rest of the map.
+      fetchPipelineRefs().catch(() => [] as PipelineRef[]),
     ])
-      .then(([agentList, sectionList, pipelineJobTrees]) => {
+      .then(([agentList, sectionList, pipelineJobTrees, refs]) => {
         if (cancelled) return;
         const adaptedAgentList = spliceAllPipelineJobTrees(agentList, pipelineJobTrees);
         const layout = layoutAgents(adaptedAgentList, sectionList);
@@ -81,6 +113,8 @@ export function AgentsMapPage() {
           for (const job of jobList) pipelineIdByJobId.set(job.id, pipelineId);
         }
         setJobPipelineIds(pipelineIdByJobId);
+        setPipelineJobTrees(pipelineJobTrees);
+        setPipelineRefs(refs);
         // Was a manually-built placeholder array (angleDeg:0, radius:0 —
         // "recomputed by layoutSectionDrilldown() inside every drill-down
         // consumer, never rendered"). That comment stopped being true once
@@ -106,6 +140,8 @@ export function AgentsMapPage() {
           setClusters([]);
           setDependencyEdges([]);
           setJobs([]);
+          setPipelineJobTrees(new Map());
+          setPipelineRefs([]);
         }
       })
       .finally(() => {
@@ -121,6 +157,24 @@ export function AgentsMapPage() {
   function handleAgentCreated(_agent: AgentDetail) {
     setIsWizardOpen(false);
     refreshAgents();
+  }
+
+  // 2026-08-30 (operator: "clicking on the pipeline doesn't bring the
+  // pipeline in the focus" -> later corrected, "camera needs to pan and
+  // zoom a bit if needed to keep the pipeline end to end visible") --
+  // just opening the panel is enough: SectionDrilldown.tsx's own
+  // pipelineFocusId prop (selectedPipelineId, set below) already drives
+  // BOTH the idle ring/card fallback (its own real entry-point Step)
+  // AND the whole-chain camera fit on its own, with no extra state
+  // needed here. An earlier version ALSO set hoveredStepId to the entry
+  // Step on click, reusing the same state a real Step-row hover drives
+  // -- that's what broke "hovering the job in the panel should zoom to
+  // the job:" a click left hoveredStepId permanently pointed at the
+  // entry Step, so the camera kept zooming to just that one node
+  // instead of ever framing the whole chain, and hovering a DIFFERENT
+  // Step overwrote it correctly but nothing ever cleared it back.
+  function handleSelectPipeline(pipelineId: string) {
+    setSelectedPipelineId(pipelineId);
   }
 
   const hasAgents = agents.length > 0;
@@ -179,6 +233,11 @@ export function AgentsMapPage() {
           selectedAgentId={selectedAgentId}
           onSelectAgent={setSelectedAgentId}
           onSelectSection={setSelectedSectionId}
+          pipelineRefs={pipelineRefs}
+          pipelineJobTrees={pipelineJobTrees}
+          onSelectPipeline={handleSelectPipeline}
+          externalFocusAgentId={hoveredStepId}
+          pipelineFocusId={selectedPipelineId}
         />
       )}
       {!loading && !hasAgents && (
@@ -211,6 +270,22 @@ export function AgentsMapPage() {
           sectionId={selectedSectionId}
           onClose={() => setSelectedSectionId(null)}
           onSectionUpdated={refreshAgents}
+        />
+      )}
+      {selectedPipelineId && (
+        <PipelineDetailPanel
+          pipelineId={selectedPipelineId}
+          // Clears the canvas focus explicitly here, not via a mount-
+          // lifecycle cleanup effect inside PipelineDetailPanel itself
+          // (that approach broke under React 18 StrictMode's dev-mode
+          // double-invoke -- its simulated mount->unmount->remount ran
+          // the cleanup immediately, wiping out the focus this same
+          // click had just set via handleSelectPipeline above).
+          onClose={() => {
+            setSelectedPipelineId(null);
+            setHoveredStepId(null);
+          }}
+          onHoverStep={setHoveredStepId}
         />
       )}
       <button

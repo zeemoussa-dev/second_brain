@@ -55,9 +55,17 @@ interface AgentNodeProps {
   // live in SectionDrilldown.tsx instead, since both need to render
   // outside this node's own `overflow: hidden` box.
   focused?: boolean;
+  // 2026-08-30 (operator: "the whole pipeline zoom in a little bit" on
+  // hovering the new pipeline-title map label) — true for every node
+  // AgentsMapCanvas.tsx resolves as belonging to the currently-hovered
+  // Pipeline's own Job chain (hoveredPipelineJobIds), regardless of
+  // whether THIS node itself is being hovered — a JS-driven group
+  // highlight, not a CSS :hover, since the label and its chain's nodes
+  // are scattered, non-adjacent DOM siblings.
+  pipelineHighlighted?: boolean;
 }
 
-export function AgentNode({ agent, onSelect, compact, large, radiusOverride, angleOffsetDeg, dimmed, center, onHoverChange, focused }: AgentNodeProps) {
+export function AgentNode({ agent, onSelect, compact, large, radiusOverride, angleOffsetDeg, dimmed, center, onHoverChange, focused, pipelineHighlighted }: AgentNodeProps) {
   const radius = radiusOverride ?? agent.radius;
   const { x, y } = polarToCartesian(radius, agent.angleDeg + (angleOffsetDeg ?? 0), center);
   // Filled vs. border-only-with-faint-fill (operator, 2026-08-15: "The
@@ -73,6 +81,7 @@ export function AgentNode({ agent, onSelect, compact, large, radiusOverride, ang
     large ? 'agent-node--large' : null,
     dimmed ? 'is-dimmed' : null,
     focused ? 'agent-node--focused' : null,
+    pipelineHighlighted ? 'agent-node--pipeline-hover' : null,
   ].filter(Boolean).join(' ');
   // Visual-tab override (agent.icon/agent.color) — null falls back to
   // this node's own default type-colored treatment untouched.
