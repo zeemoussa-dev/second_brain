@@ -45,10 +45,6 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
     row reverts to the whole-chain view.
   - Same real, measured panel-clearance fix applies throughout (the
     description card never overlaps the open panel's own edge).
-  - `.spoke-line`/`.cluster-line` (the Hub↔Agent connector lines) now
-    share the same `0.5s ease` transition the nodes already had, so
-    rotating the map no longer desyncs lines from the nodes they
-    connect to.
   - Flagged, not fixed: clicking a Step to edit its own settings hits a
     real 404 — `GET/PATCH /agents/{id}/jobs/{job_id}/settings` was
     never rebuilt after the Hermes pivot.
@@ -56,6 +52,15 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   `--color-bg` fill — moves/scales with the Agents Map canvas's own
   pan+zoom (a real second copy of the same pattern on the canvas
   itself, not just inherited from the page).
+- fix: connector lines (`.spoke-line`/`.cluster-line`, Hub↔Agent,
+  Agent↔Agent, and KB↔Hub) genuinely desyncing from their connected
+  nodes on rotate — a `<line>`'s `x1/y1/x2/y2` were never CSS-stylable
+  properties in the first place, so an earlier CSS-only `transition`
+  fix (above, now corrected) never actually fired. Replaced with real
+  `requestAnimationFrame` interpolation of the line endpoints, matching
+  the nodes' own 500ms timing; the KB↔Hub spoke line's own traveling
+  pulse dots share the same interpolated points so their path stays in
+  sync too.
 - feat: Agents Map visual polish batch — themed scrollbars, corrected
   node sizing, and a drill-down hover effect.
   - Global themed, slim scrollbars (`tokens.css`) — `scrollbar-width:
