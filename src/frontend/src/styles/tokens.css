@@ -175,11 +175,58 @@
 
 body {
   margin: 0;
-  background: var(--color-bg);
+  /* Faded dot-grid texture, system-wide (2026-08-30, operator: "a
+     background instead of Plain Color to have some small dots faded
+     to give a effect of a 3D Mode") -- a real background-image, not
+     just a flat --color-bg fill, so the app-wide default reads as a
+     shallow depth field rather than a flat plane. `background-color`
+     stays --color-bg (unchanged base); the dots layer on top via
+     `background-image`, so anything already relying on plain
+     var(--color-bg) still resolves correctly. 24px spacing, 1px dots,
+     10% opacity relative to --color-text -- subtle enough to read as
+     texture, not a distracting pattern. */
+  background-color: var(--color-bg);
+  background-image: radial-gradient(circle, color-mix(in srgb, var(--color-text) 10%, transparent) 1px, transparent 1px);
+  background-size: 24px 24px;
   color: var(--color-text);
   font-family: var(--font-sans);
   font-size: var(--font-size-base);
   line-height: 1.5;
+}
+
+/* Themed scrollbars (2026-08-30, operator: "change the scrolls to be
+   matching the site Theme" then "need to be slimmer so it doesn't eat
+   space") -- global, so every scrollable surface (side panel body,
+   field-editor-modal-body, checklist-picker, tag-tree, the map canvas
+   itself, etc.) picks this up with no per-component CSS. Firefox has
+   no thumb/track color-mix equivalent to Chromium's ::-webkit-scrollbar
+   pseudo-elements, so `scrollbar-color` gets flat token colors instead
+   (its own two-value shorthand doesn't accept color-mix() reliably
+   across engines) -- `thin` is Firefox's own real width keyword, not a
+   px value, so the pairing gets close but not pixel-identical to the
+   8px webkit thumb below; both land on the same visual language
+   (a muted thumb barely lighter than the surface, no bright track). */
+:root {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-text-muted) 35%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-text-muted) 55%, transparent);
 }
 
 :focus-visible {

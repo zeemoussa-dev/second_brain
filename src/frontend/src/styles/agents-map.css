@@ -143,7 +143,18 @@
   margin: 0 auto;
   aspect-ratio: 1 / 1;
   border-radius: 50%;
-  background: transparent;
+  /* Own copy of body's own dot-grid texture (2026-08-30, operator: "The
+     background is system wide and it follows all the zoom effects") --
+     a background-IMAGE on this element itself, not just inherited from
+     body showing through a transparent fill, is what makes it move/
+     scale WITH this element's own `transform` (the click-to-focus
+     camera pan+zoom, canvasStyle below) instead of staying fixed to
+     the page while the canvas pans over it. Same recipe as body's own
+     (tokens.css) so the two read as one continuous texture at rest,
+     before any zoom is applied. */
+  background-color: transparent;
+  background-image: radial-gradient(circle, color-mix(in srgb, var(--color-text) 10%, transparent) 1px, transparent 1px);
+  background-size: 24px 24px;
   box-shadow: none;
   overflow: visible;
 }
@@ -556,7 +567,14 @@
      own comment; this real interactive target must keep working. */
   pointer-events: auto;
   transform: translate(-50%, -50%);
-  width: 1.25%;
+  /* 1.1% = 22% of .hub-node's own 5% base width (2026-08-30, operator:
+     first asked for 35%, then corrected to 22% after seeing 75%/Expert
+     land bigger than the pre-existing 50%-of-Hub size rather than
+     smaller as intended — see the 40%/Expert comment below for the
+     full correction) — this base rule IS the real Worker size (no
+     .agent-node--worker width override exists; Worker just never
+     overrides the base the way Expert/Producer do below). */
+  width: 1.1%;
   aspect-ratio: 1 / 1;
   border-radius: 50%;
   display: flex;
@@ -604,7 +622,7 @@
      the overview's plain .agent-node transform never changes (no
      hover rule targets it), so this addition has no visible effect on
      the overview's own already-static nodes. */
-  transition: top 0.5s ease, left 0.5s ease, opacity 0.2s ease, transform 0.15s ease;
+  transition: top 0.5s ease, left 0.5s ease, opacity 0.2s ease, transform 0.15s ease, box-shadow 0.15s ease;
   z-index: 3;
 }
 
@@ -620,8 +638,23 @@
    since the crowding complaint above was specifically about the glow
    swallowing neighbors, not the scale alone. 1.2x, not 1.1x (operator,
    2026-08-16: "I guess the Zoom need to be 1.2 for Agents"). */
+/* 2026-08-30 (operator: "a hover Effect for the Agents add some zoom
+   and glow effect may be even include a secondary border a bit
+   fuarther away mataching the color of the agent") -- still scoped to
+   the drill-down view only, per the 2026-08-16 crowding decision just
+   above (confirmed with the operator before extending this, not
+   silently overridden). Layers TWO shadows in one box-shadow, same
+   "ring via 0-blur + spread" technique .hub-node's own resting shadow
+   already uses, rather than a second sibling DOM element the way
+   .agent-focus-ring is (that one persists for a JS-tracked focused
+   state; a pure :hover needs no JS, so no new element): a blurred glow
+   hugging the node, plus a crisp 0-blur ring further out at a wider
+   spread, both tinted from the node's own real --node-color. */
 .agent-node--large:hover {
   transform: translate(-50%, -50%) scale(1.2);
+  box-shadow:
+    0 0 16px 4px color-mix(in srgb, var(--node-color, var(--color-accent)) 45%, transparent),
+    0 0 0 6px color-mix(in srgb, var(--node-color, var(--color-accent)) 25%, transparent);
   z-index: 5;
 }
 
@@ -803,12 +836,20 @@
 .agent-node--producer { --node-color: var(--agent-color-producer); }
 .agent-node--expert   { --node-color: var(--agent-color-expert); }
 
-/* Expert/Producer nodes render 2x the base width, in BOTH the overview
-   and the Section drill-down (operator, 2026-08-25: "I want Experts and
-   Producers to be 2x the current size in both Map and Departement
-   View") -- Workers stay at the plain base size (.agent-node's own
-   1.25%, or .agent-node--large's own 3.75% in the drill-down). Icon
-   font-size scales 2x alongside the box (matching this file's own
+/* Expert/Producer size, in BOTH the overview and the Section drill-down
+   (2026-08-30, operator: "the Agents need to be smaller than the hubs
+   a bit more like 75% if the Hub Size and workers to be 35% of the Hub
+   Size" -- corrected right after, "I am sure I asked for the Agents to
+   be smaller": the pre-existing size WAS already 50% of Hub (2.5% of
+   the old "2x base width" framing below), so 75% actually grew them,
+   contradicting "smaller" even though 75% < 100% technically kept them
+   under the Hub's own size. Real target, confirmed: "make it 40% and
+   hub size and 22% for workers"). 2% = 40% of .hub-node's own 5% base
+   width; supersedes the 2026-08-25 "2x the base width" framing (which
+   was never anchored to Hub size at all). Workers stay at the plain
+   base size (.agent-node's own 1.1% = 22% of Hub, or .agent-node--large's
+   own 2.06% in the drill-down, both set alongside this same change).
+   Icon font-size scales alongside the box (matching this file's own
    established base-vs-large ratio precedent) so it keeps the same
    proportion of the box, not a fixed size that now reads too small.
    Connection lines: the overview's own Hub<->Agent/dependency lines
@@ -819,7 +860,7 @@
    SectionDrilldown.tsx's own per-type radius fix alongside this rule. */
 .agent-node--expert,
 .agent-node--producer {
-  width: 2.5%;
+  width: 2%;
 }
 
 .agent-node--expert .agent-node-icon,
@@ -829,7 +870,10 @@
 
 .agent-node--large.agent-node--expert,
 .agent-node--large.agent-node--producer {
-  width: 7.5%;
+  /* 3.75% = 40% of .hub-node--large's own 9.375% width (2026-08-30,
+     corrected from an initial 75% -- see the base rule's own comment
+     above for the full correction). */
+  width: 3.75%;
 }
 
 .agent-node--large.agent-node--expert .agent-node-icon,
@@ -837,14 +881,17 @@
   font-size: 1.25rem;
 }
 
-/* Section View (drill-down) only — 0.75x the Hub's own 5% width
-   (operator, 2026-08-15: "Now Agents will be Bigger 0.75 of the Hub") —
-   a much bigger footprint than the overview's own 25%-of-Hub default,
-   since one Section now owns the whole canvas instead of sharing a
-   crowded arc with every other Section. Font sizes scale up to match —
+/* Section View (drill-down) only — this rule is the real Worker size
+   here (same "base rule doubles as the Worker size" relationship as
+   .agent-node itself; Expert/Producer override it above). 2.06% = 22%
+   of .hub-node--large's own 9.375% width (2026-08-30, corrected from
+   an initial 35% -- see the base .agent-node rule's own comment for
+   the full correction) — supersedes the 2026-08-15 "0.75x the Hub"
+   framing, which was written before Worker/Expert/Producer had
+   distinct drill-down sizes at all. Font sizes scale up to match —
    the base .agent-node's own sizes were tuned for a dot 3x smaller. */
 .agent-node--large {
-  width: 3.75%;
+  width: 2.06%;
   font-size: 0.8125rem;
   /* Tighter than the base rule's own 1px override would give by
      itself — this variant is bigger (3.75% vs 1.25% width) so it can
