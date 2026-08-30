@@ -241,22 +241,6 @@
 .agents-map-lines .ring-circle     { fill: none; stroke: var(--color-border); stroke-width: 0.35; stroke-dasharray: 1.4 1.6; opacity: 0.6; }
 .agents-map-lines .boundary-circle { fill: none; stroke: var(--color-text-muted); stroke-width: 0.4; stroke-dasharray: 1.6 1.8; opacity: 0.55; }
 .agents-map-lines .section-boundary { stroke: var(--color-text-muted); stroke-width: 0.4; stroke-dasharray: 1.2 1.6; opacity: 0.5; }
-/* transition (2026-08-30, operator: "When I use the rotate button in
-   the agent map the Lines don't move with the sections they move
-   separately") -- the HTML nodes (.agent-node/.hub-node/.section-title)
-   all glide over 0.5s via their own top/left transition when
-   rotationDeg changes; these SVG line endpoints (recomputed from the
-   same rotated angle every render) had no transition of their own at
-   all, so they snapped to the new position INSTANTLY while the nodes
-   they connect to were still gliding -- the "lines move separately"
-   desync. Chromium/Firefox both support CSS transitions on SVG
-   geometry properties (x1/y1/x2/y2 for <line>), so a transition here is
-   enough -- same 0.5s ease timing as the nodes, no JS changes needed. */
-.agents-map-lines .spoke-line,
-.agents-map-lines .cluster-line {
-  transition: x1 0.5s ease, y1 0.5s ease, x2 0.5s ease, y2 0.5s ease;
-}
-
 .agents-map-lines .spoke-line      { stroke-width: 0.3; opacity: 0.5; }
 /* White, slimmer (operator, 2026-08-15: "Lines that Connects Agents
    should be White Slimmer") — was accent-colored at stroke-width 0.5;

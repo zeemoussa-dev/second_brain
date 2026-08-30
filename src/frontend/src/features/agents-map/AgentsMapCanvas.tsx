@@ -17,6 +17,150 @@ import { AgentNode } from './AgentNode';
 import { SectionDrilldown } from './SectionDrilldown';
 import { ClusterDrilldown } from './ClusterDrilldown';
 
+// <line>'s x1/y1/x2/y2 were never standardized as CSS "geometry
+// properties" the way <rect>'s x/y/width/height or <circle>'s cx/cy/r
+// were (SVG2 only extended that CSS-stylable list to rect/circle/
+// ellipse's own shape properties) -- confirmed live, 2026-08-30, via
+// transitionrun/transitionend listeners AND by trying to assign them
+// through `element.style` directly (both silently no-op; a matching
+// `.cluster-line { transition: x1 ... }` CSS rule never fires because
+// there is no real CSS property underneath it to transition). A plain
+// JSX x1={}/y1={} attribute change on rotate therefore always SNAPS,
+// no CSS trick fixes it. The only reliable fix is animating the
+// attribute values ourselves, frame by frame, matching the connected
+// node's own 500ms 'ease' timing (cubic ease-out is the closest
+// single-formula approximation) so the line visually keeps pace with
+// its node instead of arriving instantly.
+interface LinePoints {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+function easeOutCubic(t: number): number {
+  return 1 - (1 - t) ** 3;
+}
+
+function useAnimatedLinePoints(target: LinePoints, durationMs: number): LinePoints {
+  const [display, setDisplay] = useState<LinePoints>(target);
+  const displayRef = useRef<LinePoints>(target);
+  const rafRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    const from = displayRef.current;
+    if (from.x1 === target.x1 && from.y1 === target.y1 && from.x2 === target.x2 && from.y2 === target.y2) {
+      return;
+    }
+    const start = performance.now();
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / durationMs);
+      const eased = easeOutCubic(t);
+      const next: LinePoints = {
+        x1: from.x1 + (target.x1 - from.x1) * eased,
+        y1: from.y1 + (target.y1 - from.y1) * eased,
+        x2: from.x2 + (target.x2 - from.x2) * eased,
+        y2: from.y2 + (target.y2 - from.y2) * eased,
+      };
+      displayRef.current = next;
+      setDisplay(next);
+      if (t < 1) rafRef.current = requestAnimationFrame(step);
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => {
+      if (rafRef.current !== undefined) cancelAnimationFrame(rafRef.current);
+    };
+    // target's own 4 numbers are the real, stable dependencies -- not
+    // the `target` object itself, which is a fresh literal every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target.x1, target.y1, target.x2, target.y2, durationMs]);
+
+  return display;
+}
+
+function AnimatedLine({
+  className,
+  x1,
+  y1,
+  x2,
+  y2,
+  stroke,
+}: {
+  className: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  stroke: string;
+}) {
+  const points = useAnimatedLinePoints({ x1, y1, x2, y2 }, 500);
+  return (
+    <line
+      className={className}
+      x1={points.x1}
+      y1={points.y1}
+      x2={points.x2}
+      y2={points.y2}
+      stroke={stroke}
+    />
+  );
+}
+
+// The KB<->Hub spoke line AND its own traveling pulse dots (below) share
+// ONE animated point pair -- the dots' <animateMotion path="..."> string
+// was still being rebuilt from the raw, un-interpolated kbEdge/hubEdge on
+// every rotate (2026-08-30, operator: "you just missed the dots on the
+// lines between hubs and KB"), so changing `path` mid-rotate snapped the
+// dot onto the new straight-line trajectory instantly even after the
+// line itself started gliding via AnimatedLine above. Recomputing `path`
+// from this SAME useAnimatedLinePoints() output every animation frame
+// keeps the dot's path sliding in lockstep with the line's own endpoints
+// instead of jumping ahead of them -- retargeting `path` on a running
+// <animateMotion> does not reset its own timeline/progress, so the dot
+// stays at the same relative position along the trajectory as it moves.
+function SpokeConnector({
+  kbEdge,
+  hubEdge,
+  durIn,
+  durOut,
+  beginIn,
+  beginOut,
+  dimmed,
+}: {
+  kbEdge: { x: number; y: number };
+  hubEdge: { x: number; y: number };
+  durIn: string;
+  durOut: string;
+  beginIn: string;
+  beginOut: string;
+  dimmed: boolean;
+}) {
+  const points = useAnimatedLinePoints(
+    { x1: kbEdge.x, y1: kbEdge.y, x2: hubEdge.x, y2: hubEdge.y },
+    500,
+  );
+  const pathIn = `M ${points.x1.toFixed(2)} ${points.y1.toFixed(2)} L ${points.x2.toFixed(2)} ${points.y2.toFixed(2)}`;
+  const pathOut = `M ${points.x2.toFixed(2)} ${points.y2.toFixed(2)} L ${points.x1.toFixed(2)} ${points.y1.toFixed(2)}`;
+  return (
+    <g className={dimmed ? 'is-dimmed' : undefined}>
+      <line
+        className="spoke-line"
+        x1={points.x1}
+        y1={points.y1}
+        x2={points.x2}
+        y2={points.y2}
+        stroke="var(--color-accent)"
+      />
+      <circle className="spoke-pulse-dot" r="0.3">
+        <animateMotion dur={`${durIn}s`} begin={`${beginIn}s`} repeatCount="indefinite" path={pathIn} />
+      </circle>
+      <circle className="spoke-pulse-dot" r="0.3">
+        <animateMotion dur={`${durOut}s`} begin={`${beginOut}s`} repeatCount="indefinite" path={pathOut} />
+      </circle>
+    </g>
+  );
+}
+
 // Spoke-line endpoints pulled to each circle's own EDGE, not center
 // (operator, 2026-08-14/15, porting the prototype's own real technique).
 // KB_EDGE_RADIUS = the KB node's own real width footprint / 2 (25.5% —
@@ -267,7 +411,6 @@ export function AgentsMapCanvas({
                   // Hub node's own real 3-unit visual radius (6% width / 2).
                   const kbEdge = polarToCartesian(KB_EDGE_RADIUS, section.hubAngleDeg + rotationDeg);
                   const hubEdge = polarToCartesian(HUB_RADIUS - HUB_VISUAL_RADIUS, section.hubAngleDeg + rotationDeg);
-                  const path = `M ${kbEdge.x.toFixed(2)} ${kbEdge.y.toFixed(2)} L ${hubEdge.x.toFixed(2)} ${hubEdge.y.toFixed(2)}`;
                   // Desynced per-Section timing (operator: "the circles
                   // need to be moving in random times not same over on all
                   // lines") — deterministic from index, not truly random,
@@ -278,27 +421,16 @@ export function AgentsMapCanvas({
                   const beginOut = (0.5 + (index % 5) * 0.15).toFixed(2);
                   const spokeDimmed = hoveredSectionId !== null && hoveredSectionId !== section.id;
                   return (
-                    <g key={`${section.id}-spoke`} className={spokeDimmed ? 'is-dimmed' : undefined}>
-                      <line
-                        className="spoke-line"
-                        x1={kbEdge.x}
-                        y1={kbEdge.y}
-                        x2={hubEdge.x}
-                        y2={hubEdge.y}
-                        stroke="var(--color-accent)"
-                      />
-                      <circle className="spoke-pulse-dot" r="0.3">
-                        <animateMotion dur={`${durIn}s`} begin={`${beginIn}s`} repeatCount="indefinite" path={path} />
-                      </circle>
-                      <circle className="spoke-pulse-dot" r="0.3">
-                        <animateMotion
-                          dur={`${durOut}s`}
-                          begin={`${beginOut}s`}
-                          repeatCount="indefinite"
-                          path={`M ${hubEdge.x.toFixed(2)} ${hubEdge.y.toFixed(2)} L ${kbEdge.x.toFixed(2)} ${kbEdge.y.toFixed(2)}`}
-                        />
-                      </circle>
-                    </g>
+                    <SpokeConnector
+                      key={`${section.id}-spoke`}
+                      kbEdge={kbEdge}
+                      hubEdge={hubEdge}
+                      durIn={durIn}
+                      durOut={durOut}
+                      beginIn={beginIn}
+                      beginOut={beginOut}
+                      dimmed={spokeDimmed}
+                    />
                   );
                 })}
 
@@ -355,7 +487,7 @@ export function AgentsMapCanvas({
                     .map(({ agent, point }) => {
                       const hubEdge = pointTowards(hubCenter, point, HUB_VISUAL_RADIUS);
                       return (
-                        <line
+                        <AnimatedLine
                           key={`${section.id}-hub-${agent.id}`}
                           className="cluster-line"
                           x1={hubEdge.x}
@@ -381,7 +513,7 @@ export function AgentsMapCanvas({
                     const toPoint = pointById.get(edge.toAgentId);
                     if (!fromPoint || !toPoint) continue;
                     lines.push(
-                      <line
+                      <AnimatedLine
                         key={`${section.id}-dep-${edge.id}`}
                         className="cluster-line"
                         x1={fromPoint.x}
