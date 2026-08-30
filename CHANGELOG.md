@@ -18,6 +18,10 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix: long text in side-panel list rows (Skills/tools names,
+  Pipeline Step descriptions, and every other `.item-row` user) now
+  wraps and grows its row instead of ellipsis-clipping or overflowing
+  the panel's fixed width.
 - feat: real Pipeline-level access on the Agents Map — a Pipeline (name,
   description, real cron schedule/status, Steps) was completely
   unreachable from the UI before this; Steps just spliced into ordinary
