@@ -6,6 +6,7 @@ const VAULT_NAV_ITEMS = [
   { key: 'templates', icon: 'description', label: 'Templates', href: '/settings/vault/templates' },
   { key: 'index-filtering', icon: 'filter_alt', label: 'Index Filtering', href: '/settings/vault/index-filtering' },
   { key: 'index-builder', icon: 'auto_stories', label: 'Index Builder', href: '/settings/vault/index-builder' },
+  { key: 'export-data', icon: 'ios_share', label: 'Export Data', href: '/settings/vault/export-data' },
 ] as const;
 
 export function VaultSettingsNav() {

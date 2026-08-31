@@ -1,4 +1,4 @@
-import { apiFetch } from '../../api/client';
+import { apiFetch, ApiError } from '../../api/client';
 
 // Vault settings (Settings > Vault, 2026-08-27) -- Overview (reuses the
 // existing POST /vault-index/rebuild), read-only Templates, and the
@@ -111,4 +111,38 @@ export function createVaultEntity(fields: NewVaultEntity): Promise<VaultEntity> 
     method: 'POST',
     body: JSON.stringify(fields),
   });
+}
+
+// Export Data (REQ-SB-86-US-01-T02) -- a genuine, unfiltered real-filesystem
+// tree of settings.vault_path (T01), the source the Export Data folder-tree
+// picker page renders/selects against.
+export interface VaultTreeNode {
+  name: string;
+  type: 'folder' | 'file';
+  path: string;
+  children?: VaultTreeNode[];
+}
+
+export function fetchVaultExportTree(): Promise<{ root: string; tree: VaultTreeNode }> {
+  return apiFetch('/vault/export-data/tree');
+}
+
+// Export flow (REQ-SB-86-US-02-T03) -- a dedicated fetch, not apiFetch,
+// since it must resolve response.blob() for the real .sbd bytes rather
+// than JSON. Mirrors artifactsApiClient.ts's own commitExport() shape.
+const EXPORT_DATA_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
+
+export async function exportVaultData(
+  selection: string[],
+  extraction: 'flat' | 'hierarchy',
+): Promise<Blob> {
+  const response = await fetch(`${EXPORT_DATA_BASE_URL}/vault/export-data/export`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ selection, extraction }),
+  });
+  if (!response.ok) {
+    throw new ApiError(response.status, await response.text());
+  }
+  return response.blob();
 }

@@ -17,6 +17,7 @@ import { SettingsVaultEntitiesPage } from './pages/SettingsVaultEntitiesPage';
 import { SettingsVaultTemplatesPage } from './pages/SettingsVaultTemplatesPage';
 import { SettingsVaultIndexBuilderPage } from './pages/SettingsVaultIndexBuilderPage';
 import { SettingsVaultIndexFilteringPage } from './pages/SettingsVaultIndexFilteringPage';
+import { SettingsVaultExportDataPage } from './pages/SettingsVaultExportDataPage';
 import { SettingsConfigPage } from './pages/SettingsConfigPage';
 import { SettingsUIPage } from './pages/SettingsUIPage';
 import { SystemHealthPage } from './pages/SystemHealthPage';
@@ -48,6 +49,7 @@ function App() {
           <Route path="/settings/vault/templates" element={<SettingsVaultTemplatesPage />} />
           <Route path="/settings/vault/index-filtering" element={<SettingsVaultIndexFilteringPage />} />
           <Route path="/settings/vault/index-builder" element={<SettingsVaultIndexBuilderPage />} />
+          <Route path="/settings/vault/export-data" element={<SettingsVaultExportDataPage />} />
           <Route path="/settings/config" element={<SettingsConfigPage />} />
           <Route path="/settings/ui" element={<SettingsUIPage />} />
           <Route path="/settings/artifacts" element={<SettingsArtifactsPage />} />
