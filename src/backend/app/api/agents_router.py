@@ -111,6 +111,12 @@ class AgentUpdateBody(BaseModel):
     # convention, unchanged from before this retrofit.
     icon: str | None = None
     color: str | None = None
+    # 2026-08-31 fix: same silently-dropped-field bug class as scope/
+    # guardrails/depends_on below -- AgentManager.update() already
+    # supported both name (Registry-side) and description (Hermes-side,
+    # profiles.describe_profile), but neither was ever declared here.
+    name: str | None = None
+    description: str | None = None
     # 2026-08-28 fix: these 4 were already sent by the real, live
     # AgentDetailPanel.tsx/CreateAgentWizardModal.tsx (updateAgentAssignment)
     # but silently dropped -- this body model never declared them, so
@@ -220,7 +226,8 @@ def get_agent(agent_id: str) -> dict:
 def update_agent(agent_id: str, body: AgentUpdateBody) -> dict:
     scope = _classify_scope(body.scope) if body.scope is not None else None
     agent = _agent_manager.update(
-        agent_id, icon=body.icon, color=body.color, section_id=body.section_id,
+        agent_id, name=body.name, description=body.description,
+        icon=body.icon, color=body.color, section_id=body.section_id,
         is_background_agent=body.is_background_agent, prompt=body.prompt,
         guardrails=body.guardrails, scope=scope, tools=body.tools,
         depends_on=body.depends_on, preferred_index_ids=body.preferred_index_ids,
@@ -233,6 +240,18 @@ def update_agent(agent_id: str, body: AgentUpdateBody) -> dict:
     if updated is None:
         raise HTTPException(status_code=404, detail=f"Unknown agent: {agent_id!r}")
     return updated
+
+
+@router.delete("/{agent_id}")
+def delete_agent(agent_id: str) -> dict:
+    # AgentManager.delete() already existed (real Hermes profile deletion
+    # + Registry folder cleanup) but had zero API exposure -- same gap
+    # POST /agents itself had before its own 2026-08-29 fix (see
+    # AgentCreateBody's own comment above). 404 on an unknown id rather
+    # than a silent no-op, matching every other single-agent route here.
+    if _agent_manager.get_by_id(agent_id) is None:
+        raise HTTPException(status_code=404, detail=f"Unknown agent: {agent_id!r}")
+    return _agent_manager.delete(agent_id)
 
 
 @router.post("/{agent_id}/specialists/regenerate")

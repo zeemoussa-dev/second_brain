@@ -18,6 +18,13 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix: `DELETE /agents/{id}` and `name`/`description` on
+  `PATCH /agents/{id}` now actually work — `AgentManager.delete()` had
+  zero API exposure (same gap `POST /agents` itself had before its own
+  2026-08-29 fix), and `name`/`description` were silently dropped by
+  `AgentUpdateBody` never declaring them, the same silently-dropped-field
+  bug class as the earlier `scope`/`guardrails`/`depends_on` fix. Found
+  while renaming and re-icon/coloring a batch of real Agents.
 - feat: Cockpit's Chat tab composer gained a write-side "reply to this
   message" affordance (`ADR-012` point 4, `REQ-SB-82-US-06-T07`) — a
   small Reply icon button on each real, `id`-bearing (non-`system`)
