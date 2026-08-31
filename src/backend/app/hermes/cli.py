@@ -9,7 +9,7 @@ profiles.py/skills.py -- never guessed or half-reimplemented here.
 
 Real command surface (confirmed live against this machine's own
 install, `hermes <command> --help`):
-    hermes profile {create, delete, describe, list, show, ...}
+    hermes profile {create, delete, describe, export, import, list, show, ...}
     hermes gateway {start, stop, restart, status, setup, ...}
     hermes dashboard [--port] [--host] [--no-open] [--stop] [--status]
     hermes status [--deep]
@@ -183,6 +183,40 @@ class HermesCLI:
         if overwrite:
             args.append("--overwrite")
         return self._run(args)
+
+    def export_profile(self, name: str, output_path: str) -> tuple[bool, str]:
+        """Real `hermes profile export <name> -o <output_path>` (ADR-014).
+        NOTE: the real CLI takes the output path via `-o`/`--output`, NOT
+        as a second positional -- confirmed live against this machine's
+        own installed `hermes profile export --help`
+        (`usage: hermes profile export [-h] [-o OUTPUT] profile_name`),
+        which disagrees with this task's own illustrative prose; the live
+        `--help` is ground truth here, per this project's own established
+        "compose around the real current behavior" precedent. Hermes' own
+        export already force-redacts every text-ish staged file before
+        writing the archive -- the resulting bytes are never parsed or
+        re-scanned here (ADR-014's own opaque-bytes boundary).
+        """
+        # export_profile can produce a multi-MB archive -- generous
+        # timeout over the 30s default, matching create_profile
+        # --clone's own 120s allowance (ADR-014's own disclosed
+        # Consequence).
+        return self._run(["profile", "export", name, "--output", output_path], timeout=120.0)
+
+    def import_profile(self, archive_path: str, name: str | None = None) -> tuple[bool, str]:
+        """Real `hermes profile import <archive_path> [--name <name>]`
+        (ADR-014) -- a real name collision surfaces as a real, non-zero
+        exit; the captured output is Hermes' own real, human-readable
+        rendering of its underlying FileExistsError ("Error: Profile
+        '<name>' already exists at <path>"), confirmed live -- never the
+        literal exception CLASS NAME, and never raised here, matching
+        every other `_run()`-backed method on this class."""
+        args = ["profile", "import", archive_path]
+        if name is not None:
+            args += ["--name", name]
+        # Same class of cost as export_profile -- a real profile import
+        # can restore a multi-MB archive.
+        return self._run(args, timeout=120.0)
 
     # -- Gateway (messaging platforms: WhatsApp, Telegram, ...) -------
     def start_gateway(self) -> tuple[bool, str]:

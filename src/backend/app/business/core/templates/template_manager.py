@@ -20,6 +20,14 @@ this Manager. `get_by_id()` below currently has zero real callers of its
 own (found live, 2026-08-28) -- kept anyway since it's the natural
 single-Template counterpart to `get_all()`, and Section/Agent/Pipeline/
 Vault all expose the same shape.
+
+No longer read-only-only: `import_template()` (ADR-015) is a real,
+narrowly-scoped write path added ONLY to let `REQ-SB-85-US-03`'s import
+orchestrator write a genuine Template.json onto the target machine --
+still the sole gateway onto Template data (the new writer in
+`data_access/templates.py` is never called directly by anything else).
+No general Templates create/update/delete authoring UI exists or is
+implied by this addition.
 """
 from __future__ import annotations
 
@@ -48,6 +56,22 @@ class TemplateManager:
             return self._to_template(template_id, data)
         except (OSError, ValueError, TypeError):
             return None
+
+    def import_template(self, template_id: str, data: dict) -> Template:
+        """Real, narrowly-scoped write path for import provisioning only
+        (ADR-015) -- validates `data` by round-tripping it through the
+        SAME `_to_template` parser the read side already uses (a
+        KeyError/TypeError there means `data` doesn't match the real
+        Template/TemplateSection shape, propagated uncaught rather than
+        writing invalid JSON to disk), then writes it and returns the
+        freshly-written Template (read-your-own-write, matching
+        AgentManager.create/update's own convention). Never applies a
+        conflict decision itself -- the caller (the import orchestrator,
+        T05) must already have decided overwrite/keep-both/skip before
+        ever calling this; this method always writes, unconditionally."""
+        self._to_template(template_id, data)
+        templates_data.write_template_json(template_id, data)
+        return self.get_by_id(template_id)
 
     def get_all(self) -> list[Template]:
         """Every real Template found on disk, for the Settings > Vault

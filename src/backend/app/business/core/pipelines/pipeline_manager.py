@@ -13,10 +13,12 @@ disk is a plain Section NAME string (e.g. "Data Gatherer") -- resolved
 here into the canonical `section_id` every other entity already uses,
 via SectionManager, so callers never juggle a raw name again.
 
-Read-only for now -- pipelines are still hand-edited JSON files; no
-create/update/delete existed before this and none is built here either,
-since that would be new functionality, not a migration of anything that
-already worked.
+Pipelines are still primarily hand-edited JSON files -- `get_all()`/
+`get_by_id()` remain this module's own everyday path. `import_pipeline`
+(ADR-015) is a real, but narrowly-scoped, write path added ONLY to support
+REQ-SB-85-US-03's own import provisioning (deploying a bundled Pipeline
+artifact onto a target machine) -- not a general Pipelines authoring UI;
+no other create/update/delete method exists.
 
 `cron_job_id`/`cron_profile_id` (2026-08-28) link a Pipeline to the real
 Hermes cron job behind it -- composed live via `HermesCron`, the same
@@ -111,3 +113,16 @@ class PipelineManager:
         except (OSError, ValueError):
             return None
         return self._to_pipeline(pipeline_id, data)
+
+    def import_pipeline(self, pipeline_id: str, data: dict) -> Pipeline:
+        """Real, narrowly-scoped write path for import provisioning only
+        (ADR-015). Validates `data` by round-tripping it through the
+        EXISTING `_to_pipeline` parser first -- the same shape-check the
+        read side already performs -- so a malformed shape raises and is
+        never written to disk. Only once that succeeds is the raw JSON
+        persisted via `pipelines_data.write_pipeline_json`, then
+        read back via `get_by_id` (read-your-own-write), the same
+        convention `TemplateManager.import_template` uses."""
+        self._to_pipeline(pipeline_id, data)
+        pipelines_data.write_pipeline_json(pipeline_id, data)
+        return self.get_by_id(pipeline_id)
