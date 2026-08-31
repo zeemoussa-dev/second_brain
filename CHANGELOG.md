@@ -18,6 +18,19 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix: Notes are organized in folders by date again (`Work/Notes/<date>/
+  <slug>.md`, no date repeated in the filename) — reverts a 2026-08-26
+  change that had folded the date into the filename instead. Required a
+  small, generic engine fix: `plain_filename` now also works without
+  `own_folder`, not just combined with it.
+- feat: migrated `vault_manager.py` and all 7 real `Template.json` files
+  (Hermes-Provisioning) to the new v2 schema — a template now splits
+  into record-level concerns (`identity.strategy`, `on_missing`, a new
+  `allow_create_folder`) and `root` (the previous flat schema, nested
+  one level, unchanged in substance). First step of the Notes →
+  Opportunities → Customers → Messages → Threads rollout. All 22
+  regression tests pass; the real `capture_note.py` skill verified live
+  against a scratch vault.
 - feat: long free-text panel fields (Description, Purpose, Guardrails
   on Agents; Subtitle/Description on Sections and Pipelines) now clamp
   to 3 lines with a real "Read more"/"Show less" toggle instead of

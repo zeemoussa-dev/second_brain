@@ -11,11 +11,12 @@ Auto-wikilinking known Customer/Partner names (`_iter_known_entity_names`/
 vault-scanning helper, not part of the write-mechanics problem
 `vault_manager.py` solves.
 
-Real shape change from the original (both deliberate, matching the SAME
-unified convention the meeting-capture rebuild already established):
-`Work/Notes/<date>/<slug>.md` (date as a separate parent folder) becomes
-`Work/Notes/<date>-<title>.md` (date folded into the filename) -- old
-General Notes are untouched; only NEW captures use the new shape.
+Real shape, reverted 2026-08-30 (operator: "Notes are organized in
+folders by Date") back to the original: `Work/Notes/<date>/<slug>.md`,
+date as its own parent folder, no date repeated in the filename -- the
+2026-08-26 pass had briefly folded the date into the filename instead
+(`Work/Notes/<date>-<title>.md`); that shape is gone now, this file
+always writes the folder-per-date shape.
 
 Usage: identical real contract --
     python capture_note.py --vault-path P --input-file F
@@ -26,13 +27,14 @@ from __future__ import annotations
 import argparse
 import json
 import re
+from datetime import datetime
 from pathlib import Path
 
 import vault_manager as vm
 
 _FRONTMATTER_LINE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*):\s?(.*)$")
 _NOTE_TEMPLATE_ID = "note"
-_NOTE_NAME = "Notes"
+_NOTE_ROOT = "Notes"
 
 
 def _parse_frontmatter_value(raw: str):
@@ -111,9 +113,14 @@ def capture_note(vault_path: Path, title: str, summary: str, body: str) -> dict:
     linked_summary, summary_mentions = _auto_wikilink(summary, entity_names) if summary else (summary, [])
     linked_mentions = list(dict.fromkeys(linked_mentions + summary_mentions))
 
+    # Work/Notes/<date>/<slug>.md (2026-08-30, operator: "Notes are
+    # organized in folders by Date") -- the date lives in the FOLDER,
+    # via this date-scoped note_name; the note template's own
+    # `plain_filename: true` keeps the date out of the filename itself.
+    note_name = f"{_NOTE_ROOT}/{datetime.now().strftime('%Y-%m-%d')}"
     template = vm.load_template(vault_path, _NOTE_TEMPLATE_ID)
     result = vm.create(
-        vault_path, template, note_name=_NOTE_NAME, title=title,
+        vault_path, template, note_name=note_name, title=title,
         sections={"Summary": linked_summary, "Body": linked_body},
     )
 

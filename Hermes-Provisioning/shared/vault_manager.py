@@ -1,5 +1,6 @@
 """vault_manager.py -- the one real, template-driven vault write/read
-engine (Implementation/Plans/2026-08-25-vault-writer-standardization.md).
+engine (Implementation/Plans/2026-08-25-vault-writer-standardization.md,
+Implementation/Plans/2026-08-30-vault-manager-template-trees.md).
 
 Replaces N per-Skill hand-written writer scripts (azure-kb-writer,
 compass-kb-writer, research-kb-writer, capture-notes, capture-files,
@@ -22,11 +23,67 @@ to edit 2000 places, max is 2" -- operator, 2026-08-25).
 
 Templates live in the SAME data/ tree the RegistryLoader already reads
 (REQ-SB-80): <vault>/.second-brain/data/Templates/<template_id>/
-Template.json. A Template controls note_name/filename shape, whether a
-same-title call updates in place or always makes a new file, per-section
-write access (machine vs. a human-owned section no automated call may
-ever touch), and frontmatter defaults -- so a NEW Section/note-type is a
-new Template.json, never new code.
+Template.json -- so a NEW Section/note-type is a new Template.json, never
+new code. Template.json v2 (2026-08-30-vault-manager-template-trees.md)
+splits a template into two layers -- a real, deliberate reframe: "Template
+is not just a file, Sometimes actually most of the time it should be the
+full Structure Parameterized" (operator, 2026-08-30). Top level describes
+the RECORD as a whole: `identity.strategy` (how an existing record is
+looked up -- "id" today; "tag"/"filename" strategies land when Person/
+Customer actually need them, not built yet), `on_missing`,
+`allow_create_folder` (can this record's own containing folder be
+auto-vivified, or is that an error -- a Thread's messages/ folder not
+existing yet is normal; a Customer's own folder not existing is a bug,
+not a state to paper over). `root` is today's entire old flat schema,
+unchanged in substance, just nested one level: `type`, `own_folder`,
+`plain_filename`, `on_existing_title`, `frontmatter_defaults`, `sections`
+(per-section write access -- machine vs. a human-owned section no
+automated call may ever touch), plus `children` (2026-08-30, Customer/
+Partner's real hub+log+captures shape -- the first template that
+genuinely needed more than one node): a list of FIXED sibling files
+created atomically alongside the root note, `{"suffix": str,
+"frontmatter_defaults": dict?, "name_template": str?,
+"heading_template": str?}` each. Every child lands at
+`<root-stem>-<suffix>.md` in the SAME folder as the root note (never its
+own `own_folder`); `name_template`/`heading_template` are `.format(title=...)`
+strings (e.g. `"{title} Log"`) rendered against the record's own real
+title; a `parent` frontmatter field pointing back at the root note (a
+real wikilink, `[[<root-stem>]]`) is always added automatically. A
+dynamic child slot (Thread's own messages/, added one at a time per real
+event rather than a fixed list) is a real, later extension of this same
+shape -- not built here, nothing today needs it yet.
+
+A template may also declare `parent` -- the external-required-parent
+link (Opportunity -> Customer was the first real one, 2026-08-30):
+`{"note_name": str, "match_fields": [str, ...], "alias_field": str?,
+"frontmatter_field": str, "link_back_section": str?, "required": bool?,
+"on_missing": "error"|"auto_create"?, "child_subpath": str?}`.
+`required` (default `True`, Opportunity's own real shape -- an
+Opportunity never exists without a Customer) governs whether a bare
+`create()` call with no `parent_value` is even allowed: `False`
+(Customer/Partner's own real shape -- a TOP-LEVEL Customer has no parent
+at all, only an Affiliate does) means `parent_value` is genuinely
+optional per call, not templatewide. Whenever a `parent_value` IS given,
+`create()` resolves it via `resolve_parent()` against the declared
+fields (case-insensitive) exactly as before. `on_missing` (default
+`"error"`, Opportunity's own real "never fabricate a Customer" guard)
+controls what happens when that resolution comes up empty:
+`"auto_create"` (Customer/Partner's own real "Add the Parent if it's
+not in the file" behavior, `create_companies_partners.py`'s own
+`auto_created_parents`) makes `create()` synthesize a blank top-level
+parent itself -- a real recursive `create()` call against the SAME
+template, `note_name=parent_config["note_name"]`, title-only, no
+`parent_value` of its own -- and use that as the resolved parent instead
+of raising. `frontmatter_field` names where the resolved parent's own
+filename stem lands in the new child's own frontmatter;
+`link_back_section`, if declared, idempotently accumulates a wikilink to
+the new child into that section on the PARENT note itself (this also
+fires for a freshly auto-created parent, same as an already-existing
+one). `child_subpath`, when a `parent_value` was actually given, is
+still what derives `note_name` when the caller omits it (Affiliate ->
+`<resolved-parent-note_name>/Affiliates`) -- unrelated to `required`/
+`on_missing`, which only govern whether/how the parent itself gets
+resolved.
 
 Real path convention (operator's own explicit shape, 2026-08-25):
     Notes/<note_name>/<YYYY-MM-DD>-<Title>.md
@@ -46,18 +103,34 @@ CLI (one process per call, matching every existing Skill script's own
     python vault_manager.py find --vault-path P --template-id T \\
         --by id|filename|folder --value X
     python vault_manager.py create --vault-path P --template-id T --input-file F
-        F: {"id": str?, "note_name": str, "title": str,
-            "frontmatter": {...}?, "sections": {"Summary": "...", ...}?}
+        F: {"id": str?, "title": str,
+            # required UNLESS this template declares "parent" -- then
+            # auto-derived from the resolved parent + parent.child_subpath
+            # (2026-08-30) so the caller never has to compute it by hand.
+            "note_name": str?,
+            "frontmatter": {...}?, "sections": {"Summary": "...", ...}?,
+            # required iff this template declares "parent" -- the value
+            # to resolve an already-existing parent record by (e.g. a
+            # Customer's own name, for an Opportunity); never fabricated.
+            "parent_value": str?}
     python vault_manager.py update --vault-path P --template-id T --id X --input-file F
         F: {"title": str?, "frontmatter": {...}?}
     python vault_manager.py get-section --vault-path P --template-id T --id X --section NAME
-    python vault_manager.py modify-section --vault-path P --template-id T --id X \\
-        --section NAME --mode replace|append --input-file F
+    python vault_manager.py modify-section --vault-path P --template-id T \\
+        [--id X] --section NAME --mode replace|append --input-file F
         F: {"content": str,
+            # identify the target ONE of two ways (2026-08-30) -- a real
+            # `id` (--id or "id" here), or "title" + "parent_value" (or a
+            # plain "note_name" for a parent-less template) to resolve it
+            # by name instead, the same way `create`'s own required-parent
+            # handling does -- no separate script needed to "find it by
+            # title, then modify a section" anymore:
+            "id": str?, "title": str?, "parent_value": str?, "note_name": str?,
             # optional -- present only when this call should ALSO create
-            # the note if `id` doesn't resolve yet ("Create if not Exist,
-            # If Exists Update Section", operator, 2026-08-25):
-            "note_name": str?, "title": str?, "frontmatter": {...}?}
+            # the note if it doesn't resolve yet ("Create if not Exist,
+            # If Exists Update Section", operator, 2026-08-25) AND the
+            # template's own on_missing allows it:
+            "frontmatter": {...}?}
 
 Every command prints one JSON object to stdout: the real result, or
 {"error": str} (exit code 1) -- never raises an uncaught traceback for an
@@ -155,7 +228,8 @@ def write_note(path: Path, frontmatter: dict, body: str) -> None:
 
 
 def _unique_dated_path(
-    folder: Path, date_str: str, title_slug: str, own_folder: bool = False, plain_filename: bool = False,
+    folder: Path, date_str: str, title_slug: str, own_folder: bool = False,
+    plain_filename: bool = False, plain_folder: bool = False,
 ) -> Path:
     """Never overwrite -- same time/counter disambiguation technique
     every `always_new` real Skill script already uses (write_research_doc.py/
@@ -170,12 +244,28 @@ def _unique_dated_path(
     attachment has somewhere to live as a sibling of the note. Collision
     is checked against the FOLDER, not just the file, since a folder can
     legitimately exist with an attachment dropped in before its own note
-    is ever written. `plain_filename` (only meaningful with `own_folder`,
-    operator, 2026-08-25: "the md for the Series shoud not have a date
-    Just the Series name") names the FILE from `title_slug` alone while
-    the wrapping FOLDER still gets the dated stem -- lets a container
-    note (a recurring series) sort by date in a file browser via its own
+    is ever written. `plain_filename` (operator, 2026-08-25: "the md for
+    the Series shoud not have a date Just the Series name") names the
+    FILE from `title_slug` alone. Combined with `own_folder`, the
+    wrapping FOLDER still gets the dated stem -- lets a container note
+    (a recurring series) sort by date in a file browser via its own
     folder while its own filename/wikilink target never has to change.
+    WITHOUT `own_folder` (2026-08-30, operator: "Notes are organized in
+    folders by Date") it means there's no date anywhere in this
+    function's own output at all -- the caller is expected to have
+    already folded the date into `folder` itself (a date-scoped
+    `note_name`, e.g. Notes/2026-08-30), giving Work/Notes/<date>/
+    <slug>.md with the date living in the folder, never repeated in the
+    filename.
+
+    `plain_folder` (2026-08-30, Opportunity's own real
+    Opportunities/<slug>/<slug>.md -- no date ANYWHERE, unlike Meeting/
+    File's dated folder or meeting-series' dated-folder-plain-file) only
+    means anything combined with `own_folder`: the WRAPPING FOLDER's own
+    name drops the date too, not just the file inside it. A durable,
+    name-keyed entity (an Opportunity, found again by its own title, not
+    by when it happened) has no real use for a creation-date sort key in
+    its path the way a daily capture (Meeting, File) does.
 
     Real bug, found live 2026-08-25: a genuinely long real title (a
     corporate meeting subject well past 80 characters is normal) combined
@@ -215,26 +305,36 @@ def _unique_dated_path(
             truncated = title_slug[:max_title_len].rsplit(" ", 1)[0].rstrip("-").strip()
             title_slug = truncated or title_slug[:max_title_len].strip()
 
-    def _candidate(stem: str) -> Path:
+    def _candidate(name: str) -> Path:
         if not own_folder:
-            return folder / f"{stem}.md"
-        filename = title_slug if plain_filename else stem
-        return folder / stem / f"{filename}.md"
+            return folder / f"{name}.md"
+        filename = title_slug if plain_filename else name
+        return folder / name / f"{filename}.md"
 
-    def _taken(stem: str) -> bool:
-        return (folder / stem).exists() if own_folder else _candidate(stem).exists()
+    def _taken(name: str) -> bool:
+        return (folder / name).exists() if own_folder else _candidate(name).exists()
 
-    stem = f"{date_str}-{title_slug}"
-    if not _taken(stem):
-        return _candidate(stem)
-    stem = f"{date_str}-{title_slug} {datetime.now().strftime('%H-%M')}"
-    if not _taken(stem):
-        return _candidate(stem)
+    # The basis for retry-suffix construction is whichever name this
+    # shape actually checks for collision -- the FOLDER's own name when
+    # `own_folder`, otherwise the file's own name. `plain_filename`
+    # WITHOUT `own_folder` (2026-08-30, operator: "Notes are organized
+    # in folders by Date") -- Work/Notes/<date>/<slug>.md, the date
+    # living in the FOLDER (the caller's own date-scoped `note_name`),
+    # never repeated in the filename. `plain_folder` WITH `own_folder`
+    # is the same idea one level up (Opportunity's own dateless path).
+    is_plain = plain_folder if own_folder else plain_filename
+    base = title_slug if is_plain else f"{date_str}-{title_slug}"
+    name = base
+    if not _taken(name):
+        return _candidate(name)
+    name = f"{base} {datetime.now().strftime('%H-%M')}"
+    if not _taken(name):
+        return _candidate(name)
     n = 2
     while True:
-        stem = f"{date_str}-{title_slug} {datetime.now().strftime('%H-%M')}-{n}"
-        if not _taken(stem):
-            return _candidate(stem)
+        name = f"{base} {datetime.now().strftime('%H-%M')}-{n}"
+        if not _taken(name):
+            return _candidate(name)
         n += 1
 
 
@@ -284,24 +384,102 @@ def _set_section_content(path: Path, section: str, content: str, mode: str) -> N
     path.write_text(new_text, encoding="utf-8")
 
 
+# ── frontmatter-aware primitives -- the SAME real shape at least three
+# hand-rolled Skill scripts (create_companies_partners.py, an earlier
+# create_opportunity.py, vault_writer.py) each independently
+# reimplemented, confirmed by direct reading, 2026-08-30 ("full
+# migration" pass, Customer/Partner) -- written once here rather than a
+# fourth copy ─────────────────────────────────────────────────────────
+
+def merge_tags(note_path: Path, new_tags: list[str]) -> bool:
+    """Unions `new_tags` into a note's own real `tags` frontmatter list
+    -- never removes an existing tag. Returns whether anything actually
+    changed (callers use this to skip a real write when nothing was new,
+    same idempotence create_companies_partners.py's own copy already
+    had). See `upsert_namespaced_tag` for the DELIBERATELY destructive
+    variant (a mutually-exclusive classification tag, not an additive
+    one)."""
+    frontmatter, body = read_note(note_path)
+    tags = list(frontmatter.get("tags") or [])
+    changed = False
+    for tag in new_tags:
+        if tag not in tags:
+            tags.append(tag)
+            changed = True
+    if changed:
+        frontmatter["tags"] = tags
+        write_note(note_path, frontmatter, body)
+    return changed
+
+
+def upsert_namespaced_tag(note_path: Path, namespace: str, tag: str) -> None:
+    """Removes every existing tag under `namespace/` before adding
+    `tag` -- create_companies_partners.py's own real
+    `_upsert_namespaced_tag` ("engagement/customer vs. engagement/
+    partner vs. engagement/internal ... doesn't end up wearing two
+    contradictory tags forever"), generalized off any namespace, not
+    just "engagement"."""
+    frontmatter, body = read_note(note_path)
+    tags = [t for t in (frontmatter.get("tags") or []) if not str(t).startswith(f"{namespace}/")]
+    tags.append(tag)
+    frontmatter["tags"] = tags
+    write_note(note_path, frontmatter, body)
+
+
+def insert_body_line_if_missing(note_path: Path, line: str) -> bool:
+    """Inserts `line` right after the frontmatter block, before any real
+    body content, if it isn't already present anywhere in the body --
+    create_companies_partners.py's own real `insert_body_line_if_missing`
+    (its own "**Customer:** [[Name]]" backlink line on a moved Person
+    note), generalized. Returns whether it actually inserted anything."""
+    frontmatter, body = read_note(note_path)
+    if line in body:
+        return False
+    stripped = body.lstrip("\n")
+    new_body = f"\n{line}\n{stripped}" if stripped else f"\n{line}\n"
+    write_note(note_path, frontmatter, new_body)
+    return True
+
+
 # ── templates ─────────────────────────────────────────────────────────
 
 def load_template(vault_path: Path, template_id: str) -> dict:
+    """Template.json v2 (Implementation/Plans/2026-08-30-vault-manager-
+    template-trees.md) -- a template is TWO layers, not one flat object:
+    top-level fields describe the RECORD as a whole (`identity`: how an
+    existing record is looked up -- `id` today, `tag`/`filename` land when
+    Customer/Person actually need them; `on_missing`; `allow_create_folder`
+    -- can this record's own containing folder be auto-vivified, or is
+    that an error -- defaults `True` so today's 7 real templates are
+    unaffected, a real `False` case lands with Customer), and `root`
+    (today's entire old flat schema, unchanged in substance, just nested:
+    `type`, `own_folder`, `plain_filename`, `on_existing_title`,
+    `frontmatter_defaults`, `sections`). `root` is a single md node today
+    -- fixed/dynamic `children` (OKF, Thread's messages/) are a real,
+    later addition to this same shape, not built here (nothing today
+    needs them)."""
     template_path = vault_path.joinpath(*_TEMPLATES_SUBPATH, template_id, "Template.json")
     if not template_path.is_file():
         raise VaultManagerError(f"unknown template: {template_id!r} ({template_path} not found)")
     template = json.loads(template_path.read_text(encoding="utf-8"))
+    identity = template.setdefault("identity", {})
+    identity.setdefault("strategy", "id")
     template.setdefault("on_missing", "create")
-    template.setdefault("on_existing_title", "update_section")
-    template.setdefault("frontmatter_defaults", {})
-    template.setdefault("sections", [])
-    template.setdefault("note_own_folder", False)
-    template.setdefault("note_filename_plain", False)
+    template.setdefault("allow_create_folder", True)
+    root = template.setdefault("root", {})
+    root.setdefault("type", "md")
+    root.setdefault("on_existing_title", "update_section")
+    root.setdefault("frontmatter_defaults", {})
+    root.setdefault("sections", [])
+    root.setdefault("own_folder", False)
+    root.setdefault("plain_filename", False)
+    root.setdefault("plain_folder", False)
+    root.setdefault("children", [])
     return template
 
 
 def _section_access(template: dict, section: str) -> str:
-    for entry in template["sections"]:
+    for entry in template["root"]["sections"]:
         if entry["name"] == section:
             return entry.get("access", "machine_write")
     return "machine_write"  # an undeclared section defaults open, same as today's real scripts
@@ -484,17 +662,97 @@ def _find_by_title(vault_path: Path, note_name: str, title: str) -> Path | None:
     return None
 
 
+def resolve_parent(vault_path: Path, parent_config: dict, value: str) -> Path | None:
+    """The external-required-parent link (2026-08-30-vault-manager-
+    template-trees.md) -- a DIFFERENT lookup than `_find_by_title`: real
+    parent records (Customer hub notes today, hand-written by
+    create_companies_partners.py, not yet on this engine) are matched
+    case-insensitively against one or more declared frontmatter fields
+    (`match_fields`, e.g. ["name", "title"] -- ported directly from
+    create_opportunity.py's own real `resolve_customer_hub`, which
+    checked `name` first), PLUS an optional alias list field
+    (`alias_field`) -- a customer known by more than one real name.
+    Generic and reusable: any future template can declare its own
+    `parent` this way, not just Opportunity->Customer. Returns None on
+    no match -- the caller (`create()`) is what turns that into a real
+    "refuse to fabricate" error; this function only answers the lookup."""
+    note_name = parent_config["note_name"]
+    match_fields = parent_config.get("match_fields", ["title"])
+    alias_field = parent_config.get("alias_field")
+    root = _notes_root(vault_path, note_name)
+    if not root.is_dir():
+        return None
+    key = value.strip().lower()
+    if not key:
+        return None
+    for md_path in _iter_real_md_files(vault_path, root):
+        frontmatter, _ = read_note(md_path)
+        for field in match_fields:
+            candidate = str(frontmatter.get(field, "")).strip().lower()
+            if candidate and candidate == key:
+                return md_path
+        if alias_field:
+            for alias in frontmatter.get(alias_field) or []:
+                if str(alias).strip().lower() == key:
+                    return md_path
+    return None
+
+
+def _tag_slugify(text: str) -> str:
+    """The real tag-slug convention every hand-rolled Skill script already
+    used its own copy of (`_tag_slug` in create_opportunity.py,
+    create_companies_partners.py) -- lowercase, `[a-z0-9/]` only. A
+    GENERIC primitive now, not per-entity code: `parent.derived_tag`
+    (below) is what makes a caller not have to reimplement this."""
+    return re.sub(r"[^a-z0-9/]+", "-", text.lower()).strip("-") or "untitled"
+
+
+def _child_note_name(vault_path: Path, parent_config: dict, parent_path: Path) -> str:
+    """Where a child of this resolved parent lives -- `parent.child_subpath`
+    appended to the PARENT's own note_name (its folder, relative to
+    Work/). 2026-08-30 (operator: "Why we need to create script everytime
+    we add a skill We Generalized so we don't do that") -- this is what
+    lets `create()`/`modify_section()` derive note_name THEMSELVES from a
+    resolved parent, instead of every calling script re-deriving this
+    exact path math by hand (create_opportunity.py's own real
+    `customer_hub.parent / "Opportunities"`, ported here as the one
+    generic version)."""
+    parent_note_name = parent_path.parent.relative_to(vault_path / _NOTES_ROOT).as_posix()
+    return f"{parent_note_name}/{parent_config['child_subpath']}"
+
+
+def _link_child_into_parent_section(parent_path: Path, section: str, child_wikilink: str) -> None:
+    """Idempotently accumulates one wikilink line into the PARENT's own
+    named section (create_opportunity.py's own real
+    `link_opportunity_to_customer_hub`, generalized off any template's
+    `parent.link_back_section`) -- a real cross-entity write the child's
+    OWN template can never express as one of its own sections, since the
+    section being written lives on a completely different note. No
+    access-policy check here (unlike `modify_section`'s own
+    `_require_machine_write`) -- the PARENT's own template isn't even
+    loaded at this call site; a real access guard on a parent's own
+    section is a disclosed gap, not silently ignored (see
+    2026-08-30-vault-manager-template-trees.md's "Open, not decided")."""
+    existing = get_section_content(parent_path, section)
+    if child_wikilink in existing:
+        return
+    lines = [line for line in existing.splitlines() if line.strip()]
+    lines.append(f"- {child_wikilink}")
+    _set_section_content(parent_path, section, "\n".join(lines), mode="replace")
+
+
 # ── create / update ──────────────────────────────────────────────────
 
 def create(
     vault_path: Path,
     template: dict,
-    note_name: str,
     title: str,
+    note_name: str | None = None,
     note_id: str | None = None,
     frontmatter: dict | None = None,
     sections: dict[str, str] | None = None,
     folder_date: str | None = None,
+    parent_value: str | None = None,
 ) -> dict:
     """`folder_date` (YYYY-MM-DD) overrides the FOLDER's own dated stem --
     only meaningful with `note_own_folder` -- so a container note (a
@@ -504,14 +762,98 @@ def create(
     frontmatter always stays the real today's-date regardless -- a
     genuinely different concept ("when this note object was made") from
     the folder's own sort key. See `bump_folder_date` for moving it
-    forward later."""
+    forward later.
+
+    `parent_value` (2026-08-30, Opportunity's own real "resolve an
+    existing Customer, refuse to fabricate one" guard, generalized) --
+    REQUIRED whenever `template["parent"]` is declared; resolved via
+    `resolve_parent()` and never fabricated (a missing parent is a real
+    `VaultManagerError`, checked BEFORE anything is written, not a
+    silent no-op or an auto-created stand-in). The resolved parent's own
+    filename stem is auto-populated into `template["parent"]
+    ["frontmatter_field"]` -- the child never has to know or repeat how
+    its own parent was found. If the template also declares
+    `parent.link_back_section`, a wikilink to the newly-created child is
+    idempotently accumulated into that section on the PARENT note itself
+    (create_opportunity.py's own real `link_opportunity_to_customer_hub`,
+    now generic) -- this only ever runs on a genuine new creation, never
+    on the `on_existing_title="update_section"` path below, since that
+    path means the child already exists and was already linked once.
+
+    `note_name` is now OPTIONAL (2026-08-30, operator: "Why we need to
+    create script everytime we add a skill We Generalized so we don't do
+    that") -- when omitted and the template declares `parent`, it's
+    auto-derived from the resolved parent + `parent.child_subpath`
+    (`_child_note_name`) instead of the CALLING SCRIPT having to
+    reimplement that same path math by hand (create_opportunity.py's own
+    original `customer_hub.parent / "Opportunities"`). Still overridable
+    by passing `note_name` explicitly, and still required outright for a
+    template with no `parent` declared. `parent.derived_tag` (a
+    `{slug}`-templated string, e.g. `"customer/{slug}"`) is the same
+    generalization for a tag built FROM the resolved parent's own name --
+    computed here via `_tag_slugify` and merged into `tags`, so a
+    per-entity tag-slug helper doesn't need reinventing per script
+    either."""
     title = (title or "").strip()
     if not title:
         raise VaultManagerError("title is required")
 
-    if template["on_existing_title"] == "update_section":
+    root = template["root"]
+    parent_config = template.get("parent")
+    parent_path: Path | None = None
+    parent_value = (parent_value or "").strip()
+    # `required` (default True, Opportunity's own shape) vs a template
+    # like Customer/Partner where a parent is only sometimes present
+    # (an Affiliate has one, a top-level entity doesn't) -- a bare call
+    # with no parent_value is only an error when the template says a
+    # parent is genuinely mandatory every time.
+    if parent_config is not None and (parent_value or parent_config.get("required", True)):
+        if not parent_value:
+            raise VaultManagerError(
+                f"template {template['id']!r} requires a parent_value (declares a "
+                "required parent) -- none was given"
+            )
+        parent_path = resolve_parent(vault_path, parent_config, parent_value)
+        if parent_path is None:
+            if parent_config.get("on_missing") == "auto_create":
+                # create_companies_partners.py's own real "Add the
+                # Parent if it's not in the file, it will come later
+                # when we start Parsing the files" -- a genuine
+                # recursive create() against the SAME template, as a
+                # top-level record (note_name given explicitly, no
+                # parent_value of its own), blank except for its title.
+                auto_created = create(
+                    vault_path, template, title=parent_value, note_name=parent_config["note_name"],
+                )
+                parent_path = Path(auto_created["path"])
+            else:
+                raise VaultManagerError(
+                    f"no real {parent_config['note_name']!r} record matches {parent_value!r} -- "
+                    "it must already exist; this template never fabricates its own parent"
+                )
+        if note_name is None:
+            note_name = _child_note_name(vault_path, parent_config, parent_path)
+
+    if note_name is None:
+        raise VaultManagerError(
+            f"template {template['id']!r} has no declared parent, so note_name is required "
+            "(nothing to auto-derive it from)"
+        )
+
+    if root["on_existing_title"] in ("update_section", "error"):
         existing = _find_by_title(vault_path, note_name, title)
         if existing is not None:
+            if root["on_existing_title"] == "error":
+                # create_opportunity.py's own real guard ("an Opportunity
+                # named X already exists for this Customer") -- a
+                # genuinely different intent than `always_new`'s time-
+                # suffix disambiguation: a duplicate TITLE here is a real
+                # mistake to refuse, not a filename collision to work
+                # around.
+                raise VaultManagerError(
+                    f"a note titled {title!r} already exists in {note_name!r} "
+                    f"({existing}) -- this template refuses to create a duplicate"
+                )
             existing_frontmatter, _ = read_note(existing)
             for section_name, content in (sections or {}).items():
                 _require_machine_write(template, section_name)
@@ -522,27 +864,79 @@ def create(
             }
 
     folder = _notes_root(vault_path, note_name)
+    if not folder.is_dir() and not template.get("allow_create_folder", True):
+        raise VaultManagerError(
+            f"folder {folder} does not exist and template {template['id']!r} "
+            "does not allow auto-creating it (allow_create_folder: false)"
+        )
     folder.mkdir(parents=True, exist_ok=True)
     today_str = datetime.now().strftime("%Y-%m-%d")
     note_path = _unique_dated_path(
         folder, folder_date or today_str, _slugify(title),
-        own_folder=bool(template.get("note_own_folder")),
-        plain_filename=bool(template.get("note_filename_plain")),
+        own_folder=bool(root.get("own_folder")),
+        plain_filename=bool(root.get("plain_filename")),
+        plain_folder=bool(root.get("plain_folder")),
     )
 
     resolved_id = note_id or str(uuid.uuid4())
-    full_frontmatter = dict(template["frontmatter_defaults"])
+    full_frontmatter = dict(root["frontmatter_defaults"])
     full_frontmatter.update(frontmatter or {})
     full_frontmatter["id"] = resolved_id
     full_frontmatter["title"] = title
     full_frontmatter.setdefault("created", today_str)
+    if parent_config is not None and parent_path is not None:
+        full_frontmatter[parent_config["frontmatter_field"]] = parent_path.stem
+        if parent_config.get("derived_tag"):
+            tag = parent_config["derived_tag"].format(slug=_tag_slugify(parent_path.stem))
+            tags = list(full_frontmatter.get("tags") or [])
+            if tag not in tags:
+                tags.append(tag)
+            full_frontmatter["tags"] = tags
+
+    # A designated section can auto-list the record's own children
+    # (2026-08-30, `root.children_index_section` -- Customer's own real
+    # "## Log & Captures" bullet-links, `- [[Adnoc-log|Log]]`) --
+    # computed HERE, before the root note is even written, because the
+    # child filenames are only deterministic once `note_path` is known;
+    # the CALLING script can't predict them itself without duplicating
+    # `_unique_dated_path`'s own slug/collision logic, so the engine
+    # (which already owns that logic) builds this instead.
+    children_index_lines = [
+        f"- [[{note_path.stem}-{child_spec['suffix']}|{child_spec.get('display_label', child_spec['suffix'].title())}]]"
+        for child_spec in root.get("children", [])
+    ]
 
     body_parts = []
-    for entry in template["sections"]:
+    for entry in root["sections"]:
         name = entry["name"]
-        content = (sections or {}).get(name, "")
+        if name == root.get("children_index_section") and children_index_lines:
+            content = "\n".join(children_index_lines)
+        else:
+            content = (sections or {}).get(name, "")
         body_parts.append(f"{_section_header(name)}\n\n{content}\n")
     write_note(note_path, full_frontmatter, "\n" + "\n".join(body_parts))
+
+    # Fixed sibling children (2026-08-30, Customer/Partner's own real
+    # hub+log+captures shape) -- created atomically alongside the root,
+    # same folder, `<root-stem>-<suffix>.md`. Deliberately real
+    # frontmatter FIRST, then a body heading -- the original hand-rolled
+    # script this replaces wrote the heading ABOVE the frontmatter block
+    # (an accidental quirk of write-order, not a real design choice);
+    # every other real template in this vault puts frontmatter first, so
+    # this is a disclosed, deliberate correction, not a byte-for-byte
+    # port.
+    for child_spec in root.get("children", []):
+        child_frontmatter = dict(child_spec.get("frontmatter_defaults", {}))
+        if "name_template" in child_spec:
+            child_frontmatter["name"] = child_spec["name_template"].format(title=title)
+        child_frontmatter["parent"] = f"[[{note_path.stem}]]"
+        child_path = note_path.parent / f"{note_path.stem}-{child_spec['suffix']}.md"
+        if not child_path.exists():
+            heading = child_spec.get("heading_template", "{title}").format(title=title)
+            write_note(child_path, child_frontmatter, f"\n# {heading}\n\n")
+
+    if parent_config is not None and parent_path is not None and parent_config.get("link_back_section"):
+        _link_child_into_parent_section(parent_path, parent_config["link_back_section"], f"[[{note_path.stem}]]")
 
     return {"created": True, "updated": False, "path": str(note_path), "folder": str(note_path.parent), "id": resolved_id}
 
@@ -587,24 +981,77 @@ def bump_folder_date(vault_path: Path, note_path: Path, new_date_str: str) -> Pa
 def modify_section(
     vault_path: Path,
     template: dict,
-    note_id: str,
     section: str,
     content: str,
     mode: str,
+    note_id: str | None = None,
     note_name: str | None = None,
     title: str | None = None,
+    parent_value: str | None = None,
     frontmatter: dict | None = None,
 ) -> dict:
     """"Create if not Exist, If Exists Update Section" (operator,
     2026-08-25) -- one call. `note_name`/`title` are only required when
     this specific call might need to create the note; omit them to get
     template['on_missing']='error' behavior (person-lookup's own real
-    guard: never silently create a note that must already exist)."""
-    existing = find_by_id(vault_path, note_id, note_name)
+    guard: never silently create a note that must already exist).
+
+    Two ways to identify the target note, not just one (2026-08-30,
+    operator: "Why we need to create script everytime we add a skill We
+    Generalized so we don't do that" -- this is the fix: an "update an
+    existing child-of-parent record by its real name" flow used to be
+    only reachable by writing a whole new script, because this function
+    could only look a note up by `note_id`, which the caller (a human
+    or an agent, not a database) never actually has memorized):
+    - `note_id` (a real UUID) -- the original, still-supported path.
+    - `title` + `parent_value` -- resolves the target the SAME way
+      `create()`'s own required-parent handling does (`resolve_parent`,
+      never fabricated, `_child_note_name` derives where to look) and
+      finds it by title within that scope. `note_name` can still be
+      passed directly instead, for a template with no `parent` at all.
+    Exactly one of `note_id` or `title` must be given.
+
+    `on_missing` still governs the create-if-missing fallback either
+    way -- a template like `opportunity` (`on_missing: "error"`) refuses
+    to fabricate a record via this call regardless of which identity
+    path was used to look for it."""
+    parent_config = template.get("parent")
+    if note_name is None and parent_config is not None:
+        parent_value_stripped = (parent_value or "").strip()
+        if not parent_value_stripped:
+            raise VaultManagerError(
+                f"template {template['id']!r} requires a parent_value to resolve where its "
+                "records live -- none was given"
+            )
+        parent_path = resolve_parent(vault_path, parent_config, parent_value_stripped)
+        if parent_path is None:
+            raise VaultManagerError(
+                f"no real {parent_config['note_name']!r} record matches {parent_value_stripped!r} -- "
+                "it must already exist; this template never fabricates its own parent"
+            )
+        note_name = _child_note_name(vault_path, parent_config, parent_path)
+
+    if note_id is not None:
+        existing = find_by_id(vault_path, note_id, note_name)
+    elif title is not None:
+        if note_name is None:
+            raise VaultManagerError("modify_section by title requires note_name (or a resolvable parent_value)")
+        existing = _find_by_title(vault_path, note_name, title)
+        if existing is not None:
+            existing_frontmatter, _ = read_note(existing)
+            note_id = existing_frontmatter.get("id")
+    else:
+        raise VaultManagerError("modify_section requires either note_id or title to identify the target note")
+
     if existing is None:
         if template["on_missing"] == "error" or not note_name or not title:
-            raise VaultManagerError(f"no note with id={note_id!r} exists, and this call is not allowed to create one")
-        created = create(vault_path, template, note_name, title, note_id=note_id, frontmatter=frontmatter, sections={section: content})
+            raise VaultManagerError(
+                f"no matching note exists (id={note_id!r}, title={title!r}), and this call is not allowed to create one"
+            )
+        created = create(
+            vault_path, template, title=title, note_name=note_name, note_id=note_id,
+            frontmatter=frontmatter, sections={section: content}, parent_value=parent_value,
+        )
         return {"created": True, "updated": False, "path": created["path"], "folder": created["folder"], "id": created["id"]}
 
     _require_machine_write(template, section)
@@ -651,9 +1098,9 @@ def main() -> int:
             data = _load_input(args)
             out = create(
                 vault_path, template,
-                note_name=data["note_name"], title=data["title"],
+                title=data["title"], note_name=data.get("note_name"),
                 note_id=data.get("id"), frontmatter=data.get("frontmatter"),
-                sections=data.get("sections"),
+                sections=data.get("sections"), parent_value=data.get("parent_value"),
             )
 
         elif args.command == "update":
@@ -672,9 +1119,11 @@ def main() -> int:
         else:  # modify-section
             data = _load_input(args)
             out = modify_section(
-                vault_path, template, note_id=args.id, section=args.section,
+                vault_path, template, section=args.section,
                 content=data["content"], mode=args.mode,
+                note_id=args.id or data.get("id"),
                 note_name=data.get("note_name") or args.note_name, title=data.get("title"),
+                parent_value=data.get("parent_value"),
                 frontmatter=data.get("frontmatter"),
             )
 
