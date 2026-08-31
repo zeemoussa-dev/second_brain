@@ -18,6 +18,14 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: Opportunity notes now have a Log and Captures file, split off the
+  main note the same way Customer/Partner hub notes already do (`## Log`/
+  `## Files` sections replaced by `<Title>-log.md`/`<Title>-captures.md`
+  and an auto-populated `## Log & Captures` index). Job 2 (Update)'s
+  payload gained a `child_suffix` field to target them.
+  `vault_manager.py`'s `modify_section` gained the underlying generic
+  capability. Migrated all 13 real existing Opportunities' Log/Files
+  content into the new files.
 - fix: `create_companies_partners.py` no longer mis-tags real
   Opportunities as if they were Customer/Partner hub notes. A broad
   folder-shape scan wrongly matched Opportunities' own nested path

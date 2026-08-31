@@ -263,10 +263,24 @@ def test_allow_create_folder_false_refuses_when_folder_missing(vault):
     assert Path(result["path"]).is_file()
 
 
-def _write_opportunity_template(vault: Path, on_missing: str = "create") -> dict:
+def _write_opportunity_template(vault: Path, on_missing: str = "create", with_children: bool = False) -> dict:
     import json
     template_path = vault / ".second-brain" / "data" / "Templates" / "opportunity" / "Template.json"
     template_path.parent.mkdir(parents=True, exist_ok=True)
+    root = {
+        "on_existing_title": "always_new",
+        "frontmatter_defaults": {"type": "Opportunity"},
+        "sections": [{"name": "Summary", "access": "machine_write"}],
+    }
+    if with_children:
+        # 2026-08-31, real shape (operator: "the Opp has one file it
+        # should have Capture and log as well") -- Log/Captures split
+        # off the root note the same way Customer/Partner's own log/
+        # captures already do.
+        root["children"] = [
+            {"suffix": "log", "frontmatter_defaults": {"type": "Log"}, "name_template": "{title} Log"},
+            {"suffix": "captures", "frontmatter_defaults": {"type": "Captures"}, "name_template": "{title} Captures"},
+        ]
     template_path.write_text(json.dumps({
         "id": "opportunity", "on_missing": on_missing,
         "parent": {
@@ -275,11 +289,7 @@ def _write_opportunity_template(vault: Path, on_missing: str = "create") -> dict
             "link_back_section": "## Opportunities",
             "child_subpath": "Opportunities", "derived_tag": "customer/{slug}",
         },
-        "root": {
-            "on_existing_title": "always_new",
-            "frontmatter_defaults": {"type": "Opportunity"},
-            "sections": [{"name": "Summary", "access": "machine_write"}],
-        },
+        "root": root,
     }), encoding="utf-8")
     return vm.load_template(vault, "opportunity")
 
@@ -397,6 +407,63 @@ def test_modify_section_by_title_refuses_to_fabricate_when_on_missing_is_error(v
             mode="append", title="Does Not Exist", parent_value="Acme",
         )
     assert not (vault / "Work" / "Customers" / "Acme" / "Opportunities").exists()
+
+
+def test_modify_section_with_child_suffix_writes_the_sibling_file_not_the_root(vault):
+    """2026-08-31 (operator: "the Opp has one file it should have Capture
+    and log as well") -- a Log/Captures append now redirects to the real
+    child file instead of a section inside the root note."""
+    template = _write_opportunity_template(vault, with_children=True)
+    _write_customer_hub(vault, "Acme")
+    created = vm.create(vault, template, title="Renewal", parent_value="Acme", sections={"Summary": "v1"})
+    root_path = Path(created["path"])
+
+    result = vm.modify_section(
+        vault, template, section="Log", content="2026-08-31: first entry", mode="append",
+        title="Renewal", parent_value="Acme", child_suffix="log",
+    )
+    assert result["id"] == created["id"]
+    log_path = root_path.parent / f"{root_path.stem}-log.md"
+    assert result["path"] == str(log_path)
+    assert vm.get_section_content(log_path, "Log") == "2026-08-31: first entry"
+    # the root's own Summary is untouched -- the write really landed on the child
+    assert vm.get_section_content(root_path, "Summary") == "v1"
+    assert vm.get_section_content(root_path, "Log") == ""
+
+
+def test_modify_section_with_child_suffix_appends_across_repeated_calls(vault):
+    template = _write_opportunity_template(vault, with_children=True)
+    _write_customer_hub(vault, "Acme")
+    created = vm.create(vault, template, title="Renewal", parent_value="Acme")
+    root_path = Path(created["path"])
+
+    vm.modify_section(
+        vault, template, section="Log", content="entry one", mode="append",
+        title="Renewal", parent_value="Acme", child_suffix="log",
+    )
+    vm.modify_section(
+        vault, template, section="Log", content="entry two", mode="append",
+        title="Renewal", parent_value="Acme", child_suffix="log",
+    )
+    log_path = root_path.parent / f"{root_path.stem}-log.md"
+    content = vm.get_section_content(log_path, "Log")
+    assert "entry one" in content
+    assert "entry two" in content
+    assert content.index("entry one") < content.index("entry two")
+
+
+def test_modify_section_with_unknown_child_suffix_refuses(vault):
+    """A template that never declared this child (or a real typo in the
+    suffix) is a real error, not a silent no-op or a fabricated file."""
+    template = _write_opportunity_template(vault, with_children=True)
+    _write_customer_hub(vault, "Acme")
+    vm.create(vault, template, title="Renewal", parent_value="Acme")
+
+    with pytest.raises(vm.VaultManagerError, match="typo"):
+        vm.modify_section(
+            vault, template, section="Log", content="x", mode="append",
+            title="Renewal", parent_value="Acme", child_suffix="typo",
+        )
 
 
 def test_plain_folder_with_own_folder_keeps_date_out_of_the_folder_too(vault):

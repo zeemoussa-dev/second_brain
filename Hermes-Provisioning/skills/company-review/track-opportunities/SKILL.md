@@ -1,7 +1,7 @@
 ---
 name: track-opportunities
 description: Creates, updates, links, and answers questions about sales Opportunities filed under a real Customer hub note. Use this whenever the operator's message is about creating a new opportunity/deal/opp (e.g. "create a new opp", "new opportunity for ADNOC"), adding an update/log entry/action/related link to an EXISTING one ("log that I spoke to procurement on the ADNOC HPC opp", "add an action item to renew the Aldar deal"), linking a Thread or Meeting to an existing one ("link this thread to the ADNOC HPC Expansion opp"), or asking what opportunities exist / their status / consumption for a Customer ("what opportunities do we have in ADNOC", "what's the forecasted consumption this month").
-version: 0.3.0
+version: 0.4.0
 author: second-brain
 license: MIT
 platforms: [windows]
@@ -44,7 +44,20 @@ plain template-driven create/update.
 
 ```
 Work/Customers/<Customer>/Opportunities/<Title>/
-    <Title>.md          -- the Opportunity's own note
+    <Title>.md           -- the Opportunity's own note: Summary/Actions/
+                             Related, plus a "## Log & Captures" index
+                             (auto-populated wikilinks to the two files
+                             below -- same shape Customer/Partner hub
+                             notes already use).
+    <Title>-log.md        -- dated, diary-style entries (2026-08-31,
+                             operator: "the Opp has one file it should
+                             have Capture and log as well" -- split off
+                             the root note the same way Customer/
+                             Partner's own log.md already is).
+    <Title>-captures.md   -- a note that a real file/detail arrived (the
+                             files THEMSELVES still live in files/ below
+                             -- this is the log line about them, same
+                             role the old "## Files" section had).
     files/                -- related files, saved here directly by you
                              (write_file) as they come in -- no separate
                              capture script, mirrors how a Thread's own
@@ -58,10 +71,15 @@ imposed now, a later pass structures it once real patterns are visible),
 `technologies` (list), `created`, `tags` (`customer/<slug>`,
 `kind/opportunity`).
 
-Body: `## Summary` / **`## Log`** (dated, diary-style entries -- notes
-and log are the SAME thing here, operator's own explicit merge, e.g. "-
-2026-08-22: Met [[Person X]] (Microsoft), asked about status, he gave
-feedback that ...") / `## Actions` / `## Related` / `## Files`.
+Root body: `## Summary` / `## Actions` / `## Related` / `## Log &
+Captures` (the auto-populated index -- never edit this one directly,
+`vault_manager.py`'s own `create()` regenerates it). The real diary
+content (dated entries, e.g. "- 2026-08-22: Met [[Person X]] (Microsoft),
+asked about status, he gave feedback that ...") lives in `<Title>-log.md`'s
+own `## Log` section; a file-arrival note lives in `<Title>-captures.md`'s
+own `## Captures` section -- both reached via `modify-section`'s
+`child_suffix` field (Job 2 below), never by editing those files by hand
+with a bare `write_file`.
 
 The Customer hub note itself gets a new `## Opportunities` section
 (wikilinks down, mirrors the existing `## Affiliates` pattern) -- so
@@ -131,32 +149,39 @@ effect** -- if it doesn't already exist, say so and offer Job 1 instead.
 Map what the operator said onto ONE of the real sections (ask if it's
 genuinely unclear which one):
 - **Log** -- a dated diary entry, what happened / who you talked to.
-  Almost always `mode: "append"`.
-- **Actions** -- a follow-up/next-step. Almost always `append`.
+  Almost always `mode: "append"`. Lives on the `-log.md` child, not the
+  root -- pass `"child_suffix": "log"` in the payload.
+- **Actions** -- a follow-up/next-step. Almost always `append`. Root
+  section, no `child_suffix`.
 - **Related** -- a link to something else relevant (a person, a
-  document, another note). `append`.
+  document, another note). `append`. Root section, no `child_suffix`.
 - **Summary** -- the current-state description itself changed (not a
-  new event) -- this one is usually `mode: "replace"`, not append.
-- **Files** -- a real file arrived; `write_file` it directly into the
+  new event) -- this one is usually `mode: "replace"`, not append. Root
+  section, no `child_suffix`.
+- **Captures** -- a real file arrived; `write_file` it directly into the
   Opportunity's own folder's `files/` subfolder (same as Job 1's own
   Structure note) -- no script call needed for the file itself, only
   call this script if you also want to log a line noting it arrived.
+  Lives on the `-captures.md` child -- pass `"child_suffix": "captures"`.
 
 ```
-terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\skills\\company-review\\track-opportunities\\scripts\\vault_manager.py\" modify-section --vault-path \"C:\\myWorx\\Moussa MD\\Moussa Brain\" --template-id opportunity --section \"<Log|Actions|Related|Summary>\" --mode append --input-file <scratch path>")
+terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\skills\\company-review\\track-opportunities\\scripts\\vault_manager.py\" modify-section --vault-path \"C:\\myWorx\\Moussa MD\\Moussa Brain\" --template-id opportunity --section \"<Log|Actions|Related|Summary|Captures>\" --mode append --input-file <scratch path>")
 ```
 
 (`--mode replace` for a Summary rewrite -- everything else is `append`,
 the default the SKILL.md examples above already assume.)
 
-Payload: `{"content": str, "title": str, "parent_value": str}`.
-`parent_value` is matched the same way as Job 1 (real Customer name or a
-known alias); `title` is matched exactly against the Opportunity's own
-real title within that Customer -- this call resolves the Customer AND
-finds the Opportunity by name itself, the same way Job 1's own create
-call does; it never creates one that doesn't already exist (the
-template's own `on_missing: "error"` enforces this centrally, not
-anything you have to check for yourself).
+Payload: `{"content": str, "title": str, "parent_value": str, "child_suffix":
+str}` (`child_suffix` only for Log/Captures -- `"log"` or `"captures"`;
+omit it entirely for Actions/Related/Summary, which stay on the root
+note). `parent_value` is matched the same way as Job 1 (real Customer
+name or a known alias); `title` is matched exactly against the
+Opportunity's own real title within that Customer -- this call resolves
+the Customer AND finds the Opportunity by name itself, the same way Job
+1's own create call does; it never creates one that doesn't already
+exist (the template's own `on_missing: "error"` enforces this centrally,
+not anything you have to check for yourself). A `child_suffix` naming a
+child the template doesn't declare is a real error, not a silent no-op.
 
 **If the call errors because the Customer or the Opportunity doesn't
 resolve, say so honestly -- same never-fabricate discipline as every
@@ -220,9 +245,11 @@ expect an exact number; don't fabricate false precision.
 
 - After a creation, confirm the returned `path` is real and the Customer
   hub's own `## Opportunities` section now lists it.
-- After an update, confirm the returned `path` is real and the section
-  you targeted actually shows the new content (an append should sit
-  below whatever was already there, not replace it).
+- After an update, confirm the returned `path` is real (a Log/Captures
+  update returns the CHILD file's own path, `<Title>-log.md`/
+  `<Title>-captures.md`, not the root's) and the section you targeted
+  actually shows the new content (an append should sit below whatever
+  was already there, not replace it).
 - After a link, confirm the Thread/Meeting's own `opportunities`
   frontmatter and `## Related` section both show the right Opportunity,
   and that a genuinely ambiguous title correctly errored rather than

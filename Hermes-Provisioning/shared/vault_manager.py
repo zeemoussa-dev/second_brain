@@ -989,6 +989,7 @@ def modify_section(
     title: str | None = None,
     parent_value: str | None = None,
     frontmatter: dict | None = None,
+    child_suffix: str | None = None,
 ) -> dict:
     """"Create if not Exist, If Exists Update Section" (operator,
     2026-08-25) -- one call. `note_name`/`title` are only required when
@@ -1010,6 +1011,20 @@ def modify_section(
       finds it by title within that scope. `note_name` can still be
       passed directly instead, for a template with no `parent` at all.
     Exactly one of `note_id` or `title` must be given.
+
+    `child_suffix` (2026-08-31, Opportunity's own real Log/Captures
+    split off the root note -- "the Opp has one file it should have
+    Capture and log as well") -- once the ROOT note is resolved (or
+    freshly created) the same way as always, the section write itself
+    redirects to `<root-stem>-<child_suffix>.md` instead of the root.
+    The section name only needs to exist within `template['root']
+    ['sections']` when it's a root-level write -- a child's own section
+    is undeclared there by design (children carry no independent
+    `sections` list of their own yet), so `_require_machine_write` falls
+    through to its own permissive default for an unlisted section name.
+    Refuses with a real error if the named child doesn't actually exist
+    (the template must have declared it via `root.children` and
+    `create()` must have already made it -- never fabricated here).
 
     `on_missing` still governs the create-if-missing fallback either
     way -- a template like `opportunity` (`on_missing: "error"`) refuses
@@ -1050,14 +1065,34 @@ def modify_section(
             )
         created = create(
             vault_path, template, title=title, note_name=note_name, note_id=note_id,
-            frontmatter=frontmatter, sections={section: content}, parent_value=parent_value,
+            frontmatter=frontmatter, parent_value=parent_value,
+            sections=None if child_suffix else {section: content},
         )
+        root_path = Path(created["path"])
+        if child_suffix:
+            child_path = root_path.parent / f"{root_path.stem}-{child_suffix}.md"
+            if not child_path.exists():
+                raise VaultManagerError(
+                    f"template {template['id']!r} has no {child_suffix!r} child declared -- "
+                    "check root.children in its Template.json"
+                )
+            _set_section_content(child_path, section, content, mode=mode)
+            return {"created": True, "updated": False, "path": str(child_path), "folder": created["folder"], "id": created["id"]}
         return {"created": True, "updated": False, "path": created["path"], "folder": created["folder"], "id": created["id"]}
 
+    target = existing
+    if child_suffix:
+        target = existing.parent / f"{existing.stem}-{child_suffix}.md"
+        if not target.exists():
+            raise VaultManagerError(
+                f"no {child_suffix!r} child exists for {existing.stem!r} -- "
+                f"template {template['id']!r} may not declare it in root.children"
+            )
+
     _require_machine_write(template, section)
-    _set_section_content(existing, section, content, mode=mode)
+    _set_section_content(target, section, content, mode=mode)
     frontmatter_now, _ = read_note(existing)
-    return {"created": False, "updated": True, "path": str(existing), "folder": str(existing.parent), "id": frontmatter_now.get("id")}
+    return {"created": False, "updated": True, "path": str(target), "folder": str(existing.parent), "id": frontmatter_now.get("id")}
 
 
 # ── CLI ───────────────────────────────────────────────────────────────
@@ -1125,6 +1160,7 @@ def main() -> int:
                 note_name=data.get("note_name") or args.note_name, title=data.get("title"),
                 parent_value=data.get("parent_value"),
                 frontmatter=data.get("frontmatter"),
+                child_suffix=data.get("child_suffix"),
             )
 
         print(json.dumps(out, ensure_ascii=False))
