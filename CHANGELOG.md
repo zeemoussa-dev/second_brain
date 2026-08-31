@@ -18,6 +18,360 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: Import flow UI (`REQ-SB-85-US-03-T06`) — `SettingsArtifactsPage.tsx`
+  gains an "Import" card alongside the existing Export UI: an
+  `import-trigger` button reveals a real `<input type="file" accept=".sbf">`;
+  on selection, `previewImport(file)` (new in `artifactsApiClient.ts`, a
+  real `multipart/form-data` POST to `/artifacts/import/preview`) renders
+  every real bundled artifact in a `data-role="import-contents-preview"`
+  panel before any commit call. Every conflicting artifact renders its own
+  independent 3-way `overwrite`/`skip`/`keep_both` control
+  (`conflict-{overwrite,skip,keep-both}-<kind>-<id>`); every `skill`
+  artifact renders a target-profile checklist
+  (`skill-target-profile-<id>-<profile>`) defaulting to `"default"`
+  pre-checked. `import-commit` stays disabled until every conflict is
+  decided, then calls `commitImport(file, decisions, skillTargetProfiles)`
+  (new, POSTs the SAME re-submitted `File` — never just the cached preview
+  — to `/artifacts/import/commit`) and renders each real outcome
+  independently (`import-outcome-<kind>-<id>`), a failed one showing its
+  own real `detail` text. A malformed upload renders an honest
+  `import-error` with neither preview nor conflict UI ever appearing.
+  Functional-first per the story's own operator-overridden gate_reason —
+  both screens are `net-new-design-needed`, a `/design REQ-SB-85` visual
+  pass is a deliberately separate, later step. Verified live via a
+  headless-Edge CDP session against the real running frontend + backend: a
+  real `.sbf` bundle (3 kinds, built via the already-`Done` export path)
+  drove the full preview → mixed keep_both/overwrite/skip decision →
+  commit cycle with real backend deployment outcomes; a plain `.txt`
+  upload was cleanly rejected; a mocked `/commit` response confirmed a
+  mixed `deployed`/`failed`/`skipped` result renders every outcome
+  independently. **This closes `REQ-SB-85-US-03` (Import) and, with it,
+  `REQ-SB-85` (Artifact Export/Import) end-to-end — all 3 substories, all
+  13 tasks, `Done` across `SPRINT-079`/`SPRINT-080`.**
+- feat: new `artifact_import.py` (`REQ-SB-85-US-03-T05`) — the real
+  import orchestrator, plus `POST /artifacts/import/{preview,commit}`
+  (`artifacts_router.py`). `preview_import(archive_path)` composes
+  `sbf_archive.read_archive` (`T01`) + `artifact_import_conflicts.
+  detect_conflicts` (`T02`) + the target machine's own real
+  `available_profiles` list, writing nothing. `commit_import(archive_path,
+  decisions, skill_target_profiles)` re-parses and re-detects conflicts
+  fresh (never trusts a cached preview), then deploys every artifact per
+  its resolved decision inside its own `try/except`, appending one
+  outcome dict (`kind`/`id`/`status`/`deployed_as`/`detail`) regardless of
+  success or failure — one artifact's real failure never aborts the batch
+  or drops another's own outcome. Per-kind deployment: Skill via
+  `SkillManager().create/update/deploy` (name/description parsed from the
+  bundled `SKILL.md`'s own YAML frontmatter, target profiles default to
+  `["default"]`); Template/Pipeline via `TemplateManager.import_template`/
+  `PipelineManager.import_pipeline` (`T03`/`T04`); Agent via
+  `HermesCLI.import_profile`/`AgentManager.delete` + a direct
+  `registry_writer.write_agent_files` + `registry_loader.boot()` (section
+  resolved against the target's own real Sections, falling back to "Data
+  Gatherer" — confirmed live this always resolves to the real, existing
+  section rather than creating a stray duplicate, since a bundled
+  `Agent.json` never carries `section_id`). `"keep_both"` generates a real
+  alternate id (`<id>-imported`, `<id>-imported-2`, ...) per kind, probed
+  against that kind's own `get_by_id`. A seed/blank data file (e.g.
+  `seed_data/Settings/Entities.md`) is written genuinely empty
+  (`data_access.entities.write_raw("")`) only when its owning Skill (a
+  literal-needle re-scan of the bundle's own payload content) was actually
+  deployed this commit, never when skipped. Verified live end-to-end
+  against a real, disposable 4-kind bundle (Skill/Template/Pipeline/Agent)
+  built via `REQ-SB-85-US-02`'s own real `commit_export`: fresh
+  no-conflict deploy (all 4 genuinely live afterward), a same-bundle
+  re-run with no decisions (all 4 honestly `"failed"`, no silent
+  resolution), `"keep_both"` on the Skill (real alternate id deployed,
+  original byte-for-byte unchanged), `"overwrite"` on the Template (a
+  locally-mutated live copy correctly replaced by the bundled content),
+  `"skip"` on the Pipeline alongside `"overwrite"` on everything else (the
+  skipped Pipeline's real JSON byte-for-byte unchanged, every other
+  artifact independently deployed, including a real Agent
+  delete-then-reimport overwrite), the seed-data write (a real, injected
+  46-byte placeholder in `Entities.md` genuinely wiped to empty, then the
+  true original real content restored), and an engineered
+  `HermesCLI.import_profile` failure for the Agent only (that one
+  artifact honestly `"failed"` with the real engineered detail text, the
+  other 3 independently `"deployed"` in the same commit). Every scratch
+  artifact (both originals and the `"keep_both"` alternate) confirmed
+  fully deleted afterward — including a real, live, orphaned-Hermes-
+  skill-folder cleanup needed due to a pre-existing `SkillManager.delete`
+  bug found along the way (see `MEMORY.md`).
+- feat: new `artifact_import_conflicts.py` (`REQ-SB-85-US-03-T02`) —
+  `detect_conflicts(artifacts: list[dict]) -> list[dict]` checks a parsed
+  `.sbf` bundle's own per-artifact ids (`T01`'s manifest `artifacts` list)
+  against THIS machine's own real current state across all 4 kinds
+  (dispatch table `{"skill": SkillManager, "template": TemplateManager,
+  "agent": AgentManager, "pipeline": PipelineManager}`), augmenting each
+  entry with `"conflicts": bool` (`True` iff that kind's real
+  `get_by_id(id)` returns non-`None` today). Every artifact is checked
+  independently against a freshly-constructed Manager, never
+  short-circuited; an unrecognized `kind` raises `ValueError`, never a
+  silent `False`. Pure read-only — resolves nothing itself; the operator's
+  own overwrite/skip/keep-both decision and its application are `T05`'s
+  job. Verified live against this deployment's real Registry/Skill/
+  Template/Pipeline state: a real, already-existing Skill + Agent id both
+  came back `"conflicts": True`; a fabricated, guaranteed-nonexistent id
+  per all 4 kinds all came back `"conflicts": False`; an unrecognized kind
+  (`"provider"`) raised `ValueError` cleanly.
+- feat: `sbf_archive.py` gains the reader half (`REQ-SB-85-US-03-T01`,
+  `ADR-013`) — `read_archive(archive_path) -> tuple[dict, dict[str,
+  bytes]]` opens a real `.sbf` zip, reads/validates `manifest.json` (all
+  four required top-level keys — `format_version`, `generated_at`,
+  `artifacts`, `secret_scan`), and returns the full manifest plus every
+  other real archive member as `{member_path: bytes}` — never a partial
+  result on any failure path. New `MalformedBundleError` is raised for
+  every structural-validity failure (not a real zip, missing
+  `manifest.json`, unparsable `manifest.json` JSON — chained `from` the
+  real `JSONDecodeError`, or a manifest missing a required key) — a
+  `format_version` mismatch alone is deliberately NOT fatal (ADR-013's own
+  forward-compat extension point). Verified live: round-tripped a real
+  `.sbf` produced by `REQ-SB-85-US-02`'s own already-`Done` `commit_export`
+  (skill + template + pipeline + agent selection) — the returned manifest
+  and payload byte dict matched the writer's own real output exactly, and
+  all four confirmed malformed-archive cases (non-zip file, well-formed
+  zip with no manifest, manifest with unparsable JSON, manifest missing a
+  required key) each raised `MalformedBundleError` cleanly, before any
+  byte was returned.
+- feat: `PipelineManager` gains a real, narrowly-scoped import-only write
+  path (`REQ-SB-85-US-03-T04`, `ADR-015`) — `data_access/pipelines.py`
+  gains `write_pipeline_json(pipeline_id, data)` (same raw-I/O-only
+  discipline as the existing `read_pipeline_json`: no defaults filled, no
+  shape validated, creates the `pipelines/` definitions directory if
+  missing, always overwrites whatever's already there for that id).
+  `PipelineManager.import_pipeline(pipeline_id, data)` validates `data`
+  by round-tripping it through the existing `_to_pipeline` parser first
+  (a `TypeError`/`KeyError` there propagates uncaught, never writing
+  invalid JSON to disk), then writes it and returns the freshly-written
+  `Pipeline` (read-your-own-write, same convention as
+  `TemplateManager.import_template`). `import_pipeline` always writes
+  unconditionally — it makes no conflict decision of its own; the future
+  import orchestrator (`T05`) is responsible for only calling it once
+  overwrite/skip/keep-both has already been decided. `PipelineManager`'s
+  own module docstring updated to drop the "Read-only for now... no
+  create/update/delete... none is built here either" framing per
+  `ADR-015`'s own Decision. Verified live: a well-formed `import_pipeline`
+  call returned the correct `Pipeline` and a fresh
+  `PipelineManager().get_by_id()` independently confirmed the same data
+  was actually persisted to disk; a deliberately malformed call
+  (`steps: "not-a-list"`) raised a real `TypeError` from the existing
+  parser and left no `<id>.json` on disk for that id; scratch pipeline
+  file cleaned up afterward.
+- feat: `TemplateManager` gains a real, narrowly-scoped import-only write
+  path (`REQ-SB-85-US-03-T03`, `ADR-015`) — `data_access/templates.py`
+  gains `write_template_json(template_id, data)` (same raw-I/O-only
+  discipline as the existing `read_template_json`: no defaults filled, no
+  shape validated, creates the Template's own directory if missing,
+  always overwrites whatever's already there for that id).
+  `TemplateManager.import_template(template_id, data)` validates `data`
+  by round-tripping it through the existing `_to_template` parser first
+  (a `TypeError`/`KeyError` there propagates uncaught, never writing
+  invalid JSON to disk), then writes it and returns the freshly-written
+  `Template` (read-your-own-write, matching `AgentManager.create`/
+  `update`'s own convention). `import_template` always writes
+  unconditionally — it makes no conflict decision of its own; the future
+  import orchestrator (`T05`) is responsible for only calling it once
+  overwrite/skip/keep-both has already been decided. Both modules' own
+  header docstrings updated to drop the "read-only for now"/"zero real
+  callers" framing per `ADR-015`'s own Decision. Verified live: a
+  well-formed `import_template` call returned the correct `Template` and
+  a fresh `TemplateManager().get_by_id()` independently confirmed the
+  same data was actually persisted to disk; a deliberately malformed
+  call (`sections: "not-a-list"`) raised a real `TypeError` from the
+  existing parser and left no `Template.json` on disk for that id;
+  scratch Template directory cleaned up afterward.
+- feat: `SettingsArtifactsPage.tsx` (new) — the Settings → Artifacts
+  cross-type browser (`REQ-SB-85-US-01-T02`), reachable via a new
+  "Artifacts" card on the Settings landing page (`SettingsPage.tsx`,
+  `SETTINGS_SECTIONS`) and a new `/settings/artifacts` route (`App.tsx`).
+  Fetches the real `GET /artifacts` (`T01`) on mount via a new
+  `src/frontend/src/features/settings/artifactsApiClient.ts`, groups the
+  flat response into 4 fixed sections (Skills, Templates, Agents,
+  Pipelines, every heading rendering even when its own group is empty —
+  an honest `[data-role="artifact-empty-<kind>"]` row instead of a hidden
+  or fabricated one), each real artifact rendered via the already-approved
+  `.item-list`/`.item-row` family (`SettingsVaultTemplatesPage.tsx`/
+  `SettingsSectionsPage.tsx`'s own pattern, reused verbatim, no new CSS).
+  A leading checkbox per row accumulates a cross-kind selection
+  (`Record<ArtifactKind, Set<string>>`, ephemeral/client-side only, the
+  real hand-off point `REQ-SB-85-US-02`/`US-03`'s own Export/Import
+  frontend tasks read from); a selection-summary strip shows the combined
+  count plus a per-kind breakdown, and a clear-selection control (disabled
+  when the selection is empty) resets every kind without mutating the
+  underlying list. Functional-first per the parent story's own operator-
+  overridden `gate_reason` — no new visual system, real polish deferred to
+  a later `/design` pass. All 5 locked ACs verified live against the real
+  running app (real backend, real vault-backed 70 artifacts across all 4
+  kinds) via a headless-Edge CDP session; `AC-03`'s honest-empty-kind case
+  used the task's own explicitly-permitted mocked-filtered-response
+  technique since no kind is naturally empty on this deployment today.
+- feat: `app/business/logic/artifact_dependency_resolver.py` (new) — the
+  real cross-artifact dependency-closure resolver for `.sbf` export
+  (`REQ-SB-85-US-02-T02`, `ADR-013`). `resolve_closure(selection)` takes
+  an initial `[{"kind", "id"}, ...]` selection and returns the FULL real
+  closure (one entry per artifact, `included_reason: "selected"` |
+  `"dependency"`, `depends_via` naming the parent + relationship),
+  composing `SkillManager`/`TemplateManager`/`AgentManager`/
+  `PipelineManager` plus `data_access.skills.read_skill_md`/
+  `list_scripts` (no owned store, no file write). Recurses an Agent's own
+  `skill_ids`/`depends_on` transitively (cycle-safe — each `(kind, id)`
+  is traversed at most once per call); detects a Skill's own implicit
+  Template.json coupling via a plain literal-substring text scan of its
+  `SKILL.md` + real script content (the disclosed v1 heuristic,
+  `ADR-013`'s own Consequences); recurses a Pipeline's own step Agents
+  the same way as a direct Agent selection. Every id — selected or
+  discovered as a dependency — is validated against its own kind's
+  Manager before being added; an unresolvable one is skipped silently,
+  never crashing the call and never dropping the rest of a partially-
+  unresolvable selection. A Skill's own shared-file `scripts/` copies are
+  deliberately NOT added as separate closure entries (disclosure only,
+  per `ADR-013`'s own Decision text — `T04`'s archive writer includes
+  that content regardless). Fixed a real, live-confirmed data-shape
+  mismatch in-scope: an Agent's own `skill_ids` are Hermes' raw
+  `"<category>/<slug>"` form, normalized to the bare slug `SkillManager`
+  keys everything by before lookup (see `MEMORY.md`). Verified live
+  against the real vault/Hermes install — the real `create-companies-partners`
+  Skill genuinely pulls in its real `customer`/`partner` Templates; the
+  real `compass-expert` Agent's own real `skill_ids` recurse into its
+  real Skill and that Skill's own real Template coupling; Pipeline
+  step-Agent recursion and cycle-safety verified via in-process
+  monkeypatch (no real Pipeline/Agent in this deployment currently has a
+  real Agent-shaped step id / non-empty `depends_on` to exercise directly
+  — a disclosed, honest environment finding, not a defect); an
+  unresolvable selected id is skipped with zero effect on the rest of the
+  closure.
+- feat: `HermesCLI.export_profile(name, output_path)` /
+  `HermesCLI.import_profile(archive_path, name=None)`
+  (`src/backend/app/hermes/cli.py`, `REQ-SB-85-US-02-T01`, `ADR-014`) — two
+  new same-shape `_run()` subprocess wrappers (matching
+  `create_profile`/`delete_profile`/`describe_profile`) around Hermes' own
+  real, already-shipped `hermes profile export <name> -o <output_path>` /
+  `hermes profile import <archive> [--name <name>]` CLI subcommands, both
+  at a 120.0s timeout. Never parses/inspects/re-scans the resulting archive
+  bytes — opaque to Second Brain (`ADR-014`'s own boundary); a real name
+  collision on import surfaces as `(False, <real collision text>)`, never
+  raises. The building block `REQ-SB-85-US-02-T04` (`.sbf` archive writer)
+  and `REQ-SB-85-US-03-T05` (Agent import) compose. Live-verified against a
+  real, disposable Hermes profile pair (created and deleted within the same
+  pass) — export produced a real non-zero-size `.tar.gz`, import with
+  `--name` produced a real, readable profile, a same-name re-import
+  correctly failed with the real collision message, both scratch profiles
+  cleaned up afterward. Note: the real installed CLI passes the export
+  output path via `-o`/`--output`, not a second positional argument as
+  `ADR-014`'s own Context and this task's own prose describe — corrected
+  in-scope against the live `--help` output; addendum noted on the existing
+  `ADR-013`/`ADR-014` `REVIEW-QUEUE.md` entry.
+- feat: `app/business/logic/artifact_secret_scan.py` (new) — the secret-scan
+  gate for `.sbf` capability-bundle export (`REQ-SB-85-US-02-T03`,
+  `ADR-013`). `scan_closure(closure)` scans genuinely-new Second-Brain-owned
+  text a resolved export closure would write (a Skill's own `SKILL.md`/
+  `scripts/**`, a Template's own `Template.json`, an Agent's own
+  Registry-side `Agent.json`/`soul.md` mirror) against a disclosed,
+  non-exhaustive v1 secret-shaped-string pattern set (`sk-...` API keys,
+  `Bearer <token>` headers, `AKIA...` AWS access keys, 32+ hex-char generic
+  tokens) — never the nested `agents/<id>/profile.tar.gz`, which arrives
+  already silently redacted by Hermes' own `export_profile` (`ADR-014`).
+  `apply_decisions(closure_content, findings, decisions)` applies an
+  operator's locked per-finding action (`REQ-SB-85-US-02-AC-03`: Redact /
+  Keep as-is / Cancel export) in-memory, never writing to disk itself —
+  raises `SecretScanCancelledError` if any decision is `"cancel"`
+  (`AC-07`), `SecretScanIncompleteError` if any real finding has no
+  decision at all. Verified live against real vault data (the real
+  `create-companies-partners` Skill, the real `customer` Template, the
+  real `macc-expert` Agent) with an in-process monkeypatch inducing one
+  engineered secret-shaped finding.
+- feat: `app/business/logic/sbf_archive.py` (new, writer half) +
+  `app/business/logic/artifact_export.py` (new) + `POST /artifacts/
+  export/preview` + `POST /artifacts/export/commit`
+  (`REQ-SB-85-US-02-T04`, `ADR-013`) — the real `.sbf` export pipeline,
+  composing `T01`/`T02`/`T03`. `sbf_archive.write_archive(output_path,
+  manifest, payload)` is a plain, zero-business-decision real zip writer
+  (`manifest.json` + every `payload` key as its own real archive member,
+  bytes written verbatim). `preview_export(selection)` resolves + scans,
+  writes nothing. `commit_export(selection, secret_decisions)` — the ONLY
+  function in this whole subsystem that ever writes a real file —
+  re-resolves and re-scans FRESH (never trusts a cached preview),
+  gates on `apply_decisions` (propagates `SecretScanIncompleteError`/
+  `SecretScanCancelledError` uncaught before any archive byte is
+  written), then assembles the real payload: every Skill's own redacted
+  `SKILL.md`/`scripts/**`, every Template's own redacted `Template.json`,
+  every Pipeline's own real `pipelines/<id>.json`, every Agent's own
+  RAW `profile.tar.gz` (`HermesCLI.export_profile`, written to and read
+  back from a scratch temp path, deleted immediately after) plus its
+  redacted `Agent.json`/`soul.md` Registry mirror, and a genuinely empty
+  `seed_data/Settings/Entities.md` whenever the closure's own Skills
+  literally reference `Entities.md` (a disclosed v1 one-entry allowlist —
+  never reads the real current file's own content). The router maps
+  `SecretScanCancelledError` → `409`, `SecretScanIncompleteError` → `400`,
+  otherwise streams the real `.sbf` via `FileResponse` and deletes the
+  scratch temp file afterward via FastAPI's own `BackgroundTasks`. All 6
+  locked ACs (`AC-02`/`AC-03`/`AC-04`/`AC-05`/`AC-06`/`AC-07`) verified
+  live against the real, running app and real vault/Hermes data — a
+  Standard bundle (`capture-notes`+`note`) carried no captured content; a
+  Customer-Tracking bundle (`create-companies-partners`) carried a
+  byte-for-byte-empty `Entities.md` seed file, confirmed against the real
+  5,920-byte file on disk; an Agent bundle (`azure-expert`) carried a real
+  14.6MB `profile.tar.gz` plus its Registry mirror; an in-process
+  monkeypatch of `skills_data.read_skill_md` induced a real secret finding
+  — an incomplete decision set correctly `400`'d, a `"cancel"` decision
+  correctly `409`'d with zero real source-file mutation and zero leftover
+  scratch temp files across every scenario. Live finding logged to
+  `MEMORY.md`: `T02`'s own Skill→Template heuristic is genuinely
+  over-inclusive in practice (a shared `vault_manager.py` script
+  enumerates every Template id), not just theoretically false-negative-
+  prone as `ADR-013` disclosed — does not affect any locked AC here.
+- feat: Export flow UI — dependency-preview + secret-scan confirmation
+  screens (`REQ-SB-85-US-02-T05`, final task of `REQ-SB-85-US-02` and
+  `SPRINT-079`). `artifactsApiClient.ts` gained `previewExport()` (thin
+  JSON wrapper over `POST /artifacts/export/preview`) and `commitExport()`
+  (a dedicated raw `fetch` call resolving `response.blob()` for the real
+  `.sbf` bytes — bypasses the shared JSON-only `apiFetch` helper, see
+  `MEMORY.md`). `SettingsArtifactsPage.tsx` gained an `export-selected`
+  trigger (enabled only when the selection is non-empty) that calls
+  `/preview` and renders `[data-role="export-dependency-preview"]` —
+  every real closure entry, labeled "directly selected" or "included
+  because: {depends_via}" — BEFORE anything is committed. When
+  `secret_findings` is empty, a direct `export-confirm` control on that
+  same panel commits straight through and triggers a real browser
+  download (`URL.createObjectURL` + a programmatic `<a download>` click).
+  When findings exist, a second `[data-role="secret-scan-confirmation"]`
+  screen renders instead — per-finding `Redact`/`Keep as-is` controls
+  keyed by the same `"{file_path}:{line}"` identity
+  `artifact_secret_scan.py`'s own `_finding_key` uses server-side, a
+  genuinely-disabled `export-confirm` until every finding is decided, and
+  an `export-cancel` that resets local state without ever calling
+  `/commit`. Any `400`/`409` from `/commit` renders an honest inline
+  `[data-role="export-error"]` with the real backend detail message, never
+  a silent failure. All 4 tagged locked ACs (`AC-01`/`AC-02`/`AC-03`/
+  `AC-07`) verified live against the real running app (backend `8001`,
+  frontend `5173`) via a minimal Node native-fetch/native-WebSocket CDP
+  driver against headless Edge: the real `create-companies-partners`
+  Skill's own 8-entry closure rendered with only `/preview` called before
+  commit, then its own zero-secret-findings selection produced exactly
+  one `/commit` call and a real downloaded `.sbf`; a disposable scratch
+  Skill (deleted immediately after) with an engineered AWS-key-shaped
+  literal produced a real secret-scan screen whose Confirm started
+  disabled, enabled after a Redact decision, and whose `/commit` body
+  carried that exact real decision keyed by the real finding; canceling
+  from a fresh secret-scan screen fired zero `/commit` calls and left zero
+  new downloaded files. Also live-verified beyond the 4 tagged steps: a
+  structurally-disabled Confirm's own real `onClick` handler, invoked
+  directly via its React Fiber props, surfaced the real backend's `400`
+  verbatim in the inline error panel. Environment fix needed first: the
+  already-running backend dev server predated `REQ-SB-85-US-02-T04`'s own
+  commit and had no `--reload` flag, so it was still serving only
+  `GET /artifacts` — killed that specific PID and started a fresh
+  `--reload` instance before verifying (see `REQ-SB-85-US-02-T05`'s own
+  Implementation Log).
+- feat: `GET /artifacts` (`REQ-SB-85-US-01-T01`) — a new cross-type
+  artifact inventory composing the four already-`Done` Managers
+  (`SkillManager`/`TemplateManager`/`AgentManager`/`PipelineManager`)
+  into one flat, `kind`-tagged list (`app/business/logic/
+  artifacts_inventory.py`, `app/api/artifacts_router.py`, registered in
+  `main.py`). Pure read composition, no owned store, no caching — the
+  foundation the Settings → Artifacts browser (`T02`) and the Export
+  flow (`REQ-SB-85-US-02`) build on. A malformed Template (`Template.error`
+  set) is still listed, with `description` set to `f"Error: {error}"`
+  instead of being silently dropped.
 - fix: `DELETE /agents/{id}` and `name`/`description` on
   `PATCH /agents/{id}` now actually work — `AgentManager.delete()` had
   zero API exposure (same gap `POST /agents` itself had before its own

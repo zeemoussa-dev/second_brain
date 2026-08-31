@@ -8085,3 +8085,216 @@ each story's own `## Notes` for the authorization breadcrumb.)
   → `Implementation/Tasks/REQ-SB-82-US-06-T04-short-reply-shortcut.md` … `T08-agent-chat-panel-reply-to.md`
   → `Implementation/Sprints/SPRINT-078-live-routing-fix-and-reply-to-message.md`
 
+- [x] 2026-08-31 · **REQ-SB-85-US-01** · run `/design` for the new Settings
+  → Artifacts cross-type browser before frontend tasks are cut
+  **Resolved same day** — operator directly overrode this: build
+  functional-first, `/design` happens AFTER the task works, matching this
+  exact session's own established precedent (`REQ-SB-82-US-06-T07`/`T08`
+  shipped functional-but-unstyled UI, styled separately once proven).
+  Story's own `gate` set to `clear`; `/plan-tasks` proceeds without
+  waiting on a prototype. A real `/design REQ-SB-85` pass is still
+  expected later, for polish, not gating this build.
+  Plain English: this story adds a brand-new Settings → Artifacts screen
+  (a cross-type, multi-selectable list of every real Skill/Template/
+  Agent/Pipeline) with no `html-prototype/` coverage anywhere (confirmed
+  against the full prototype catalog before writing this story). The
+  per-row rendering reuses an already-approved list pattern, but the
+  cross-type grouping + multi-select selection UI itself is genuinely new
+  interaction with no prior approved screen. Nothing else about the story
+  is ambiguous — it composes only already-`Done` Managers
+  (`SkillManager`/`TemplateManager`/`AgentManager`/`PipelineManager`) with
+  zero new write path.
+  **What to do:** run `/design REQ-SB-85` — ideally in one pass covering
+  this story's browser alongside `REQ-SB-85-US-02`'s dependency-preview/
+  secret-scan screens and `REQ-SB-85-US-03`'s upload/conflict-resolution
+  screens, since all three are one related Settings → Artifacts flow —
+  then approve in a browser before `/plan-tasks` cuts this story's
+  frontend task.
+  → `Implementation/UserStories/REQ-SB-85-US-01-artifact-browser.md`
+
+- [x] 2026-08-31 · **REQ-SB-85-US-02** · run `/design` for the new
+  dependency-preview and secret-scan confirmation screens; one disclosed,
+  non-blocking judgement call on the secret-finding action verbs
+  **`/design` portion resolved same day** — operator directly overrode
+  this: build functional-first, design after (see `REQ-SB-85-US-01`'s own
+  resolution note for the full reasoning/precedent). Story's own `gate`
+  set to `clear`. The secret-finding action verbs judgement call stands
+  as recorded — still worth a `/plan-tasks` confirm, not blocking.
+  Plain English: this story (the Export half of REQ-SB-85's own 3-way
+  split — see REQ-SB-85-US-01's Context for the split rationale) resolves
+  a real cross-artifact dependency closure and scans for secret-shaped
+  strings before writing a single `.sbf` bundle. Both new screens (what's
+  included and why; per-finding secret confirmation) have zero
+  `html-prototype/` coverage. Everything else genuinely resolvable was
+  grounded directly against real, installed code — Hermes' own already-
+  built `hermes profile export`/`import` CLI (confirmed live at
+  `hermes_cli/profiles.py`, including its own existing silent secret-
+  scrub, which this story's "never silent" promise deliberately does NOT
+  change), the real two-piece Agent-export composition (Hermes profile +
+  Second Brain's own Registry-side Agent.json, confirmed to live in two
+  entirely separate trees), and the real shared-file (`vault_manager.py`)
+  precedent already copied into 8 real Skills. One disclosed, non-locked
+  judgement call was made per this run's own "trust your judgment"
+  authorization: the exact 3 secret-finding action verbs (Redact / Keep
+  as-is / Cancel export) — not blocking, `/plan-tasks`/`/design` may
+  adjust the exact wording.
+  **What to do:** run `/design REQ-SB-85` (see REQ-SB-85-US-01's own
+  entry — one combined pass across all three substories is recommended);
+  separately, confirm or adjust the secret-finding action verbs before
+  `/plan-tasks` locks the ACs around them.
+  → `Implementation/UserStories/REQ-SB-85-US-02-export-dependency-closure-and-secret-scan.md`
+
+- [x] 2026-08-31 · **REQ-SB-85-US-03** · run `/design` for the new
+  upload/preview and per-artifact conflict-resolution screens; two
+  disclosed, non-blocking real write-path gaps to build (Template,
+  Pipeline)
+  **`/design` portion resolved same day** — operator directly overrode
+  this: build functional-first, design after (see `REQ-SB-85-US-01`'s own
+  resolution note for the full reasoning/precedent). Story's own `gate`
+  set to `clear`. The Template/Pipeline write-path gaps stand as
+  recorded — still worth a `/plan-tasks` confirm, not blocking.
+  Plain English: this story (the Import half of REQ-SB-85's own 3-way
+  split) uploads a `.sbf` bundle, asks the operator explicitly to
+  resolve every per-artifact id conflict (overwrite/skip/keep both — the
+  PRD itself confirms this exact 3-way choice, unlike US-02's own
+  secret-action verbs), and provisions each artifact for real. Both new
+  screens have zero `html-prototype/` coverage. Two real, confirmed
+  technical gaps were found while grounding the provisioning mechanism,
+  not assumed away: `TemplateManager` and `PipelineManager` are both
+  read-only today (confirmed by direct reading — neither has a
+  create/write method anywhere), so this story must add a same-shape
+  write extension to each (mirroring how `AgentManager`'s own Registry
+  writer was the one genuinely new piece against an otherwise read-only
+  store) — a buildable, disclosed extension, not a design fork. The
+  Agent-import mechanism's overwrite/keep-both handling is grounded
+  directly against real code too: Hermes' own `import_profile`'s `name`
+  override is the real "keep both" primitive; `AgentManager.delete()` +
+  a fresh import is the real "overwrite" primitive.
+  **What to do:** run `/design REQ-SB-85` (see REQ-SB-85-US-01's own
+  entry — one combined pass across all three substories is recommended);
+  confirm the Template/Pipeline write-path additions at `/plan-tasks`
+  before tasks are cut.
+  → `Implementation/UserStories/REQ-SB-85-US-03-import-conflict-resolution-and-provisioning.md`
+
+- [ ] 2026-08-31 · **REQ-SB-85-US-02** · review `ADR-013`/`ADR-014` before
+  the export build starts
+  Plain English: the architect pass for `REQ-SB-85` wrote three new ADRs.
+  `ADR-013` defines the `.sbf` bundle itself — a real zip with a
+  `manifest.json`, the dependency-closure resolution logic (including a
+  disclosed heuristic: a Skill's implicit Template.json coupling is
+  detected by a static text scan of its own script content for a real
+  Template id, since no structured field for this exists anywhere today),
+  and where the secret-scan gate sits (Second-Brain-owned bytes only,
+  never the nested Hermes profile piece). `ADR-014` decides how the Agent
+  kind's real Hermes profile gets exported/imported — reusing Hermes' own
+  `hermes profile export`/`import` CLI via a new same-shape extension of
+  the existing `HermesCLI` wrapper class, rather than reimplementing any
+  of Hermes' own packaging/redaction logic. Both are new architectural
+  surface with no prior precedent in this codebase (the first-ever bundle
+  archive format; the first-ever write-capable Hermes CLI wrapper beyond
+  profile create/delete/describe).
+  **What to do:** review `ADR-013` and `ADR-014` in
+  `Implementation/Architecture/ADR.md`, approve or reject (a rejection
+  needs a new superseding ADR, never an edit to these), then run
+  `/plan-tasks` again if you change either.
+  → `Implementation/Architecture/ADR.md`
+  → `Implementation/UserStories/REQ-SB-85-US-02-export-dependency-closure-and-secret-scan.md`
+
+  **Addendum, 2026-08-31 — `REQ-SB-85-US-02-T01` build finding (non-blocking,
+  build already correct against live ground truth).** `ADR-014`'s own
+  Context text describes the real export subcommand as `hermes profile
+  export <name> [output]` (implying a second positional argument). Live
+  `hermes profile export --help` against this machine's own real,
+  installed `hermes.exe`, cross-checked against `hermes_cli/subcommands/
+  profile.py`, shows the output path is actually a **flag**
+  (`-o`/`--output`), never positional (`usage: hermes profile export [-h]
+  [-o OUTPUT] profile_name`). `import_profile` matches `ADR-014` exactly
+  (`hermes profile import [-h] [--name NAME] archive`). The built
+  `HermesCLI.export_profile` already uses the correct, live-verified `-o`
+  flag — no code fix needed, just an `ADR-014` text correction for whenever
+  it's next touched. Separately: `import_profile`'s real collision message
+  is `Error: Profile '<name>' already exists at <path>` (confirmed against
+  `hermes_cli/main.py`'s own `except (ValueError, FileExistsError,
+  FileNotFoundError) as e: print(f"Error: {e}")` handler) — it does not
+  literally contain the string `FileExistsError`; `REQ-SB-85-US-03-T05`'s
+  own conflict-detection matching should key on the real message text
+  (e.g. "already exists") or the non-zero exit, not that literal class-name
+  substring. Full detail in `REQ-SB-85-US-02-T01`'s own Implementation Log.
+  → `Implementation/Tasks/REQ-SB-85-US-02-T01-hermes-cli-export-import-wrappers.md`
+
+- [ ] 2026-08-31 · **REQ-SB-85-US-03** · review `ADR-015` (and `ADR-014`,
+  shared with `US-02`) before the import build starts
+  Plain English: `ADR-015` gives `TemplateManager`/`PipelineManager` a
+  real write path (`Template.json`/Pipeline-JSON authoring) so an import
+  can actually provision a bundled Template/Pipeline onto the target
+  machine — a disclosed, scoped reversal of each module's own documented
+  "read-only for now" stance (both modules' own header comments say this
+  today; the coder must update both comments once the writer lands). It
+  is deliberately narrow: import provisioning only, no general
+  Templates/Pipelines authoring UI. `ADR-014` (see `US-02`'s own entry
+  above) is this story's own real mechanism for the Agent kind's
+  conflict handling (`import_profile`'s `--name` override for "keep
+  both," `AgentManager.delete()` + re-import for "overwrite").
+  **What to do:** review `ADR-015` (and `ADR-014` if not already reviewed
+  via `US-02`) in `Implementation/Architecture/ADR.md`, approve or
+  reject, then run `/plan-tasks` again if you change either.
+  → `Implementation/Architecture/ADR.md`
+  → `Implementation/UserStories/REQ-SB-85-US-03-import-conflict-resolution-and-provisioning.md`
+
+- [ ] 2026-09-01 · **REQ-SB-85-US-03-T05** · two findings from the real,
+  live import-orchestrator build/verification — one scope-internal
+  assumption, one pre-existing bug in already-`Done` code (not fixed here)
+  Plain English: (1) a freshly-imported Skill's `name`/`description` are
+  parsed from its own bundled `SKILL.md` YAML frontmatter, since the
+  `.sbf` manifest's own frozen shape (`ADR-013`) never carries Skill
+  metadata — a reasonable, disclosed judgement call, but worth a quick
+  look since it touches a frozen ADR's own shape indirectly. (2) **Real
+  bug, confirmed live, NOT fixed (out of `T05`'s own `## Files to
+  Modify`)**: `SkillManager.delete()`/`.undeploy()` (`business/core/
+  skills/skill_manager.py`, an earlier, already-`Done` story) pass our
+  bare-slug `skill_id` straight to `HermesSkills.delete(profile_id,
+  skill_id)`, which expects Hermes' own `"category/slug"` id form — the
+  real per-profile deployed skill folder is silently never removed
+  (`delete()` still reports `{"deleted": True}`); only the canonical
+  `Hermes-Provisioning/skills/` copy and Registry metadata are actually
+  cleaned up. Confirmed live twice during `T05`'s own scratch-artifact
+  cleanup (two disposable Skills, both left real orphaned folders under
+  the real `default` Hermes profile until worked around by calling
+  `HermesSkills.delete` directly with the correct id form).
+  **What to do:** (1) spot-check the Skill-name-derivation choice, no
+  action needed if acceptable. (2) file this as a `BUG-NNN` via `/bug`
+  (Area: Logic) so it's tracked to a real fix — every Skill ever deployed
+  to a profile and then deleted currently leaves its real folder behind
+  on that profile.
+  → `Implementation/Tasks/REQ-SB-85-US-03-T05-import-orchestrator.md`
+  → `src/backend/app/business/core/skills/skill_manager.py`
+  → `MEMORY.md`
+
+- [ ] 2026-09-01 · **REQ-SB-85-US-03-T06** · two scope-internal judgement
+  calls from the Import flow UI build, logged for spot-check (not a
+  blocking ambiguity)
+  Plain English: (1) the `extractErrorDetail()` helper `SettingsArtifactsPage.
+  tsx` already had (originally Export-only) now also serves the new Import
+  flow on the same page — its non-`ApiError` fallback string was
+  generalized from `"Export failed."` to `"Request failed."` for
+  correctness (a mechanical, same-file fix; every real backend rejection
+  is still an `ApiError`, so this fallback path is essentially unreachable
+  in practice). (2) Since both the upload/preview and per-artifact
+  conflict-resolution screens are `net-new-design-needed` (zero
+  `html-prototype/` coverage, functional-first per the story's own
+  operator-overridden `gate_reason`), this task made its own placement/
+  layout calls not specified anywhere: the Import card sits between the
+  existing selection-summary and Export-preview cards; the skill
+  target-profile checklist renders inline inside each artifact's own
+  `item-row-main`; the 3-way conflict control renders in that row's
+  `item-row-actions` (mirroring the Export flow's own existing
+  secret-finding redact/keep row shape on this same page).
+  **What to do:** (1) spot-check the fallback-string generalization, no
+  action needed if acceptable — it's a pure correctness fix, not a
+  behavior change on any real path. (2) this placement/layout is exactly
+  the kind of thing the still-pending `/design REQ-SB-85` pass (covering
+  `US-01`/`US-02`/`US-03`'s screens together) should confirm or revise —
+  no action needed before then; not blocking.
+  → `Implementation/Tasks/REQ-SB-85-US-03-T06-import-flow-ui.md`
+  → `src/frontend/src/pages/SettingsArtifactsPage.tsx`
+
