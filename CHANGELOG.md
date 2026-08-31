@@ -18,6 +18,14 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix: `create_companies_partners.py` no longer mis-tags real
+  Opportunities as if they were Customer/Partner hub notes. A broad
+  folder-shape scan wrongly matched Opportunities' own nested path
+  shape, corrupting 10 of the operator's 13 real Opportunities (a bogus
+  self-tag plus empty stray log/captures files) the first time the new
+  daily cron job ran live. Fixed by checking the note's real `type`
+  before treating it as a hub note; all 10 corrupted Opportunities were
+  cleaned up by hand.
 - feat: Customer/Partner (and Affiliate) hub-note creation is now a thin
   `vault_manager.py` orchestrator instead of ~1100 lines of hand-rolled
   slugify/frontmatter/parent-linking code — `create_companies_partners.py`

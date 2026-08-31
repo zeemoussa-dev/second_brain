@@ -292,6 +292,16 @@ def _ensure_frontmatter(path: Path, frontmatter: dict) -> None:
 
 
 def _iter_hub_notes(vault_path: Path):
+    """Real bug, found live 2026-08-31: an Opportunity's own real path
+    (`Work/Customers/<Customer>/Opportunities/<Title>/<Title>.md`) matches
+    the SAME "folder named after itself" shape a Customer/Partner hub note
+    has -- without a real `type` check, this wrongly caught every
+    Opportunity too (bogus self-tag, spurious blank -log/-captures
+    siblings), confirmed live against 10 of the operator's own real
+    Opportunities. `type` is the one field that actually distinguishes a
+    hub note from anything else nested under Work/Customers or
+    Work/Partners that happens to share its own-folder shape."""
+    expected_type = {"customer": "Customer", "partner": "Partner"}
     for root_name, kind in (("Customers", "customer"), ("Partners", "partner")):
         root = vault_path / "Work" / root_name
         if not root.exists():
@@ -302,6 +312,9 @@ def _iter_hub_notes(vault_path: Path):
             if md_path.stem.endswith("-log") or md_path.stem.endswith("-captures"):
                 continue
             if md_path.parent.name != md_path.stem:
+                continue
+            frontmatter, _ = vm.read_note(md_path)
+            if frontmatter.get("type") != expected_type[kind]:
                 continue
             yield md_path, kind
 
