@@ -15,6 +15,7 @@ const SETTINGS_SECTIONS = [
   { key: 'vault', icon: 'folder_open', label: 'Vault', desc: 'Your Obsidian vault path and status.', href: '/settings/vault' },
   { key: 'config', icon: 'settings', label: 'Config', desc: 'App configuration.', href: '/settings/config' },
   { key: 'ui', icon: 'palette', label: 'UI', desc: 'Display and appearance preferences.', href: '/settings/ui' },
+  { key: 'artifacts', icon: 'inventory_2', label: 'Artifacts', desc: 'Export or import Skills, Templates, Agents, and Pipelines as a portable bundle.', href: '/settings/artifacts' },
 ] as const;
 
 export function SettingsPage() {

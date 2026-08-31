@@ -9,6 +9,7 @@ import { MyDayCalendarPage } from './pages/MyDayCalendarPage';
 import { MyDayTodoPage } from './pages/MyDayTodoPage';
 import { MyDayApprovalsPage } from './pages/MyDayApprovalsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { SettingsArtifactsPage } from './pages/SettingsArtifactsPage';
 import { SettingsSystemPage } from './pages/SettingsSystemPage';
 import { SettingsSectionsPage } from './pages/SettingsSectionsPage';
 import { SettingsVaultPage } from './pages/SettingsVaultPage';
@@ -49,6 +50,7 @@ function App() {
           <Route path="/settings/vault/index-builder" element={<SettingsVaultIndexBuilderPage />} />
           <Route path="/settings/config" element={<SettingsConfigPage />} />
           <Route path="/settings/ui" element={<SettingsUIPage />} />
+          <Route path="/settings/artifacts" element={<SettingsArtifactsPage />} />
           <Route path="/system-health" element={<SystemHealthPage />} />
           <Route path="/agent-activity" element={<AgentActivityPage />} />
           <Route path="/browse" element={<VaultBrowserPage />} />
