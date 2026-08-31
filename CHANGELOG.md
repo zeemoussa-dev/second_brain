@@ -18,6 +18,35 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: Customer/Partner (and Affiliate) hub-note creation is now a thin
+  `vault_manager.py` orchestrator instead of ~1100 lines of hand-rolled
+  slugify/frontmatter/parent-linking code — `create_companies_partners.py`
+  now calls the engine's own `create()` for the hub+log+captures shape.
+  Three new generic engine capabilities landed for this: an OPTIONAL
+  `parent` (a top-level entity has none, an Affiliate does),
+  `parent.on_missing: "auto_create"` (the real "Add the Parent if it's
+  not in the file, it will come later" rule, now generic instead of
+  hand-rolled per script), and `root.children` (fixed sibling files —
+  log/captures — created atomically alongside the root note, with an
+  auto-populated wikilink index section). Entities.md parsing, the
+  domain-based Person/Thread/Meeting retag passes, and the engagement-
+  type classifier are unchanged, real business logic. Verified via a
+  full live scratch-vault run of all three real scenarios (top-level
+  creation, an Affiliate under an existing parent, an Affiliate under an
+  unknown parent triggering auto-create), an idempotent re-run, and
+  `--retag-only` mode; deployed to all 17 real active Hermes profiles
+  that carry this skill.
+- feat: registered the real, previously-missing daily cron job for
+  Create Companies & Partners (`create-companies-partners`, every 24h,
+  silent/local delivery) — closes the original bug report ("Companies
+  and Partners... been on the Approve but not created for a while").
+  There was never a broken job to fix, just no job at all. Verifying the
+  new `--no-agent` wrapper script against the real vault also performed
+  the real, wanted backlog creation: 5 real Companies/Partners that had
+  been sitting curated-but-uncreated actually got created (Investbank,
+  Bankfab, Ey, Oracle, Rebellions), plus the full retag cascade ran for
+  real (23 People moved, 119 retagged/relinked, 24 Threads + 91 Meetings
+  updated).
 - feat: Chat's activity trace reads in plain English now instead of raw
   tool names/commands — a cross-Profile delegation shows as "Asking
   Opp Manager to: <task>" / "Opp Manager finished"; common tools

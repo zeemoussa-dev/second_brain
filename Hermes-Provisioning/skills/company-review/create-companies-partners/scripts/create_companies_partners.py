@@ -5,6 +5,25 @@ filled in) and creates the real Customer/Partner (and their Affiliate)
 hub notes from it. Never touches Threads, never summarizes -- that's
 Step 4, separate and later.
 
+`vault_manager.py`-based replacement for the original hand-rolled version
+(2026-08-31, operator: "Full migration" -- the same "Why we need to create
+script everytime we add a skill We Generalized so we don't do that" fix
+already applied to Opportunities). The hub+log+captures note itself, the
+Affiliate<->parent resolution (including the real "Add the Parent if it's
+not in the file" auto-create), and the "## Affiliates" back-link are all
+now the engine's own real `create()` (a `customer`/`partner` Template.json,
+`parent.required: false`, `parent.on_missing: "auto_create"`,
+`root.children` for log/captures, `parent.link_back_section`) instead of
+this file's own hand-rolled slugify/collision/frontmatter/linking logic.
+Entities.md's own parsing/rendering, the domain-based Person/Thread/
+Meeting retag passes, and the engagement-type classifier are UNCHANGED,
+reused as-is -- real, working, company-review-specific business logic,
+not part of the write-mechanics problem `vault_manager.py` solves. Tag/
+line-insert writes (`merge_tags`, `upsert_namespaced_tag`,
+`insert_body_line_if_missing`) now call the engine's own shared, generic
+versions of the same real primitives this file's own copies were
+independently reimplementing (confirmed by direct reading, 2026-08-30).
+
 Structure built (operator's own spec, 2026-08-21):
 
     Work/Customers/<Name>/
@@ -59,97 +78,35 @@ import json
 import re
 from pathlib import Path
 
+import vault_manager as vm
+
 _SLUG_INVALID_CHARS = re.compile(r'[\\/:*?"<>|]')
-_FRONTMATTER_LINE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*):\s?(.*)$")
-_LIST_ITEM_PATTERN = re.compile(r'"((?:[^"\\]|\\.)*)"')
 _BODY_SECTION_HEADER_PATTERN = re.compile(r"^## .+$", re.MULTILINE)
 
 _KNOWN_FIELDS = {"Company Name", "Aliases", "Affiliate of", "Created", "Ignore", "Domain", "Deleted"}
 
+_CUSTOMER_TEMPLATE_ID = "customer"
+_PARTNER_TEMPLATE_ID = "partner"
+
 # Section-ownership guard, matching the same discipline every other
-# Skill's own vault_lib.py uses. Kept as a per-header allow-list (not one
-# single caller) since 2026-08-21: this module now writes two different
-# headers on two different note kinds -- "## Affiliates" on a hub note
-# (link_affiliate_to_parent) and "## Related" on a Thread's own concept
-# note (retag_threads_by_participant_company, alongside the Person
-# wikilinks email-thread-capture's own link_person_to_thread.py already
-# puts there -- a different Skill's own module, so this is a deliberate
-# cross-skill write onto the same header, not a conflict: both add
-# wikilinks, never remove either's).
-_CALLER = "create_companies_partners.link_affiliate_to_parent"
+# Skill's own vault_lib.py uses -- kept LOCAL (not promoted into
+# vault_manager.py) since it's about which FUNCTION IN THIS SCRIPT may
+# write which header on a Thread/Meeting note that isn't even created
+# through a Customer/Partner template, not a generic engine concern.
+# "## Affiliates" no longer needs a caller here at all -- vault_manager's
+# own `create()` writes that back-link itself now, via
+# `parent.link_back_section`.
 _THREAD_RELATED_CALLER = "create_companies_partners.retag_threads_by_participant_company"
 _MEETING_RELATED_CALLER = "create_companies_partners.retag_meetings_by_attendee_company"
 _CALLER_ALLOW_LISTS = {
-    _CALLER: frozenset({"## Affiliates"}),
     _THREAD_RELATED_CALLER: frozenset({"## Related"}),
     _MEETING_RELATED_CALLER: frozenset({"## Related"}),
 }
 
+
 def _slugify(text: str, max_len: int = 80) -> str:
     slug = _SLUG_INVALID_CHARS.sub("-", text).strip()
     return slug[:max_len] if slug else "untitled"
-
-
-def _format_frontmatter_value(value) -> str:
-    if isinstance(value, list):
-        return "[" + ", ".join(_format_frontmatter_value(v) for v in value) + "]"
-    if isinstance(value, str):
-        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-        return f'"{escaped}"'
-    return str(value)
-
-
-def _parse_frontmatter_value(raw: str):
-    raw = raw.strip()
-    if raw.startswith('"') and raw.endswith('"'):
-        return raw[1:-1].replace('\\"', '"').replace("\\\\", "\\")
-    if raw.startswith("[") and raw.endswith("]"):
-        inner = raw[1:-1]
-        return [
-            match.group(1).replace('\\"', '"').replace("\\\\", "\\")
-            for match in _LIST_ITEM_PATTERN.finditer(inner)
-        ]
-    return raw
-
-
-def read_note(path: Path) -> tuple[dict, str]:
-    text = path.read_text(encoding="utf-8")
-    if not text.startswith("---\n"):
-        return {}, text
-    end = text.find("\n---\n", 4)
-    if end == -1:
-        return {}, text
-    frontmatter_block = text[4:end]
-    body = text[end + 5:]
-    frontmatter: dict = {}
-    for line in frontmatter_block.splitlines():
-        match = _FRONTMATTER_LINE.match(line)
-        if match:
-            frontmatter[match.group(1)] = _parse_frontmatter_value(match.group(2))
-    return frontmatter, body
-
-
-def _write_frontmatter_note(path: Path, frontmatter: dict, body: str) -> None:
-    frontmatter_lines = ["---"]
-    for key, value in frontmatter.items():
-        frontmatter_lines.append(f"{key}: {_format_frontmatter_value(value)}")
-    frontmatter_lines.append("---")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(frontmatter_lines) + "\n\n" + body, encoding="utf-8")
-
-
-def insert_body_line_if_missing(path: Path, line: str) -> bool:
-    text = path.read_text(encoding="utf-8")
-    if line in text:
-        return False
-    end = text.find("\n---\n", 4)
-    if end == -1:
-        path.write_text(line + "\n\n" + text, encoding="utf-8")
-        return True
-    body_start = end + 6
-    new_text = text[:body_start] + line + "\n\n" + text[body_start:]
-    path.write_text(new_text, encoding="utf-8")
-    return True
 
 
 def insert_body_section_if_missing(path: Path, header: str) -> bool:
@@ -160,18 +117,6 @@ def insert_body_section_if_missing(path: Path, header: str) -> bool:
     separator = "" if text.endswith("\n") else "\n"
     path.write_text(text + separator + f"\n{header}\n", encoding="utf-8")
     return True
-
-
-def read_body_section(path: Path, header: str) -> str:
-    text = path.read_text(encoding="utf-8")
-    header_line_pattern = re.compile(r"^" + re.escape(header) + r"$", re.MULTILINE)
-    header_match = header_line_pattern.search(text)
-    if header_match is None:
-        return ""
-    region_start = header_match.end()
-    next_header_match = _BODY_SECTION_HEADER_PATTERN.search(text, region_start)
-    region_end = next_header_match.start() if next_header_match else len(text)
-    return text[region_start:region_end].strip("\n")
 
 
 def replace_body_section(path: Path, header: str, new_content: str, *, caller: str) -> bool:
@@ -279,28 +224,34 @@ def _render_entry(lines: list[str], entry: dict) -> None:
     lines.append("")
 
 
-# ── hub note creation / linking ─────────────────────────────────────────
+# ── hub note creation (vault_manager.py's own create(), not hand-rolled) ─
 
 def _entry_name(entry: dict) -> str:
     return (entry["fields"].get("Company Name") or entry["heading"]).strip()
 
 
-def _write_or_backfill_identifying_header(path: Path, identifying_name: str) -> None:
-    """Mirrors Second Brain's own vault_writer.py primitive of the same
-    name exactly (operator, 2026-08-21: "Like we had in Second Brain"):
-    fresh creation writes `# {name}\n\n` as the whole file; an
-    already-existing, already-headered file (first line already starts
-    with "# ") is left untouched -- idempotent on a re-run, and never
-    clobbers real content a later job (not built yet) writes into log.md/
-    captures.md."""
-    header = f"# {identifying_name}\n\n"
-    if not path.exists():
-        path.write_text(header, encoding="utf-8")
-        return
-    text = path.read_text(encoding="utf-8")
-    if text.split("\n", 1)[0].startswith("# "):
-        return
-    path.write_text(header + text, encoding="utf-8")
+def _hub_root(section: str) -> str:
+    return "Customers" if section == "customer" else "Partners"
+
+
+def _hub_path(vault_path: Path, name: str, section: str) -> Path:
+    folder = vault_path / "Work" / _hub_root(section) / _slugify(name)
+    return folder / f"{_slugify(name)}.md"
+
+
+def _affiliate_path(parent_folder: Path, name: str) -> Path:
+    folder = parent_folder / "Affiliates" / _slugify(name)
+    return folder / f"{_slugify(name)}.md"
+
+
+def _hub_frontmatter(name: str, domain: str, aliases: str) -> dict:
+    frontmatter: dict = {"name": name}
+    if domain:
+        frontmatter["domain"] = domain
+    alias_list = [a.strip() for a in aliases.split(",") if a.strip()]
+    if alias_list:
+        frontmatter["aliases"] = alias_list
+    return frontmatter
 
 
 def _tag_slug(text: str) -> str:
@@ -317,71 +268,27 @@ def _split_domains(domain_field: str) -> list[str]:
     return [d.strip().lower() for d in domain_field.split(",") if d.strip()]
 
 
-def create_hub_note(md_path: Path, name: str, kind_section: str, domain: str, aliases: str, affiliate_of_name: str) -> None:
-    entity_type = "Customer" if kind_section == "customer" else "Partner"
-    alias_list = [a.strip() for a in aliases.split(",") if a.strip()]
-    # 2026-08-21 bug fix: a hub note never carried its own self-tag
-    # (operator: "Mubadala for example wasn't tagged customer/mubadala")
-    # -- matches every other note kind in this vault, which always tags
-    # itself (e.g. a Person note's own "kind/person").
-    self_tag = f"{kind_section}/{_tag_slug(md_path.stem)}"
-    frontmatter = {"type": entity_type, "name": name, "tags": [self_tag]}
-    if domain:
-        frontmatter["domain"] = domain
-    if alias_list:
-        frontmatter["aliases"] = alias_list
-    frontmatter["affiliate_of"] = affiliate_of_name or ""
-
-    # Name-prefixed (operator, 2026-08-21: "[Customer Name]-log.md and
-    # same for Capture so I can see the files later") -- a bare "log.md"/
-    # "captures.md" would collide across every Customer/Partner (same
-    # filename, different folders), both as an ambiguous [[log]] wikilink
-    # target AND when just browsing a flat file listing. The name prefix
-    # fixes both at once.
-    slug = md_path.stem
-    log_path = md_path.parent / f"{slug}-log.md"
-    captures_path = md_path.parent / f"{slug}-captures.md"
-    body = (
-        "## Affiliates\n\n"
-        f"## Log & Captures\n\n- [[{log_path.stem}|Log]]\n- [[{captures_path.stem}|Captures]]\n"
-    )
-    _write_frontmatter_note(md_path, frontmatter, body)
-    # 2026-08-21 bug fix: log.md/captures.md had no frontmatter at all
-    # (operator: "log and Capture file doesn't contain the Front
-    # Matter") -- every other note in this vault has one.
-    _ensure_frontmatter(log_path, {"type": "Log", "name": f"{name} Log", "parent": f"[[{md_path.stem}]]"})
-    _ensure_frontmatter(captures_path, {"type": "Captures", "name": f"{name} Captures", "parent": f"[[{md_path.stem}]]"})
-    _write_or_backfill_identifying_header(log_path, name)
-    _write_or_backfill_identifying_header(captures_path, name)
-
-
 def _ensure_frontmatter(path: Path, frontmatter: dict) -> None:
     """Backfills a frontmatter block onto a file that doesn't have one
-    yet (log.md/captures.md were originally created as a bare identifying
-    header with no frontmatter at all) -- a no-op once it already has
-    one, so this is safe to call on every run, not just fresh creation."""
+    yet (a hub note's own log.md/captures.md, created by a PRE-migration
+    run of this script, was originally a bare identifying header with no
+    frontmatter at all) -- a no-op once it already has one, so this is
+    safe to call on every run, not just fresh creation. Kept local -- a
+    narrow, one-off legacy-repair shape (plain string fields only:
+    `type`/`name`/`parent`), not a general enough primitive to promote
+    into vault_manager.py."""
     if not path.exists():
-        _write_frontmatter_note(path, frontmatter, "")
+        vm.write_note(path, frontmatter, "")
         return
     text = path.read_text(encoding="utf-8")
     if text.startswith("---\n"):
         return
-    frontmatter_lines = ["---"]
+    lines = ["---"]
     for key, value in frontmatter.items():
-        frontmatter_lines.append(f"{key}: {_format_frontmatter_value(value)}")
-    frontmatter_lines.append("---")
-    path.write_text("\n".join(frontmatter_lines) + "\n\n" + text, encoding="utf-8")
-
-
-def link_affiliate_to_parent(parent_md: Path, affiliate_md: Path) -> None:
-    wikilink = f"[[{affiliate_md.stem}]]"
-    insert_body_section_if_missing(parent_md, "## Affiliates")
-    existing = read_body_section(parent_md, "## Affiliates")
-    if wikilink in existing:
-        return
-    lines = [line for line in existing.splitlines() if line.strip()]
-    lines.append(f"- {wikilink}")
-    replace_body_section(parent_md, "## Affiliates", "\n".join(lines), caller=_CALLER)
+        escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
+        lines.append(f'{key}: "{escaped}"')
+    lines.append("---")
+    path.write_text("\n".join(lines) + "\n\n" + text, encoding="utf-8")
 
 
 def _iter_hub_notes(vault_path: Path):
@@ -399,35 +306,6 @@ def _iter_hub_notes(vault_path: Path):
             yield md_path, kind
 
 
-def merge_tags(path: Path, new_tags: list[str]) -> bool:
-    """Unions new_tags into path's own `tags` frontmatter list, never
-    overwriting existing ones. Returns True if the file changed."""
-    frontmatter, _ = read_note(path)
-    existing = list(frontmatter.get("tags") or [])
-    merged = existing + [t for t in new_tags if t not in existing]
-    if merged == existing:
-        return False
-    text = path.read_text(encoding="utf-8")
-    end = text.find("\n---\n", 4)
-    if end == -1:
-        return False
-    frontmatter_block = text[: end + 1]
-    rest = text[end + 1:]
-    lines = frontmatter_block.splitlines(keepends=True)
-    new_line = f"tags: {_format_frontmatter_value(merged)}\n"
-    replaced = False
-    for i, line in enumerate(lines):
-        match = _FRONTMATTER_LINE.match(line.rstrip("\n"))
-        if match and match.group(1) == "tags":
-            lines[i] = new_line
-            replaced = True
-            break
-    if not replaced:
-        lines.insert(-1, new_line)
-    path.write_text("".join(lines) + rest, encoding="utf-8")
-    return True
-
-
 def move_people_for_domain(vault_path: Path, domain: str, target_people_dir: Path, entity_md: Path, kind_section: str) -> int:
     domains = _split_domains(domain)
     if not domains:
@@ -442,7 +320,7 @@ def move_people_for_domain(vault_path: Path, domain: str, target_people_dir: Pat
     for person_path in sorted(flat_people_dir.glob("*.md")):
         if not person_path.is_file():
             continue
-        frontmatter, _ = read_note(person_path)
+        frontmatter, _ = vm.read_note(person_path)
         email = (frontmatter.get("email") or "").strip().lower()
         if not email or "@" not in email:
             continue
@@ -453,8 +331,8 @@ def move_people_for_domain(vault_path: Path, domain: str, target_people_dir: Pat
         if new_path.exists():
             continue  # already moved on a prior run -- idempotent
         person_path.rename(new_path)
-        insert_body_line_if_missing(new_path, f"**{link_label}:** {wikilink}")
-        merge_tags(new_path, [tag])
+        vm.insert_body_line_if_missing(new_path, f"**{link_label}:** {wikilink}")
+        vm.merge_tags(new_path, [tag])
         moved += 1
     return moved
 
@@ -478,7 +356,7 @@ def retag_people_by_domain(vault_path: Path) -> dict:
     tagged: list[str] = []
     linked: list[str] = []
     for hub_md, kind in _iter_hub_notes(vault_path):
-        frontmatter, _ = read_note(hub_md)
+        frontmatter, _ = vm.read_note(hub_md)
         domains = _split_domains(frontmatter.get("domain") or "")
         if not domains:
             continue
@@ -488,15 +366,15 @@ def retag_people_by_domain(vault_path: Path) -> dict:
         for person_path in vault_path.rglob("*.md"):
             if not person_path.is_file():
                 continue
-            person_frontmatter, _ = read_note(person_path)
+            person_frontmatter, _ = vm.read_note(person_path)
             if person_frontmatter.get("type") != "Person":
                 continue
             email = (person_frontmatter.get("email") or "").strip().lower()
             if not email or "@" not in email or email.rsplit("@", 1)[1] not in domains:
                 continue
-            if merge_tags(person_path, [tag]):
+            if vm.merge_tags(person_path, [tag]):
                 tagged.append(str(person_path))
-            if insert_body_line_if_missing(person_path, f"**{link_label}:** {wikilink}"):
+            if vm.insert_body_line_if_missing(person_path, f"**{link_label}:** {wikilink}"):
                 linked.append(str(person_path))
     return {"tagged": tagged, "linked": linked}
 
@@ -512,31 +390,19 @@ def _wikilink_stem(link: str) -> str:
 def merge_list_field(path: Path, field_name: str, new_values: list[str]) -> bool:
     """Unions new_values into path's own `field_name` frontmatter list
     (creating it if absent), never overwriting existing entries -- same
-    contract as merge_tags, generalized to any list-valued field (used
-    for `company_links` on RawMessage notes, below)."""
-    frontmatter, _ = read_note(path)
+    contract as vault_manager's own `merge_tags`, generalized to any
+    list-valued field (used for `company_links` on RawMessage notes,
+    below). Kept local -- vault_manager.py's own `merge_tags` is
+    specifically the `tags` field; there's no real caller elsewhere in
+    this vault yet for an arbitrary-field version, so it hasn't been
+    promoted."""
+    frontmatter, body = vm.read_note(path)
     existing = list(frontmatter.get(field_name) or [])
     merged = existing + [v for v in new_values if v not in existing]
     if merged == existing:
         return False
-    text = path.read_text(encoding="utf-8")
-    end = text.find("\n---\n", 4)
-    if end == -1:
-        return False
-    frontmatter_block = text[: end + 1]
-    rest = text[end + 1:]
-    lines = frontmatter_block.splitlines(keepends=True)
-    new_line = f"{field_name}: {_format_frontmatter_value(merged)}\n"
-    replaced = False
-    for i, line in enumerate(lines):
-        match = _FRONTMATTER_LINE.match(line.rstrip("\n"))
-        if match and match.group(1) == field_name:
-            lines[i] = new_line
-            replaced = True
-            break
-    if not replaced:
-        lines.insert(-1, new_line)
-    path.write_text("".join(lines) + rest, encoding="utf-8")
+    frontmatter[field_name] = merged
+    vm.write_note(path, frontmatter, body)
     return True
 
 
@@ -558,7 +424,7 @@ def _build_person_email_index(vault_path: Path) -> dict[str, str]:
     for path in vault_path.rglob("*.md"):
         if not path.is_file():
             continue
-        frontmatter, _ = read_note(path)
+        frontmatter, _ = vm.read_note(path)
         if frontmatter.get("type") != "Person":
             continue
         email = (frontmatter.get("email") or "").strip().lower()
@@ -575,7 +441,7 @@ def _build_domain_company_index(vault_path: Path) -> list[tuple[list[str], str, 
     themselves."""
     entries: list[tuple[list[str], str, str]] = []
     for hub_md, kind in _iter_hub_notes(vault_path):
-        frontmatter, _ = read_note(hub_md)
+        frontmatter, _ = vm.read_note(hub_md)
         domains = _split_domains(frontmatter.get("domain") or "")
         if domains:
             entries.append((domains, kind, hub_md.stem))
@@ -618,7 +484,7 @@ def retag_threads_by_participant_company(vault_path: Path) -> dict:
     messages_updated: list[str] = []
 
     for thread_md in _iter_thread_notes(vault_path):
-        frontmatter, _ = read_note(thread_md)
+        frontmatter, _ = vm.read_note(thread_md)
         if frontmatter.get("type") != "Thread":
             continue
         messages_dir = thread_md.parent / "messages"
@@ -628,7 +494,7 @@ def retag_threads_by_participant_company(vault_path: Path) -> dict:
         for message_path in sorted(messages_dir.glob("*.md")):
             if not message_path.is_file():
                 continue
-            message_frontmatter, _ = read_note(message_path)
+            message_frontmatter, _ = vm.read_note(message_path)
             participant_links = message_frontmatter.get("participant_links") or []
             message_companies: set[str] = set()
             for link in participant_links:
@@ -648,7 +514,7 @@ def retag_threads_by_participant_company(vault_path: Path) -> dict:
         if not thread_companies:
             continue
         insert_body_section_if_missing(thread_md, "## Related")
-        existing = read_body_section(thread_md, "## Related")
+        existing = vm.get_section_content(thread_md, "## Related")
         lines = [line for line in existing.splitlines() if line.strip()]
         changed = False
         for stem in sorted(thread_companies):
@@ -676,7 +542,7 @@ def _iter_meeting_notes(vault_path: Path):
     for concept_path in sorted(meetings_root.glob("*/*.md")):
         if not concept_path.is_file() or concept_path.parent.name != concept_path.stem:
             continue
-        frontmatter, _ = read_note(concept_path)
+        frontmatter, _ = vm.read_note(concept_path)
         if frontmatter.get("type") != "Meeting":
             continue
         is_series = bool(frontmatter.get("recurrence"))
@@ -709,9 +575,9 @@ def _apply_company_resolution(path: Path, resolved: set[tuple[str, str]], update
     if not resolved:
         return
     tags = [f"{kind}/{_tag_slug(stem)}" for kind, stem in resolved]
-    changed = merge_tags(path, tags)
+    changed = vm.merge_tags(path, tags)
     insert_body_section_if_missing(path, "## Related")
-    existing = read_body_section(path, "## Related")
+    existing = vm.get_section_content(path, "## Related")
     lines = [line for line in existing.splitlines() if line.strip()]
     for _kind, stem in sorted(resolved, key=lambda kv: kv[1]):
         wikilink = f"[[{stem}]]"
@@ -748,7 +614,7 @@ def retag_meetings_by_attendee_company(vault_path: Path) -> dict:
     for meeting_path, is_series_concept in _iter_meeting_notes(vault_path):
         if is_series_concept:
             continue  # handled after its occurrences, via series_rollup below
-        frontmatter, _ = read_note(meeting_path)
+        frontmatter, _ = vm.read_note(meeting_path)
         resolved = _resolve_companies_for_wikilinks(frontmatter.get("attendees") or [], person_emails, domain_index)
         _apply_company_resolution(meeting_path, resolved, meetings_updated)
 
@@ -765,24 +631,27 @@ def retag_meetings_by_attendee_company(vault_path: Path) -> dict:
 
 
 def backfill_hub_note_metadata(vault_path: Path) -> dict:
-    """2026-08-21 bug fix: create_hub_note's own self-tag and log/
-    captures-frontmatter fixes only apply at CREATION time (guarded by
-    `if not md_path.exists()` at every call site) -- a hub note created
-    by an EARLIER run, before those fixes existed, never gets touched
-    again and stays missing both (operator: "Mubadala for example wasn't
-    tagged customer/mubadala", "log and Capture file doesn't contain the
-    Front Matter"). This is the retroactive, idempotent, re-runnable
-    backfill for every hub note that already exists, using the same
-    non-destructive primitives (merge_tags, _ensure_frontmatter) so a
-    hub note's own body content (once someone starts adding real notes
-    to it) is never touched."""
+    """2026-08-21 bug fix: hub-note self-tagging and log/captures-
+    frontmatter only applied at CREATION time in the pre-migration
+    script -- a hub note created by an EARLIER run, before those fixes
+    existed, never got touched again and stayed missing both (operator:
+    "Mubadala for example wasn't tagged customer/mubadala", "log and
+    Capture file doesn't contain the Front Matter"). This is the
+    retroactive, idempotent, re-runnable backfill for every hub note
+    that already exists -- including ones now created via
+    vault_manager.py's own `create()`, which doesn't self-tag a hub note
+    at creation time either (no `parent.derived_tag` fits "tag with your
+    OWN name", only "tag with your PARENT's name") -- using the same
+    non-destructive primitives (vm.merge_tags, local _ensure_frontmatter)
+    so a hub note's own body content (once someone starts adding real
+    notes to it) is never touched."""
     self_tagged: list[str] = []
     log_captures_backfilled: list[str] = []
     for hub_md, kind in _iter_hub_notes(vault_path):
         tag = f"{kind}/{_tag_slug(hub_md.stem)}"
-        if merge_tags(hub_md, [tag]):
+        if vm.merge_tags(hub_md, [tag]):
             self_tagged.append(str(hub_md))
-        frontmatter, _ = read_note(hub_md)
+        frontmatter, _ = vm.read_note(hub_md)
         name = frontmatter.get("name") or hub_md.stem
         log_path = hub_md.parent / f"{hub_md.stem}-log.md"
         captures_path = hub_md.parent / f"{hub_md.stem}-captures.md"
@@ -829,7 +698,7 @@ def _compute_internal_hub_stems(vault_path: Path) -> set[str]:
     for hub_md, _kind in _iter_hub_notes(vault_path):
         if hub_md.stem.lower() in roots:
             internal.add(hub_md.stem)
-        frontmatter, _ = read_note(hub_md)
+        frontmatter, _ = vm.read_note(hub_md)
         affiliate_of = (frontmatter.get("affiliate_of") or "").strip()
         if affiliate_of:
             affiliate_of_map[hub_md.stem] = affiliate_of
@@ -843,42 +712,6 @@ def _compute_internal_hub_stems(vault_path: Path) -> set[str]:
                 internal.add(stem)
                 changed = True
     return internal
-
-
-def _upsert_namespaced_tag(path: Path, namespace: str, value: str) -> bool:
-    """Like merge_tags, but for a namespace that only ever holds ONE
-    value at a time (engagement/customer vs. engagement/partner vs.
-    engagement/internal are mutually exclusive) -- removes any existing
-    tag in this namespace before adding the new one, so a Thread/Meeting
-    whose real classification changes over time (a customer joins a
-    previously internal-only thread) doesn't end up wearing two
-    contradictory tags forever."""
-    frontmatter, _ = read_note(path)
-    existing = list(frontmatter.get("tags") or [])
-    new_tag = f"{namespace}/{value}"
-    filtered = [t for t in existing if not t.startswith(f"{namespace}/")]
-    merged = filtered + [new_tag]
-    if merged == existing:
-        return False
-    text = path.read_text(encoding="utf-8")
-    end = text.find("\n---\n", 4)
-    if end == -1:
-        return False
-    frontmatter_block = text[: end + 1]
-    rest = text[end + 1:]
-    lines = frontmatter_block.splitlines(keepends=True)
-    new_line = f"tags: {_format_frontmatter_value(merged)}\n"
-    replaced = False
-    for i, line in enumerate(lines):
-        m = _FRONTMATTER_LINE.match(line.rstrip("\n"))
-        if m and m.group(1) == "tags":
-            lines[i] = new_line
-            replaced = True
-            break
-    if not replaced:
-        lines.insert(-1, new_line)
-    path.write_text("".join(lines) + rest, encoding="utf-8")
-    return True
 
 
 def tag_engagement_type(vault_path: Path) -> dict:
@@ -919,23 +752,32 @@ def tag_engagement_type(vault_path: Path) -> dict:
             return "partner"
         return "internal"
 
+    def _already_classified(tags: list[str], classification: str) -> bool:
+        return f"engagement/{classification}" in tags
+
     threads_updated: list[str] = []
     for thread_md in _iter_thread_notes(vault_path):
-        frontmatter, _ = read_note(thread_md)
+        frontmatter, _ = vm.read_note(thread_md)
         if frontmatter.get("type") != "Thread":
             continue
-        classification = classify(frontmatter.get("tags") or [])
-        if _upsert_namespaced_tag(thread_md, "engagement", classification):
-            threads_updated.append(str(thread_md))
+        tags = frontmatter.get("tags") or []
+        classification = classify(tags)
+        if _already_classified(tags, classification):
+            continue  # vm.upsert_namespaced_tag has no idempotency check of its own -- skip a real no-op write
+        vm.upsert_namespaced_tag(thread_md, "engagement", classification)
+        threads_updated.append(str(thread_md))
 
     meetings_updated: list[str] = []
     for meeting_path, _is_series_concept in _iter_meeting_notes(vault_path):
-        frontmatter, _ = read_note(meeting_path)
+        frontmatter, _ = vm.read_note(meeting_path)
         if frontmatter.get("type") != "Meeting":
             continue
-        classification = classify(frontmatter.get("tags") or [])
-        if _upsert_namespaced_tag(meeting_path, "engagement", classification):
-            meetings_updated.append(str(meeting_path))
+        tags = frontmatter.get("tags") or []
+        classification = classify(tags)
+        if _already_classified(tags, classification):
+            continue
+        vm.upsert_namespaced_tag(meeting_path, "engagement", classification)
+        meetings_updated.append(str(meeting_path))
 
     return {"threads_updated": threads_updated, "meetings_updated": meetings_updated}
 
@@ -943,6 +785,12 @@ def tag_engagement_type(vault_path: Path) -> dict:
 def build(vault_path: Path, entities_path: Path) -> dict:
     content = entities_path.read_text(encoding="utf-8-sig")
     entries = parse_entities(content)
+
+    customer_template = vm.load_template(vault_path, _CUSTOMER_TEMPLATE_ID)
+    partner_template = vm.load_template(vault_path, _PARTNER_TEMPLATE_ID)
+
+    def _template_for(section: str) -> dict:
+        return customer_template if section == "customer" else partner_template
 
     created: list[str] = []
     skipped_ignored: list[str] = []
@@ -960,17 +808,19 @@ def build(vault_path: Path, entities_path: Path) -> dict:
         if entry["fields"].get("Ignore", "No").strip().lower() == "yes":
             skipped_ignored.append(name)
             continue
-        root = vault_path / ("Work/Customers" if entry["section"] == "customer" else "Work/Partners")
-        folder = root / _slugify(name)
-        md_path = folder / f"{_slugify(name)}.md"
+        section = entry["section"]
+        md_path = _hub_path(vault_path, name, section)
         already = entry["fields"].get("Created", "No").strip().lower() == "yes"
         if not md_path.exists():
-            create_hub_note(md_path, name, entry["section"], entry["fields"].get("Domain", ""), entry["fields"].get("Aliases", ""), "")
-        top_level_paths[name.lower()] = (folder, md_path, entry["section"])
+            vm.create(
+                vault_path, _template_for(section), title=name, note_name=_hub_root(section),
+                frontmatter=_hub_frontmatter(name, entry["fields"].get("Domain", ""), entry["fields"].get("Aliases", "")),
+            )
+        top_level_paths[name.lower()] = (md_path.parent, md_path, section)
         if already:
             skipped_already.append(name)
             continue
-        moved = move_people_for_domain(vault_path, entry["fields"].get("Domain", ""), folder / "People", md_path, entry["section"])
+        moved = move_people_for_domain(vault_path, entry["fields"].get("Domain", ""), md_path.parent / "People", md_path, section)
         people_moved_total += moved
         entry["fields"]["Created"] = "Yes"
         created.append(name)
@@ -991,36 +841,47 @@ def build(vault_path: Path, entities_path: Path) -> dict:
             # -- auto-create a bare top-level placeholder (no domain, no
             # aliases -- we don't know them yet) in the SAME section as
             # the child that named it, rather than skipping the child.
-            # Step 4 (or the operator by hand) fills in the placeholder's
-            # own details later; it's still real enough to nest an
-            # Affiliate under today.
+            # vault_manager's own create() would also auto-create a
+            # blank parent via parent.on_missing="auto_create" if this
+            # were left for it to discover on its own further down --
+            # resolved explicitly here instead because Entities.md also
+            # needs a matching placeholder ROW, which the engine has no
+            # way to know about. Step 4 (or the operator by hand) fills
+            # in the placeholder's own details later; it's still real
+            # enough to nest an Affiliate under today.
+            parent_section = entry["section"]
+            parent_md = _hub_path(vault_path, affiliate_of, parent_section)
+            if not parent_md.exists():
+                vm.create(vault_path, _template_for(parent_section), title=affiliate_of, note_name=_hub_root(parent_section))
             parent_entry = {
-                "section": entry["section"],
+                "section": parent_section,
                 "heading": affiliate_of,
-                "fields": {"Company Name": affiliate_of, "Aliases": "", "Affiliate of": "", "Created": "No", "Ignore": "No", "Domain": ""},
+                "fields": {"Company Name": affiliate_of, "Aliases": "", "Affiliate of": "", "Created": "Yes", "Ignore": "No", "Domain": ""},
             }
             entries.append(parent_entry)
-            parent_root = vault_path / ("Work/Customers" if entry["section"] == "customer" else "Work/Partners")
-            parent_folder = parent_root / _slugify(affiliate_of)
-            parent_md = parent_folder / f"{_slugify(affiliate_of)}.md"
-            if not parent_md.exists():
-                create_hub_note(parent_md, affiliate_of, entry["section"], "", "", "")
-            top_level_paths[affiliate_of.lower()] = (parent_folder, parent_md, entry["section"])
-            parent_entry["fields"]["Created"] = "Yes"
+            top_level_paths[affiliate_of.lower()] = (parent_md.parent, parent_md, parent_section)
             created.append(affiliate_of)
             auto_created_parents.append(affiliate_of)
             parent = top_level_paths[affiliate_of.lower()]
         parent_folder, parent_md, parent_section = parent
-        affiliate_folder = parent_folder / "Affiliates" / _slugify(name)
-        affiliate_md = affiliate_folder / f"{_slugify(name)}.md"
+        affiliate_md = _affiliate_path(parent_folder, name)
         already = entry["fields"].get("Created", "No").strip().lower() == "yes"
         if not affiliate_md.exists():
-            create_hub_note(affiliate_md, name, parent_section, entry["fields"].get("Domain", ""), entry["fields"].get("Aliases", ""), affiliate_of)
-        link_affiliate_to_parent(parent_md, affiliate_md)
+            # parent_value=affiliate_of -- the engine's own resolve_parent
+            # finds parent_md (already guaranteed to exist above), auto-
+            # derives note_name from it (_child_note_name), and writes
+            # the "## Affiliates" back-link onto parent_md itself
+            # (parent.link_back_section) -- replaces this file's own
+            # former hand-rolled link_affiliate_to_parent entirely.
+            vm.create(
+                vault_path, _template_for(parent_section), title=name,
+                frontmatter=_hub_frontmatter(name, entry["fields"].get("Domain", ""), entry["fields"].get("Aliases", "")),
+                parent_value=affiliate_of,
+            )
         if already:
             skipped_already.append(name)
             continue
-        moved = move_people_for_domain(vault_path, entry["fields"].get("Domain", ""), affiliate_folder / "People", affiliate_md, parent_section)
+        moved = move_people_for_domain(vault_path, entry["fields"].get("Domain", ""), affiliate_md.parent / "People", affiliate_md, parent_section)
         people_moved_total += moved
         entry["fields"]["Created"] = "Yes"
         created.append(name)
