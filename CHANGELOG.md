@@ -18,6 +18,19 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: Chat's activity trace reads in plain English now instead of raw
+  tool names/commands — a cross-Profile delegation shows as "Asking
+  Opp Manager to: <task>" / "Opp Manager finished"; common tools
+  (search, read/write a note, check a skill, web search) get a plain
+  present/past verb pair instead of their raw name.
+- feat: Chat's live activity trace shows real step-by-step progress
+  (which tool was called, with what command/args, and how long it
+  took) instead of a generic "Working…" label the whole turn — the
+  real signal (`tool.start`/`tool.complete`) was already arriving from
+  Hermes and being silently dropped. This is also what now makes
+  agent-to-agent delegation visible: a relay to another Profile is a
+  plain `terminal` tool call, so its own command text now shows up
+  live in the trace.
 - feat: Opportunity create AND update are now plain `vault_manager.py`
   CLI calls — zero entity-specific Python. `create_opportunity.py`/
   `update_opportunity.py` (both written earlier this same day) are

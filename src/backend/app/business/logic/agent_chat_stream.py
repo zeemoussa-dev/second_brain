@@ -23,7 +23,26 @@ from app.business.hermes.client import HermesUnavailableError
 # doing" signal, distinct from the actual reply text -- session.info/
 # session.title are pure metadata, not a human-readable progress
 # signal, deliberately excluded here rather than surfaced as noise.
-_ACTIVITY_EVENT_TYPES = frozenset({"thinking.delta", "status.update", "reasoning.available"})
+#
+# tool.start/tool.complete (2026-08-30, operator: "the UI is telling
+# Working I don't know WHich step its in... Agents should be Responsive
+# with Which Agent it called and What's the current Status") -- these
+# were ALREADY arriving on this exact socket, real and live (Hermes'
+# own `tui_gateway/server.py::_on_tool_start`/`_on_tool_complete`,
+# `_session_tool_progress_mode` defaults to "all", never opted out of
+# here), just silently dropped. This is the real signal that shows
+# agent-to-agent delegation happening: the Primary Agent relays to
+# another Profile via a plain `terminal(command="hermes -p <profile>
+# chat -q ...")` tool call (confirmed, MEMORY.md), so a `tool.start` for
+# `terminal` carries that exact command in its own `context` field
+# (Hermes' own 80-char preview, built once there -- not reimplemented
+# here). Does NOT give visibility into the DELEGATE's own internal
+# steps -- that one-shot CLI relay is a separate process, invisible on
+# the parent's own session; this only shows that a call is in flight
+# and what it is, which is what was actually missing.
+_ACTIVITY_EVENT_TYPES = frozenset(
+    {"thinking.delta", "status.update", "reasoning.available", "tool.start", "tool.complete"}
+)
 
 # A real status line often arrives as a Hermes-branded kaomoji plus a
 # word ("(°ロ°) cogitating...", "( ˘⌣˘)♡ reasoning...", "(｡•́︿•̀｡)
@@ -43,7 +62,115 @@ def _strip_kaomoji_prefix(text: str) -> str:
     return stripped if stripped else text
 
 
-def _extract_activity_text(payload: dict) -> str | None:
+# The `terminal(command="hermes -p <profile> chat -q \"...\"")` real
+# cross-Profile relay shape (MEMORY.md, confirmed live) -- matched
+# against `args.command` (2026-08-30, Hermes' own `agent/display.py`::
+# `build_tool_preview`'s `primary_args` map confirms `terminal`'s real
+# arg key is `command`, FULL text, not the 80-char `context` preview,
+# which could truncate mid-quote for a long delegated instruction).
+# Tolerant of `--profile` as well as `-p`, and either quote style,
+# since nothing pins the exact flag/quoting a future SOUL.md revision
+# might use -- a non-match just falls through to the generic terminal
+# phrasing below, never an error.
+_DELEGATION_COMMAND_RE = re.compile(
+    r"hermes\s+(?:-p|--profile)\s+(\S+)\s+chat\s+-q\s+([\"'])(.*)\2", re.DOTALL,
+)
+
+# Present/past tense pairs for the tool names actually seen live
+# (2026-08-30, operator: "I don't need to show the user many technical
+# stuff") -- `agent/display.py`'s own `primary_args` map is where these
+# real tool names come from, not guessed. Anything not listed here
+# falls back to a generic phrasing rather than silently doing nothing
+# for a real tool this list hasn't caught up to yet.
+_FRIENDLY_TOOL_VERBS: dict[str, tuple[str, str]] = {
+    "search_files": ("Searching the vault", "Searched the vault"),
+    "read_file": ("Reading a note", "Read a note"),
+    "write_file": ("Writing a note", "Wrote a note"),
+    "patch": ("Editing a note", "Edited a note"),
+    "skill_view": ("Checking a skill", "Checked a skill"),
+    "skills_list": ("Checking available skills", "Checked available skills"),
+    "web_search": ("Searching the web", "Searched the web"),
+    "web_extract": ("Reading a webpage", "Read a webpage"),
+}
+
+
+def _friendly_profile_name(profile_id: str) -> str:
+    return profile_id.replace("-", " ").replace("_", " ").strip().title() or profile_id
+
+
+def _friendly_task_preview(text: str, max_len: int = 70) -> str:
+    """Collapses real whitespace/newlines from a long delegated
+    instruction into one line, truncated for a status line, not a
+    transcript."""
+    collapsed = " ".join(text.split())
+    return collapsed if len(collapsed) <= max_len else collapsed[: max_len - 1].rstrip() + "…"
+
+
+def _delegation_activity_text(event_type: str, command: str) -> str | None:
+    match = _DELEGATION_COMMAND_RE.search(command)
+    if match is None:
+        return None
+    profile = _friendly_profile_name(match.group(1))
+    if event_type == "tool.complete":
+        return f"{profile} finished"
+    task = _friendly_task_preview(match.group(3))
+    return f"Asking {profile} to: {task}" if task else f"Asking {profile} for help"
+
+
+def _extract_tool_activity_text(event_type: str, payload: dict) -> str | None:
+    """`tool.start`/`tool.complete`'s own real payload shape (Hermes'
+    `_on_tool_start`/`_on_tool_complete`, `tui_gateway/server.py`) is
+    NOT the free-text `text`/`status`/`message` shape the other activity
+    events use -- `name` is the real tool (e.g. "terminal"), `context`
+    (start only) is Hermes' own 80-char raw command preview ("never a
+    phrased label", its own docstring), `args` (both, when non-empty)
+    carries the tool's own real, full arguments, `summary` (complete
+    only) is a real human-readable line for a FEW tools (web_search/
+    web_extract) -- None for most, including `terminal`.
+
+    2026-08-30 (operator: "make that more user Friendly like calling
+    another Agent 'Asking Opp Manager to create the opp' I don't need
+    to show the user many technical stuff") -- this used to just echo
+    Hermes' own raw command/tool-name text verbatim. Now: a real
+    cross-Profile delegation (the ONE case the operator's own example
+    named) reads as "Asking <Profile> to: <task>"/"<Profile> finished";
+    a handful of other real, commonly-seen tools get a plain-English
+    verb pair instead of their raw tool name; anything else still falls
+    back to the previous raw-text phrasing rather than showing nothing
+    for a real tool this hasn't been taught about yet."""
+    name = payload.get("name") or "a tool"
+    args = payload.get("args") or {}
+
+    if name == "terminal":
+        command = str(args.get("command") or payload.get("context") or "")
+        delegated = _delegation_activity_text(event_type, command)
+        if delegated is not None:
+            return delegated
+        # A real, non-delegation terminal call -- still avoid dumping
+        # raw shell syntax into the user-facing trace.
+        return "Running a command" if event_type == "tool.start" else "Finished running a command"
+
+    verbs = _FRIENDLY_TOOL_VERBS.get(name)
+    if event_type == "tool.start":
+        if verbs:
+            return verbs[0]
+        context = payload.get("context")
+        return f"Calling {name}: {context}" if context else f"Calling {name}"
+
+    summary = payload.get("summary")
+    if isinstance(summary, str) and summary.strip():
+        return summary if verbs is None else f"{verbs[1]} ({summary})"
+    if verbs:
+        return verbs[1]
+    duration = payload.get("duration_s")
+    if isinstance(duration, (int, float)):
+        return f"Finished {name} ({duration:.1f}s)"
+    return f"Finished {name}"
+
+
+def _extract_activity_text(event_type: str, payload: dict) -> str | None:
+    if event_type in ("tool.start", "tool.complete"):
+        return _extract_tool_activity_text(event_type, payload)
     for key in ("text", "status", "message", "summary"):
         value = payload.get(key)
         if isinstance(value, str) and value.strip():
@@ -98,7 +225,7 @@ async def _stream_reply(session) -> AsyncIterator[str]:
             yield _sse({"type": "error", "detail": "Hermes closed the connection"})
             return
         elif event_type in _ACTIVITY_EVENT_TYPES:
-            text = _extract_activity_text(payload)
+            text = _extract_activity_text(event_type, payload)
             if text:
                 yield _sse({"type": "activity", "text": text})
     yield _sse({"type": "error", "detail": "Hermes closed the connection before replying"})

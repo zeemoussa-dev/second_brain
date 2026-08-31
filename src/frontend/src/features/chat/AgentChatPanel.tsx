@@ -274,11 +274,23 @@ export function AgentChatPanel({ agentId, agentName, onMessageSent }: AgentChatP
                 reads as ambient "still working" texture, never mistaken
                 for the real answer. Auto-collapsed once real text starts
                 landing; still expandable afterward via <details>'s own
-                native disclosure, no extra state needed. */}
+                native disclosure, no extra state needed.
+
+                Live summary shows the LATEST activity line itself, not a
+                static "Working…" label (2026-08-30, operator: "the UI is
+                telling Working I don't know WHich step its in... Agents
+                should be Responsive with Which Agent it called and
+                What's the current Status") -- now that tool.start/
+                tool.complete frames actually reach here (agent_chat_
+                stream.py), that latest line is real, useful text like
+                `Calling terminal: hermes -p opp-manager chat -q "..."`,
+                not a placeholder. */}
             {!!message.activity?.length && (
               <details className="chat-activity" open={message.isStreaming && !message.text}>
                 <summary className={`chat-activity-summary${message.isStreaming ? ' chat-activity-summary--live' : ''}`}>
-                  {message.isStreaming ? 'Working…' : `Thought through ${message.activity.length} step${message.activity.length === 1 ? '' : 's'}`}
+                  {message.isStreaming
+                    ? message.activity[message.activity.length - 1]
+                    : `Thought through ${message.activity.length} step${message.activity.length === 1 ? '' : 's'}`}
                 </summary>
                 {message.activity.map((line, activityIndex) => (
                   <p className="chat-activity-line" key={activityIndex}>{line}</p>
