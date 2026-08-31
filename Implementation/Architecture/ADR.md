@@ -1461,3 +1461,304 @@ from Cockpit's own — a future reader should not assume the two
 the same user-facing verb.
 
 ---
+
+## ADR-013: `.sbf` Portable Capability Bundle — a real zip archive with a resolved-dependency-closure manifest, produced/consumed by a new `business/logic/` composition layer (never a 5th "Manager"), gated by an explicit, per-finding secret scan over Second-Brain-owned bytes only
+
+**Status:** Accepted
+**Date:** 2026-08-31
+
+**Context:** `REQ-SB-85-US-02`/`US-03` need a real, portable file that
+carries a genuinely working capability (Skills, Templates, Agents,
+Pipelines) — never the operator's own captured vault data — between
+deployments. Grounded directly against real, already-`Done` code (per
+`REQ-SB-85-US-01`'s own Context, confirmed by direct reading before this
+pass): all four kinds already have a real Manager gateway
+(`SkillManager`/`TemplateManager`/`AgentManager`/`PipelineManager`), none
+of which owns a cross-kind bundling concept. The PRD's own text requires
+(1) real dependency-closure resolution shown to the operator BEFORE any
+archive is written (a Skill's own shared-file copies, an Agent's own
+`skill_ids`/`depends_on`, a Skill's own implicit Template.json coupling, a
+Pipeline's own step Agents), (2) an explicit, per-finding secret-scan
+confirmation — never a silent strip, unlike Hermes' own already-shipped
+blind-scrub-on-export behavior for a whole profile (`ADR-014` covers that
+reused piece) — and (3) "a single real `.sbf` file," which Scenario 2 of
+`US-02` names directly as "a real zip archive."
+
+**Decision:**
+- **New `business/logic/` composition modules, not a 5th Manager** —
+  `artifact_dependency_resolver.py`, `artifact_secret_scan.py`,
+  `sbf_archive.py` (writer + reader, one shared module/shape). None of
+  these owns a store of its own; every one composes the four already-real
+  Managers plus `HermesCLI` (`ADR-014`). This matches the existing,
+  already-established distinction in this codebase between a `core`
+  Manager (owns one entity's own store) and a `business/logic/` module
+  (cross-entity composition, no owned store — `section_agents.py`,
+  `cockpit_view.py`, `system_health.py` are the direct precedent).
+- **Dependency-closure resolution** (`artifact_dependency_resolver.py`)
+  recurses: Skill → its own already-physically-copied shared `scripts/`
+  files (disclosure only, not a separate traversal — the bytes already
+  travel with the Skill); Agent → Registry `skill_ids`/`depends_on`,
+  transitively; Skill → implicit Template.json coupling, detected via a
+  static text scan of the Skill's own script content for any real
+  `TemplateManager` id appearing as a literal string (no structured field
+  exists anywhere today — confirmed by direct reading of the `Skill`
+  dataclass); Pipeline → its own step Agents, recursed the same way as a
+  direct Agent selection. The full resolved closure, with a reason per
+  artifact, is always shown to the operator before any archive byte is
+  written (Scenario 1) — never a silent auto-include.
+- **Secret scan** (`artifact_secret_scan.py`) is a hard gate between
+  "closure resolved" and "archive written." It scans ONLY genuinely-new
+  Second-Brain-owned bytes in the closure — Skill SKILL.md/scripts
+  content, Template.json content, seed/blank data file content. It never
+  re-scans or touches the nested Hermes profile sub-archive (`ADR-014`) —
+  that piece arrives already silently redacted by Hermes' own
+  `export_profile`; this system's "never silent" promise governs only the
+  surface it owns (Constraints, both stories). Three per-finding actions
+  — Redact / Keep as-is / Cancel export (the story's own disclosed,
+  non-locked judgement call) — are applied in-memory before the affected
+  file is written; the archive writer never runs while any finding is
+  undecided (Scenario 3, 7).
+- **`.sbf` format** (`sbf_archive.py`) — a real zip file:
+  - `manifest.json`: `format_version`, `generated_at`, `artifacts: [{kind,
+    id, included_reason: "selected"|"dependency", depends_via}]`,
+    `secret_scan: {findings_decided, redacted_count}`.
+  - `skills/<slug>/SKILL.md`, `skills/<slug>/scripts/**` — mirrors
+    `Hermes-Provisioning/skills/<category>/<slug>/` (category recorded in
+    the manifest entry, not the payload path).
+  - `templates/<id>/Template.json` — mirrors `data/Templates/<id>/
+    Template.json` exactly.
+  - `pipelines/<id>.json` — mirrors `pipelines/<id>.json` exactly.
+  - `agents/<agent_id>/profile.tar.gz` — the RAW, unmodified output of
+    `HermesCLI.export_profile` (`ADR-014`), nested and never unpacked/
+    repacked.
+  - `agents/<agent_id>/Agent.json`, `agents/<agent_id>/soul.md` — the
+    Registry-side mirror, same shape `registry_writer.write_agent_files`
+    already produces.
+  - `seed_data/<real-target-relative-path>` (e.g. `seed_data/Settings/
+    Entities.md`) — content genuinely empty (the hard capability/data
+    boundary, Scenarios 4/5), path mirroring the real target location so
+    import writes it back verbatim.
+- The writer (`US-02`) and reader (`US-03`) share this one module/format —
+  the two stories were deliberately sequenced so the format is designed
+  once, not independently per story.
+
+**Alternatives Considered:**
+- *Reuse Hermes' own `.tar.gz` format for the WHOLE `.sbf`, not just the
+  nested Agent piece* — rejected: the PRD's own text explicitly calls for
+  "a real zip," and three of the four kinds (Skill/Template/Pipeline) have
+  nothing to do with Hermes' own export mechanism at all; forcing
+  everything through Hermes' own tar.gz format would mean either
+  fabricating fake Hermes profiles for non-Agent artifacts or building a
+  second format anyway.
+- *Unpack-and-repack the Hermes profile sub-archive into the outer zip's
+  own flat namespace* (no nested tar.gz) — rejected: would require Second
+  Brain to fully understand and reproduce Hermes' own internal
+  profile-archive layout on the way back out at import time — a form of
+  reimplementing Hermes machinery this project's own standing constraint
+  rules out (`MEMORY.md`: Hermes is an external integration point, not
+  something this project builds). Nesting the untouched sub-archive keeps
+  Hermes' own export/import pair as the single source of truth for that
+  piece's internal shape.
+- *A database/structured-store manifest instead of a flat `manifest.json`
+  inside the zip* — rejected: every other real store in this codebase of
+  this shape (self-contained, portable, human-inspectable) is a flat JSON
+  file (`Template.json`, Pipeline JSON, `Agent.json`) — matches
+  established convention, and a `.sbf` is explicitly meant to be
+  portable/inspectable, not query-optimized.
+- *Detect a Skill's implicit Template.json coupling via a NEW structured
+  field on the `Skill` dataclass* (e.g. `template_ids: list[str]`) instead
+  of a static content scan — considered, not chosen for v1: the PRD's own
+  real example (`create-companies-partners`) has no such field today, and
+  retrofitting every existing Skill's own `Skill.json` with correct values
+  is real, separate migration work outside this requirement's own scope.
+  A static scan is a weaker but zero-migration heuristic that satisfies
+  the Gherkin's own externally-observable requirement now; the structured-
+  field approach is left as a natural future ADR once a second real
+  example demands better precision (see Consequences).
+
+**Consequences:** The Skill→Template heuristic (static content scan) can
+have false negatives for a Template reference not written as a literal
+quoted string matching a real Template id (e.g. built via string
+concatenation) — a disclosed, acceptable v1 limitation, not a blocking
+defect: the dependency-preview screen still lets the operator manually
+add a missed Template via `US-01`'s own multi-select before exporting, so
+a false negative degrades to "one more manual click," never data loss or
+a broken bundle. `.sbf` files can be large (a bundled Agent's own Hermes
+profile sub-archive can carry that profile's own full `skills/` tree) —
+no size-capping decision is made here; left as an operational concern if
+it becomes real. The nested Hermes sub-archive means a `.sbf`'s own Agent
+piece is not independently zip-tool-inspectable without a second unpack
+step (tar.gz inside zip) — an accepted trade-off for never reimplementing
+Hermes' own format. Every future artifact kind (should the PRD ever add
+one) needs its own manifest `kind` value and payload-path convention added
+here — this ADR's own layout is the extension point, not a closed enum
+enforced elsewhere.
+
+---
+
+## ADR-014: Hermes profile export/import is reused via a same-shape extension of the existing `HermesCLI` subprocess wrapper (`export_profile`/`import_profile`) — resolves `ADR-003`'s own deferred "real write access into Hermes" question for the profile-lifecycle surface specifically
+
+**Status:** Accepted
+**Date:** 2026-08-31
+
+**Context:** `ADR-003`'s own Consequences section explicitly named this
+exact open question and deliberately deferred it: "The eventual 'backend
+creates Agents/Pipelines/Cron Jobs in Hermes' direction... will need real
+write access into Hermes -- likely via its own CLI/API, a materially
+different, riskier capability than this read-only pass, and its own
+future decision." `REQ-SB-85-US-02`/`US-03` are the first real, concrete
+need for exactly this: exporting/importing a whole Hermes profile as part
+of an Agent artifact (`US-02`'s own Scenario 6 — every Agent export always
+carries both the real Hermes profile piece AND Second Brain's own
+Registry-side `Agent.json` mirror, two genuinely separate stores). Grounded
+directly against real, installed source (confirmed live, not assumed from
+the PRD's own prose alone): `app/hermes/cli.py::HermesCLI` already wraps
+`profile create/delete/describe` via a real, confirmed subprocess pattern
+against the real, installed `hermes.exe` binary; Hermes' own `hermes
+profile export <name> [output]` / `hermes profile import <archive>
+[--name <name>]` are real, already-shipped, non-interactive CLI
+subcommands (confirmed against `hermes_cli/profiles.py`, not just the
+Hermes REPL's own `/export`), with no existing wrapper anywhere in this
+repo.
+
+**Decision:** Add `HermesCLI.export_profile(name, output_path)` /
+`HermesCLI.import_profile(archive_path, name=None)` to the existing `app/
+hermes/cli.py` class — the exact same `_run()` subprocess-capture pattern
+as `create_profile`/`delete_profile`/`describe_profile`, same file, same
+class, no new module. These wrappers are the ONLY mechanism by which the
+`.sbf` export/import pipeline (`ADR-013`) produces/consumes an Agent
+artifact's Hermes-profile piece; the resulting archive bytes are treated
+as opaque by Second Brain — never parsed, never re-scanned for secrets,
+since Hermes' own `export_profile` already force-redacts every text-ish
+staged file (`agent.redact.redact_sensitive_text(..., force=True)`)
+before writing its own `tar.gz`. This is a genuinely SILENT strip on
+Hermes' own side — `ADR-013`'s own "never silent" secret-scan promise
+governs only Second Brain's own new bundle surfaces, never this reused
+piece; the two behaviors deliberately coexist, each on the surface it
+owns. `import_profile`'s own real `name` parameter (lands the imported
+profile under an alternate id, distinct from the archive's own top-level
+directory name) and its own real `FileExistsError`-on-name-collision are
+the exact primitives `US-03`'s "keep both" and Agent-kind conflict
+detection are built on — Second Brain does not invent a separate
+conflict-detection mechanism for this piece; it reads Hermes' own real
+signal.
+
+**Alternatives Considered:**
+- *Call Hermes' own `hermes serve` gateway REST API instead of the CLI*
+  (matching `hermes_client.py`'s existing pattern for other operations) —
+  rejected: confirmed (this pass, direct reading, and `ADR-003`'s own
+  prior live confirmation) that the REST gateway exposes chat/sessions/
+  config/status only, never a profile export/import operation — the CLI
+  is the only real surface for this.
+- *Reimplement profile packaging directly* (read `config.yaml`/`SOUL.md`/
+  `skills/` off disk, build the tar.gz ourselves) instead of shelling out
+  to Hermes' own `hermes profile export` — rejected: this is exactly the
+  "not ours to own or build" boundary `ADR-001`/`ADR-003` already
+  established for Hermes-owned data; Hermes' own export mechanism already
+  does real work Second Brain has no reason to duplicate (secret
+  redaction, the exact internal archive shape, staged-copy exclusions like
+  `.env`/`auth.json`) — reimplementing it risks silently diverging from
+  Hermes' own guarantees.
+- *Build a brand-new, separate wrapper class/module for just export/
+  import*, rather than extending the existing `HermesCLI` — rejected:
+  `export_profile`/`import_profile` are two more profile-lifecycle
+  operations, the exact same shape (subprocess, same binary, same class)
+  as the three already living there; a second class would be an arbitrary
+  split with no real boundary to justify it.
+
+**Consequences:** `HermesCLI` gains its first non-idempotent,
+potentially-large-output subprocess call (`export_profile` can produce a
+multi-MB archive) — reuses the existing `_run()` timeout mechanism; a
+generous timeout (matching `create_profile --clone`'s own 120s allowance)
+should be used, not the 30s default — flagged for the decomposer/coder.
+This answers `ADR-003`'s own deferred "real write access into Hermes"
+question ONLY for the profile export/import surface — it does NOT resolve
+`ADR-003`'s broader, still-open direction ("backend creates Agents/
+Pipelines/Cron Jobs in Hermes" from scratch); creating a brand-new Hermes
+profile from a UI form (rather than importing/cloning an existing one)
+remains out of this ADR's scope. Every future Second-Brain-side need to
+move a whole Hermes profile (backup, migration, cloning across machines)
+now has a real, reusable primitive instead of needing its own bespoke
+mechanism.
+
+---
+
+## ADR-015: `TemplateManager`/`PipelineManager` gain a real, narrowly-scoped write path (`Template.json`/Pipeline-JSON authoring) for import provisioning only — a disclosed, scoped reversal of each Manager's own documented "read-only for now" stance
+
+**Status:** Accepted
+**Date:** 2026-08-31
+
+**Context:** `TemplateManager`/`data_access/templates.py` and
+`PipelineManager`/`data_access/pipelines.py` are both explicitly,
+deliberately read-only today — confirmed by direct reading of both
+modules' own header docstrings: `pipeline_manager.py` states "Read-only
+for now... no create/update/delete existed before this and none is built
+here either, since that would be new functionality, not a migration of
+anything that already worked"; `TemplateManager`'s own module docstring
+likewise scopes it to `get_by_id`/`get_all` only. `REQ-SB-85-US-03`'s own
+import orchestration genuinely needs to write a real `Template.json`/
+Pipeline JSON file onto the target machine's own `<second_brain_data_path>`
+tree once a bundled Template/Pipeline artifact is deployed there (Scenario
+2) — a real, confirmed gap the analyst already surfaced directly (Context)
+rather than assuming around, not an ambiguity requiring escalation.
+
+**Decision:** Add a real write path to each, narrowly scoped to exactly
+what import provisioning needs:
+- `data_access/templates.py` gains `write_template_json(template_id,
+  data)` — same-shape sibling to the existing `read_template_json`, same
+  raw-I/O-only discipline (no defaults filled, no shape validation —
+  `TemplateManager`'s own job, same as the read side already is).
+  `TemplateManager` gains a real create/import method that calls it —
+  still the sole gateway onto Template data, never bypassed.
+- `data_access/pipelines.py` gains `write_pipeline_json(pipeline_id,
+  data)`; `PipelineManager` gains the matching create/import method. Same
+  shape, same narrow scope.
+- Both new writers author a file that must already validate against the
+  existing read-side dataclass shape (`Template`/`TemplateSection`,
+  `Pipeline`/`PipelineStep`) — no new fields, no new validation rules
+  beyond what each Manager's own `_to_template`/`_to_pipeline` already
+  expects on read.
+- The new `business/logic/artifact_import.py` orchestrator (`REQ-SB-85-
+  US-03`) is the only caller of these new writers in this pass — a
+  general-purpose Templates/Pipelines authoring UI (create-from-scratch,
+  independent of import) is explicitly NOT built here.
+- Both modules' own header docstrings (quoted in Context) MUST be updated
+  by the coder as part of this story's Definition of Done — leaving a
+  "read-only for now" comment in place after adding a real writer would be
+  a live, self-contradicting file.
+
+**Alternatives Considered:**
+- *Leave both Managers read-only and have the import orchestrator write
+  `Template.json`/pipeline JSON directly via raw file I/O in its own
+  module* — rejected: violates this codebase's own "one real gateway per
+  entity" rule (every other entity's Manager is the sole door onto its own
+  data — Section/Agent/Skill/Vault all already follow this) and `ADR-003`'s
+  own established `api → business → data_access` layering; a bypass here
+  would make Template/Pipeline the only entity in the whole codebase
+  writable from outside its own Manager.
+- *Build full CRUD (create/update/delete) for both Managers now, since the
+  write path is being added anyway* — rejected: no requirement (this one
+  or any other) asks for a Templates/Pipelines authoring UI; the PRD/
+  story text scope this narrowly to import-time provisioning. Matches this
+  project's own standing "minimal changes, no opportunistic scope growth"
+  rule (`CLAUDE.md`) — update/delete can be their own future ADR once a
+  real requirement asks for them.
+- *Treat the missing write path as a blocking gap and escalate instead of
+  building it* — rejected: the analyst already confirmed this is a real,
+  buildable, same-shape extension of an existing read primitive (not a
+  design fork, not an unclear requirement) — nothing here is ambiguous or
+  contradicts any Accepted ADR; building it is squarely what `REQ-SB-85-
+  US-03`'s own Constraints already call for.
+
+**Consequences:** `TemplateManager`/`PipelineManager` are no longer
+strictly read-only — a real, disclosed, scoped reversal of each Manager's
+own previously-documented stance (not a silent one; both docstrings must
+be updated, see Decision). A conflict decision of "overwrite" for a
+Template/Pipeline artifact now means a real, destructive file replace on
+the target machine — the import orchestrator must apply this only after
+the explicit per-artifact confirmation `REQ-SB-85-US-03`'s own Constraints
+already require, never automatically. Opens the door to a genuine future
+Template/Pipeline authoring UI reusing the same writers — not built here,
+but no longer architecturally blocked either.
+
+---

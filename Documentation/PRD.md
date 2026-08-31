@@ -4404,3 +4404,145 @@ requirement, not left for a separate pass, since an accurate
 provisioning script needs an accurate, current required-config list. -->
 
 **Acceptance:** To be drafted as Gherkin at `/spec`.
+
+---
+
+### REQ-SB-85: Artifact Export/Import — Portable Capability Bundles (`.sbf`)
+
+Moving a capability (a Skill, a Template, an Agent, or a set of them
+working together) from one Second Brain deployment to another is
+today's exact manual pain: copying `Hermes-Provisioning/` skill folders
+by hand into each real Hermes profile's own `skills/` directory across
+dozens of profile locations, one at a time, per machine (`MEMORY.md`'s
+own established deployment-map discipline). This requirement makes that
+a real, repeatable, single-file operation — driven from Second Brain's
+own Settings, not a manual file-copy exercise.
+
+A new **Settings → Artifacts** section lists every real artifact the
+operator's own deployment has — Skills, Templates, Agents, Pipelines —
+browsable and multi-selectable across types. **Export**: pick one or
+more artifacts, and the system resolves the real dependency closure
+(a Skill's own shared-file copies, e.g. `vault_manager.py`; an Agent's
+own `skill_ids`/`depends_on`; a Skill's own implicit Template.json
+coupling, e.g. `create-companies-partners` needing the `customer`/
+`partner` templates) and shows what's being included and why before
+producing a single `.sbf` file (a real zip, `.sbf` is a Second Brain-
+owned extension, not a new format) containing everything needed. Before
+the archive is written, the selected artifacts' own content is scanned
+for secret-shaped strings (API keys, tokens); if any are found, a
+second screen asks the operator explicitly what to do with each one
+(never a silent strip, unlike Hermes' own blind-scrub-on-export
+behavior for a whole profile) — Hermes' own `hermes profile export`/
+`import` (real, already-built: `/export`/`/import` REPL commands,
+`tarfile`-based, path-escape-safe on import) is reused as the
+underlying primitive for the Agent-profile piece of a bundle, not
+reimplemented; the piece that's genuinely new is everything Hermes has
+no visibility into at all — Template.json (vault-only, never in
+Hermes), seed/blank data files, and the cross-artifact dependency
+closure itself.
+
+**Import**: upload a `.sbf` file through the same Settings surface: the
+system deploys the real skill folders into the right Hermes profile
+location(s), creates/clones the real Agent profile(s) (via Hermes' own
+import where a whole profile was bundled), writes the Template.json
+file(s) into the target vault, and drops any seed/blank data files —
+ending in a genuinely working deployment, not a pile of unwired files.
+Any artifact id that already exists on the target machine is a real,
+per-artifact conflict, never resolved silently: the operator is asked
+overwrite / skip / keep both for each one.
+
+**A hard, load-bearing boundary, not incidental**: this system moves
+*capability*, never *personal or business data*. A "Standard" bundle
+(the generic Threads/Meetings/Notes/Files capture pipelines, their
+Skills, their Agents — all already real and already in git) carries
+none of the operator's own captured content. A "Customer Tracking"
+bundle carries the `create-companies-partners` pipeline, the
+`customer`/`partner` Template.json, and a genuinely **empty**
+`Entities.md` seed file — never the operator's own real Customers.
+Sharing actual vault *data* (a real Customer's own notes, an Industry
+KB) is a deliberately separate, later capability (see REQ-SB-86) — this
+requirement never does that.
+
+<!-- Raised 2026-08-31, operator, across a real design discussion
+(verbatim, key turns): "Right now moving my Deployment anywhere else
+its along complex process, I was thinking that we can have our import
+and export system, Where We can Export the Basic Skills or Template or
+Agents or a mix of those to achieve a certain task... Dependancies are
+included by default when I export something." Scoped further: "I want
+to deploy Second Brain at my Managers Laptop, Having Threads and
+Meetings, Notes, Files Pipelines and Skills and Agents is a Standard...
+I don't need to see his Emails or anything related to his work" (the
+capability/data boundary above) and "Same for Customers Everyone has
+Customers I want to deploy the pipelines the Entities.md (Empty), The
+Template for Customer in his laptop and it works so Its not Just Hermes
+(Hermes import and export can be part of the deal but it's not
+everything)." UX confirmed directly: "This can be a new Section under
+Settings (Artifcates), Click Export it Generates the Exported Entities
+it can SHow me a message that those Items will be exported with the
+Package as they depend on it then when down it gives me a single *.sbf
+(second Brain file) which in Reality a zip file... in import we do the
+same import --> upload a file *.sbf." Import-conflict handling and
+secrets handling both directly confirmed via follow-up (see body above
+for the resolved behavior of each). **Relationship to REQ-SB-84,
+disclosed, not resolved here:** REQ-SB-84 is the FIRST-TIME bootstrap of
+a brand-new machine (installing Hermes itself, installing Second Brain,
+first-run vault config) — this requirement is how capability bundles
+move between deployments that already exist, before or after that
+bootstrap. REQ-SB-84's own "Standard" first-run seed MAY end up
+consuming this requirement's own bundle mechanism as its real delivery
+vehicle — a real, plausible integration, left to `/plan-tasks` to decide
+once both requirements have real shape, not assumed here. -->
+
+**Acceptance:** To be drafted as Gherkin at `/spec`.
+
+---
+
+### REQ-SB-86: Vault Data Sharing — Export a Real Slice of the Vault (`.sbd`)
+
+A deliberately separate capability from REQ-SB-85's own capability-only
+bundles: sharing real vault *data* — a Customer's own notes, an
+Industry's own KB — with someone else, as its own file (`.sbd`, a
+Second Brain Data export, distinct from `.sbf`'s capability bundles).
+**Scoped to a concrete shape on 2026-08-31 (real content below); not
+yet specced as Gherkin — that's this requirement's own next step, after
+REQ-SB-85 ships.**
+
+A new **Settings → Vault → Export Data** section shows the real vault's
+own folder tree, browsable and selectable — the operator picks
+whichever folders/files they want to share, not a fixed export scope.
+A quick filter can narrow the tree to `.md` files only (for picking
+specific notes rather than whole folders indiscriminately). Any
+attachment a selected `.md` file actually embeds (an image, an SVG, a
+PDF) is **included automatically** — the export is meant to render
+correctly at the destination, the same way the vault's own `_assets`
+folders already work; this is not a markdown-only export by default.
+At export time, the operator chooses **flat** (every selected file
+lands in one folder, no nesting) or **hierarchy-preserving** (the
+original folder structure travels with it) extraction.
+
+<!-- Raised 2026-08-31, operator, verbatim (original ask): "We can Add
+also Requirements if I want to extract a Part of my vault and Share it
+*.sbd you zip the folder and share it add it as a requirement as well
+we will get to it later." Concrete example given the same pass: "a
+clear example I want to share my cutomer data or my Industry Knowledge"
+— i.e. a real folder slice (`Work/Customers/<Name>/`, `Work/
+Industries/<Name>/`), not a capability bundle. **Scoped further, same
+day, once REQ-SB-85's own sprints were underway** (operator, verbatim):
+"Okay while This is undergoing the next requriements We can have the
+Data Export under settings Vault Export Data you can show the Folders
+and I can Select What to Export, may be a quick filter to show the Md
+file and i choose to export md file, we can have an option of flat
+Extraction of maintain Heratichy." Attachment-handling resolved via a
+direct follow-up question, not assumed: referenced attachments are
+included automatically, not markdown-only and not a per-export toggle.
+Still genuinely open, left to `/spec`/`/plan-tasks`: the exact `.sbd`
+archive shape (flat zip vs. a manifest like `.sbf`'s own `ADR-013`),
+whether this reuses any of REQ-SB-85's own dependency-closure/secret-
+scan machinery or is a clean, simpler pass (real vault data has no
+"dependency" concept the way a Skill/Agent does, but COULD still
+contain secret-shaped strings worth scanning for — not decided here),
+and whether Settings → Vault is a new top-level Vault settings area or
+an addition to an existing one. -->
+
+**Acceptance:** To be drafted as Gherkin at `/spec`, once REQ-SB-85
+ships.

@@ -242,5 +242,167 @@ as-is; everything below is new.
   frontend tasks are cut; this architecture note covers only the
   backend/API-contract shape.
 
-**Last reviewed:** 2026-08-31 (architect pass, `REQ-SB-82-US-06`,
-`ADR-011`/`ADR-012` — resolved the orphaned `ADR-022` ledger reference).
+## Artifact Export/Import — Portable Capability Bundles (`REQ-SB-85`)
+
+Second Brain's own Data Layer (`REQ-SB-80`, built directly per `BACKLOG.md`'s
+own row, real and `Done`) already exposes four entity Managers, each the sole
+real gateway onto its own store (the same "one real gateway per entity" rule
+`SectionManager`/`AgentManager` already established): `SkillManager`
+(`business/core/skills/skill_manager.py`, content in
+`Hermes-Provisioning/skills/<category>/<slug>/`, metadata in the Registry's
+`Tools/<tool>/Skills/<slug>/Skill.json`), `TemplateManager`
+(`business/core/templates/template_manager.py`, `.second-brain/data/
+Templates/<id>/Template.json`, vault-only), `AgentManager`
+(`business/core/agents/agent_manager.py`, composes a real Hermes profile +
+the Registry's own `Agent.json`/`soul.md` mirror — two genuinely separate
+stores), and `PipelineManager` (`business/core/pipelines/pipeline_manager.py`,
+`<second_brain_data_path>/pipelines/<id>.json`, cron-linked). `REQ-SB-85`
+builds a new, portable-bundle export/import surface entirely on TOP of these
+four — it never becomes a 5th "Manager" (it owns no entity/store of its own),
+and it does not change any of the four Managers' own read-side contracts
+except the two narrow write-path additions `ADR-015` records below.
+
+### §Artifact Inventory Composition (`REQ-SB-85-US-01`)
+
+- **New:** `app/business/logic/artifacts_inventory.py` — a single
+  `list_all_artifacts()` composing `SkillManager().get_all()`/
+  `TemplateManager().get_all()`/`AgentManager().get_all()`/
+  `PipelineManager().get_all()` into one tagged (`kind`, `id`, `name`,
+  `description`) list. Pure read composition — matches the existing
+  `business/logic/` pattern already used for cross-entity, no-owned-store
+  work (`section_agents.py`, `cockpit_view.py`, `system_health.py`), not a
+  new structural layer.
+- **New:** `app/api/artifacts_router.py` — `GET /artifacts`, the same flat
+  single-purpose-router convention every other entity uses (`skills_router.py`,
+  `pipelines_router.py`, `sections_router.py`).
+- **Frontend:** `SettingsArtifactsPage.tsx` (new) reuses the already-approved
+  `.item-list`/`.item-row` family (`SettingsVaultTemplatesPage.tsx`/
+  `SettingsSectionsPage.tsx`) for per-artifact rows and the existing
+  `.card.settings-card` grid for its own Settings-landing-page entry point.
+  The cross-type multi-select is client-side-only ephemeral React state —
+  never persisted, never round-tripped to the backend until an Export/Import
+  action is actually taken.
+- No new ADR — this section composes only already-Accepted Manager
+  gateways, adds no store, and follows an already-established composition
+  pattern.
+
+### §Dependency Closure, Secret Scan & `.sbf` Archive Format (`REQ-SB-85-US-02`, `ADR-013`)
+
+- **New:** `app/business/logic/artifact_dependency_resolver.py` — given an
+  initial `(kind, id)` selection, resolves and returns the full closure with
+  a human-readable reason per included artifact:
+  - **Skill → its own shared-file copies:** already physically present in
+    that Skill's own `scripts/` folder (`data_access/skills.py::
+    list_scripts()`) — the resolver's job here is disclosure ("this file is
+    a copy of the shared `vault_manager.py`"), not traversal to a separate
+    artifact, since the bytes already travel with the Skill's own payload.
+  - **Agent → Registry `skill_ids`/`depends_on`:** recurses transitively
+    into every Agent id named in either real field on the `Agent` dataclass.
+  - **Skill → implicit Template.json coupling:** a static text scan of the
+    Skill's own script content for any real `TemplateManager().get_all()`
+    id appearing as a literal string — a disclosed heuristic (no structured
+    field exists anywhere today, confirmed by direct reading of the `Skill`
+    dataclass), not a guaranteed-complete detector; see Consequences.
+  - **Pipeline → step Agents:** each real Agent id named in `steps[]`,
+    recursed the same way as a direct Agent selection.
+  Every resolved artifact is shown to the operator (the dependency-preview
+  screen) BEFORE any archive byte is written — never a silent auto-include.
+- **New:** `app/business/logic/artifact_secret_scan.py` — scans ONLY
+  Second-Brain-owned new bytes in the resolved closure (Skill SKILL.md/
+  scripts content, Template.json content, seed/blank data file content).
+  **Never re-scans or touches the nested Hermes profile sub-archive** — that
+  piece arrives already silently redacted by Hermes' own `export_profile`
+  (`ADR-014`); this system's own explicit, per-finding promise governs only
+  the surface it owns. Sits as a hard gate between "closure resolved" and
+  "archive written" — the archive writer never runs while any finding is
+  undecided. Three finding-level actions (Redact / Keep as-is / Cancel
+  export — the story's own disclosed, non-locked judgement call) are applied
+  in-memory before the affected file is written into the archive.
+- **New:** `app/business/logic/sbf_archive.py` — writer (`US-02`) and
+  reader (`US-03`) share this one module/shape. `.sbf` is a real **zip**
+  file:
+  - `manifest.json` — `format_version`, `generated_at`, `artifacts: [{kind,
+    id, included_reason: "selected"|"dependency", depends_via}]`,
+    `secret_scan: {findings_decided, redacted_count}`.
+  - `skills/<slug>/SKILL.md`, `skills/<slug>/scripts/**` — mirrors
+    `Hermes-Provisioning/skills/<category>/<slug>/` (category lives in the
+    manifest entry, not the payload path).
+  - `templates/<id>/Template.json` — mirrors `data/Templates/<id>/
+    Template.json` exactly.
+  - `pipelines/<id>.json` — mirrors `pipelines/<id>.json` exactly.
+  - `agents/<agent_id>/profile.tar.gz` — the RAW, unmodified output of
+    `HermesCLI.export_profile` (`ADR-014`) — never unpacked/repacked.
+  - `agents/<agent_id>/Agent.json`, `agents/<agent_id>/soul.md` — the
+    Registry-side mirror, same shape `registry_writer.write_agent_files`
+    already produces.
+  - `seed_data/<real-target-relative-path>` — e.g. `seed_data/Settings/
+    Entities.md`, content genuinely empty (the hard capability/data
+    boundary — Scenarios 4/5), path mirrors the real target location so
+    import writes it back verbatim.
+- **API:** `POST /artifacts/export` (writer), `POST /artifacts/import`
+  (reader, `US-03`) on the same `artifacts_router.py` `US-01` added.
+- **Frontend:** dependency-preview + secret-scan confirmation screens
+  (`net-new-design-needed`, functional-first per the operator's own
+  same-day override — see story frontmatter), wired from the Export action
+  on `SettingsArtifactsPage.tsx`.
+
+### §Hermes Profile Export/Import Reuse (`REQ-SB-85-US-02`/`US-03`, `ADR-014`)
+
+- `app/hermes/cli.py::HermesCLI` gains `export_profile(name, output_path)` /
+  `import_profile(archive_path, name=None)` — the exact same `_run()`
+  subprocess-capture pattern as the class's existing `create_profile`/
+  `delete_profile`/`describe_profile`, wrapping Hermes' own real, already-
+  shipped, non-interactive `hermes profile export <name> [output]` /
+  `hermes profile import <archive> [--name <name>]` CLI subcommands
+  (confirmed live against the installed source, `hermes_cli/profiles.py`).
+- This is the ONLY mechanism by which an Agent artifact's Hermes-profile
+  piece is produced/consumed — the resulting bytes are opaque to Second
+  Brain (never parsed, never re-scanned; Hermes' own `export_profile`
+  already force-redacts every text-ish staged file before writing its own
+  `tar.gz`).
+- `import_profile`'s own real `--name` override (lands the imported profile
+  under an alternate id) and its own real `FileExistsError`-on-collision are
+  the exact primitives `US-03`'s "keep both" and per-artifact conflict
+  detection are built on for the Agent kind — no separate conflict-detection
+  logic is invented for this piece.
+- Resolves, for this one surface only, `ADR-003`'s own explicitly-deferred
+  "backend needs real write access into Hermes... its own future decision"
+  question — does NOT reopen `ADR-003`'s broader still-deferred "backend
+  creates Agents/Pipelines/Cron Jobs in Hermes from scratch" direction.
+
+### §Template/Pipeline Write-Path Additions & Import Orchestration (`REQ-SB-85-US-03`, `ADR-015`)
+
+- `data_access/templates.py` gains `write_template_json(template_id, data)`
+  (same-shape sibling to the existing `read_template_json`, raw I/O only);
+  `TemplateManager` gains a real create/import method that calls it — still
+  the sole gateway onto Template data.
+- `data_access/pipelines.py` gains `write_pipeline_json(pipeline_id, data)`;
+  `PipelineManager` gains the matching create/import method. Same shape,
+  same narrow scope.
+- Both new writers exist ONLY to support import provisioning — no general
+  Templates/Pipelines authoring UI is built here (see `ADR-015`).
+- **New:** `app/business/logic/artifact_import.py` — reads a `.sbf` via
+  `sbf_archive.py` (`ADR-013`), runs per-artifact conflict detection against
+  the target machine's own real current state (across all 4 kinds), then
+  deploys each per its resolved decision:
+  - **Skill:** `SkillManager.deploy(skill_id, profile_id)` — already real;
+    this story's own new work is target-profile selection + conflict
+    wiring, not the deploy mechanism itself.
+  - **Agent:** `HermesCLI.import_profile` (`ADR-014`) for the profile piece,
+    `registry_writer.write_agent_files` for the Registry piece; "overwrite"
+    = `AgentManager.delete()` then a fresh import (mirrors `AgentManager.
+    update()`'s own delete-then-recreate shape for a relocated agent).
+  - **Template/Pipeline:** the new writers above.
+  - **Seed/blank data files:** written verbatim from the archive's own
+    `seed_data/` payload (already guaranteed empty at export time).
+  Every artifact's own deployment outcome (succeeded/failed) is reported
+  independently — a mid-import failure on one artifact never silently
+  drops or falsely-reports another (Scenario 9).
+- **API:** `POST /artifacts/import` (see `US-02`'s section above).
+- **Frontend:** upload/contents-preview + per-artifact conflict-resolution
+  screens (`net-new-design-needed`, functional-first — see story
+  frontmatter), wired from the Import action on `SettingsArtifactsPage.tsx`.
+
+**Last reviewed:** 2026-08-31 (architect pass, `REQ-SB-85-US-01`/`US-02`/
+`US-03` — `ADR-013`/`ADR-014`/`ADR-015`, the Artifact Export/Import
+subsystem).
