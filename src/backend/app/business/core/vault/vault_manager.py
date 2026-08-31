@@ -576,6 +576,46 @@ class VaultManager:
         folders = vault_writer.list_known_kinds()
         return {"tags": tags, "folders": folders}
 
+    def get_export_tree(self) -> dict:
+        """Settings -> Vault -> Export Data's own real, genuinely
+        UNFILTERED filesystem walk of settings.vault_path
+        (`REQ-SB-86-US-01-T01`) -- deliberately NOT built on
+        get_index()/vault_writer.list_all_note_paths(), which excludes
+        OKF-reserved files (index.md/log.md/captures.md) and any
+        `_`-prefixed folder (this project's own archive convention). A
+        real folder share needs the whole real directory, so this reads
+        straight off disk every call -- no caching, unlike the note
+        index's own rebuild-once-read-many-times shape (see this
+        Manager's own module docstring)."""
+        root = settings.vault_path
+        return {"root": root.as_posix(), "tree": self._walk_export_tree(root, root)}
+
+    def _walk_export_tree(self, current_dir: Path, root: Path) -> dict:
+        # `is_dir()` is computed once per child and reused for both the
+        # sort key and the type decision -- a real, host-observed Windows
+        # MAX_PATH edge case (paths over ~260 chars) makes `is_file()`
+        # and `is_dir()` disagree if called independently, which
+        # previously desynced the display order from the actual "file"
+        # classification for a handful of deeply-nested real notes.
+        children = []
+        entries = sorted(
+            ((child, child.is_dir()) for child in current_dir.iterdir()),
+            key=lambda pair: (not pair[1], pair[0].name.lower()),
+        )
+        for child, child_is_dir in entries:
+            relative_path = child.relative_to(root).as_posix()
+            if child_is_dir:
+                children.append(self._walk_export_tree(child, root))
+            else:
+                children.append({"name": child.name, "type": "file", "path": relative_path})
+        name = current_dir.name if current_dir != root else root.name
+        return {
+            "name": name,
+            "type": "folder",
+            "path": "" if current_dir == root else current_dir.relative_to(root).as_posix(),
+            "children": children,
+        }
+
     def get_graph(self) -> dict:
         """The Vault knowledge graph screen's own {"nodes", "edges"}
         snapshot, zero new indexing/caching. Nodes reuse _summary()
