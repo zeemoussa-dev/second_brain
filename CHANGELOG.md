@@ -18,6 +18,21 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: Opportunity create AND update are now plain `vault_manager.py`
+  CLI calls — zero entity-specific Python. `create_opportunity.py`/
+  `update_opportunity.py` (both written earlier this same day) are
+  deleted; the engine itself gained what they were hand-rolling:
+  a template-declared required `parent` link (resolved by name/alias,
+  refuses to fabricate a missing Customer, auto-derives where a child
+  lives and its tag from the resolved parent, auto-links the new child
+  back into the parent's own section), a third `on_existing_title:
+  "error"` mode (refuses a duplicate title instead of silently
+  disambiguating), `plain_folder` (a durable, name-keyed entity's path
+  carries no date anywhere), and `modify_section` resolving its target
+  by name (`title`+`parent_value`) instead of only a `note_id` nobody
+  has memorized. Verified live via the bare CLI, no wrapper script at
+  all: create with alias resolution, an update via a different alias,
+  and the unknown-opportunity refusal.
 - fix: Notes are organized in folders by date again (`Work/Notes/<date>/
   <slug>.md`, no date repeated in the filename) — reverts a 2026-08-26
   change that had folded the date into the filename instead. Required a

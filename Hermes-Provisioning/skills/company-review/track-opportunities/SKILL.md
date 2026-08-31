@@ -1,7 +1,7 @@
 ---
 name: track-opportunities
-description: Creates, links, and answers questions about sales Opportunities filed under a real Customer hub note. Use this whenever the operator's message is about creating a new opportunity/deal/opp (e.g. "create a new opp", "new opportunity for ADNOC"), linking a Thread or Meeting to an existing one ("link this thread to the ADNOC HPC Expansion opp"), or asking what opportunities exist / their status / consumption for a Customer ("what opportunities do we have in ADNOC", "what's the forecasted consumption this month").
-version: 0.2.0
+description: Creates, updates, links, and answers questions about sales Opportunities filed under a real Customer hub note. Use this whenever the operator's message is about creating a new opportunity/deal/opp (e.g. "create a new opp", "new opportunity for ADNOC"), adding an update/log entry/action/related link to an EXISTING one ("log that I spoke to procurement on the ADNOC HPC opp", "add an action item to renew the Aldar deal"), linking a Thread or Meeting to an existing one ("link this thread to the ADNOC HPC Expansion opp"), or asking what opportunities exist / their status / consumption for a Customer ("what opportunities do we have in ADNOC", "what's the forecasted consumption this month").
+version: 0.3.0
 author: second-brain
 license: MIT
 platforms: [windows]
@@ -14,8 +14,8 @@ metadata:
 
 **Live and conversational, not cron-triggered** -- unlike every capture
 pipeline in this vault, this Skill runs mid-chat (WhatsApp or otherwise)
-the moment the operator's own message matches its purpose. Three real
-jobs: create, link, and answer. Same discipline as everywhere else in
+the moment the operator's own message matches its purpose. Four real
+jobs: create, update, link, and answer. Same discipline as everywhere else in
 this sequence -- an Opportunity's real content (which Customer, what
 it's about) is only ever what the operator actually tells you; never
 fabricate a Customer or an Opportunity that doesn't already exist.
@@ -25,8 +25,20 @@ fabricate a Customer or an Opportunity that doesn't already exist.
 - Real Customer hub notes must already exist (`create-companies-partners`'s
   own job) -- Opportunities are scoped to Customers only, never Partners
   (a sales/revenue concept, not a vendor relationship).
-- Vault path (pass as `--vault-path` on every script call):
+- Vault path (pass as `--vault-path` on every call):
   `C:\myWorx\Moussa MD\Moussa Brain`
+- Template id for every `vault_manager.py` call below: `opportunity`.
+
+**Create and Update (Jobs 1-2) are plain `vault_manager.py` calls now, no
+per-job script** (2026-08-30 -- an earlier pass had its own
+`create_opportunity.py`/`update_opportunity.py`; both were deleted once
+the engine itself learned to resolve a Customer by name/alias and derive
+where an Opportunity lives from it -- "extending what it can write
+happens by adding a Template.json, never by writing a new script" now
+holds for real). Only **Job 3 (Link)** still has its own script --
+linking a Thread/Meeting is a genuinely different operation (writing
+into a DIFFERENT note kind not on this engine yet), not reducible to a
+plain template-driven create/update.
 
 ## Structure this builds
 
@@ -82,27 +94,75 @@ beats a conversation that never finishes. Once you have the Customer (and
 have asked about the rest, answered or not), create it.
 
 Once you have real answers (blank where skipped), `write_file` a scratch
-JSON payload, then call the one script -- as a PLAIN, direct `terminal`
-call, using the script's own full absolute path:
+JSON payload, then call `vault_manager.py` directly (the SAME shared
+engine `capture-notes`/`capture-files`/every other real Skill in this
+vault uses -- its own full absolute path never changes):
 
 ```
-terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\skills\\company-review\\track-opportunities\\scripts\\create_opportunity.py\" --vault-path \"C:\\myWorx\\Moussa MD\\Moussa Brain\" --input-file <scratch path>")
+terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\skills\\company-review\\track-opportunities\\scripts\\vault_manager.py\" create --vault-path \"C:\\myWorx\\Moussa MD\\Moussa Brain\" --template-id opportunity --input-file <scratch path>")
 ```
 
-Payload: `{"title": str, "customer": str, "expected_consumption": str,
-"technologies": [str, ...], "status": str}` (`status` optional, defaults
-`"Open"`).
+Payload: `{"title": str, "parent_value": str, "frontmatter":
+{"status": str, "expected_consumption": str, "technologies": [str, ...]}}`
+(`parent_value` is the Customer's own real name or a known alias --
+resolved against real Customer hub notes, never fabricated; `status`
+optional, defaults `"Open"` via the template's own default). Note_name,
+the Customer cross-reference, the `customer/<slug>` tag, and the
+backlink into the Customer's own `## Opportunities` section are all
+derived automatically from the resolved parent -- nothing else to pass.
 
-**If the script returns `{"error": ...}` because the named customer
+**If the call returns `{"error": ...}` because the named customer
 doesn't resolve to a real Customer hub note, say so honestly and ask the
 operator to confirm the spelling or run `create-companies-partners`
 first -- never guess, never create a placeholder Customer yourself.** If
 it errors because an Opportunity with that title already exists for that
 Customer, tell the operator and ask whether they meant a different title
-or actually wanted to update the existing one (updating isn't this
-Skill's job yet -- for now, just report it).
+or actually wanted to update the existing one -- if the latter, that's
+Job 2 below.
 
-## Job 2: Link a Thread or Meeting
+## Job 2: Update an existing Opportunity
+
+Triggered by any real update to an Opportunity that already exists --
+"log that I spoke to procurement", "add an action item to follow up
+next week", "note that Microsoft is now involved", a status/consumption
+change mentioned in passing. **Never creates an Opportunity as a side
+effect** -- if it doesn't already exist, say so and offer Job 1 instead.
+
+Map what the operator said onto ONE of the real sections (ask if it's
+genuinely unclear which one):
+- **Log** -- a dated diary entry, what happened / who you talked to.
+  Almost always `mode: "append"`.
+- **Actions** -- a follow-up/next-step. Almost always `append`.
+- **Related** -- a link to something else relevant (a person, a
+  document, another note). `append`.
+- **Summary** -- the current-state description itself changed (not a
+  new event) -- this one is usually `mode: "replace"`, not append.
+- **Files** -- a real file arrived; `write_file` it directly into the
+  Opportunity's own folder's `files/` subfolder (same as Job 1's own
+  Structure note) -- no script call needed for the file itself, only
+  call this script if you also want to log a line noting it arrived.
+
+```
+terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\skills\\company-review\\track-opportunities\\scripts\\vault_manager.py\" modify-section --vault-path \"C:\\myWorx\\Moussa MD\\Moussa Brain\" --template-id opportunity --section \"<Log|Actions|Related|Summary>\" --mode append --input-file <scratch path>")
+```
+
+(`--mode replace` for a Summary rewrite -- everything else is `append`,
+the default the SKILL.md examples above already assume.)
+
+Payload: `{"content": str, "title": str, "parent_value": str}`.
+`parent_value` is matched the same way as Job 1 (real Customer name or a
+known alias); `title` is matched exactly against the Opportunity's own
+real title within that Customer -- this call resolves the Customer AND
+finds the Opportunity by name itself, the same way Job 1's own create
+call does; it never creates one that doesn't already exist (the
+template's own `on_missing: "error"` enforces this centrally, not
+anything you have to check for yourself).
+
+**If the call errors because the Customer or the Opportunity doesn't
+resolve, say so honestly -- same never-fabricate discipline as every
+other job here.**
+
+## Job 3: Link a Thread or Meeting
 
 Triggered by "link this [thread/meeting/email] to the [X] opp" (or
 equivalent) -- **manual only, the operator's own explicit choice,
@@ -121,7 +181,7 @@ Customers, the script reports the real candidates and asks for
 zero, it means no such Opportunity exists yet -- report that honestly,
 don't create one as a side effect of linking.
 
-## Job 3: Answer questions
+## Job 4: Answer questions
 
 "What opportunities do we have in ADNOC" / "what's the status of the
 HPC Expansion opp" / "what's the forecasted consumption this month" --
@@ -141,9 +201,9 @@ expect an exact number; don't fabricate false precision.
 
 - **Never fabricate a Customer.** Same rule as every other Skill in this
   sequence.
-- **Never fabricate an Opportunity to satisfy a link request.** Job 2
-  only ever links to one that already exists.
-- **Never wrap either script in `bash -lc "..."`** -- same categorical
+- **Never fabricate an Opportunity to satisfy an update or link request.**
+  Job 2 and Job 3 only ever act on one that already exists.
+- **Never wrap any of these scripts in `bash -lc "..."`** -- same categorical
   Hermes `terminal`-tool approval-block documented throughout this
   vault's own Skills; a bare `python ...` command with the script's own
   full absolute path (never a bare filename -- see
@@ -152,7 +212,7 @@ expect an exact number; don't fabricate false precision.
 - **This Skill's own trigger phrasing needs to be unambiguous** -- a
   live incident elsewhere in this vault (`new-company-discovery`) showed
   a vague request getting misrouted into a totally unrelated generic
-  "which tool" flow. If a reply doesn't clearly match Job 1/2/3's own
+  "which tool" flow. If a reply doesn't clearly match Job 1/2/3/4's own
   described intent, ask a clarifying question rather than guessing which
   job it is.
 
@@ -160,6 +220,9 @@ expect an exact number; don't fabricate false precision.
 
 - After a creation, confirm the returned `path` is real and the Customer
   hub's own `## Opportunities` section now lists it.
+- After an update, confirm the returned `path` is real and the section
+  you targeted actually shows the new content (an append should sit
+  below whatever was already there, not replace it).
 - After a link, confirm the Thread/Meeting's own `opportunities`
   frontmatter and `## Related` section both show the right Opportunity,
   and that a genuinely ambiguous title correctly errored rather than
