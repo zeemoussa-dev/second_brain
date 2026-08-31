@@ -403,6 +403,70 @@ except the two narrow write-path additions `ADR-015` records below.
   screens (`net-new-design-needed`, functional-first — see story
   frontmatter), wired from the Import action on `SettingsArtifactsPage.tsx`.
 
-**Last reviewed:** 2026-08-31 (architect pass, `REQ-SB-85-US-01`/`US-02`/
+## Vault Data Export — Real Slice of the Vault (`REQ-SB-86`)
+
+Deliberately separate from `REQ-SB-85`'s Artifact Export/Import subsystem
+above (see that section's own §Artifact Inventory Composition intro for
+the capability/data split) — `REQ-SB-86` moves real, already-trusted
+operator vault DATA (a Customer's own notes, an Industry KB), never a
+capability. `VaultManager` (`app/business/core/vault/vault_manager.py`)
+stays the sole gateway for every real vault-data read this subsystem
+needs; neither substory adds a second door onto vault content.
+
+### §Export Data Folder-Tree Picker (`REQ-SB-86-US-01`)
+
+- **New:** one real, unfiltered directory-tree-listing method on
+  `VaultManager` (folders + files, includes OKF-reserved files and
+  `_`-prefixed folders that `app/obsidian/notes.py::list_all_note_paths()`
+  deliberately excludes from the ordinary note index) — a genuine
+  filesystem walk of `settings.vault_path`, never the note-index
+  primitives. Read-only; no new store, no new Manager.
+- **API:** a new `GET` route on the existing `app/api/vault_router.py`,
+  same flat single-purpose-router convention every other Vault Settings
+  page already uses.
+- **Frontend:** `SettingsVaultExportDataPage.tsx` (new) — folder-tree
+  browse, multi-select (folder selection includes every nested file), `.md`
+  quick filter; a new `VAULT_NAV_ITEMS` entry on the existing
+  `VaultSettingsNav.tsx`. Selection state is ephemeral, client-side only —
+  never persisted, handed directly to the Export flow below.
+- **No new ADR** — this is a pure read-only listing addition to the
+  already-Accepted `VaultManager` gateway, following that Manager's own
+  already-established shape (`get_index_config()`/`list_templates()`/
+  `list_entities()` are the direct precedent for "one more dict/list-
+  returning read method"). Confirmed directly against `vault_manager.py`'s
+  own real code before deciding, not assumed.
+
+### §Embedded-Attachment Resolution & `.sbd` Archive Writer (`REQ-SB-86-US-02`, `ADR-016`)
+
+- **New `business/logic/` modules** (no new Manager — mirrors `ADR-013`'s
+  own placement convention): `vault_attachment_resolver.py` (scans a
+  selected `.md` file's real body, via `app/obsidian/frontmatter.py::
+  read_note()`, for a genuinely-embedded, on-disk attachment — wikilink-
+  embed `![[...]]` and markdown-image-link `![...](...)` syntax, both
+  scanned) and `sbd_archive.py` (writer only — no reader, no import round-
+  trip exists to design for).
+- **`.sbd` format** — a real zip, **no `manifest.json`** (unlike `.sbf`):
+  every selected file plus every resolved attachment lands at its real
+  archive-member path, computed per the operator's flat/hierarchy choice.
+  A flat-extraction filename collision is disambiguated by prefixing the
+  archive member name with its own original parent-folder name (e.g.
+  `masdar_index.md`, `acme_index.md`) — never a silent overwrite.
+- **Deliberately no dependency-closure resolution and no secret-scan gate**
+  — the exact mirror-image posture to `ADR-013`'s `.sbf` pipeline: real,
+  already-trusted vault data the operator is explicitly, purposefully
+  choosing to share has neither a dependency-closure concept nor a
+  credential-scan need the way a capability bundle does.
+- **API:** `POST /vault/export-data/export` on the existing
+  `app/api/vault_router.py`.
+- **Frontend:** a new export-options screen (flat/hierarchy choice,
+  confirm, download), wired from the Export action on
+  `SettingsVaultExportDataPage.tsx`.
+- **ADR-016** records this section's own module placement, the no-manifest
+  decision, the attachment-detection heuristic, the flat-collision naming
+  rule, and the explicit divergence from `ADR-013`'s machinery — see
+  `ADR.md` for the full Context/Decision/Alternatives/Consequences.
+
+**Last reviewed:** 2026-09-01 (architect pass, `REQ-SB-86-US-01`/`US-02` —
+`ADR-016`, the Vault Data Export subsystem; `REQ-SB-85-US-01`/`US-02`/
 `US-03` — `ADR-013`/`ADR-014`/`ADR-015`, the Artifact Export/Import
-subsystem).
+subsystem, reviewed 2026-08-31).

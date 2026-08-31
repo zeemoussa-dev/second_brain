@@ -1762,3 +1762,163 @@ Template/Pipeline authoring UI reusing the same writers — not built here,
 but no longer architecturally blocked either.
 
 ---
+
+## ADR-016: `.sbd` Vault Data Archive — real vault-content zip, flat or hierarchy-preserving, with automatic embedded-attachment resolution; no manifest, no dependency-closure/secret-scan machinery — the mirror-image posture to `ADR-013`'s `.sbf`
+
+**Status:** Accepted
+**Date:** 2026-09-01
+
+**Context:** `REQ-SB-86-US-02` needs a real, single-file mechanism for the
+operator to hand a genuinely-rendering slice of their OWN vault data (a
+Customer's own notes, an Industry KB) to someone else — the first-ever
+Second-Brain-side export of real vault DATA, as distinct from `ADR-013`'s
+`.sbf` capability bundle (Skills/Templates/Agents/Pipelines). The PRD's own
+text requires: (1) any attachment a selected `.md` file's content genuinely
+embeds is included automatically, never a per-export prompt; (2) the
+operator chooses flat or hierarchy-preserving extraction at export time;
+(3) "you zip the folder" — no manifest-parsing import round-trip exists to
+design for, since import of a `.sbd` is explicitly out of scope for this
+requirement (`REQ-SB-86-US-02`'s own Non-Goals). Grounded directly against
+real code before deciding, not assumed: `VaultManager`
+(`app/business/core/vault/vault_manager.py`) is already the sole real
+gateway onto vault data (mirrors `SectionManager`/`AgentManager`'s own
+"one real gateway per entity" rule); `app/business/logic/` is already the
+established home for cross-cutting composition modules that own no store
+of their own (`section_agents.py`, `cockpit_view.py`,
+`artifact_dependency_resolver.py`/`artifact_secret_scan.py`/
+`sbf_archive.py` — `ADR-013`'s own precedent); real attachments already
+land under a note's own `<subfolder>/attachments/<note-slug>/
+<message-slug>/<filename>` or `<subfolder>/files/<slug>/
+<original-filename>` convention (`app/obsidian/attachments.py`,
+`write_attachments`/`write_file_companion`) and/or under `_`-prefixed
+folders like `_assets`; `app/obsidian/frontmatter.py::read_note(path)` is
+the existing real primitive for reading a note's own frontmatter+body text,
+the natural composition point for scanning a selected file's body for
+embed syntax. This decision also has to settle, explicitly, how far this
+mechanism diverges from `ADR-013`'s own `.sbf` machinery — real vault data
+the operator is deliberately, explicitly choosing to share has neither the
+capability-bundle's dependency-closure concept (a note doesn't "depend on"
+another note the way a Skill depends on a Template) nor its secret-scan
+posture (this is already-trusted personal data the operator is
+purposefully handing over, not code that might accidentally embed a
+credential) — `REQ-SB-86-US-02`'s own Constraints already state this
+explicitly, but the boundary is architecturally significant enough (it is
+the exact inverse of `ADR-013`'s own "capability, never data" framing) to
+record formally, not leave as an unstated story-level assumption a future
+architect could accidentally get backwards.
+
+**Decision:**
+- **New `business/logic/` composition modules, not a new Manager and not a
+  new method folded into `VaultManager` itself** — `vault_attachment_
+  resolver.py` and `sbd_archive.py`, matching `ADR-013`'s own
+  `artifact_dependency_resolver.py`/`sbf_archive.py` naming and placement
+  convention exactly. Neither module owns a store; both compose
+  `VaultManager`/`app/obsidian/attachments.py`/`app/obsidian/
+  frontmatter.py::read_note` for their real reads. `VaultManager` stays the
+  sole gateway for any vault-data READ these modules need (the real
+  filesystem tree listing `REQ-SB-86-US-01` adds); this pass adds no second
+  door onto vault content.
+- **Attachment resolution** (`vault_attachment_resolver.py`): for each
+  selected `.md` file, reads its real body via `read_note()` and scans for
+  a genuinely-embedded, on-disk attachment via both a wikilink-embed
+  pattern (`![[...]]`) and a markdown-image-link pattern (`![...](...)`) —
+  a disclosed heuristic over the two real embed syntaxes Obsidian actually
+  writes, not a guaranteed-complete detector (mirrors `ADR-013`'s own
+  Skill→Template static-scan heuristic's disclosed-limitation framing). A
+  referenced path that does not resolve to a real, existing file on disk is
+  silently skipped (never fabricated into the export, never a hard
+  failure) — the export always reflects genuinely-existing vault content
+  only.
+- **No `manifest.json`, unlike `.sbf`** — `.sbd` is a plain zip: every
+  selected file (plus every resolved attachment) is written at its real
+  archive-member path, computed per the operator's flat/hierarchy choice.
+  No structured metadata is written alongside the content. This is a
+  deliberate divergence from `ADR-013`'s own manifest-carrying `.sbf`
+  shape, not an oversight: a manifest exists there to drive a real import
+  reader (`sbf_archive.read_archive`) and to record dependency-closure/
+  secret-scan provenance — neither exists for `.sbd` (import is out of
+  scope; there is no dependency-closure or secret-scan pass to record the
+  provenance of). Reusing `sbf_archive.write_archive`'s own
+  always-writes-`manifest.json` shape here would force a meaningless empty
+  manifest onto every `.sbd` file for a reader that will never exist yet.
+- **Flat-extraction collision disambiguation**: a flat-extraction filename
+  collision (e.g. two different Customer folders each containing their own
+  `index.md` — a real, structural certainty given the already-`Done` OKF
+  directory shape's fixed `index.md`/`log.md`/`captures.md`/`<slug>.md`
+  filenames, `REQ-SB-54`) is resolved by prefixing the archive member name
+  with its own original parent-folder name (e.g. `masdar_index.md`,
+  `acme_index.md`) — never a silent overwrite. Accepted as proposed in the
+  story's own Context/Notes; recorded here as the archive's own real
+  internal-naming rule since it governs the archive's own byte-level
+  layout, the same reason `ADR-013` records `.sbf`'s own path conventions.
+- **No dependency-closure resolution, no secret-scan gate** — `.sbd`
+  carries exactly the operator's own selection plus its resolved
+  attachments, nothing else, straight from selection to zip. This is the
+  deliberate mirror-image of `ADR-013`'s own two-stage
+  closure-then-scan-then-write pipeline, not a shortcut taken by omission:
+  real vault data has no dependency-closure concept to resolve, and the
+  operator's own explicit, purposeful selection of already-trusted personal
+  data is the exact case `ADR-013`'s Context named as OUT of that
+  machinery's scope ("Sharing actual vault data... is a deliberately
+  separate, later capability (see REQ-SB-86)").
+
+**Alternatives Considered:**
+- *Extend `.sbf`/`ADR-013`'s own `sbf_archive.py` to also serve `.sbd`,
+  parameterizing whether a manifest is written* — rejected: `.sbf` and
+  `.sbd` are semantically different file kinds (capability vs. real vault
+  data) reached from different Settings areas (`REQ-SB-85` vs. `REQ-SB-86`)
+  with no shared caller and no shared manifest shape; forcing one module to
+  serve both would couple two independently-evolving formats for no real
+  code-reuse benefit beyond "both call `zipfile`" — a savings not worth the
+  coupling. A separate `sbd_archive.py` keeps each format free to evolve
+  (e.g. a future `.sbd` import) without touching `.sbf`'s already-`Accepted`
+  shape.
+- *Give `.sbd` its own `manifest.json` anyway, mirroring `.sbf`, for future
+  extensibility (e.g. a later `.sbd` import feature)* — rejected for v1: no
+  real requirement asks for `.sbd` import today, and inventing a manifest
+  shape now, speculatively, for a reader that doesn't exist risks guessing
+  wrong about what that future reader will actually need — cheaper to add
+  a manifest in a superseding ADR once a real `REQ-SB-86` import story
+  exists and can state its own real parsing requirements, the same
+  "narrowly-scoped, not speculative" discipline `ADR-015` already applied
+  to the Template/Pipeline write path.
+- *Reuse `ADR-013`'s `artifact_dependency_resolver.py`/
+  `artifact_secret_scan.py` machinery over the selected `.md` files anyway,
+  "just to be safe"* — rejected: both modules are purpose-built for
+  capability artifacts (Skill/Template/Agent/Pipeline dependency edges,
+  Second-Brain-owned code/schema content) and have no real notion of a
+  note's own content; forcing vault data through them would be a
+  category error, not extra safety, and directly contradicts the PRD's own
+  "Yes, include automatically" / no-prompt attachment requirement (a
+  secret-scan gate would reintroduce exactly the per-export interruption
+  the operator explicitly ruled out).
+- *Detect embedded attachments via a single embed syntax only (wikilink OR
+  markdown-image, not both)* — rejected: real vault notes in this project
+  use both conventions depending on how content was authored/pasted; a
+  single-syntax scan would silently under-include real attachments the PRD
+  explicitly requires be included automatically, undermining Scenario 4's
+  own "never silently dropped" intent.
+
+**Consequences:** The attachment-detection heuristic (a two-pattern text
+scan) can have false negatives for an attachment referenced through neither
+real syntax (e.g. a raw HTML `<img>` tag) — a disclosed, acceptable v1
+limitation mirroring `ADR-013`'s own Skill→Template heuristic Consequence;
+no manual-add fallback exists here the way `US-01`'s own multi-select lets
+an operator add a missed artifact to a `.sbf`, since the operator's
+original folder/file selection (`REQ-SB-86-US-01`) already IS the full
+manual control surface — a missed attachment can always be included by
+directly selecting its own file. `.sbd` has no manifest and therefore no
+recorded provenance (which files were "selected" vs. "auto-resolved
+attachment") — acceptable since there is no reader that would ever need to
+distinguish them; a future `.sbd` import story would need its own ADR to
+decide whether provenance becomes necessary then, not retrofitted here
+speculatively. The flat-collision parent-folder-prefix naming rule means a
+flat-extracted archive's filenames are not always byte-identical to the
+vault's own original filenames — an accepted, disclosed trade-off directly
+serving the project's own "never silently lose data" posture over exact
+filename preservation. Every future `.sbd`-adjacent decision (a provenance
+manifest, a size cap, an import reader) is a natural extension point on
+`sbd_archive.py`, not a closed design — mirrors `ADR-013`'s own "extension
+point, not a closed enum" framing for `.sbf`.
+
+---
