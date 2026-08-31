@@ -8298,3 +8298,167 @@ each story's own `## Notes` for the authorization breadcrumb.)
   → `Implementation/Tasks/REQ-SB-85-US-03-T06-import-flow-ui.md`
   → `src/frontend/src/pages/SettingsArtifactsPage.tsx`
 
+- [x] 2026-09-01 · **REQ-SB-86-US-01** · Resolved 2026-09-01 — extended
+  REQ-SB-85's same-day design-gate override to this sibling requirement
+  Plain English: this story adds a brand-new Settings → Vault → Export
+  Data screen (a real folder-tree browser, multi-select across folders/
+  files, a `.md` quick filter) with no `html-prototype/` coverage anywhere
+  (confirmed against the full prototype catalog before writing this
+  story). `REQ-SB-85`'s three sibling stories hit the identical
+  `net-new-design-needed` trigger this same day and the operator directly
+  overrode it (build functional-first, design after) — but that override
+  was recorded specifically for `REQ-SB-85`, and this batch's own launch
+  instructions did not extend it to `REQ-SB-86`, so it is not assumed
+  here. Nothing else about the story is ambiguous — it composes only the
+  already-real `VaultManager`/`settings.vault_path`, with one grounding
+  finding (the picker must be a genuine unfiltered filesystem walk, not
+  the existing note-index primitives, since those deliberately exclude
+  OKF-reserved files and `_`-prefixed archive folders like `_assets` a
+  real folder share needs to include).
+  Resolution: the operator's own same-day `REQ-SB-85` override ("No
+  Design we will design later" / "Follow the [P]ath design will be done
+  after the task is working") is extended here, under the same standing
+  autopilot authorization `REQ-SB-86` itself was scoped under. Build
+  functional-first; a real design pass over both `REQ-SB-86` substories'
+  screens remains available on the operator's own timeline, same as the
+  still-pending `REQ-SB-85` one.
+  → `Implementation/UserStories/REQ-SB-86-US-01-vault-export-data-folder-picker.md`
+
+- [x] 2026-09-01 · **REQ-SB-86-US-02** · Resolved 2026-09-01 — extended
+  REQ-SB-85's override; accepted the disclosed flat-collision default
+  Plain English: this story (the Export half of `REQ-SB-86`'s own 2-way
+  split — see `REQ-SB-86-US-01`'s Context for the split rationale)
+  automatically includes any attachment a selected `.md` file embeds, lets
+  the operator choose flat vs. hierarchy-preserving extraction, and
+  writes one real `.sbd` zip. The new export-options screen has zero
+  `html-prototype/` coverage, same open design-sign-off question as its
+  sibling `REQ-SB-86-US-01` above. Separately, a real, disclosed
+  correctness gap was found while grounding this story against the real,
+  already-`Done` OKF directory shape (`REQ-SB-54`): every Customer/Project
+  directory shares the exact same 4 filenames (`index.md`/`log.md`/
+  `captures.md`/`<slug>.md`), so selecting more than one such folder and
+  choosing "flat" extraction will produce real filename collisions the
+  operator's own words never addressed. A disclosed, non-locked default
+  (disambiguate by prefixing the original parent-folder name) is proposed
+  in the story's own Context — not blocking, since the controlling intent
+  (never silently lose/overwrite a selected file) is honored regardless
+  of the exact naming scheme.
+  Resolution: design-gate extended from `REQ-SB-85`'s override, same
+  reasoning as `REQ-SB-86-US-01` above. The disclosed flat-collision
+  default (prefix the original parent-folder name, e.g. `masdar_index.md`)
+  is accepted as proposed — honors this project's own "archive, never
+  silently lose data" posture; the decomposer locks it into Scenario 3's
+  AC directly.
+  → `Implementation/UserStories/REQ-SB-86-US-02-vault-export-data-archive-writer.md`
+
+- [ ] 2026-09-01 · **REQ-SB-86-US-02** · `ADR-016` (`.sbd` Vault Data
+  Archive) was written — review the format/posture decision before tasks
+  are locked
+  Plain English: the architect pass for this story decided a new ADR was
+  genuinely warranted (not just accepted the story's own "likely ADR-worthy"
+  flag at face value) for the attachment-resolver + `.sbd` archive-writer
+  mechanism — this is the first-ever Second-Brain-side export of real vault
+  DATA, distinct from `ADR-013`'s `.sbf` capability-bundle mechanism.
+  `ADR-016` records: two new `app/business/logic/` modules
+  (`vault_attachment_resolver.py`, `sbd_archive.py`), a real internal-layout
+  decision (`.sbd` carries NO `manifest.json`, unlike `.sbf` — deliberate,
+  since no `.sbd` import reader exists to design for), a new dual
+  wikilink-embed/markdown-image-link attachment-detection heuristic, the
+  flat-collision parent-folder-prefix naming rule, and an explicit,
+  formal statement that `.sbd` deliberately has NO dependency-closure
+  resolution and NO secret-scan gate — the mirror-image posture to
+  `ADR-013`, since real vault data the operator explicitly chooses to
+  share has neither concept.
+  **What to do:** review `ADR-016` in
+  `Implementation/Architecture/ADR.md` (Accepted status already set) —
+  approve or reject the no-manifest/no-dependency-closure/no-secret-scan
+  decisions specifically; if rejected, reset this story's `status:` and
+  re-run `/plan-tasks` after editing/superseding `ADR-016`. The decomposer
+  runs next regardless — this review can happen alongside the resulting
+  tasks in one pass, per this pipeline's own ADR-trigger convention (does
+  not halt the stage).
+  → `Implementation/Architecture/ADR.md`
+  → `Implementation/UserStories/REQ-SB-86-US-02-vault-export-data-archive-writer.md`
+
+- [ ] 2026-09-01 · **REQ-SB-86-US-02-T02** · spot-check two scope-internal
+  judgement calls in the flat-collision disambiguation rule (task built
+  and verified `Done`, not blocked)
+  Plain English: `T02` (`.sbd` archive writer + `POST
+  /vault/export-data/export`) is `Done` — all 6 locked ACs verified live
+  against the real running route, real vault files, and a disposable
+  scratch pair for the collision case. Two non-blocking judgement calls
+  were made where neither the story nor `ADR-016` specified an exact
+  rule: (1) a file colliding at the vault root (no parent folder) prefixes
+  with the literal string `root` instead of an empty string — untested
+  against any real collision, since none occurred live; (2) the
+  parent-folder-name prefix uses the real folder's own exact casing (e.g.
+  `Masdar_index.md`), not a forced-lowercase transform, even though the
+  story/`ADR-016`'s own illustrative examples show lowercase
+  (`masdar_index.md`) — Scenario 3's locked Then-clause does not require
+  a case transform, so this is read as compliant, not a weakening.
+  **What to do:** confirm both choices are acceptable, or state the
+  preferred rule (empty prefix vs. `root`; force-lowercase vs. real
+  casing) — either can be applied as a small follow-up edit, no re-spec
+  needed.
+  → `Implementation/Tasks/REQ-SB-86-US-02-T02-sbd-archive-writer.md`
+
+- [ ] 2026-09-01 · **REQ-SB-86-US-02-T03** · two disclosed, non-blocking
+  findings from live verification (task built and verified `Done`, not
+  blocked) — this closes `REQ-SB-86` end-to-end (both substories, all 5
+  tasks, `Done`)
+  Plain English: `T03` (export-options screen — flat/hierarchy choice,
+  confirm, download) is `Done` — all 4 locked ACs verified live: correct
+  real request body per extraction mode, real response bytes confirmed as
+  a genuine, complete, correctly-sized zip (magic-number + byte-length
+  check), and an honest inline error confirmed on both a real `422` and a
+  real backend `500`. Two separate findings surfaced during that
+  verification, neither caused by this task's own code, neither weakening
+  any locked AC: (1) in this project's specific headless-Edge + CDP
+  `Browser.setDownloadBehavior` combination, a `blob:`-URL download (the
+  same `<a download>`/`URL.createObjectURL` technique already shipped and
+  verified `Done` by `REQ-SB-85-US-02-T05`) reports `receivedBytes`
+  reaching `totalBytes` in full, then transitions to a terminal `canceled`
+  state with no file landing on disk — reproduced identically against
+  `T05`'s own already-shipped, unmodified flow in the same session,
+  isolating it as an environment/tooling quirk, not a regression; (2)
+  hitting the real `/export` route with a selection that makes the backend
+  raise an unhandled exception returns a real `500` when called directly
+  (`curl`), but the SAME request from the browser is opaque-`CORS`-blocked
+  (`TypeError: Failed to fetch`) because `CORSMiddleware`'s response
+  headers are never attached to a response built from an unhandled
+  exception — this task's own honest-error rendering still holds (a
+  generic-but-real message renders, never a silent failure/fabricated
+  success), but the root cause is a real, separately-actionable backend
+  gap (`app/api/vault_router.py`/backend CORS config), entirely outside
+  this task's own `## Files to Modify`.
+  **What to do:** (1) no code action indicated for the download-terminal-
+  state quirk — filed for awareness only, in case a future automated-test
+  harness needs to account for it; (2) decide whether/when a future task
+  should add a global exception handler (or per-route wrapping) that
+  preserves `CORSMiddleware` headers on an unhandled-exception response,
+  improving error-message fidelity across this backend, not just this one
+  route — a real, actionable backend finding, not required to close this
+  task or `REQ-SB-86`.
+  → `Implementation/Tasks/REQ-SB-86-US-02-T03-export-flow-ui.md`
+
+- [ ] 2026-09-01 · **SPRINT-081** · skim the sprint retrospective and
+  harvest learnings
+  Plain English: `SPRINT-081` (`REQ-SB-86-US-01`, `REQ-SB-86-US-02` — Vault
+  Export Data folder-tree picker + attachment-aware `.sbd` archive writer)
+  is `Done` — all 5 tasks across both stories built and independently
+  live-verified against the real, running app/backend/vault; all 11 locked
+  ACs (5 on `US-01`, 6 on `US-02`) pass. The coder drafted a Retrospective
+  (sizing accuracy — exact match, 5 tasks/M; what worked/didn't — including
+  a CDP-headless/`blob:`-URL download-interception quirk isolated via a
+  same-session control check against an already-shipped sibling flow;
+  patterns/antipatterns; open follow-ups), but does not write
+  `Implementation/Learnings.md` directly — that's a human step. This closes
+  `REQ-SB-86` end-to-end (both substories, all 5 tasks, `Done`). The
+  story-level `ADR-016` human-review flag and the two separate `T02`/`T03`
+  scope-internal-finding entries above remain open independently of this
+  retro-harvest item.
+  **What to do:** read `## Retrospective` in the sprint file, then copy
+  the "Patterns to carry forward" and "Antipatterns to avoid" entries into
+  `Implementation/Learnings.md`.
+  → `Implementation/Sprints/SPRINT-081-vault-export-data-folder-picker-and-archive-writer.md`
+

@@ -18,6 +18,149 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: Export-options screen — flat/hierarchy choice, confirm, real
+  browser download (`REQ-SB-86-US-02-T03`, story `REQ-SB-86-US-02` now
+  `Done` — this closes `REQ-SB-86` end-to-end, both substories, all 5
+  tasks, `Done`) — `SettingsVaultExportDataPage.tsx` gains a
+  `data-testid="export-selection"` trigger (enabled only when the real
+  selection is non-empty) opening a `data-role="export-options"` step with
+  a real, mutually-exclusive `data-testid="extraction-hierarchy"` /
+  `data-testid="extraction-flat"` radio pair (hierarchy checked by
+  default) and a `data-testid="export-confirm"` control. Confirm calls
+  `vaultApiClient.ts`'s new `exportVaultData(selection, extraction):
+  Promise<Blob>` (dedicated `fetch`, resolves `response.blob()`) against
+  `T02`'s real `POST /vault/export-data/export`, then triggers a real
+  browser download (`<a download>` + `URL.createObjectURL`, the same
+  technique `REQ-SB-85-US-02-T05`'s own Export flow already established).
+  The selected-files `Set` (`REQ-SB-86-US-01-T02`) already holds only real
+  file paths, expanded at select-time — so the "expand a folder selection
+  client-side" step is satisfied by construction, needing no new expansion
+  code here (logged as a scope-internal reconciliation). A non-2xx
+  response renders a plain, honest `data-role="export-error"` — never a
+  silent failure, never a fabricated success. Verified live via a real
+  headless-Edge CDP session against the real running app/backend/vault:
+  both extraction modes sent the correct real request body and received a
+  genuine, complete, correctly-sized `.sbd` zip (magic-number + byte-length
+  checked); the real browser download mechanism genuinely engaged with the
+  correct filename and received 100% of the real bytes (the final
+  disk-write-completion step is blocked by a disclosed, non-blocking
+  CDP-headless/`blob:`-URL-download-interception quirk, reproduced
+  identically against `REQ-SB-85-US-02-T05`'s own already-shipped,
+  unmodified flow in the same session — an environment/tooling artefact,
+  not a defect in either flow's own code); a real `422` and a real backend
+  `500` (the latter surfacing a separate, disclosed backend CORS-on-
+  unhandled-exception finding, out of this task's own scope) both rendered
+  an honest inline error. Two non-blocking findings logged to
+  `REVIEW-QUEUE.md` for spot-check.
+
+- feat: Settings → Vault → Export Data — real folder-tree browser, multi-
+  select, `.md` quick filter (`REQ-SB-86-US-01-T02`, story `REQ-SB-86-US-01`
+  now `Done`) — new `src/frontend/src/pages/SettingsVaultExportDataPage.tsx`
+  renders `T01`'s real `GET /vault/export-data/tree` response as a
+  recursive, expandable folder tree (`[data-role="export-data-tree"]`,
+  each node `data-testid="tree-node-<path>"`). Selecting a folder's own
+  checkbox adds every real file path nested beneath it (any depth) to an
+  ephemeral `Set<string>` selection; an individual file checkbox toggles
+  independently. A `.md` quick filter (`data-testid="md-filter-toggle"`)
+  narrows the render to `.md` files and their containing folders only —
+  a folder with zero `.md` files anywhere beneath it is omitted entirely,
+  never shown as a fake-empty row — without ever mutating the selection.
+  `data-testid="clear-selection"` empties only the selection, leaving the
+  tree/expand state and the filter's own on/off state untouched.
+  `VaultSettingsNav.tsx` gained a 6th "Export Data" nav entry; `App.tsx`
+  gained the `/settings/vault/export-data` route;
+  `vaultApiClient.ts` gained `fetchVaultExportTree()`/`VaultTreeNode`.
+  Functional-first per the story's own operator-overridden design-gate
+  resolution — no `html-prototype/` coverage for this screen. Verified
+  live via a real headless-Edge CDP session against the real running app/
+  backend/vault: all 5 locked ACs (`AC-01`..`AC-05`) confirmed with real,
+  positive results, including a real folder recursive-selection round
+  trip (`Work/Research`, 4 real `.md` files incl. one nested a subfolder
+  deep) and two real honest-omission fixtures for the `.md` filter
+  (`.obsidian`/`Personal/.git`, both independently confirmed to have zero
+  `.md` files anywhere beneath them in the real vault).
+- feat: Embedded-attachment resolver over a real selection of `.md` files
+  (`REQ-SB-86-US-02-T01`, `ADR-016`) — new
+  `app/business/logic/vault_attachment_resolver.py::
+  resolve_embedded_attachments(selected_md_paths: list[str]) ->
+  list[str]`. For each selected note, scans its real body (via
+  `app/obsidian/frontmatter.py::read_note`) for both real Obsidian embed
+  syntaxes — wikilink-embed `![[...]]` and markdown-image-link
+  `![...](...)` — and resolves each target to a real, existing on-disk
+  vault-relative path, checked (1) relative to the note's own containing
+  folder, (2) under an `attachments/`/`files/` subfolder at any ancestor
+  level up to the vault root (the real `write_attachments()`/
+  `write_file_companion()` convention), then (3) as a vault-root-relative
+  path. A non-resolving reference is silently skipped, never fabricated;
+  a target resolving to a `.md` file is excluded (note transclusion, not
+  an attachment). Pure read/resolve — no file writes, no dependency-
+  closure resolution, no secret-scan pass (deliberate divergence from
+  `ADR-013`'s `.sbf` machinery). Verified live against the real vault
+  (`settings.vault_path`): a real note's real `![[aks-baseline-
+  architecture.svg]]` embed resolved correctly (`AC-04`); a disposable
+  scratch note engineered with the markdown-image-link syntax resolved
+  the same real attachment (`AC-04`); a real note with no embeds returned
+  `[]` (`AC-05`); a non-existent reference was silently skipped; the
+  same physical attachment reached two different ways deduplicated to
+  one entry (surfaced and fixed a real path-normalization bug along the
+  way — see `MEMORY.md`). All scratch verification artefacts (in both
+  the app repo and the live vault) were deleted after the pass.
+
+- feat: `.sbd` real vault-data archive writer + `POST
+  /vault/export-data/export` (`REQ-SB-86-US-02-T02`, `ADR-016`) — new
+  `app/business/logic/sbd_archive.py::write_archive(output_path: str,
+  members: dict[str, str]) -> None` (pure zip I/O, no `manifest.json`,
+  raw bytes copied per archive-member path) and new
+  `app/business/logic/vault_export.py::build_export(selection: list[str],
+  extraction: str) -> str`, composing `T01`'s
+  `resolve_embedded_attachments()` to auto-include every selected `.md`
+  file's own genuinely-embedded attachments, computing each real
+  archive-member path per the operator's `flat`/`hierarchy` choice, and
+  disambiguating any flat-extraction basename collision by prefixing
+  every colliding entry with its own real, immediate parent-folder name
+  (never a silent overwrite). New `vault_router.py` route streams the
+  real `.sbd` via `FileResponse`
+  (`second-brain-vault-export-<ISO-8601-UTC-timestamp>.sbd`), cleaning up
+  the scratch temp file via `BackgroundTasks` after the response is sent
+  — same mechanism `REQ-SB-85-US-02-T04`'s own `/commit` route already
+  established. Verified live against the real, freshly-restarted dev
+  server and real vault: hierarchy extraction preserved exact relative
+  paths (`AC-01`); flat extraction landed every member at the archive
+  root (`AC-02`); a disposable real scratch pair sharing the basename
+  `index.md` both survived flat extraction, each disambiguated
+  (`masdar`/`acme`-style prefix — `AC-03`); a single-file selection
+  produced exactly one archive member (`AC-06`); a real note's real
+  embedded SVG was auto-included with no prompt (`AC-04`); a selection
+  with no embedded attachments added no extra entries (`AC-05`); no
+  scratch temp `.sbd` remained on disk after any request. All disposable
+  scratch vault files were deleted after the pass. Two non-blocking
+  scope-internal judgement calls (the vault-root collision-prefix
+  fallback; real-casing vs. forced-lowercase in the prefix) logged to
+  `REVIEW-QUEUE.md` for spot-check.
+
+- feat: Real, unfiltered vault-directory tree-listing endpoint
+  (`REQ-SB-86-US-01-T01`) — `VaultManager.get_export_tree()`
+  (`app/business/core/vault/vault_manager.py`) walks `settings.vault_path`
+  directly via `Path.iterdir()`, never through the note-index primitives
+  (`vault_writer.list_all_note_paths()`), so OKF-reserved files
+  (`index.md`/`log.md`/`captures.md`) and `_`-prefixed archive folders
+  (e.g. `_assets`, `_archive`) are included, not silently excluded.
+  Returns `{"root": <vault_path as posix>, "tree": {"name", "type",
+  "path", "children"}}`, folders sorted before files, alphabetically
+  within each directory. No caching — reflects the real directory at
+  request time. New `GET /vault/export-data/tree` route on
+  `app/api/vault_router.py` exposes it read-only. Fixed a real Windows
+  `MAX_PATH` (~260 char) edge case along the way: `is_dir()` is now
+  computed once per entry and reused for both the sort key and the
+  folder/file type decision, since independently calling `is_file()`
+  and `is_dir()` on the same long path can silently disagree (see
+  `MEMORY.md`). Verified live against the real vault directory: an
+  independent `Path.rglob("*")` cross-check matched the endpoint's own
+  4081-entry output exactly (0 missing, 0 extra); confirmed real
+  OKF-reserved `index.md` files (61) and real `_`-prefixed folders (9,
+  e.g. `Work/_archive`, `Work/Customers/_assets`) both present in the
+  response.
+
 - feat: Import flow UI (`REQ-SB-85-US-03-T06`) — `SettingsArtifactsPage.tsx`
   gains an "Import" card alongside the existing Export UI: an
   `import-trigger` button reveals a real `<input type="file" accept=".sbf">`;
