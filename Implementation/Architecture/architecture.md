@@ -180,5 +180,67 @@ as-is; everything below is new.
   what's currently suppressed — it lives entirely inside Hermes' own
   per-profile memory file, outside this repo.
 
-**Last reviewed:** 2026-08-25 (architect pass, `REQ-SB-82-US-01/02/03/05`,
-`ADR-007` through `ADR-010`).
+### §Cockpit Live Routing & Reply-to-Message (`REQ-SB-82-US-06`, `ADR-011`, `ADR-012`)
+
+- **New data-access module:** `app/data_access/compass_client.py` — raw
+  HTTP client for Compass `gpt-oss-120b`, sourced from `app.config.
+  settings` (`compass_base_url`/`compass_api_key`/`compass_model`), using
+  `httpx` (same proven pattern as `app/hermes/rest.py`). This is the
+  first direct-to-LLM client in the post-2026-08-20 architecture. Raises
+  a dedicated error type on any failure (network error, timeout,
+  non-success response) — never a silent `None`. **`ADR-022`**, cited as
+  "Accepted" by several pre-existing code comments/task files
+  (`provider_manager.py`, `REQ-SB-36-US-01-T01`/`T02`), is confirmed
+  **orphaned** — no such entry exists anywhere in this ledger (the real
+  highest entry was `ADR-010` before this pass); it belongs to the
+  archived pre-2026-08-20 ADR sequence and governed code
+  (`compass_client.py`/`anthropic_client.py`) since deleted in the
+  2026-08-27 "fully agentic" purge. Treat any reference to it as
+  pre-redesign history, not a live decision — cite `ADR-011` going
+  forward.
+- **LLM-based moderator:** a new function in the existing `app/business/
+  cockpit/moderator.py` (sibling to `route_question`/
+  `match_domain_experts`), composing `compass_client` to reason over the
+  brought-in roster's own `name`/`description`, recent conversation
+  history, and the new message's own text. Runs on EVERY message not
+  caught by the short-reply shortcut below (operator's "always on"
+  choice) — the PRIMARY routing decision. The existing deterministic
+  `route_question` is retained unmodified and demoted to the explicit
+  degrade path on any Compass client failure, mirroring
+  `_reply_via_agent`'s already-proven Hermes-failure degrade shape.
+- **Short-reply shortcut:** a pre-routing check in
+  `chat_turn.py::send_user_message`, checked before any moderator call
+  (deterministic or LLM) — no full routing decision needed to reach it.
+  Depends on a new additive field on `ADR-007`'s own per-subject
+  `chat_store.py` entry — `last_answering_agent_id`/
+  `last_answering_agent_name` (same honest-empty-until-set convention as
+  `ADR-009`'s `recommended_agent_ids`) — set by `_dispatch_reply`
+  whenever any real agent reply is dispatched. No prior answer recorded
+  → the shortcut cannot fire, the message falls through to normal
+  routing. The exact detection rule (length threshold vs. fixed
+  vocabulary vs. both) is left to the decomposer/coder.
+- **Reply-to-message, Cockpit:** the outgoing `POST /cockpit/
+  {subject_kind}/{subject_note_stem}/message` endpoint gains an optional
+  caller-supplied `reply_to_message_id` (additive to the field
+  `chat_store.append_message` already accepts internally for
+  auto-threaded replies). When present, `chat_turn.py` resolves the
+  referenced message's own text and feeds it into the LLM moderator's
+  reasoning as one more context input — never a hard override; the
+  moderator can still route elsewhere when the new message's content
+  clearly belongs to a different Expert. A stale/unresolvable reference
+  is treated as absent — the message still sends and routes normally,
+  no error rendered.
+- **Reply-to-message, single-agent Chat panel:** architecturally separate
+  from the above — `AgentChatPanel.tsx` has zero message-id/persistence
+  concept today (a stateless streaming call, no `chat_store` backing). A
+  lighter-weight, purely client-side context-anchoring mechanism (attach
+  the referenced message's own text to the outgoing request) is the
+  intended shape — no backend schema change, no LLM-moderator
+  involvement, since only one agent ever answers there.
+- **Visual/UI treatment in both surfaces is `net-new-design-needed`** (no
+  `html-prototype/` coverage) — deferred to a `/design` pass before
+  frontend tasks are cut; this architecture note covers only the
+  backend/API-contract shape.
+
+**Last reviewed:** 2026-08-31 (architect pass, `REQ-SB-82-US-06`,
+`ADR-011`/`ADR-012` — resolved the orphaned `ADR-022` ledger reference).

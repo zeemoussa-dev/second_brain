@@ -1126,3 +1126,338 @@ one-shot, no-live-back-channel constraint as every other cross-profile
 relay in this codebase.
 
 ---
+
+## ADR-011: A new, dedicated Compass `gpt-oss-120b` HTTP client is the first direct-to-LLM client in the post-2026-08-20 backend — lives in `app/data_access/`, degrades honestly on failure, and is NOT a continuation of the orphaned `ADR-022` reference
+
+**Status:** Accepted
+**Date:** 2026-08-31
+
+**Context:** `REQ-SB-82-US-06` needs a real reasoning pass over the
+brought-in Experts' own name/description, recent conversation history, and
+the new message's own text to route a substantive Cockpit question
+(Scenario 2) — this needs an actual model call, not another deterministic
+heuristic. No live HTTP client to any LLM provider exists anywhere in the
+current `src/backend` tree today: `config.py` already anticipates one
+(`compass_base_url`/`compass_api_key`/`compass_model`, `.env.example`
+currently blank placeholders) and `provider_manager.py`'s own
+`_REAL_CLIENT_PROVIDER_IDS = {"compass", "anthropic-claude"}` already
+flags Compass `has_real_client=True` — but that flag has been
+aspirational, not literal, since 2026-08-27: `data_access/{compass,
+anthropic,outlook_com}_client.py` were deliberately DELETED that day as
+part of the "backend now fully agentic" purge (`MEMORY.md`, 2026-08-27 —
+"every parallel/competing orchestration mechanism the backend once ran
+itself... is deleted, not just disconnected... Hermes now owns all
+scheduling/dispatch/agent-orchestration natively"). Confirmed by direct
+git history (`git log --all -- '*anthropic_client*'`/`'*compass_client*'`):
+both files existed pre-redesign, survived briefly into the post-2026-08-20
+tree, then were removed 2026-08-27 — no worktree/branch holds a viable,
+current-architecture copy (the only surviving `compass_client.py` copies
+live in stale `worktree-agent-*`/`claude/happy-noyce-b3fecb` branches dated
+2026-08-11, ~261,000 lines diverged from `master`, not mergeable).
+
+**A real, disclosed ledger discrepancy, investigated directly rather than
+assumed:** `provider_manager.py`'s own code comment ("Compass and
+Anthropic Claude both have real clients (ADR-022 point 3)") and two task
+files under `REQ-SB-36-US-01` (`T01`/`T02`, `anthropic-client.md`) cite
+`ADR-022` as an already-`Accepted` decision covering `has_real_client`/
+provider plumbing and the Anthropic client. Direct reading of
+`Implementation/Architecture/ADR.md` found no `ADR-022` — the real
+ledger's highest entry, before this pass, was `ADR-010`. This is
+explained, not left a mystery: `ADR.md`'s own 2026-08-20 numbering-restart
+note confirms the ENTIRE pre-redesign ADR sequence (originally ADR-001
+through ADR-058) was archived to `Documentation-Archive-2026-08-20/
+Implementation/Architecture/ADR.md`, and only ADR-001 (the redesign's own
+founding decision) was explicitly carried forward under the new
+numbering. An old `ADR-022`, if it existed in that archived sequence,
+governed the OLD `anthropic_client.py`/`compass_client.py` pair — both
+since deleted (2026-08-27) and never rebuilt. No entry in the CURRENT
+`ADR.md` ever formally superseded that old decision, because the code it
+governed was retired via a plain `MEMORY.md` Decision entry, not an ADR —
+a real gap in ADR hygiene, not a fabricated one. **Conclusion: `ADR-022`
+is void by orphaning, not extendable.** Every current-codebase comment/
+task file citing it should be read as referring to dead, pre-redesign
+history; this ADR is the first REAL, current-ledger decision governing a
+direct-to-LLM client, and takes a fresh number in the live sequence
+rather than attempting to "restore" ADR-022's old number (which would
+misleadingly imply continuity with a decision this pass cannot actually
+read or verify).
+
+**Decision:**
+1. **New module, `app/data_access/compass_client.py`** — raw HTTP I/O
+   only: builds and sends a chat-completion request to `settings.
+   compass_base_url` using `settings.compass_api_key`/`settings.
+   compass_model`, using `httpx` (already a proven, already-used
+   dependency for external HTTP calls in this exact architecture —
+   `app/hermes/rest.py`'s own Hermes-gateway client is the direct
+   precedent for "an HTTP client module living at this layer, using
+   httpx directly"). Placed in `data_access/`, not `app/hermes/` —
+   `app/hermes` is reserved exclusively for calls to the Hermes gateway
+   itself (2026-08-27's own hard rule: "exactly ONE file,
+   `app/business/hermes/client.py`, may import from `app/hermes`"); a
+   direct-to-Compass call is a categorically different external
+   integration (a raw LLM provider API, not Hermes), so it gets its own
+   sibling module at the same layer, not a case inside the Hermes
+   package. This also matches `ADR-001`'s own "data layer" framing
+   (`app/data_access/` is where this backend's real external-data reads
+   live) and `ADR-003`'s established `api -> business -> data_access`
+   layering discipline (raw I/O has no business interpretation of its
+   own).
+2. **Raises a clear, dedicated error on any failure** (network error,
+   timeout, non-success response) — mirrors `app/hermes/
+   client.py::HermesUnavailableError`'s own shape (a real, named
+   exception type the business layer catches explicitly), never a bare
+   exception or a silently-swallowed `None`. The exact request/response
+   JSON contract against Compass's real `gpt-oss-120b` API is left to
+   `/plan-tasks`'/the coder's own live verification against the real
+   endpoint once credentials are available (Scenario 6's degrade path is
+   what makes this safe to build before that verification is complete —
+   see `ADR-012`).
+3. **No new business/core Provider-entity code needed.** `ProviderManager`/
+   `Provider` (`business/core/provider/`) already carry Compass's
+   endpoint/credential/model as data and already flag
+   `has_real_client=True` for it (`provider_manager.py`,
+   `_REAL_CLIENT_PROVIDER_IDS`) — this ADR makes that existing flag
+   literally true for the first time, rather than adding a second,
+   competing Provider-credential concept. The new client reads
+   `app.config.settings` directly for its own request construction (same
+   settings `ProviderManager`'s own `data_access/providers.py` already
+   sources `seed_defaults()` from) — it does not go through
+   `ProviderManager` at call time, since `ProviderManager` is a CRUD/data
+   manager for the Provider entity (config-at-rest), not a runtime
+   dispatcher for making calls; consuming settings directly for a live
+   request is the same category of read `providers.py` itself already
+   performs (a "structural PATH/VALUE read," not business
+   interpretation).
+4. **The business-level consumer (the LLM-based Cockpit moderator,
+   `ADR-012`) lives under `app/business/cockpit/`, not `app/business/
+   core/provider/`.** Routing a Cockpit question is Cockpit's own
+   business concern (parallel to `moderator.py`'s existing deterministic
+   tracks); Provider's Manager owns credential/config CRUD only,
+   matching this project's own established "Managers own entity CRUD;
+   cross-cutting/consuming business logic lives with the consumer, not
+   inside the entity Manager" split (`MEMORY.md`, 2026-08-27/28
+   SectionManager/AgentManager entries: "cross managers work is the
+   business logic," "Managers don't call Routers, Routers call
+   Manager").
+
+**Alternatives Considered:**
+- *Extend the orphaned `ADR-022` in place, treating it as still-Accepted*
+  — rejected: it cannot be read, verified, or safely extended (it exists
+  in no reachable file in the current repo state); silently building on
+  an unverifiable citation would risk inheriting assumptions this pass
+  cannot actually check. A fresh ADR, explicitly naming and voiding the
+  orphaned reference, is the honest choice.
+- *Renumber this decision as a restored "ADR-022"* — rejected: would
+  misleadingly imply this ADR is a continuation of a specific,
+  known-content prior decision; it is not — it's a first-principles
+  decision made fresh against the current, post-2026-08-20 architecture.
+  Using the next real sequential number (`ADR-011`) keeps the ledger's
+  own numbering honest.
+- *Place the new client under `app/hermes/`, reusing that package's
+  existing httpx wiring* — rejected: `app/hermes` is a deliberately
+  Second-Brain-agnostic, Hermes-only library (2026-08-27's own hard rule,
+  "never imports `app.config`... exactly ONE file may import from
+  `app/hermes`"); a Compass HTTP client needs `app.config.settings`
+  directly and has nothing to do with the Hermes gateway protocol —
+  folding it in would violate that package's own single-purpose boundary
+  for no benefit.
+- *Route the Compass call through `ProviderManager`* (a
+  `provider_manager.call(...)`-shaped method) — rejected:
+  `ProviderManager` is this project's established CRUD/data Manager for
+  the Provider entity (mirrors Section/Agent/Pipeline/Vault/Template
+  Manager's "one real gateway onto entity data" rule) — adding a live
+  network-call method to it would conflate "manage Provider records"
+  with "make a live LLM request," a different responsibility this
+  project's own Manager pattern deliberately keeps separate (see
+  Decision 4).
+- *Wait for real Compass credentials before building anything* —
+  rejected: the story's own Scenario 6 (honest degrade on failure) is
+  independently valuable and testable today (a real network/auth failure
+  against blank/placeholder credentials IS the degrade path), and blocks
+  nothing about routing correctness on the deterministic side;
+  `/plan-tasks`/the coder should still confirm the real request/response
+  shape live once credentials exist, per Consequences below.
+
+**Consequences:** `app/data_access/compass_client.py` is the first
+direct-to-LLM HTTP client to exist in the post-2026-08-20 architecture —
+sets the precedent for any FUTURE direct LLM-provider client (e.g. if
+Anthropic Claude's own direct client is ever rebuilt) to live at the same
+layer, same shape. Until real Compass credentials are provisioned
+(`.env.example`'s `COMPASS_BASE_URL`/`COMPASS_API_KEY`/`COMPASS_MODEL` are
+still blank placeholders), every real call exercises the failure/degrade
+path (`ADR-012`'s Scenario 6), never the happy path — this is expected
+and by design, not a defect; the coder must independently verify the real
+request/response contract once credentials exist, since this ADR does
+not (and cannot yet) confirm Compass's own live API shape. Every future
+reader who encounters a stale `ADR-022` citation elsewhere in this
+codebase (existing code comments/task files are NOT retroactively edited
+by this ADR — specs/task files are append-only/historical) should treat
+it as referring to dead, pre-2026-08-20 history, not a live decision —
+this ADR is the one to cite going forward for `has_real_client`/
+direct-LLM-client questions.
+
+---
+
+## ADR-012: Cockpit routing becomes LLM-primary with the existing deterministic scorer demoted to an explicit degrade path; a short-reply shortcut and a reply-to-message hint are additive fields on `ADR-007`'s own chat_store schema, not new stores or a hard override
+
+**Status:** Accepted
+**Date:** 2026-08-31
+
+**Context:** `REQ-SB-82-US-06` resolves a real, reproduced bug (operator:
+"When an Agent Respond to something and I say Yes a different Agent
+Picked the thread") plus two related capabilities the operator asked for
+while designing the fix: an always-on LLM-based routing pass for
+substantive questions, and a reply-to-message hint in both Cockpit and
+the single-agent Chat panel. `chat_turn.py`/`moderator.py` (`ADR-009`,
+`REQ-SB-82-US-04`, both confirmed live and shipped per `ESC-059`'s
+resolution) already own a real, working deterministic routing pipeline:
+`route_question` (tokenized keyword overlap, scoped to the brought-in
+roster), an `@mention` override, a tie-break that falls back to the
+Research Agent, an honest "no one here matches, try X" suggestion, and a
+Customer-Section fallback. None of this is being discarded — a
+low-signal reply like "Yes" defeats keyword-overlap scoring structurally
+(no domain vocabulary to match against), which the new Compass-backed
+reasoning pass and a new short-reply shortcut both address, each for a
+different failure mode.
+
+**Decision:**
+1. **The short-reply shortcut is a pre-routing check inside
+   `chat_turn.py::send_user_message`, checked BEFORE any moderator call
+   (deterministic or LLM) is made** (Scenario 1: "no full moderator
+   routing decision... is needed to reach that outcome"). It reads a
+   new, additive field on the SAME per-subject entry `ADR-007`'s
+   `chat_store.py` already owns — `last_answering_agent_id: str | None`
+   (plus `last_answering_agent_name`, mirroring every other
+   agent-reference pair already in this schema) — set by
+   `_dispatch_reply` whenever a real agent reply is actually dispatched
+   (Expert, Research Agent, or Customer-Section fallback alike; whoever
+   most recently answered, not just permanently-brought-in Experts).
+   When no such field is set yet for a subject (Scenario 7: nobody has
+   answered anything in this thread yet), the shortcut structurally
+   cannot fire and the message falls through to normal routing — an
+   absence-of-data check, not a separate flag. The exact short-reply
+   DETECTION rule itself (length threshold vs. fixed vocabulary vs.
+   both) is deliberately left to `/plan-tasks`'s decomposer/the coder,
+   per the story's own Constraints — this ADR fixes only the
+   mechanism's shape and its schema dependency, not the literal rule.
+2. **The LLM-based moderator (composing `ADR-011`'s `compass_client`)
+   becomes the PRIMARY routing decision for every message the
+   short-reply shortcut doesn't catch** — the operator's own explicit
+   "always on" choice (never gated to ambiguous-only cases). It lives in
+   `app/business/cockpit/moderator.py` (a new function, sibling to the
+   existing `route_question`/`match_domain_experts`/etc. — same module,
+   not a new file, since it is one more real routing TRACK this module
+   already owns the concept of) and reasons over the brought-in Experts'
+   own `name`/`description`, the recent conversation history, and the
+   new message's own text — real reasoning, not another keyword
+   heuristic.
+3. **`route_question`'s existing deterministic scoring is retained,
+   unmodified in its own logic, and demoted to the explicit degrade
+   path** (Scenario 6) — `chat_turn.py` calls the LLM moderator first;
+   any Compass client failure (network error, timeout, non-success
+   response — `ADR-011`'s own dedicated exception type) is caught
+   explicitly and falls through to the existing `route_question`/
+   `suggest_expert_for_question`/Customer-fallback chain exactly as it
+   already runs today, never a broken chat and never a silently
+   fabricated routing decision. This mirrors `_reply_via_agent`'s own
+   already-proven try/except-degrade shape for a Hermes-side failure —
+   the same honesty posture applied one level up, at the routing
+   decision itself rather than the reply-generation step.
+4. **Reply-to-message in the Cockpit is a hint fed into the LLM
+   moderator's own reasoning context, never a hard override** (Scenario
+   3, 5) — implemented as: the outgoing `POST .../message` endpoint
+   accepts an optional `reply_to_message_id` from the caller (new,
+   `chat_turn.send_user_message` gains the same optional parameter
+   `chat_store.append_message` already accepts internally — additive to
+   an existing internal mechanism, not a new concept); when present,
+   `chat_turn.py` resolves the referenced message's own text from the
+   thread and includes it as extra context in the LLM moderator's
+   prompt, alongside the brought-in roster and recent history. The
+   moderator's own reasoning still decides the answering Expert — a
+   reply-to hint pointing at one Expert's prior message can still route
+   elsewhere when the new message's own content clearly belongs to a
+   different Expert's domain (Scenario 5), by construction: the hint is
+   one more input to the SAME reasoning pass, never a separate override
+   branch that could short-circuit it.
+5. **Reply-to-message in the single-agent Chat panel (Scenario 4) is
+   architecturally out of this ADR's scope** — `AgentChatPanel.tsx`'s
+   own send path is a stateless streaming call with no message-id/
+   persistence concept and no `chat_store`/Cockpit backing at all
+   (confirmed directly, story Context); "only one agent exists there, so
+   reply-to never changes who answers" needs no chat_store schema change
+   and no LLM-moderator involvement — a lighter-weight, client-side
+   context-anchoring mechanism (attach the referenced message's own text
+   to the outgoing request) is the shape `/plan-tasks` should cut a task
+   for, separately from anything this ADR governs. **No backend schema
+   change is needed for this surface.**
+6. **A stale/unresolvable reply-to reference never breaks the chat**
+   (Scenario 8) — both surfaces treat a reply-to reference that can't
+   be resolved against the current thread (e.g. stale client state after
+   a reload) as absent: the message still sends and routes normally,
+   with no error state rendered for the unresolved reference. This is a
+   plain defensive-read contract on whichever layer resolves the
+   reference (Cockpit: `chat_turn.py` against the real thread; Chat
+   panel: the client's own local message list) — not a new mechanism of
+   its own.
+
+**Alternatives Considered:**
+- *Gate the LLM moderator to ambiguous cases only (fall back to the
+  cheap deterministic scorer first, escalate to Compass only on a
+  tie/no-match)* — rejected per the operator's own explicit "always on"
+  resolution (Constraints): a real reasoning pass over the actual
+  roster/history/message is the operator's own stated fix for "a
+  coincidental keyword match," not a mechanism reserved for edge cases.
+- *Make reply-to-message a hard override* (route directly to whoever
+  sent the referenced message, skip the moderator call entirely) —
+  rejected: directly contradicts Scenario 5's own explicit requirement
+  that a reply-to hint must not override a question that clearly belongs
+  to a different Expert's domain; a hard override would also silently
+  defeat the "always on" LLM reasoning decision above for any
+  reply-tagged message.
+- *A second, separate JSON store for `last_answering_agent_id`*
+  (mirroring the "why not a second recommended_agent_ids store" question
+  `ADR-009` already answered) — rejected for the same reason `ADR-009`
+  gave: it's the same real per-subject concept (this conversation's own
+  live state) viewed one more way; splitting it into its own file would
+  mean two reads/writes per message with no benefit and a real risk of
+  drift.
+- *Detect the short-reply case with an LLM call too* (ask Compass "is
+  this a low-signal acknowledgment?") — considered, rejected for this
+  pass: Scenario 1 explicitly requires that NO full moderator routing
+  decision is needed to reach the shortcut outcome; using an LLM call to
+  decide whether to skip the LLM call is circular and adds latency/cost
+  to the exact case (a bare "Yes") that most needs to be instant. A
+  plain, cheap, deterministic detection rule (exact shape left open)
+  satisfies the Scenario without this cost.
+- *Persist reply-to-message resolution server-side for the Chat panel
+  too* (build a lightweight `chat_store`-style store for it) —
+  rejected for this pass, matching the story's own Context finding that
+  this surface has zero persistence today and Scenario 4 needs none
+  (context-anchoring for the CURRENT turn only, no cross-reload
+  requirement asserted by any Scenario); revisit only if a future
+  requirement needs this surface's history to survive reload the way
+  Cockpit's already does.
+
+**Consequences:** `CockpitThread`'s per-subject schema (`ADR-007`,
+extended by `ADR-009`'s `recommended_agent_ids`) gains a second additive
+field, `last_answering_agent_id`/`last_answering_agent_name` — same
+honest-empty-until-set convention as every other field in this store,
+backward-compatible with every subject entry that predates this story.
+`moderator.py` now owns three independent routing tracks (deterministic
+`route_question`, the new LLM-based track, plus the pre-existing
+recommendation-matching tracks) — worth a documentation pass inside that
+module (already underway via this ADR + its own docstring conventions)
+so a future reader doesn't mistake it for a single-mechanism file. Every
+Cockpit routing decision now has a real, external network dependency
+(Compass) in its primary path for the first time — the degrade path
+(point 3) is what keeps this safe; `/plan-tasks`/the coder must verify
+the degrade path live (a genuine Compass failure/timeout, not just a
+code read) before this ADR's honesty guarantee (Scenario 6) can be
+trusted in production, matching this project's own standing
+"live-verify a disclosed-but-unconfirmed claim" discipline. The
+single-agent Chat panel's reply-to mechanism (point 5) diverges in shape
+from Cockpit's own — a future reader should not assume the two
+"reply-to-message" features share one implementation; they share only
+the same user-facing verb.
+
+---

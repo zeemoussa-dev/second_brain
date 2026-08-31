@@ -73,6 +73,7 @@ def remove_roster_agent(subject_kind: str, subject_note_stem: str, agent_id: str
 
 class SendMessageBody(BaseModel):
     text: str
+    reply_to_message_id: str | None = None
 
 
 @router.post("/{subject_kind}/{subject_note_stem}/message")
@@ -83,9 +84,16 @@ async def send_message(subject_kind: str, subject_note_stem: str, body: SendMess
     this endpoint only validates the subject exists and hands off. Returns
     fast (never waits on the real Hermes turn) — `{"thread": ..., "answering":
     {"agent_id", "agent_name"} | None}` — so the caller can show the user's
-    own message and an "X is typing..." indicator immediately."""
+    own message and an "X is typing..." indicator immediately.
+
+    `reply_to_message_id` (REQ-SB-82-US-06-T06, optional) is a pure
+    passthrough to `chat_turn.send_user_message`, which resolves it against
+    the thread itself (Scenario 8's stale/unresolvable handling) -- no
+    validation of it happens at this layer."""
     _require_known_note(subject_note_stem)
-    return await chat_turn.send_user_message(subject_kind, subject_note_stem, body.text)
+    return await chat_turn.send_user_message(
+        subject_kind, subject_note_stem, body.text, reply_to_message_id=body.reply_to_message_id,
+    )
 
 
 @router.post("/{subject_kind}/{subject_note_stem}/documents")

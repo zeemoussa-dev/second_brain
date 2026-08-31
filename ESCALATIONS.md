@@ -4709,6 +4709,131 @@ Approvals — the same `path.write_text(json.dumps(...))`-with-no-lock shape
 appears across most of `vault_writer.py`'s other state files too) would hit
 the identical race.
 
+## ESC-059: `REQ-SB-82-US-04`'s own story file (`status: Draft`, `gate: flagged`, dated 2026-08-25) is stale relative to its real, already-shipped, CHANGELOG-documented scope — found while grounding `REQ-SB-82-US-06`'s own `/spec` pass — 2026-08-31
+
+**Category:** other
+
+**Trigger:** `/spec REQ-SB-82` (drafting `REQ-SB-82-US-06`, per
+`Implementation/Plans/2026-08-31-cockpit-live-routing-and-reply-to-message.md`).
+Per this project's own standing "ground every technical claim in the real
+code, do not trust an input document blindly" discipline, before scoping the
+new story the analyst read `app/business/cockpit/chat_turn.py` and
+`app/business/cockpit/moderator.py` directly (the same two files the new
+plan's own Origin section cites as still purely deterministic/keyword-only)
+and found this premise only partially true as of 2026-08-31:
+
+- `moderator.py`'s own module docstring ("no LLM call, no Hermes profile
+  involvement") and its deterministic tokenized-overlap `route_question`
+  are confirmed CURRENT — the plan's core diagnosis (why "Yes" mis-routes)
+  is accurate.
+- But `chat_turn.py::send_user_message`/`_dispatch_reply` — live
+  per-question routing scoped to the brought-in roster, an explicit
+  `@mention` override, a genuine tie-break (falls back to the Research
+  Agent, never guesses), a "no real Expert here, suggest one" honest
+  system message, a Customer-Section fallback agent, fully async
+  background dispatch with an "X is typing…" indicator, and a real
+  `reply_to_message_id` threaded-reply mechanism — are ALL already built
+  and live, not open questions. `chat_store.py::append_message` already
+  gives every message a real `id` and an optional `reply_to_message_id`
+  (its own docstring cites this as "(REQ-SB-82-US-04)"). `Cockpit.tsx`
+  already renders the threaded "↳ replying to: …" strip for these
+  auto-threaded replies. `CHANGELOG.md` has multiple real, dated `feat:
+  REQ-SB-82-US-04`/`fix: REQ-SB-82-US-04` entries (e.g. the routing/
+  dispatch build, the `@mention` override, the Research-Agent-fallback
+  stopword fix) confirming this was built and shipped directly — evidently
+  outside the formal `/plan-tasks → /plan-sprints → /implement-sprint`
+  pipeline that story's own frontmatter still awaits (its inline code
+  comments cite live operator sessions dated 2026-08-26/27/28, all AFTER
+  the story file's own `updated: 2026-08-25`).
+- The genuinely still-open parts of `REQ-SB-82-US-04`'s own scope are
+  narrower than its current file states: the routing-decision MECHANISM
+  and tie-break rule are, in fact, decided and shipped (deterministic
+  tokenized overlap + explicit tie→Research-Agent fallback); threaded-reply
+  RENDERING is, in fact, shipped (`Cockpit.tsx`'s `chat-message-reply-to`).
+  What is undecided is only whatever `REQ-SB-82-US-04`'s own remaining,
+  never-updated Notes still name as open beyond that (if anything) — a
+  question this pass does not resolve, since editing another story is out
+  of `/spec`'s own scope for this run.
+- This directly affects `REQ-SB-82-US-06`'s own `## Dependencies`: it
+  extends the SAME already-shipped `chat_turn.py`/`moderator.py` functions,
+  not a not-yet-built mechanism — but it cannot honestly be described as
+  "blocked by `REQ-SB-82-US-04`, Done" while that story's own file still
+  says `Draft`/`flagged`. `BACKLOG.md`'s `REQ-SB-82` row is equally stale
+  ("US-04 still flagged (design/routing decisions remain)").
+
+**Resolution:** Not resolved here — `REQ-SB-82-US-04`'s own story file,
+`gate`/`status`, and `BACKLOG.md`'s row are left untouched by this pass
+(editing another story's frontmatter/scope is out of this `/spec` run's own
+bounds; `Documentation/PRD.md`'s "specs are append-only" rule also cautions
+against silently rewriting a flagged story out from under a pending human
+review). `REQ-SB-82-US-06` is drafted to depend on the REAL, verified
+current state of `chat_turn.py`/`moderator.py` (see its own Context/
+Dependencies), not on `REQ-SB-82-US-04` reaching `Done` through the
+pipeline. Recommending the human reconcile `REQ-SB-82-US-04`'s own
+`status`/`gate`/Notes against its real shipped scope (very likely: much of
+it can advance, with only its still-genuinely-open remainder, if any,
+staying flagged) as part of resolving `REQ-SB-82-US-06`'s own
+`REVIEW-QUEUE.md` entry.
+
+**Resolving artefact:** `REQ-SB-82-US-06`'s own `## Context`/`## Notes`
+(this same finding, restated); `REVIEW-QUEUE.md` entry pointing here, where
+the human reconciles `REQ-SB-82-US-04`'s own status against its real shipped
+scope before/alongside `/plan-tasks REQ-SB-82-US-06`.
+
+**Resolved 2026-08-31:** `REQ-SB-82-US-04`'s `status`/`gate` updated to
+`Done`/`clear` with a full `## Reconciliation Note` added to its own file,
+citing the same `CHANGELOG.md`/`MEMORY.md` evidence this escalation found.
+`BACKLOG.md`'s `REQ-SB-82` row updated to match. Resolving artefact:
+`Implementation/UserStories/REQ-SB-82-US-04-meeting-moderator-live-routing-
+and-async-research.md`'s own `## Reconciliation Note` (2026-08-31).
+
+**Status:** Resolved
+
 **Status:** Open (recommend `/bug` capture of the underlying
 `vault_writer.py` no-locking primitive gap; this story's own `AC-06` is
 unaffected/passing via the sequential-loop choice — see `REVIEW-QUEUE.md`)
+
+## ESC-060: The real, runtime `.env` file's Compass credentials are NOT blank — contradicts `ADR-011`'s Consequences and `REQ-SB-82-US-06`'s own Dependencies, both of which checked only `.env.example` — 2026-08-31
+
+**Category:** other
+
+**Trigger:** `REQ-SB-82-US-06-T02`'s own Constraints/Tests block (and this
+build pass's own launch instructions) state real Compass `gpt-oss-120b`
+credentials are "still blank placeholders" and direct verifying `AC-06`'s
+degrade path against "`settings.compass_base_url`/`compass_api_key` left
+at their real, currently-blank values." Direct reading of the REAL,
+`.env`-backed `Settings()` object `config.py` actually loads at runtime
+(`Settings(env_file=".env")`) — not `.env.example`, which genuinely IS
+blank — found `COMPASS_BASE_URL`/`COMPASS_API_KEY` are NOT blank:
+`src/backend/.env` has a real-looking `COMPASS_BASE_URL=https://
+api.core42.ai/v1/chat/completions`, a real-looking `COMPASS_API_KEY`
+value, and `COMPASS_MODEL=gpt-5` (not `gpt-oss-120b`, the model name
+`ADR-011`'s own title and this story's Context/Dependencies name
+throughout). Tracing the source of the wrong premise: `ADR-011`'s own
+Consequences paragraph and `REQ-SB-82-US-06`'s own Dependencies section
+both cite `.env.example` specifically ("`.env.example`'s
+`COMPASS_BASE_URL`/`COMPASS_API_KEY`/`COMPASS_MODEL` are still blank
+placeholders") — true for `.env.example` — but neither checked the actual
+runtime `.env` file. `T02`'s own Constraints then restated this as "real
+credentials... are still blank placeholders," conflating the two files.
+
+**Resolution:** Not resolved here. `T02` does not spend the real `.env`
+credentials on its own scoped verification — `AC-06` was independently,
+fully verified via a deliberately-unreachable-URL real induced failure
+instead (the task's own named Test-step alternative), which keeps `T02`
+inside its declared Out-of-Scope boundary ("confirming the real Compass
+request/response contract live" is explicitly `T03`/`T05`'s job, not
+`T02`'s) — spending a real, possibly-paid/production API key without
+explicit human authorization is not this task's call to make
+unilaterally. Flagging for the human: (a) whether `COMPASS_MODEL=gpt-5`
+is genuinely the intended live Compass `gpt-oss-120b` deployment (the
+mismatched model name could mean these are stale/leftover credentials
+from an unrelated setup, not necessarily "the real thing" `ADR-011` was
+written for) before trusting them for `T03`/`T05`'s own real happy-path
+verification; (b) if confirmed genuine, `T03`/`T05` may be able to verify
+`REQ-SB-82-US-06-AC-02`'s real happy path live, rather than
+"blocked-pending-credentials" as both currently assume.
+
+**Resolving artefact:** Pending human review — no resolving artefact yet.
+
+**Status:** Open

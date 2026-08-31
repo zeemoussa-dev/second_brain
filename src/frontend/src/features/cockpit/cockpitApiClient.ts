@@ -84,10 +84,19 @@ export interface SendMessageResult {
 // explicit leading @mention always overrides the routing decision), or
 // the Research Agent on no match/a tie -- REQ-SB-82-US-04. Returns fast,
 // before the routed reply itself is ready.
-export function sendMessage(subjectKind: string, stem: string, text: string): Promise<SendMessageResult> {
+// `replyToMessageId` (REQ-SB-82-US-06-T07) is a strong hint into the
+// moderator's routing reasoning, never a hard override (ADR-012 point 4)
+// -- omitted from the request body entirely when not provided, matching
+// `T06`'s own optional-field passthrough on the router side.
+export function sendMessage(
+  subjectKind: string,
+  stem: string,
+  text: string,
+  replyToMessageId?: string,
+): Promise<SendMessageResult> {
   return apiFetch<SendMessageResult>(`/cockpit/${subjectKind}/${stem}/message`, {
     method: 'POST',
-    body: JSON.stringify({ text }),
+    body: JSON.stringify(replyToMessageId ? { text, reply_to_message_id: replyToMessageId } : { text }),
   });
 }
 

@@ -1,6 +1,11 @@
-"""Meeting Moderator roster recommendation (ADR-009, REQ-SB-82-US-03) --
-two independent, purely deterministic matching tracks; no LLM call, no
-Hermes profile involvement.
+"""Meeting Moderator roster recommendation (ADR-009, REQ-SB-82-US-03) and
+live per-question routing (REQ-SB-82-US-04/-06) -- three independent
+routing/matching tracks live in this module: two purely deterministic
+(`match_customer_expert`/`match_domain_experts`, `route_question`) and one
+LLM-based (`route_question_llm`, ADR-012 point 2, composing `compass_client`
+for real reasoning over the brought-in roster/history/message, demoted-to-
+degrade-path relationship with `route_question` owned by `chat_turn.py`,
+ADR-012 point 3).
 
 `match_customer_expert` -- the subject note's own real customer signal
 (`customer:` frontmatter, per customer_hub_linking.py's own established
@@ -37,7 +42,7 @@ from app.business.core.agents.agent_manager import AgentManager
 from app.business.core.sections.section_manager import SectionManager
 from app.business.core.vault.vault_manager import VaultManager
 from app.business.hermes import agents_map_adapter
-from app.data_access import vault_writer
+from app.data_access import compass_client, vault_writer
 
 _section_manager = SectionManager()
 _agent_manager = AgentManager()
@@ -227,3 +232,104 @@ def match_domain_experts(subject_note_stem: str) -> list[str]:
         if subject_tokens & agent_tokens:
             matched_agent_ids.append(agent.id)
     return matched_agent_ids
+
+
+def _format_recent_messages(recent_messages: list[dict]) -> str:
+    lines = [
+        f"{message.get('agent_name') or message.get('speaker') or 'unknown'}: {message.get('text', '')}"
+        for message in recent_messages
+    ]
+    return "\n".join(lines) if lines else "(no prior messages in this thread yet)"
+
+
+def _build_routing_prompt(
+    question_text: str,
+    candidates: list[dict],
+    recent_messages: list[dict],
+    reply_to_text: str | None,
+) -> list[dict[str, str]]:
+    """Builds the OpenAI-compatible `messages` payload for the LLM-based
+    routing pass (`ADR-012` point 2) -- the brought-in roster's own real
+    `name`/`description`, the thread's own recent history, and the new
+    question, with an optional reply-to hint folded in as ONE MORE prompt
+    input alongside everything else, never a separate branch that could
+    short-circuit the reasoning (`ADR-012` point 4, Scenario 5's own
+    "moderator retains final say")."""
+    roster_block = "\n".join(
+        f'- id="{candidate["id"]}" name="{candidate["name"]}" '
+        f'description="{candidate.get("description") or ""}"'
+        for candidate in candidates
+    )
+    history_block = _format_recent_messages(recent_messages)
+    reply_to_block = (
+        f'\nThe new message is a reply to this earlier message: "{reply_to_text}"\n'
+        if reply_to_text else ""
+    )
+    system_content = (
+        "You are the moderator of a multi-Expert chat thread. Below is the "
+        "roster of Experts currently brought into this conversation. Given "
+        "the recent conversation history and the user's new message, decide "
+        "which ONE Expert from the roster should answer -- reason genuinely "
+        "about which Expert's own domain (per their name/description) the "
+        "new message actually belongs to; never guess or default to the "
+        "first Expert listed.\n\n"
+        f"Roster:\n{roster_block}\n\n"
+        "Respond with EXACTLY the chosen Expert's id from the roster above, "
+        "on its own line, and nothing else. If none of the roster's Experts "
+        "genuinely fit the new message, respond with exactly: NONE"
+    )
+    user_content = (
+        f"Recent conversation:\n{history_block}\n"
+        f"{reply_to_block}"
+        f"\nNew message: {question_text}"
+    )
+    return [
+        {"role": "system", "content": system_content},
+        {"role": "user", "content": user_content},
+    ]
+
+
+def _parse_routing_reply(reply_text: str, candidates: list[dict]) -> str | None:
+    """Extracts exactly one candidate id from the model's raw reply text, or
+    `None` when the reply names no candidate id, an id outside
+    `candidates`, or can't be parsed at all -- never a fabricated/guessed id
+    (this function's own Constraint, `route_question_llm`'s "never returns
+    an id outside the given candidates list")."""
+    matched_ids = {
+        candidate["id"] for candidate in candidates
+        if re.search(r"\b" + re.escape(candidate["id"]) + r"\b", reply_text)
+    }
+    if len(matched_ids) == 1:
+        return matched_ids.pop()
+    return None
+
+
+def route_question_llm(
+    question_text: str,
+    candidates: list[dict],
+    recent_messages: list[dict],
+    reply_to_text: str | None = None,
+) -> str | None:
+    """The LLM-based routing track (`ADR-012` point 2) -- reasons over the
+    brought-in roster's own real `name`/`description`, the thread's own
+    recent history, the new message's own text, and an optional reply-to
+    hint (one more prompt input, never a separate override branch --
+    `ADR-012` point 4) via `compass_client`, deciding which ONE brought-in
+    Expert should answer. `candidates` is `[{"id": ..., "name": ...,
+    "description": ...}, ...]` (the brought-in roster, same shape
+    `agents_map_adapter.list_agent_summaries()` already returns per entry);
+    `recent_messages` is the thread's own recent `messages` list
+    (speaker/agent_name/text). Returns exactly one of the given
+    `candidates`' own ids, or `None` when the model finds no good match or
+    its reply can't be parsed into one of the given ids -- never a
+    fabricated id outside `candidates`.
+
+    Raises `CompassClientError` on any real Compass call failure --
+    deliberately NOT caught here; the degrade decision (falling back to the
+    existing deterministic `route_question`) belongs to the caller
+    (`chat_turn.py`, `ADR-012` point 3), not this function."""
+    if not candidates:
+        return None
+    prompt_messages = _build_routing_prompt(question_text, candidates, recent_messages, reply_to_text)
+    reply_text = compass_client.request_chat_completion(prompt_messages)
+    return _parse_routing_reply(reply_text, candidates)

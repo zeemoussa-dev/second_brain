@@ -18,6 +18,112 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: Cockpit's Chat tab composer gained a write-side "reply to this
+  message" affordance (`ADR-012` point 4, `REQ-SB-82-US-06-T07`) — a
+  small Reply icon button on each real, `id`-bearing (non-`system`)
+  message sets a local `replyToMessageId` selection; a preview strip
+  (`data-role="reply-to-preview"`, truncated quote + cancel control)
+  renders above the composer while selected. `cockpitApiClient.
+  sendMessage` gained an optional 4th parameter, `replyToMessageId`,
+  included as `reply_to_message_id` in the outgoing request body only
+  when set (never sent as `null`), consumed by `T06`'s already-`Done`
+  router passthrough. A stale/unresolvable selection (the referenced
+  message no longer present in the current thread) never renders a
+  broken quote and never blocks Send — verified live via a real
+  React-Fiber direct-`dispatch` invocation of the live component's own
+  `data` state, and via a real `window.fetch` spy confirming the exact
+  outgoing request body in both the happy-path (`AC-03`) and stale
+  (`AC-08`) cases. Reuses the existing auto-threaded "↳ replying to: …"
+  READ-side rendering (`REQ-SB-82-US-04`) unchanged for a user-chosen
+  reply-to too.
+- feat: `POST /cockpit/{subject_kind}/{subject_note_stem}/message` now
+  accepts an optional `reply_to_message_id` on `SendMessageBody`
+  (`ADR-012` point 4, `REQ-SB-82-US-06-T06`), passed straight through
+  unchanged to `chat_turn.send_user_message`'s own matching parameter
+  (`T05`) — pure passthrough, no validation/resolution logic in the router
+  itself (this project's own "API layer holds no business logic" rule).
+  Purely additive/optional — omitting the field is still a valid request.
+  Verified live via `httpx.ASGITransport(app=app)` against the real,
+  unmodified app: a spy on `chat_turn.send_user_message` confirmed a
+  supplied `reply_to_message_id` reaches it unchanged, and confirmed
+  omitting the field still returns `200` with `None` received.
+- feat: `moderator.py` gained a new LLM-based routing function,
+  `route_question_llm(question_text, candidates, recent_messages,
+  reply_to_text=None) -> str | None` (`ADR-012` point 2,
+  `REQ-SB-82-US-06-T03`), composing `compass_client` to reason over the
+  brought-in roster's own real name/description, the thread's own recent
+  history, the new message, and an optional reply-to hint, returning
+  exactly one of the given candidate ids or `None` (never a fabricated id
+  outside the given roster). Deliberately does NOT catch
+  `CompassClientError` — the degrade-path decision belongs to the caller
+  (`T05`). Sibling function to the existing `route_question` in the SAME
+  module, not a new file. Verified via engineered/monkeypatched
+  `compass_client` responses (task's own mandated technique) plus two
+  bonus, disclosed live confirmation calls against the real `.env`-backed
+  Compass endpoint (`COMPASS_MODEL=gpt-5`).
+- feat: `AgentChatPanel.tsx` (the single-agent Chat panel) gained a
+  reply-to-message/context-anchoring affordance, entirely client-side
+  (`ADR-012` point 5, `REQ-SB-82-US-06-T08`) — no backend/API-client
+  change. Each finalized message (not the live-streaming placeholder)
+  gets a Reply button; selecting one shows a composer preview strip
+  (truncated quote + cancel). Sending with a selection quotes the
+  referenced message's own text into the OUTGOING request text only
+  (`"> {parent}\n\n{new}"`) — the rendered user bubble always stays the
+  plain typed text. A `localId` (simple incrementing counter, never
+  persisted) is the only new per-message identity; the selection clears
+  on every existing thread-reset path (new chat / agent switch) so a
+  stale reference never renders a broken preview or blocks Send. Only
+  one agent ever answers here — this never touches routing/agent
+  selection.
+- feat: new `app/data_access/compass_client.py` — the first direct-to-LLM
+  HTTP client in the post-2026-08-20 backend (`ADR-011`,
+  `REQ-SB-82-US-06-T02`). `CompassClientError` (dedicated exception, never
+  a bare exception or a silent `None`) plus `request_chat_completion(
+  messages, *, timeout=20.0) -> str`, sending one OpenAI-compatible
+  chat-completion request to `settings.compass_base_url`/
+  `compass_api_key`/`compass_model` via `httpx`. Consumes
+  `app.config.settings` directly, never through `ProviderManager`. Lives
+  in `app/data_access/`, not `app/hermes/` (a categorically different
+  integration than the Hermes gateway). No business-level consumer wired
+  yet — that's `REQ-SB-82-US-06-T03`.
+- feat: `chat_store.py` gained a new, additive
+  `last_answering_agent_id`/`last_answering_agent_name` field pair on its
+  existing per-subject entry, plus a `set_last_answering_agent()` setter
+  (`ADR-012` point 1, `REQ-SB-82-US-06-T01`) — honest-`None` until first
+  set, backward-compatible for every pre-existing subject entry, no
+  migration needed. Pure storage plumbing; no caller wired yet
+  (`REQ-SB-82-US-06-T04`).
+- feat: `chat_turn.py::send_user_message` gained a short-reply shortcut
+  (`_is_short_low_signal_reply`, `ADR-012` point 1, `REQ-SB-82-US-06-T04`)
+  checked BEFORE the `@mention`/moderator routing logic — a short,
+  low-signal acknowledgment (a fixed vocabulary, or trimmed length <= 3
+  characters, never a trailing `?`) with a prior `last_answering_agent_id`
+  routes straight back to that agent with zero
+  `moderator.route_question`/LLM calls made; falls through to the
+  existing routing logic unchanged whenever the shortcut doesn't fire or
+  no prior answering agent exists yet (a brand-new thread). `_dispatch_reply`
+  now also calls `chat_store.set_last_answering_agent()` right after
+  every real dispatched reply succeeds (Expert, Research Agent, or
+  Customer-Section fallback alike), so the shortcut always has real,
+  current data to read.
+- feat: `chat_turn.py::send_user_message` now routes every non-shortcut,
+  non-`@mention`, roster-nonempty message via `moderator.route_question_llm`
+  as the PRIMARY decision, with the existing deterministic
+  `moderator.route_question` demoted to the explicit degrade path (`ADR-012`
+  points 2-3, `REQ-SB-82-US-06-T05`) — called ONLY inside
+  `except compass_client.CompassClientError`, including its own unmodified
+  `tied` handling and the surrounding suggestion/Customer-Section-fallback/
+  Research-Agent chain (factored into a new shared
+  `_resolve_no_match_agent_id` helper so both the LLM's own `None` reply and
+  the deterministic degrade path's own `not tied` case reach identical real
+  behavior). `send_user_message` also gained an optional
+  `reply_to_message_id` parameter, resolved against the thread's own
+  CURRENT messages into real text fed into `route_question_llm`'s prompt as
+  a hint only (a stale/unresolvable id is silently treated as absent, never
+  an error). Verified live: 5 in-process monkeypatched-`compass_client`
+  scenarios (LLM success/degrade-path/hint-present/hint-overridden/
+  hint-unresolvable, the task's own mandated technique) plus one bonus,
+  disclosed real `.env`-backed Compass round trip (`COMPASS_MODEL=gpt-5`).
 - feat: Opportunity notes now have a Log and Captures file, split off the
   main note the same way Customer/Partner hub notes already do (`## Log`/
   `## Files` sections replaced by `<Title>-log.md`/`<Title>-captures.md`

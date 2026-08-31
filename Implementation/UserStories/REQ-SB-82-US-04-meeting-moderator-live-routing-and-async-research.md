@@ -4,12 +4,12 @@ title: Meeting Moderator — routes each live question to the ONE Expert it belo
 requirement_ids: [REQ-SB-82]
 requirement_section: "REQ-SB-82: Cockpit Mechanics — Prep, Research, and Moderation"
 phase: P2
-status: Draft
-gate: flagged
-gate_reason: "trigger-8 (the exact routing-decision mechanism for 'the ONE Expert it actually belongs to' is genuinely unresolved by the PRD's own text, including the tie-break case) plus net-new-design-needed (threaded/parent-child reply rendering does not exist anywhere in this app today -- the real chat-thread rendering is a flat list) plus a real, load-bearing technical risk disclosed, not glossed over: this codebase's own real Hermes architecture has NO live multi-turn back-channel between separate agent profiles today (MEMORY.md, 2026-08-23) -- routing one live question to a DIFFERENT specialist agent and getting a reply back into ONE shared UI thread in real time has no working precedent in this codebase. See REVIEW-QUEUE.md."
+status: Done
+gate: clear
+gate_reason: "gate: clear 2026-08-31 -- reconciliation, not a fresh /plan-tasks pass. All 6 scenarios confirmed already built and live (chat_turn.py::send_user_message/_dispatch_reply, moderator.py::route_question, chat_store.py::append_message's reply_to_message_id, Cockpit.tsx's chat-message-reply-to rendering), evidenced by multiple dated feat:/fix: REQ-SB-82-US-04 entries in CHANGELOG.md and confirmed by direct code reading -- the work happened live with the operator (2026-08-26/27/28 per in-code comments) outside the formal /plan-tasks -> /plan-sprints -> /implement-sprint stages, and this story's own frontmatter was never updated to reflect it. The originally-disclosed technical risk (no live multi-turn back-channel between Hermes profiles) was resolved in practice by NOT needing one -- the shipped design composes one stateless per-question Hermes call, keyed into the shared persisted thread, exactly the first option the original Context speculated might work. Found and reconciled while grounding REQ-SB-82-US-06's own /spec pass (ESC-059, now resolved by this edit). See REVIEW-QUEUE.md for REQ-SB-82-US-06's own still-open items, which build on this story's real shipped code."
 sprint: ""
 created: 2026-08-25
-updated: 2026-08-25
+updated: 2026-08-31
 ---
 
 # REQ-SB-82-US-04 — Meeting Moderator — routes each live question to the ONE Expert it belongs to, falling back to async Research with a threaded reply
@@ -258,12 +258,12 @@ own table at /plan-tasks supersedes this. -->
 
 ## Definition of Done
 
-- [ ] All acceptance-criteria scenarios pass
-- [ ] Every Implementation Task above is complete (or explicitly dropped with reason)
-- [ ] All Constraints respected
-- [ ] Automated tests added/updated and passing (once test tooling exists)
-- [ ] `MEMORY.md` updated with any new decisions / patterns / constraints
-- [ ] `CHANGELOG.md` entry appended
+- [x] All acceptance-criteria scenarios pass — confirmed live 2026-08-26/27/28 (see `CHANGELOG.md`'s multiple dated `REQ-SB-82-US-04` entries); reconciled into this file 2026-08-31 (see `## Reconciliation Note` below)
+- [x] Every Implementation Task above is complete — built as `chat_turn.py`/`moderator.py`/`chat_store.py`/`Cockpit.tsx` changes, not against this file's own (now-superseded) T01-T03 sketch
+- [x] All Constraints respected — confirmed by direct code reading 2026-08-31
+- [ ] Automated tests added/updated and passing (once test tooling exists) — no test-runner ADR was Accepted at the time this shipped; unchanged status, not re-litigated by this reconciliation
+- [x] `MEMORY.md` updated with any new decisions / patterns / constraints — see `MEMORY.md`'s own 2026-08-26/27/28-dated entries for this work
+- [x] `CHANGELOG.md` entry appended — already present, multiple entries
 
 ## Non-Goals / Out of Scope
 
@@ -329,17 +329,55 @@ own table at /plan-tasks supersedes this. -->
    which is squarely what "route a live question to one Expert inside a
    shared thread" needs.
 
-**What to do next:** `/plan-tasks` should investigate, against the REAL
-Hermes agent-reaching primitives (`HermesChatSession`, the WS protocol,
-the stateless `/agents/{id}/chat` REST call), whether live per-question
-routing into one shared thread is buildable by composing what exists or
-needs new session-continuity infrastructure, BEFORE committing to a
-design — this is the single highest-risk open item across all of
-`REQ-SB-82`'s substories. Separately, run `/design` for the threaded-reply
-UI, and decide the routing-decision mechanism/tie-break rule.
+**What to do next (superseded — see Reconciliation Note):** ~~`/plan-tasks`
+should investigate... whether live per-question routing into one shared
+thread is buildable by composing what exists or needs new
+session-continuity infrastructure~~ — resolved live: it was buildable by
+composing what already existed, no new infrastructure needed.
 
-gate: flagged 2026-08-25 — unclear-requirement (routing mechanism,
-tie-break rule) plus net-new-design-needed (threaded-reply UI) plus a
-disclosed real architectural risk (no live cross-agent back-channel
-exists in the current Hermes architecture). A `REVIEW-QUEUE.md` entry has
-been added.
+## Reconciliation Note (2026-08-31)
+
+This story's every scenario was actually built and verified live with the
+operator on 2026-08-26/27/28 — outside the formal `/plan-tasks →
+/plan-sprints → /implement-sprint` pipeline stages, which is why this file's
+own `status`/`gate` sat stale at `Draft`/`flagged` for six days while the
+real code shipped. Found and reconciled while grounding `REQ-SB-82-US-06`'s
+(`Implementation/UserStories/REQ-SB-82-US-06-live-routing-fix-and-reply-to-
+message.md`) own `/spec` pass — logged as `ESC-059` in `ESCALATIONS.md`,
+now resolved by this edit.
+
+**All three originally-disclosed flags resolved, not just asserted:**
+1. **Routing-decision mechanism / tie-break rule** — `moderator.route_question`'s
+   deterministic tokenized-overlap scoring, scoped to the brought-in roster;
+   a genuine tie (or zero match) falls back to `suggest_expert_for_question`
+   (checks every registered Expert, not just brought-in) before ever
+   reaching the Research Agent — never a broadcast, never a guess.
+2. **Threaded-reply UI** — shipped as `Cockpit.tsx`'s "↳ replying to: …"
+   strip; a reply keeps its natural chronological position rather than being
+   repositioned, satisfying Scenario 4 without violating real-time order.
+3. **The disclosed Hermes live-back-channel risk** — did not actually block
+   anything: the shipped design composes ONE stateless per-question Hermes
+   call (`chat_sessions.send_and_await_reply`, itself built 2026-08-24,
+   already fixing the exact gap this story's Context cited as unresolved on
+   2026-08-25 — the risk was already stale the day it was written) keyed
+   into the shared persisted thread. No new session-continuity
+   infrastructure was ever needed.
+
+Also shipped beyond the original 6 scenarios, as real live-testing fixes:
+an explicit `@mention` override (always wins over the routing score —
+mentioning someone new brings them in first), async/non-blocking dispatch
+for BOTH the routed-Expert path and the Research Agent fallback (not just
+the latter), and a real `reply_to_message_id` field on every stored message
+(`chat_store.py::append_message`) — the exact building block
+`REQ-SB-82-US-06` extends for a user-INITIATED reply-to-message affordance
+(today it's only ever set server-side, automatically).
+
+See `MEMORY.md`'s 2026-08-26/27 entries for the full live-verification
+record (real vault/Hermes gateway, not scratch fixtures) and
+`CHANGELOG.md`'s multiple dated `REQ-SB-82-US-04` entries for what shipped.
+
+gate: clear 2026-08-31 — reconciliation (see `## Reconciliation Note`
+above); superseded the original 2026-08-25 flagged entry
+(`unclear-requirement` / `net-new-design-needed` / disclosed architectural
+risk), all three now resolved with concrete evidence rather than assumed.
+`REVIEW-QUEUE.md`'s original entry for this story is closed by this edit.

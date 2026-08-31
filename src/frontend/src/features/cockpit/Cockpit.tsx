@@ -23,6 +23,12 @@ const _CHAT_INPUT_MAX_HEIGHT_PX = 132;
 const _REPLY_POLL_INTERVAL_MS = 5000;
 const _REPLY_POLL_MAX_ATTEMPTS = 72;
 
+// Same "truncated quote" convention AgentChatPanel.tsx's own reply-to
+// preview (REQ-SB-82-US-06-T08, already Done) uses for its own,
+// independently-built mechanism -- same user-facing verb/shape per
+// ADR-012 points 4/5, not a shared component.
+const _REPLY_PREVIEW_MAX_CHARS = 140;
+
 interface PendingAnswer {
   messageId: string;
   agentId: string;
@@ -64,7 +70,17 @@ function truncate(text: string, max: number): string {
 // next to its question -- that would disturb everything exchanged since)
 // but carries a quoted "replying to" strip so it's visibly threaded
 // rather than an undifferentiated new message at the bottom.
-function ChatMessage({ message, parent }: { message: CockpitChatMessage; parent: CockpitChatMessage | undefined }) {
+function ChatMessage({
+  message, parent, onReply,
+}: {
+  message: CockpitChatMessage;
+  parent: CockpitChatMessage | undefined;
+  // REQ-SB-82-US-06-T07 -- the WRITE-side "pick a message to reply to"
+  // affordance. Only rendered for a real, `id`-bearing message (a
+  // pre-REQ-SB-82-US-04 legacy message has no `id` and is un-threadable,
+  // same convention `chat_store.py` already documents).
+  onReply: (messageId: string) => void;
+}) {
   if (message.speaker === 'system') {
     return <div className="chat-message chat-message--system">{message.text}</div>;
   }
@@ -75,6 +91,16 @@ function ChatMessage({ message, parent }: { message: CockpitChatMessage; parent:
         <div className="chat-message-reply-to">↳ replying to: “{truncate(parent.text, 80)}”</div>
       )}
       <ChatMessageText text={message.text} />
+      {message.id && (
+        <button
+          type="button"
+          className="chat-message-reply-btn"
+          aria-label="Reply to this message"
+          onClick={() => onReply(message.id!)}
+        >
+          <span className="material-symbols-outlined" aria-hidden="true">reply</span>
+        </button>
+      )}
     </div>
   );
 }
@@ -112,6 +138,12 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
   // 2026-08-26: "You need to show me what's happening").
   const [answering, setAnswering] = useState<PendingAnswer[]>([]);
   const [uploading, setUploading] = useState(false);
+  // REQ-SB-82-US-06-T07 -- which earlier message the next Send should
+  // mark as a reply-to hint (ADR-012 point 4: a strong hint into the
+  // moderator's reasoning, never a hard override). Purely local UI
+  // selection state, never persisted itself -- only the resulting
+  // `reply_to_message_id` sent with the next message is.
+  const [replyToMessageId, setReplyToMessageId] = useState<string | null>(null);
   const pollTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -154,6 +186,15 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
     if (!text || sending) return;
     setSending(true);
     setDraft('');
+    // Resolved against the CURRENT thread, before this send's own new
+    // message is appended below -- a `replyToMessageId` that no longer
+    // resolves (Scenario 8) simply yields `undefined` here, and the send
+    // proceeds as a plain, un-hinted message rather than a broken one.
+    const replyToId = data?.thread.messages.find((m) => m.id === replyToMessageId)?.id;
+    // Cleared on send, regardless of outcome -- same pattern as `draft`
+    // above (AgentChatPanel.tsx's own T08 reply-to affordance clears its
+    // equivalent selection the same way, for the same reason).
+    setReplyToMessageId(null);
     // Optimistic append (operator, 2026-08-26: "The Message Don't get
     // added to the chat until Something happen") -- shows immediately,
     // replaced by the server's own authoritative thread (real id
@@ -167,7 +208,7 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
         }],
       },
     } : current);
-    sendMessage(subjectKind, subjectNoteStem, text).then(({ thread, answering: nowAnswering }) => {
+    sendMessage(subjectKind, subjectNoteStem, text, replyToId).then(({ thread, answering: nowAnswering }) => {
       setData((current) => (current ? { ...current, thread } : current));
       setSending(false);
       const userMessage = [...thread.messages].reverse().find((m) => m.speaker === 'user' && m.text === text);
@@ -340,7 +381,14 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
                   const parent = message.reply_to_message_id
                     ? data.thread.messages.find((m) => m.id === message.reply_to_message_id)
                     : undefined;
-                  return <ChatMessage message={message} parent={parent} key={message.id ?? index} />;
+                  return (
+                    <ChatMessage
+                      message={message}
+                      parent={parent}
+                      onReply={setReplyToMessageId}
+                      key={message.id ?? index}
+                    />
+                  );
                 })
               ) : (
                 <p className="text-muted chat-thread-empty">
@@ -360,6 +408,31 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
               Tip: start with <code>@expert-name</code> to send straight to a specific Expert.
               Shift+Enter for a new line.
             </p>
+            {/* REQ-SB-82-US-06-T07 -- Scenario 8: `replyToMessage` is
+                undefined the moment `replyToMessageId` no longer resolves
+                against the CURRENT `data.thread.messages` (e.g. a stale
+                selection after fresher data replaced it), so this strip
+                simply doesn't render rather than showing a broken/blank
+                quote. `handleSend` independently re-resolves the same
+                reference at send time, so Send always still works either way. */}
+            {(() => {
+              const replyToMessage = data?.thread.messages.find((m) => m.id === replyToMessageId);
+              return replyToMessage ? (
+                <div className="chat-reply-to-preview" data-role="reply-to-preview">
+                  <span className="chat-reply-to-preview-text">
+                    ↳ Replying to: {truncate(replyToMessage.text, _REPLY_PREVIEW_MAX_CHARS)}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn"
+                    aria-label="Cancel reply"
+                    onClick={() => setReplyToMessageId(null)}
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : null;
+            })()}
             <form className="chat-input-row" onSubmit={handleSend}>
               <input
                 ref={fileInputRef}

@@ -24,6 +24,14 @@ a routed Expert's direct reply threads onto the question that routed it,
 same as a delayed Research Agent result does, so the frontend renders both
 the same way. Pre-US-04 messages have neither field; the frontend treats a
 missing `id` as un-threadable, never crashes on it.
+
+`last_answering_agent_id`/`last_answering_agent_name` (ADR-012 point 1,
+REQ-SB-82-US-06-T01) is a third additive field pair on this SAME per-subject
+entry -- honest-empty (`None`) until `set_last_answering_agent` is ever
+called for that subject, including every entry that predates this field.
+Unlike `recommended_agent_ids`, this pair is never computed -- only ever set
+explicitly by a caller (`chat_turn.py::_dispatch_reply`, REQ-SB-82-US-06-T04)
+whenever a real agent reply is actually dispatched.
 """
 import uuid
 from datetime import datetime, timezone
@@ -38,6 +46,16 @@ def _thread_key(subject_kind: str, subject_note_stem: str) -> str:
     return f"{subject_kind}:{subject_note_stem}"
 
 
+def _ensure_last_answering_agent_fields(entry: dict) -> dict:
+    """Guarantees `last_answering_agent_id`/`last_answering_agent_name`
+    read as `None` on any entry that predates this field pair -- backward
+    compatible, no migration needed, same convention as ADR-009's own
+    field addition."""
+    entry.setdefault("last_answering_agent_id", None)
+    entry.setdefault("last_answering_agent_name", None)
+    return entry
+
+
 def _load_state() -> dict:
     state = vault_writer.load_cockpit_chat_state()
     if state is None:
@@ -50,8 +68,12 @@ def get_thread(subject_kind: str, subject_note_stem: str) -> dict:
     key = _thread_key(subject_kind, subject_note_stem)
     entry = state.get(key)
     if entry is None:
-        entry = {"brought_in_agent_ids": [], "messages": []}
+        entry = {
+            "brought_in_agent_ids": [], "messages": [],
+            "last_answering_agent_id": None, "last_answering_agent_name": None,
+        }
         state[key] = entry
+    _ensure_last_answering_agent_fields(entry)
     if "recommended_agent_ids" not in entry:
         customer_agent_id = moderator.match_customer_expert(subject_note_stem)
         domain_agent_ids = moderator.match_domain_experts(subject_note_stem)
@@ -64,7 +86,11 @@ def get_thread(subject_kind: str, subject_note_stem: str) -> dict:
 def bring_in_agent(subject_kind: str, subject_note_stem: str, agent_id: str) -> dict:
     state = _load_state()
     key = _thread_key(subject_kind, subject_note_stem)
-    entry = state.setdefault(key, {"brought_in_agent_ids": [], "messages": []})
+    entry = state.setdefault(key, {
+        "brought_in_agent_ids": [], "messages": [],
+        "last_answering_agent_id": None, "last_answering_agent_name": None,
+    })
+    _ensure_last_answering_agent_fields(entry)
     if agent_id not in entry["brought_in_agent_ids"]:
         entry["brought_in_agent_ids"].append(agent_id)
     vault_writer.save_cockpit_chat_state(state)
@@ -74,7 +100,11 @@ def bring_in_agent(subject_kind: str, subject_note_stem: str, agent_id: str) -> 
 def remove_agent(subject_kind: str, subject_note_stem: str, agent_id: str) -> dict:
     state = _load_state()
     key = _thread_key(subject_kind, subject_note_stem)
-    entry = state.setdefault(key, {"brought_in_agent_ids": [], "messages": []})
+    entry = state.setdefault(key, {
+        "brought_in_agent_ids": [], "messages": [],
+        "last_answering_agent_id": None, "last_answering_agent_name": None,
+    })
+    _ensure_last_answering_agent_fields(entry)
     if agent_id in entry["brought_in_agent_ids"]:
         entry["brought_in_agent_ids"].remove(agent_id)
     vault_writer.save_cockpit_chat_state(state)
@@ -93,7 +123,11 @@ def append_message(
     need the id right away; a fresh `get_thread` gives the updated thread."""
     state = _load_state()
     key = _thread_key(subject_kind, subject_note_stem)
-    entry = state.setdefault(key, {"brought_in_agent_ids": [], "messages": []})
+    entry = state.setdefault(key, {
+        "brought_in_agent_ids": [], "messages": [],
+        "last_answering_agent_id": None, "last_answering_agent_name": None,
+    })
+    _ensure_last_answering_agent_fields(entry)
     message = {
         "id": uuid.uuid4().hex,
         "speaker": speaker,
@@ -106,3 +140,25 @@ def append_message(
     entry["messages"].append(message)
     vault_writer.save_cockpit_chat_state(state)
     return message
+
+
+def set_last_answering_agent(
+    subject_kind: str, subject_note_stem: str, agent_id: str, agent_name: str,
+) -> dict:
+    """Sets who most recently answered this subject's thread -- Expert,
+    Research Agent, or Customer-Section fallback alike (ADR-012 point 1);
+    called by `chat_turn.py::_dispatch_reply` whenever a real agent reply is
+    actually dispatched. Mirrors `bring_in_agent`'s own
+    load/mutate/save/return shape; safe to call for a subject entry that
+    doesn't exist yet."""
+    state = _load_state()
+    key = _thread_key(subject_kind, subject_note_stem)
+    entry = state.setdefault(key, {
+        "brought_in_agent_ids": [], "messages": [],
+        "last_answering_agent_id": None, "last_answering_agent_name": None,
+    })
+    _ensure_last_answering_agent_fields(entry)
+    entry["last_answering_agent_id"] = agent_id
+    entry["last_answering_agent_name"] = agent_name
+    vault_writer.save_cockpit_chat_state(state)
+    return entry

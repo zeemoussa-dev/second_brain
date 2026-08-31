@@ -7784,29 +7784,15 @@ resolution involved a backward step.
   disclosed for awareness only).
   → `Implementation/Sprints/SPRINT-074-people-notes-linked-to-company-partner-note.md`
 
-- [ ] 2026-08-25 · **REQ-SB-82-US-04** · design the async-result/threaded-
+- [x] 2026-08-25 · **REQ-SB-82-US-04** · design the async-result/threaded-
   reply plumbing; routing-decision/tie-break rule still unresolved
-  Plain English: **update, 2026-08-25 same day** — the analyst's own
-  original framing here ("no proven live multi-turn back-channel between
-  separate agent profiles today") is now confirmed OUTDATED by direct
-  code inspection: `business/hermes/chat_sessions.py` (built the same
-  session for the streaming-chat feature) already holds a live, per-agent
-  WebSocket session open via `get_or_create_session(agent_id)` — generic
-  across ANY Hermes profile, not one — with real async `send_prompt`/
-  `events()` primitives (`data_access/hermes_ws_client.py`'s
-  `HermesChatSession`) already proven working. The hard infrastructure
-  question is resolved: live, multi-turn, per-agent back-channels are
-  real today, just currently only driven for one agent at a time (the
-  main Chat page). What's still genuinely open: how a Research Agent's
-  async result, triggered mid-meeting, gets attached back to the RIGHT
-  Cockpit chat thread later (a job/persistence design, not an
-  architecture unknown) — plus threaded/parent-child reply rendering
-  (zero UI precedent anywhere in this app) and the routing-decision/
-  tie-break rule (how the Moderator picks the ONE Expert), both still
-  unresolved by the PRD's own text.
-  **What to do:** design the async-job + thread-attachment mechanism
-  (much more tractable now); run `/design` for the threaded-reply UI;
-  decide the routing-decision/tie-break rule; then `/plan-tasks`.
+  **Resolved 2026-08-31** — every open item this entry names was actually
+  built and verified live 2026-08-26/27/28 (outside the formal pipeline,
+  which is why this entry sat open) — the async-job/thread-attachment
+  mechanism, the threaded-reply UI, and the routing-decision/tie-break rule
+  are all real and shipped. Found while grounding `REQ-SB-82-US-06`'s own
+  `/spec` pass (`ESC-059`, resolved); `REQ-SB-82-US-04`'s own file updated
+  to `status: Done`/`gate: clear` with a full `## Reconciliation Note`.
   → `Implementation/UserStories/REQ-SB-82-US-04-meeting-moderator-live-routing-and-async-research.md`
 
 (REQ-SB-82-US-01/02/03/05's own ADR-review entries — resolved 2026-08-25,
@@ -7903,4 +7889,199 @@ each story's own `## Notes` for the authorization breadcrumb.)
   browser and review (also see the updated `html-prototype/index.html`
   catalog card). Once approved, run `/spec` on REQ-SB-84.
   → html-prototype/first-run-onboarding.html
+
+- [ ] 2026-08-31 · **REQ-SB-82-US-06** · several open design/architecture
+  decisions, plus a stale sibling story found while grounding this one
+  Plain English: this new story (short-reply routing shortcut, an
+  always-on LLM-based Moderator via a new dedicated Compass `gpt-oss-120b`
+  client, and a reply-to-message primitive in both Cockpit and the
+  single-agent Chat panel) has four real open items: (1) the exact
+  short-reply detection rule (length threshold vs. fixed vocabulary vs.
+  both) is undecided; (2) the exact Compass `gpt-oss-120b` request/response
+  contract needs confirming against the model's own real API, not assumed;
+  (3) whether the new Compass client needs its own ADR or extends an
+  existing one is unresolved — worse, `provider_manager.py`'s own code
+  comment and other stories cite an `ADR-022` as already covering this
+  exact ground, but direct reading of `Implementation/Architecture/ADR.md`
+  found no such entry — its real highest entry is `ADR-010`; (4) the
+  reply-to-message UI treatment in both surfaces has no `html-prototype/`
+  coverage at all (`net-new-design-needed`), and `AgentChatPanel.tsx`
+  additionally has zero message-id/persistence concept to build on today.
+  **Separately, and just as important:** grounding this story's own
+  Dependencies found that `REQ-SB-82-US-04`'s own story file (still
+  `status: Draft`, `gate: flagged`, dated 2026-08-25) is stale — its real
+  scope (live per-question routing, async Research Agent dispatch,
+  threaded-reply rendering) is already built and shipped
+  (`CHANGELOG.md`'s own multiple dated `REQ-SB-82-US-04` entries), evidently
+  outside the formal pipeline its own file still awaits. Logged as
+  `ESCALATIONS.md` → `ESC-059`.
+  **What to do:** (1) confirm real Compass credentials/API shape before
+  `/plan-tasks` commits to the LLM-moderator design; (2) decide the
+  short-reply detection rule; (3) investigate the `ADR-022` ledger
+  discrepancy and decide the new Compass client's ADR treatment; (4) run
+  `/design` for the reply-to-message affordance in both surfaces before
+  frontend tasks are cut; (5) separately, reconcile `REQ-SB-82-US-04`'s own
+  `status`/`gate` against its real shipped scope (see `ESC-059`).
+  → `Implementation/UserStories/REQ-SB-82-US-06-live-routing-fix-and-reply-to-message.md`
+  → `ESCALATIONS.md` (ESC-059)
+
+  **Architect update (2026-08-31), item (3) resolved:** `ADR-022`
+  confirmed genuinely orphaned — no such entry exists in
+  `Implementation/Architecture/ADR.md` (real highest was `ADR-010`); it
+  belongs to the archived pre-2026-08-20 sequence and governed
+  `compass_client.py`/`anthropic_client.py`, both deleted 2026-08-27.
+  Two fresh ADRs appended in the live sequence: `ADR-011` (the new
+  Compass `gpt-oss-120b` client — module placement, error/degrade
+  contract, why it does NOT restore the old `ADR-022` number) and
+  `ADR-012` (LLM-primary Cockpit routing with the existing deterministic
+  scorer as an explicit degrade path; the short-reply shortcut and
+  Cockpit reply-to-message hint as additive `chat_store.py` schema
+  fields, never a hard override; the Chat panel's reply-to kept
+  explicitly client-side/out of this ADR's scope).
+  **Please review `ADR-011`/`ADR-012` in
+  `Implementation/Architecture/ADR.md` alongside items (1), (2), (4)
+  above, which remain genuinely open** (Compass credential/API
+  confirmation, the exact short-reply rule, and the `/design` pass for
+  the reply-to affordance) — then run `/plan-tasks` again if you change
+  either ADR.
+  → `Implementation/Architecture/ADR.md` (ADR-011, ADR-012)
+
+  **Decomposer update (2026-08-31), `/plan-tasks` step 2 — items (1)/(2)
+  handled, item (4) still open, status now `Ready`:** locked all 8
+  scenarios as `AC-01`-`AC-08` (no non-locked AC) and wrote 8 task files
+  (`REQ-SB-82-US-06-T01`-`T08`, `depends_on` acyclic: `T01→T04→T05`,
+  `T02→T03→T05`, `T05→T06→T07`, `T08` standalone). Every locked AC has
+  ≥1 AC-tagged verification step. **Item (1) Compass credentials:**
+  scoped, not re-escalated — `T02`/`T03`/`T05`'s own `AC-02`
+  verification passes via a scoped, disclosed monkeypatch of the new
+  `compass_client` (this project's own established pattern); the real
+  live happy-path is explicitly logged in each task as
+  blocked-pending-credentials, never silently skipped; `AC-06`'s degrade
+  path is genuinely, fully verifiable today (blank/placeholder
+  credentials against a real endpoint call IS a real failure).
+  **Item (2) short-reply rule:** decided, not re-escalated, per this
+  run's own explicit authorization — question-mark exclusion + a fixed
+  acknowledgment vocabulary + a 3-character length floor (combines BOTH
+  options the story left open); documented in the story's own new
+  "Decomposer-authored scope-internal judgement calls" section and
+  implemented in `T04`. **Item (4) reply-to-message UI treatment is
+  STILL genuinely open** — this run's own launch instructions
+  pre-cleared only items (1)/(2) for a decomposer judgement call, not
+  this one. `T07`/`T08` lock only DOM-structural/behavioural ACs (a
+  Reply affordance renders; a cancellable quoted-preview strip renders;
+  a stale reference never breaks Send) around a decomposer-made,
+  disclosed standard chat-reply-affordance shape (documented in each
+  task's own Notes) — **flagged for a non-blocking design spot-check
+  once built, not a blocking `/design` prototype sign-off gate before
+  build**, since the pattern chosen (a per-message Reply action + a
+  composer preview strip) is a low-design-risk, standard chat-UI
+  convention, not a novel layout. **`ESC-059`/`REQ-SB-82-US-04` is
+  already resolved** (see the entry above this one — that story is now
+  `Done`/`gate: clear`) — no action remains on that front.
+  **Status → `Ready`** (all 3 decomposer status criteria met); **`gate`
+  stays `flagged`**, per Pipeline.md's own explicit rule for an
+  ADR-changed-this-run story — the human should still review
+  `ADR-011`/`ADR-012` together with the now-concrete `T01`-`T08` task
+  breakdown before `/plan-sprints` picks this story up, and separately
+  spot-check `T07`/`T08`'s own reply-to UI shape once built (item 4).
+  **What to do:** (1) review `ADR-011`/`ADR-012` alongside `T01`-`T08`;
+  (2) when real Compass credentials are provisioned, re-run `T02`/`T03`/
+  `T05`'s own live-verification steps for `AC-02`'s happy path (currently
+  monkeypatch-only); (3) once `T07`/`T08` are built, spot-check the
+  reply-to affordance's visual shape against this entry's own described
+  pattern (non-blocking); this story does not need to be reset to
+  `Draft` for any of the above — `gate: flagged` already routes it to
+  this queue.
+  → `Implementation/UserStories/REQ-SB-82-US-06-live-routing-fix-and-reply-to-message.md`
+  → `Implementation/Tasks/REQ-SB-82-US-06-T01-chat-store-last-answering-agent.md` … `T08-agent-chat-panel-reply-to.md`
+
+  **Coder update (2026-08-31), `T02` (`app/data_access/compass_client.py`)
+  — built and `Done`; `AC-06` verified live; a real, disclosed credential
+  discrepancy found (`ESC-060`), not resolved here:** `T02` built the new
+  Compass HTTP client exactly per `ADR-011`/its own scope
+  (`CompassClientError`, OpenAI-compatible request/response shape, no
+  `app.business.*` import, consumes `app.config.settings` directly). Its
+  one locked AC, `AC-06` (Compass failure degrades honestly), was verified
+  live via a real, in-process-only override of `settings.compass_base_url`
+  to a deliberately unreachable address — a genuine `WinError 10061`
+  connection-refused failure, cleanly raised as `CompassClientError`, not
+  a bare `httpx` exception and not a silent `None`. Both build-time
+  parsing checks (well-formed engineered response → correct reply text;
+  malformed response → `CompassClientError`, not an unhandled
+  `KeyError`) also passed live. **Separately, while preparing this
+  verification, found the real, `.env`-backed `Settings()` object (the
+  file `config.py` actually loads at runtime) has NON-blank
+  `COMPASS_BASE_URL`/`COMPASS_API_KEY` values and `COMPASS_MODEL=gpt-5`
+  (not `gpt-oss-120b`) — contradicting `ADR-011`'s Consequences and this
+  story's own Dependencies, both of which checked only `.env.example`
+  (genuinely blank) rather than the real `.env`.** `T02` deliberately did
+  NOT spend this real credential on a live Compass call — that's out of
+  `T02`'s own declared scope (`T03`/`T05`'s job) and not this task's call
+  to make unilaterally. Logged as `ESC-060`.
+  **What to do:** (1) confirm whether `COMPASS_MODEL=gpt-5` /
+  the real `.env` `COMPASS_BASE_URL`/`COMPASS_API_KEY` are genuinely the
+  intended live Compass `gpt-oss-120b` deployment, or stale/unrelated
+  leftover credentials; (2) if genuine, `T03`/`T05` can very likely verify
+  `AC-02`'s real happy path live instead of via monkeypatch-only, once
+  they're built — update their own Tests-block framing accordingly before
+  building them, rather than assuming "blocked-pending-credentials" as
+  currently written.
+  → `Implementation/Tasks/REQ-SB-82-US-06-T02-compass-client.md`
+  → `ESCALATIONS.md` (`ESC-060`)
+
+  **Coder update (2026-08-31), `T03` (`moderator.py::route_question_llm`)
+  — built and `Done`; both locked ACs (`AC-02`, `AC-03`) verified via the
+  task's own mandated engineered/monkeypatched steps AND, additionally,
+  live against the real `.env` Compass endpoint (per this build pass's own
+  explicit authorization to judge whether spending the real credential was
+  appropriate — disclosed, non-destructive, read-only chat-completion
+  calls):** confirms `ESC-060`'s own "What to do" item (2) — the real
+  `.env` credential IS live-reachable and DOES return usable, genuinely
+  reasoned routing decisions, even with `COMPASS_MODEL=gpt-5` (not
+  `gpt-oss-120b`) still unresolved as a naming question. Two real HTTP
+  round trips: an Azure-topic question against a 2-candidate roster
+  (Azure Expert/Masdar Expert) correctly returned `azure-expert`; a
+  Masdar-topic question against the SAME roster correctly returned
+  `masdar-expert` — rules out an always-pick-first-candidate artifact and
+  demonstrates real reasoning over the given roster/message, not a
+  hardcoded/keyword shortcut. Real credential spend was two small
+  chat-completion calls, non-destructive, no vault/state mutation. **What
+  to do:** `T05`'s own Tests block currently frames its `AC-02` step as
+  monkeypatch-only per the story's original "blocked-pending-credentials"
+  framing — the human may want to authorize `T05` to add a similar bonus
+  live confirmation once built, though the monkeypatched steps alone
+  remain fully sufficient to satisfy every locked AC in both tasks per
+  their own Tests blocks (this is an optional strengthening, not a gap).
+  → `Implementation/Tasks/REQ-SB-82-US-06-T03-moderator-llm-routing.md`
+
+  **Coder update (2026-08-31), `T04`-`T08` — all built and `Done`; story
+  `REQ-SB-82-US-06` → `Done`; `SPRINT-078` → `Done` (drafted retro):** the
+  remaining tasks landed clean (`T04` short-reply shortcut, `T05` LLM-
+  primary routing + reply-hint resolution, `T06` router passthrough, `T07`
+  Cockpit reply-to UI, `T08` AgentChatPanel reply-to/context-anchoring) —
+  every locked AC (`AC-01` through `AC-08`) independently verified live
+  with a real positive result across all 8 tasks' own Implementation Logs;
+  no AC left `Blocked`, none weakened/omitted. **Item (2) update:** not
+  additionally strengthened — `T05`'s own `AC-02` verification stayed
+  monkeypatch-only as originally scoped (the "optional strengthening"
+  noted above was never exercised); still a fully sufficient pass per the
+  story's own Tests blocks, just narrower than `T02`/`T03`'s own bonus
+  real-credential round trips. **Item (3) is now genuinely actionable:**
+  both `T07` (Cockpit) and `T08` (`AgentChatPanel`) built the same
+  decomposer-authored shape (a per-message Reply action + a composer
+  preview strip with cancel) — `T07`'s own Reply affordance/preview strip
+  render unstyled (no CSS file was in either task's own `## Files to
+  Modify`, a disclosed scope-internal judgement call in both tasks'
+  own Implementation Logs), a real, unpolished-but-functional state ready
+  for the human's own visual spot-check. **What to do now:** (1) review
+  `ADR-011`/`ADR-012` (item 1, still open — the only remaining blocking-
+  for-full-closure item, though it does not block `Done` status per
+  Pipeline.md's own gate-vs-status separation); (2) spot-check the
+  reply-to UI's visual treatment in both surfaces in a real browser
+  (unstyled today, functionally correct); (3) skim `SPRINT-078`'s own
+  drafted Retrospective and propagate any patterns into
+  `Implementation/Learnings.md`.
+  → `Implementation/UserStories/REQ-SB-82-US-06-live-routing-fix-and-reply-to-message.md`
+  → `Implementation/Tasks/REQ-SB-82-US-06-T04-short-reply-shortcut.md` … `T08-agent-chat-panel-reply-to.md`
+  → `Implementation/Sprints/SPRINT-078-live-routing-fix-and-reply-to-message.md`
 

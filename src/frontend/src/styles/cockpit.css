@@ -184,6 +184,70 @@
   margin-bottom: var(--space-1);
 }
 
+/* REQ-SB-82-US-06 -- write-side "reply to this message" affordance
+   (Cockpit + AgentChatPanel share these class names, both unstyled
+   until now). Small, muted by default so it doesn't compete with the
+   message text; lights up in the accent color on hover/focus so it
+   still reads as clickable. */
+.chat-message-reply-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.chat-message-reply-btn .material-symbols-outlined {
+  font-size: 15px;
+}
+
+.chat-message-reply-btn:hover,
+.chat-message-reply-btn:focus-visible {
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
+}
+
+/* The composer's own preview banner once a message is selected to
+   reply to -- same quoted-italic language as the read-side
+   .chat-message-reply-to strip above, but raised as an active banner
+   (not an inline quote) since it's part of what you're about to send. */
+.chat-reply-to-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
+  background: var(--color-surface-raised);
+  border-left: 2px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+}
+
+.chat-reply-to-preview-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-sm);
+  font-style: italic;
+  color: var(--color-text-muted);
+}
+
+.chat-reply-to-preview .btn {
+  flex-shrink: 0;
+  padding: 0 var(--space-2);
+  line-height: 1.6;
+  font-size: var(--font-size-base);
+}
+
 /* Scenario 6 -- an honest "bring someone in first" notice, never a
    fabricated Expert/user reply, so it reads visually distinct from both. */
 .chat-message--system {

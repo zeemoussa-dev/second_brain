@@ -27,6 +27,11 @@ interface ChatMessage {
   // True only while this bubble's own `text` is still being appended to
   // live -- false (or omitted) once its `complete`/`error` frame lands.
   isStreaming?: boolean;
+  // REQ-SB-82-US-06-T08 -- client-only, in-memory identity for the
+  // reply-to affordance below; assigned at append time, never persisted
+  // and never sent to the backend as-is (ADR-012 point 5: this surface
+  // has zero message-id/persistence concept otherwise).
+  localId: string;
 }
 
 const ACCEPTED_EXTENSIONS = ['.pdf', '.txt', '.md'];
@@ -35,6 +40,17 @@ const ACCEPTED_EXTENSIONS = ['.pdf', '.txt', '.md'];
 // handleDraftChange auto-grows up to before it starts scrolling
 // internally instead of growing further.
 const _CHAT_INPUT_MAX_HEIGHT_PX = 132;
+// Same "truncated quote" convention as Cockpit's own reply-to preview
+// (REQ-SB-82-US-06-T07) -- long enough to recognize the message, short
+// enough that the strip doesn't dwarf the composer beneath it.
+const _REPLY_PREVIEW_MAX_CHARS = 140;
+
+function truncateForReplyPreview(text: string): string {
+  const trimmed = text.trim();
+  return trimmed.length > _REPLY_PREVIEW_MAX_CHARS
+    ? `${trimmed.slice(0, _REPLY_PREVIEW_MAX_CHARS)}…`
+    : trimmed;
+}
 
 interface AgentChatPanelProps {
   agentId: string;
@@ -51,9 +67,19 @@ export function AgentChatPanel({ agentId, agentName, onMessageSent }: AgentChatP
   const [sending, setSending] = useState(false);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [attachError, setAttachError] = useState<string | null>(null);
+  // REQ-SB-82-US-06-T08 -- which earlier message (by its own `localId`)
+  // the next Send should anchor as context. Purely in-memory for this
+  // mount, never persisted (ADR-012 point 5).
+  const [replyToLocalId, setReplyToLocalId] = useState<string | null>(null);
   const threadEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const draftInputRef = useRef<HTMLTextAreaElement>(null);
+  const nextLocalIdRef = useRef(0);
+
+  function generateLocalId(): string {
+    nextLocalIdRef.current += 1;
+    return `msg-${nextLocalIdRef.current}`;
+  }
 
   // Switching which agent this panel is pointed at (AgentDetailPanel
   // re-mounts a fresh instance per agentId via its own `key`, but
@@ -65,6 +91,10 @@ export function AgentChatPanel({ agentId, agentName, onMessageSent }: AgentChatP
     setSending(false);
     setAttachedFile(null);
     setAttachError(null);
+    // Scenario 8 -- a reset that clears `messages` must also clear any
+    // leftover `replyToLocalId` selection, or a stale reference could
+    // survive into the fresh thread with nothing left to resolve it against.
+    setReplyToLocalId(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (draftInputRef.current) draftInputRef.current.style.height = 'auto';
   }, [agentId]);
@@ -106,6 +136,8 @@ export function AgentChatPanel({ agentId, agentName, onMessageSent }: AgentChatP
     setDraft('');
     setAttachedFile(null);
     setAttachError(null);
+    // Scenario 8 -- same reasoning as the agentId-switch reset above.
+    setReplyToLocalId(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (draftInputRef.current) draftInputRef.current.style.height = 'auto';
     try {
@@ -122,20 +154,45 @@ export function AgentChatPanel({ agentId, agentName, onMessageSent }: AgentChatP
     const text = draft.trim();
     if ((!text && !attachedFile) || sending) return;
     const bubbleText = attachedFile ? `${text} [attached: ${attachedFile.name}]`.trim() : text;
-    setMessages((prev) => [...prev, { role: 'user', text: bubbleText }]);
+    // Resolved against the CURRENT `messages` array, before the new user
+    // bubble below is appended to it. A `replyToLocalId` left over from a
+    // reset that already cleared `messages` (Scenario 8) simply won't be
+    // found here -- `replyToMessage` stays undefined and the send proceeds
+    // as a plain, unanchored message, never a broken/blocked one.
+    const replyToMessage = replyToLocalId
+      ? messages.find((message) => message.localId === replyToLocalId)
+      : undefined;
+    setMessages((prev) => [...prev, { role: 'user', text: bubbleText, localId: generateLocalId() }]);
     setDraft('');
     if (draftInputRef.current) draftInputRef.current.style.height = 'auto';
     const fileToSend = attachedFile;
     setAttachedFile(null);
     setAttachError(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
+    // Same "clear on send, regardless of outcome" pattern as `draft`/
+    // `attachedFile` above.
+    setReplyToLocalId(null);
     setSending(true);
+    // Context-anchoring mechanism (ADR-012 point 5): neither
+    // `sendChatMessageWithAttachment` nor `streamChatMessage` accepts a
+    // separate context parameter and no backend schema change is in
+    // scope, so the referenced earlier message's own text is quoted
+    // directly into the text actually sent to the agent. `bubbleText`
+    // above (what renders in the thread) is built from the plain `text`
+    // only -- the anchoring stays invisible plumbing, never a visible
+    // echo in the user's own chat bubble.
+    const outgoingText = replyToMessage ? `> ${replyToMessage.text}\n\n${text}` : text;
     try {
       if (fileToSend) {
-        const response = await sendChatMessageWithAttachment(agentId, text, fileToSend);
+        const response = await sendChatMessageWithAttachment(agentId, outgoingText, fileToSend);
         setMessages((prev) => [
           ...prev,
-          { role: 'agent', text: response.reply, isError: response.attachment_status === 'rejected' },
+          {
+            role: 'agent',
+            text: response.reply,
+            isError: response.attachment_status === 'rejected',
+            localId: generateLocalId(),
+          },
         ]);
       } else {
         // Streamed (2026-08-24) -- one pending bubble appended up front,
@@ -146,7 +203,10 @@ export function AgentChatPanel({ agentId, agentName, onMessageSent }: AgentChatP
         // while `sending` is true (the composer/Send button are
         // disabled), so "last" and "this streaming reply" stay the same
         // message for the whole turn.
-        setMessages((prev) => [...prev, { role: 'agent', text: '', activity: [], isStreaming: true }]);
+        setMessages((prev) => [
+          ...prev,
+          { role: 'agent', text: '', activity: [], isStreaming: true, localId: generateLocalId() },
+        ]);
         function updatePendingMessage(update: (message: ChatMessage) => ChatMessage) {
           setMessages((prev) => {
             const next = [...prev];
@@ -171,7 +231,7 @@ export function AgentChatPanel({ agentId, agentName, onMessageSent }: AgentChatP
             }));
           }
         }
-        await streamChatMessage(agentId, text, handleStreamEvent);
+        await streamChatMessage(agentId, outgoingText, handleStreamEvent);
       }
       onMessageSent?.();
     } catch {
@@ -196,7 +256,12 @@ export function AgentChatPanel({ agentId, agentName, onMessageSent }: AgentChatP
         }
         return [
           ...prev,
-          { role: 'agent', text: 'Something went wrong sending that message. Please try again.', isError: true },
+          {
+            role: 'agent',
+            text: 'Something went wrong sending that message. Please try again.',
+            isError: true,
+            localId: generateLocalId(),
+          },
         ];
       });
     } finally {
@@ -244,6 +309,16 @@ export function AgentChatPanel({ agentId, agentName, onMessageSent }: AgentChatP
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, _CHAT_INPUT_MAX_HEIGHT_PX)}px`;
   }
+
+  function handleCancelReply() {
+    setReplyToLocalId(null);
+  }
+
+  // Recomputed on every render from the live `messages` array, so a stale
+  // `replyToLocalId` (Scenario 8) never renders a broken quote below.
+  const resolvedReplyToMessage = replyToLocalId
+    ? messages.find((message) => message.localId === replyToLocalId)
+    : undefined;
 
   return (
     <div className="agent-chat-panel">
@@ -306,6 +381,22 @@ export function AgentChatPanel({ agentId, agentName, onMessageSent }: AgentChatP
             ) : (
               <ChatMessageText text={message.text} />
             )}
+            {/* REQ-SB-82-US-06-T08 -- only a finalized bubble is
+                repliable, never the still-live streaming placeholder
+                above (its own `text` isn't settled yet to quote as
+                context). Same user-facing verb/shape as Cockpit's own
+                reply affordance (T07), built independently per
+                ADR-012 point 5. */}
+            {!message.isStreaming && (
+              <button
+                type="button"
+                className="chat-message-reply-btn"
+                aria-label="Reply to this message"
+                onClick={() => setReplyToLocalId(message.localId)}
+              >
+                <span className="material-symbols-outlined" aria-hidden="true">reply</span>
+              </button>
+            )}
           </div>
         ))}
         {sending && !messages[messages.length - 1]?.isStreaming && (
@@ -327,6 +418,22 @@ export function AgentChatPanel({ agentId, agentName, onMessageSent }: AgentChatP
           <span>📎 {attachedFile.name}</span>
           <button type="button" className="btn" onClick={handleRemoveAttachment}>
             Remove
+          </button>
+        </div>
+      )}
+      {/* REQ-SB-82-US-06-T08 -- Scenario 8: `resolvedReplyToMessage` is
+          undefined whenever `replyToLocalId` no longer resolves against
+          the CURRENT `messages` array (a stale reference), so this strip
+          simply doesn't render rather than showing a broken/blank quote.
+          `handleSend` independently re-resolves the same reference at
+          send time, so Send always still works either way. */}
+      {resolvedReplyToMessage && (
+        <div className="chat-reply-to-preview" data-role="reply-to-preview">
+          <span className="chat-reply-to-preview-text">
+            ↳ Replying to: {truncateForReplyPreview(resolvedReplyToMessage.text)}
+          </span>
+          <button type="button" className="btn" aria-label="Cancel reply" onClick={handleCancelReply}>
+            ×
           </button>
         </div>
       )}
