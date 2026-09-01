@@ -833,3 +833,214 @@ def test_insert_body_line_if_missing_is_idempotent(vault):
     assert "Existing content." in body
     assert first is True
     assert second is False
+
+
+# ── dynamic (unbounded) children -- REQ-SB-87-US-01-T01, ADR-017 ────────
+
+def _write_dynamic_child_template(vault: Path, **child_overrides) -> dict:
+    import json
+    template_path = vault / ".second-brain" / "data" / "Templates" / "thread-fixture" / "Template.json"
+    template_path.parent.mkdir(parents=True, exist_ok=True)
+    child_spec = {
+        "growth": "dynamic", "name": "items", "folder": "items",
+        "identity_fields": ["external_id"],
+        "frontmatter_defaults": {"type": "Item"},
+        "sections": [{"name": "Body"}],
+    }
+    child_spec.update(child_overrides)
+    template_path.write_text(json.dumps({
+        "id": "thread-fixture", "on_missing": "create",
+        "root": {
+            "on_existing_title": "update_section",
+            "frontmatter_defaults": {"type": "ThreadFixture"},
+            "sections": [{"name": "Summary", "access": "machine_write"}],
+            "children": [child_spec],
+        },
+    }), encoding="utf-8")
+    return vm.load_template(vault, "thread-fixture")
+
+
+def test_dynamic_children_are_genuinely_unbounded(vault):
+    """[REQ-SB-87-US-01-AC-03] 3 distinct real children under the same
+    root, 1st through Nth call, never treated as a fixed-size set."""
+    template = _write_dynamic_child_template(vault)
+    root = vm.create(vault, template, note_name="Threads", title="Vendor Renewal")
+
+    first = vm.create_dynamic_child(
+        vault, template, root_id=root["id"], child_name="items",
+        identity={"external_id": "msg-1"}, frontmatter={"title": "First Item"},
+    )
+    second = vm.create_dynamic_child(
+        vault, template, root_id=root["id"], child_name="items",
+        identity={"external_id": "msg-2"}, frontmatter={"title": "Second Item"},
+    )
+    third = vm.create_dynamic_child(
+        vault, template, root_id=root["id"], child_name="items",
+        identity={"external_id": "msg-3"}, frontmatter={"title": "Third Item"},
+    )
+
+    assert first["created"] is True and second["created"] is True and third["created"] is True
+    items_folder = Path(root["path"]).parent / "items"
+    real_files = list(items_folder.glob("*.md"))
+    assert len(real_files) == 3
+    assert {Path(first["path"]).name, Path(second["path"]).name, Path(third["path"]).name} == {
+        f.name for f in real_files
+    }
+
+
+def test_dynamic_child_idempotent_lookup_by_identity_fields_avoids_duplicate(vault):
+    """[REQ-SB-87-US-01-AC-04] Same identity twice -- same path back, only
+    ONE real file on disk."""
+    template = _write_dynamic_child_template(vault)
+    root = vm.create(vault, template, note_name="Threads", title="Vendor Renewal")
+
+    first = vm.create_dynamic_child(
+        vault, template, root_id=root["id"], child_name="items",
+        identity={"external_id": "msg-1"}, frontmatter={"title": "First Item"},
+        sections={"Body": "original content"},
+    )
+    second = vm.create_dynamic_child(
+        vault, template, root_id=root["id"], child_name="items",
+        identity={"external_id": "msg-1"}, frontmatter={"title": "First Item Again"},
+        sections={"Body": "should never land"},
+    )
+
+    assert second["created"] is False
+    assert second["path"] == first["path"]
+    items_folder = Path(root["path"]).parent / "items"
+    assert len(list(items_folder.glob("*.md"))) == 1
+    assert vm.get_section_content(Path(first["path"]), "Body") == "original content"
+
+
+def test_create_dynamic_child_never_fabricates_a_missing_root(vault):
+    """(Unlabeled, supporting) A root_id that resolves to no real note is
+    a real VaultManagerError, never a silently-fabricated root."""
+    template = _write_dynamic_child_template(vault)
+    with pytest.raises(vm.VaultManagerError, match="no-such-root"):
+        vm.create_dynamic_child(
+            vault, template, root_id="no-such-root", child_name="items",
+            identity={"external_id": "msg-1"},
+        )
+
+
+def test_create_dynamic_child_refuses_an_undeclared_child_name(vault):
+    template = _write_dynamic_child_template(vault)
+    root = vm.create(vault, template, note_name="Threads", title="Vendor Renewal")
+    with pytest.raises(vm.VaultManagerError, match="typo"):
+        vm.create_dynamic_child(
+            vault, template, root_id=root["id"], child_name="typo",
+            identity={"external_id": "msg-1"},
+        )
+
+
+def test_growth_defaults_to_fixed_and_existing_fixed_children_are_unaffected(vault):
+    """A fixed child (no `growth` key at all, exactly Customer/Partner's
+    real Template.json shape today) must stay byte-identical -- created
+    atomically at root-creation time, never skipped."""
+    template = _write_customer_style_template(vault)
+    for entry in template["root"]["children"]:
+        assert "growth" not in entry  # real Template.json shape, unedited
+    result = vm.create(vault, template, title="Adnoc", note_name="Customers")
+    root_path = Path(result["path"])
+    assert (root_path.parent / "Adnoc-log.md").is_file()
+    assert (root_path.parent / "Adnoc-captures.md").is_file()
+
+
+def test_dynamic_child_declared_alongside_fixed_children_is_skipped_at_root_creation(vault):
+    """A template mixing FIXED and DYNAMIC children in the same
+    root.children list -- only the fixed one is written atomically; the
+    dynamic one's own folder does not even exist yet until the first real
+    create_dynamic_child() call."""
+    template = _write_dynamic_child_template(
+        vault, name="items", folder="items", growth="dynamic",
+    )
+    template["root"]["children"].insert(0, {
+        "suffix": "log", "frontmatter_defaults": {"type": "Log"}, "name_template": "{title} Log",
+    })
+    import json
+    template_path = vault / ".second-brain" / "data" / "Templates" / "thread-fixture" / "Template.json"
+    template_path.write_text(json.dumps({
+        "id": "thread-fixture", "on_missing": "create",
+        "root": template["root"],
+    }), encoding="utf-8")
+    template = vm.load_template(vault, "thread-fixture")
+
+    result = vm.create(vault, template, note_name="Threads", title="Vendor Renewal")
+    root_path = Path(result["path"])
+    assert (root_path.parent / f"{root_path.stem}-log.md").is_file()
+    assert not (root_path.parent / "items").exists()
+
+    child = vm.create_dynamic_child(
+        vault, template, root_id=result["id"], child_name="items",
+        identity={"external_id": "msg-1"},
+    )
+    assert Path(child["path"]).is_file()
+    assert (root_path.parent / "items").is_dir()
+
+
+# ── per-caller section-write access -- REQ-SB-87-US-01-T02, ADR-017 ─────
+
+def _write_caller_access_template(vault: Path) -> dict:
+    import json
+    template_path = vault / ".second-brain" / "data" / "Templates" / "caller-access-fixture" / "Template.json"
+    template_path.parent.mkdir(parents=True, exist_ok=True)
+    template_path.write_text(json.dumps({
+        "id": "caller-access-fixture", "on_missing": "create",
+        "root": {
+            "on_existing_title": "update_section",
+            "frontmatter_defaults": {"type": "CallerAccessFixture"},
+            "sections": [
+                {"name": "Summary", "access": "machine_write", "allowed_callers": ["writer_a"]},
+                {"name": "Open", "access": "machine_write"},
+            ],
+        },
+    }), encoding="utf-8")
+    return vm.load_template(vault, "caller-access-fixture")
+
+
+def test_modify_section_allowed_caller_succeeds_disallowed_caller_refused(vault):
+    """(Unlabeled, infra -- supports REQ-SB-87-US-01-AC-02, T05's own real-
+    Thread-template proof) A section declaring `allowed_callers` accepts
+    the one declared caller and refuses every other caller with a real,
+    explicit VaultManagerError naming both the section and the refused
+    caller -- mirroring vault_lib.py's own SectionWriteNotAllowed guard,
+    now Template.json data instead of a hardcoded Python dict."""
+    template = _write_caller_access_template(vault)
+    created = vm.create(vault, template, note_name="Fixtures", title="Doc One")
+
+    vm.modify_section(
+        vault, template, note_id=created["id"], section="Summary",
+        content="written by writer_a", mode="replace", caller="writer_a",
+    )
+    assert vm.get_section_content(Path(created["path"]), "Summary") == "written by writer_a"
+
+    with pytest.raises(vm.VaultManagerError, match="writer_b") as excinfo:
+        vm.modify_section(
+            vault, template, note_id=created["id"], section="Summary",
+            content="should never land", mode="replace", caller="writer_b",
+        )
+    assert "Summary" in str(excinfo.value)
+    # the refused write must be a real, whole refusal -- never a silent
+    # no-op and never a partial write of the disallowed caller's content
+    assert vm.get_section_content(Path(created["path"]), "Summary") == "written by writer_a"
+
+
+def test_undeclared_allowed_callers_stays_open_to_any_caller(vault):
+    """(Unlabeled, infra) A section with NO allowed_callers key stays open
+    to any machine_write caller -- both caller=None and an arbitrary
+    caller string succeed -- zero behavior change for every already-Done
+    template, none of which declare allowed_callers."""
+    template = _write_caller_access_template(vault)
+    created = vm.create(vault, template, note_name="Fixtures", title="Doc Two")
+
+    vm.modify_section(
+        vault, template, note_id=created["id"], section="Open",
+        content="no caller given", mode="replace", caller=None,
+    )
+    assert vm.get_section_content(Path(created["path"]), "Open") == "no caller given"
+
+    vm.modify_section(
+        vault, template, note_id=created["id"], section="Open",
+        content="arbitrary caller", mode="replace", caller="anything",
+    )
+    assert vm.get_section_content(Path(created["path"]), "Open") == "arbitrary caller"

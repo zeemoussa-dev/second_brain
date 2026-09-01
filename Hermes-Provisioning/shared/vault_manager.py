@@ -38,20 +38,51 @@ not a state to paper over). `root` is today's entire old flat schema,
 unchanged in substance, just nested one level: `type`, `own_folder`,
 `plain_filename`, `on_existing_title`, `frontmatter_defaults`, `sections`
 (per-section write access -- machine vs. a human-owned section no
-automated call may ever touch), plus `children` (2026-08-30, Customer/
+automated call may ever touch; a `machine_write` section may also declare
+`"allowed_callers": [str, ...]` -- see below), plus `children` (2026-08-30, Customer/
 Partner's real hub+log+captures shape -- the first template that
-genuinely needed more than one node): a list of FIXED sibling files
-created atomically alongside the root note, `{"suffix": str,
-"frontmatter_defaults": dict?, "name_template": str?,
-"heading_template": str?}` each. Every child lands at
-`<root-stem>-<suffix>.md` in the SAME folder as the root note (never its
-own `own_folder`); `name_template`/`heading_template` are `.format(title=...)`
-strings (e.g. `"{title} Log"`) rendered against the record's own real
-title; a `parent` frontmatter field pointing back at the root note (a
-real wikilink, `[[<root-stem>]]`) is always added automatically. A
-dynamic child slot (Thread's own messages/, added one at a time per real
-event rather than a fixed list) is a real, later extension of this same
-shape -- not built here, nothing today needs it yet.
+genuinely needed more than one node). Each entry carries an optional
+`"growth": "fixed" | "dynamic"` field, defaulting to `"fixed"` -- every
+already-`Done` template stays byte-identical (`REQ-SB-87-US-01-AC-01`).
+
+A FIXED entry, `{"suffix": str, "frontmatter_defaults": dict?,
+"name_template": str?, "heading_template": str?}`, is a list of sibling
+files created atomically alongside the root note. Every fixed child lands
+at `<root-stem>-<suffix>.md` in the SAME folder as the root note (never
+its own `own_folder`); `name_template`/`heading_template` are
+`.format(title=...)` strings (e.g. `"{title} Log"`) rendered against the
+record's own real title; a `parent` frontmatter field pointing back at
+the root note (a real wikilink, `[[<root-stem>]]`) is always added
+automatically.
+
+A DYNAMIC entry (2026-09-01, `ADR-017` -- Thread's own `messages/`
+folder: exactly one new RawMessage note per captured email, unbounded,
+for as long as the Thread exists), `{"growth": "dynamic", "name": str,
+"folder": str, "identity_fields": [str, ...],
+"frontmatter_defaults": dict?, "sections": [{"name": str}, ...]?}`, is
+genuinely distinct from a fixed sibling: it is never created at
+root-creation time, has no bound on how many real children it can hold,
+and is created/looked-up one at a time via `create_dynamic_child()`
+(CLI: `create-child`), which resolves the ALREADY-EXISTING root by its
+own `id` (never fabricates it), lists real files under
+`<root-folder>/<declared-folder>/` and idempotently matches on the
+declared `identity_fields` natural key before ever writing a new one.
+Kept structurally separate from the FIXED-sibling shape above -- a
+dynamic child never lands at the flat `<root-stem>-<suffix>.md`
+convention, always its own nested subfolder.
+
+A `sections` entry may also declare `"allowed_callers": [str, ...]`
+(2026-09-01, `ADR-017` -- replaces `email-thread-capture`'s own hand-
+rolled `vault_lib.py::_CALLER_ALLOW_LISTS` Python dict with real
+Template.json data). `create()`/`modify_section()` gain a matching
+optional `caller: str | None` parameter (CLI: `--caller`). When a
+section's own `allowed_callers` is present and non-empty, a write to
+that section additionally requires `caller` to be one of the declared
+names -- refused with a real `VaultManagerError` naming both the
+section and the refused caller otherwise. A section with NO
+`allowed_callers` key stays open to any caller carrying `machine_write`
+access, exactly as before -- zero behavior change for every
+already-`Done` template, since none of them declare it.
 
 A template may also declare `parent` -- the external-required-parent
 link (Opportunity -> Customer was the first real one, 2026-08-30):
@@ -102,7 +133,7 @@ CLI (one process per call, matching every existing Skill script's own
 
     python vault_manager.py find --vault-path P --template-id T \\
         --by id|filename|folder --value X
-    python vault_manager.py create --vault-path P --template-id T --input-file F
+    python vault_manager.py create --vault-path P --template-id T [--caller NAME] --input-file F
         F: {"id": str?, "title": str,
             # required UNLESS this template declares "parent" -- then
             # auto-derived from the resolved parent + parent.child_subpath
@@ -117,7 +148,11 @@ CLI (one process per call, matching every existing Skill script's own
         F: {"title": str?, "frontmatter": {...}?}
     python vault_manager.py get-section --vault-path P --template-id T --id X --section NAME
     python vault_manager.py modify-section --vault-path P --template-id T \\
-        [--id X] --section NAME --mode replace|append --input-file F
+        [--id X] --section NAME --mode replace|append [--caller NAME] --input-file F
+        # --caller (2026-09-01, ADR-017) is REQUIRED to write a section
+        # whose own Template.json declares "allowed_callers" -- refused
+        # with a real error otherwise. Undeclared sections stay open to
+        # any caller, --caller omitted or not.
         F: {"content": str,
             # identify the target ONE of two ways (2026-08-30) -- a real
             # `id` (--id or "id" here), or "title" + "parent_value" (or a
@@ -131,6 +166,17 @@ CLI (one process per call, matching every existing Skill script's own
             # If Exists Update Section", operator, 2026-08-25) AND the
             # template's own on_missing allows it:
             "frontmatter": {...}?}
+    python vault_manager.py create-child --vault-path P --template-id T \\
+        --id ROOT_ID --child NAME --input-file F
+        # ROOT_ID is the ALREADY-EXISTING root note's own real `id` --
+        # never fabricated; NAME is a `growth: "dynamic"` entry's own
+        # declared "name" in this template's root.children (2026-09-01,
+        # ADR-017 -- Thread's own messages/).
+        F: {"identity": {...},
+            # the declared identity_fields' real values -- the natural
+            # key an already-existing child is idempotently matched
+            # against before a new one is ever created.
+            "frontmatter": {...}?, "sections": {"Summary": "...", ...}?}
 
 Every command prints one JSON object to stdout: the real result, or
 {"error": str} (exit code 1) -- never raises an uncaught traceback for an
@@ -485,12 +531,31 @@ def _section_access(template: dict, section: str) -> str:
     return "machine_write"  # an undeclared section defaults open, same as today's real scripts
 
 
-def _require_machine_write(template: dict, section: str) -> None:
+def _section_allowed_callers(template: dict, section: str) -> list[str] | None:
+    """The Template.json-declared per-caller allow-list for a section
+    (2026-09-01, `ADR-017` -- replaces `vault_lib.py`'s own hardcoded
+    `_CALLER_ALLOW_LISTS` Python dict). `None` (no key declared, or the
+    section itself is undeclared) means "open to any `machine_write`
+    caller" -- zero behavior change for every already-`Done` template."""
+    for entry in template["root"]["sections"]:
+        if entry["name"] == section:
+            allowed_callers = entry.get("allowed_callers")
+            return allowed_callers if allowed_callers else None
+    return None
+
+
+def _require_machine_write(template: dict, section: str, caller: str | None = None) -> None:
     access = _section_access(template, section)
     if access != "machine_write":
         raise VaultManagerError(
             f"section {section!r} is {access!r} in template {template['id']!r} -- "
             "no automated write is allowed here"
+        )
+    allowed_callers = _section_allowed_callers(template, section)
+    if allowed_callers is not None and caller not in allowed_callers:
+        raise VaultManagerError(
+            f"section {section!r} in template {template['id']!r} only allows "
+            f"{allowed_callers!r} to write it -- caller {caller!r} is refused"
         )
 
 
@@ -753,6 +818,7 @@ def create(
     sections: dict[str, str] | None = None,
     folder_date: str | None = None,
     parent_value: str | None = None,
+    caller: str | None = None,
 ) -> dict:
     """`folder_date` (YYYY-MM-DD) overrides the FOLDER's own dated stem --
     only meaningful with `note_own_folder` -- so a container note (a
@@ -763,6 +829,14 @@ def create(
     genuinely different concept ("when this note object was made") from
     the folder's own sort key. See `bump_folder_date` for moving it
     forward later.
+
+    `caller` (2026-09-01, `ADR-017`) -- this call's own self-declared
+    identity, checked against any section named in `sections` whose
+    Template.json declares `allowed_callers` (only reachable via the
+    `on_existing_title="update_section"` early-return path above, since
+    that is the only place `create()` itself calls
+    `_require_machine_write`); omit for a template/section with no
+    `allowed_callers` declared.
 
     `parent_value` (2026-08-30, Opportunity's own real "resolve an
     existing Customer, refuse to fabricate one" guard, generalized) --
@@ -856,7 +930,7 @@ def create(
                 )
             existing_frontmatter, _ = read_note(existing)
             for section_name, content in (sections or {}).items():
-                _require_machine_write(template, section_name)
+                _require_machine_write(template, section_name, caller)
                 _set_section_content(existing, section_name, content, mode="replace")
             return {
                 "created": False, "updated": True, "path": str(existing),
@@ -900,10 +974,15 @@ def create(
     # child filenames are only deterministic once `note_path` is known;
     # the CALLING script can't predict them itself without duplicating
     # `_unique_dated_path`'s own slug/collision logic, so the engine
-    # (which already owns that logic) builds this instead.
+    # (which already owns that logic) builds this instead. A `growth:
+    # "dynamic"` entry (2026-09-01, ADR-017) has no deterministic
+    # filename at root-creation time -- it is never listed here or
+    # created below; it grows one at a time, later, via
+    # `create_dynamic_child()`.
     children_index_lines = [
         f"- [[{note_path.stem}-{child_spec['suffix']}|{child_spec.get('display_label', child_spec['suffix'].title())}]]"
         for child_spec in root.get("children", [])
+        if child_spec.get("growth", "fixed") != "dynamic"
     ]
 
     body_parts = []
@@ -926,6 +1005,8 @@ def create(
     # this is a disclosed, deliberate correction, not a byte-for-byte
     # port.
     for child_spec in root.get("children", []):
+        if child_spec.get("growth", "fixed") == "dynamic":
+            continue  # grown later, one at a time, via create_dynamic_child()
         child_frontmatter = dict(child_spec.get("frontmatter_defaults", {}))
         if "name_template" in child_spec:
             child_frontmatter["name"] = child_spec["name_template"].format(title=title)
@@ -939,6 +1020,95 @@ def create(
         _link_child_into_parent_section(parent_path, parent_config["link_back_section"], f"[[{note_path.stem}]]")
 
     return {"created": True, "updated": False, "path": str(note_path), "folder": str(note_path.parent), "id": resolved_id}
+
+
+def _find_dynamic_child_spec(template: dict, child_name: str) -> dict:
+    for entry in template["root"].get("children", []):
+        if entry.get("growth") == "dynamic" and entry.get("name") == child_name:
+            return entry
+    raise VaultManagerError(
+        f"template {template['id']!r} declares no growth:'dynamic' child named "
+        f"{child_name!r} -- check root.children in its Template.json"
+    )
+
+
+def create_dynamic_child(
+    vault_path: Path,
+    template: dict,
+    root_id: str,
+    child_name: str,
+    identity: dict,
+    frontmatter: dict | None = None,
+    sections: dict[str, str] | None = None,
+) -> dict:
+    """The real primitive Thread's own `messages/` folder needs (2026-09-01,
+    ADR-017): a `growth: "dynamic"` child grows ONE note at a time,
+    unbounded, across the root note's WHOLE LIFETIME -- genuinely
+    distinct from `create()`'s own FIXED sibling children, which are all
+    written once, atomically, at root-creation time.
+
+    Three guarantees this function upholds regardless of exact
+    naming (ADR-017: "exact CLI/JSON shape is decomposer/coder-level"):
+    1. NEVER fabricates the root -- `root_id` must already resolve to a
+       real note (via `find_by_id`, unscoped -- the caller is not
+       expected to already know which note_name folder the root lives
+       under); a `VaultManagerError` otherwise.
+    2. Idempotent lookup by the declared `identity_fields` NATURAL KEY,
+       not by filename or creation order -- the 1st and Nth call with the
+       SAME identity values return the SAME existing path, never a
+       duplicate.
+    3. Genuinely UNBOUNDED -- always a real directory listing under the
+       declared subfolder, never a small, fixed-size in-memory structure
+       checked against a ceiling.
+    """
+    root_path = find_by_id(vault_path, root_id)
+    if root_path is None:
+        raise VaultManagerError(
+            f"no real note with id={root_id!r} exists -- create_dynamic_child never "
+            "fabricates the root note"
+        )
+
+    child_spec = _find_dynamic_child_spec(template, child_name)
+    child_folder = root_path.parent / child_spec["folder"]
+    identity_fields = child_spec.get("identity_fields", [])
+
+    if child_folder.is_dir():
+        for existing_path in sorted(child_folder.glob("*.md")):
+            existing_frontmatter, _ = read_note(existing_path)
+            if identity_fields and all(
+                str(existing_frontmatter.get(field, "")) == str(identity.get(field, ""))
+                for field in identity_fields
+            ):
+                return {
+                    "created": False, "updated": False, "path": str(existing_path),
+                    "folder": str(child_folder), "id": existing_frontmatter.get("id"),
+                }
+
+    child_folder.mkdir(parents=True, exist_ok=True)
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    # No `title` concept for a dynamic child the way a root record has
+    # one -- fall back to the identity values themselves so the filename
+    # is still human-legible, while reusing `_unique_dated_path`'s own
+    # never-overwrite discipline rather than a second, ad hoc one.
+    name_hint = (frontmatter or {}).get("title") or "-".join(str(v) for v in identity.values())
+    child_path = _unique_dated_path(child_folder, today_str, _slugify(name_hint))
+
+    full_frontmatter = dict(child_spec.get("frontmatter_defaults", {}))
+    full_frontmatter.update(identity)
+    full_frontmatter.update(frontmatter or {})
+    full_frontmatter.setdefault("id", str(uuid.uuid4()))
+    full_frontmatter.setdefault("created", today_str)
+
+    body_parts = [
+        f"{_section_header(entry['name'])}\n\n{(sections or {}).get(entry['name'], '')}\n"
+        for entry in child_spec.get("sections", [])
+    ]
+    write_note(child_path, full_frontmatter, "\n" + "\n".join(body_parts) if body_parts else "\n")
+
+    return {
+        "created": True, "updated": False, "path": str(child_path),
+        "folder": str(child_folder), "id": full_frontmatter["id"],
+    }
 
 
 def update(vault_path: Path, note_path: Path, title: str | None = None, frontmatter: dict | None = None) -> dict:
@@ -990,12 +1160,18 @@ def modify_section(
     parent_value: str | None = None,
     frontmatter: dict | None = None,
     child_suffix: str | None = None,
+    caller: str | None = None,
 ) -> dict:
     """"Create if not Exist, If Exists Update Section" (operator,
     2026-08-25) -- one call. `note_name`/`title` are only required when
     this specific call might need to create the note; omit them to get
     template['on_missing']='error' behavior (person-lookup's own real
     guard: never silently create a note that must already exist).
+
+    `caller` (2026-09-01, `ADR-017`) -- this call's own self-declared
+    identity, checked against `section`'s own Template.json
+    `allowed_callers` (if declared) before the write on the UPDATE path
+    below; omit for a section with no `allowed_callers` declared.
 
     Two ways to identify the target note, not just one (2026-08-30,
     operator: "Why we need to create script everytime we add a skill We
@@ -1089,7 +1265,7 @@ def modify_section(
                 f"template {template['id']!r} may not declare it in root.children"
             )
 
-    _require_machine_write(template, section)
+    _require_machine_write(template, section, caller)
     _set_section_content(target, section, content, mode=mode)
     frontmatter_now, _ = read_note(existing)
     return {"created": False, "updated": True, "path": str(target), "folder": str(existing.parent), "id": frontmatter_now.get("id")}
@@ -1114,7 +1290,9 @@ def main() -> int:
     parser.add_argument("--section")
     parser.add_argument("--mode", choices=["replace", "append"], default="replace")
     parser.add_argument("--input-file")
-    parser.add_argument("command", choices=["find", "create", "update", "get-section", "modify-section"])
+    parser.add_argument("--child")
+    parser.add_argument("--caller")
+    parser.add_argument("command", choices=["find", "create", "update", "get-section", "modify-section", "create-child"])
     args = parser.parse_args()
 
     vault_path = Path(args.vault_path)
@@ -1136,6 +1314,7 @@ def main() -> int:
                 title=data["title"], note_name=data.get("note_name"),
                 note_id=data.get("id"), frontmatter=data.get("frontmatter"),
                 sections=data.get("sections"), parent_value=data.get("parent_value"),
+                caller=args.caller,
             )
 
         elif args.command == "update":
@@ -1151,7 +1330,7 @@ def main() -> int:
                 raise VaultManagerError(f"no note with id={args.id!r}")
             out = {"content": get_section_content(note_path, args.section)}
 
-        else:  # modify-section
+        elif args.command == "modify-section":
             data = _load_input(args)
             out = modify_section(
                 vault_path, template, section=args.section,
@@ -1161,6 +1340,15 @@ def main() -> int:
                 parent_value=data.get("parent_value"),
                 frontmatter=data.get("frontmatter"),
                 child_suffix=data.get("child_suffix"),
+                caller=args.caller,
+            )
+
+        else:  # create-child
+            data = _load_input(args)
+            out = create_dynamic_child(
+                vault_path, template, root_id=args.id, child_name=args.child,
+                identity=data["identity"], frontmatter=data.get("frontmatter"),
+                sections=data.get("sections"),
             )
 
         print(json.dumps(out, ensure_ascii=False))
