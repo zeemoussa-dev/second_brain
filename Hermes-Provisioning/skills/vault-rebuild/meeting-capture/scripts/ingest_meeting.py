@@ -50,6 +50,10 @@ _MEETING_TEMPLATE_ID = "meeting"
 _SERIES_TEMPLATE_ID = "meeting-series"
 _NOTE_NAME_ROOT = "Meetings"
 _RECURRENCES_SUBFOLDER = "Recurrences"
+# REQ-SB-87-US-01-T04 -- one stable caller identity per SCRIPT, reused
+# across every vm.create()/vm.modify_section() call site in this file
+# (ADR-017's own per-caller section-access trust boundary).
+_VM_CALLER = "ingest_meeting"
 
 
 def _logistics_fields(start: str, end: str, location: str, organizer: str, teams_link: str, dial_in: str) -> dict:
@@ -103,6 +107,7 @@ def ingest_meeting(vault_path: Path, event: dict, self_email: str) -> dict:
             created_series = vm.create(
                 vault_path, series_template, note_name=_NOTE_NAME_ROOT, title=subject, note_id=series_id,
                 frontmatter={**logistics, "calendar_series_id": series_id}, folder_date=start[:10],
+                caller=_VM_CALLER,
             )
             series_path = Path(created_series["path"])
         else:
@@ -176,6 +181,7 @@ def ingest_meeting(vault_path: Path, event: dict, self_email: str) -> dict:
             created_occurrence = vm.create(
                 vault_path, occurrence_template, note_name=occurrence_note_name, title=subject, note_id=occurrence_key,
                 frontmatter={**logistics, "calendar_event_id": event["id"]}, folder_date=start[:10],
+                caller=_VM_CALLER,
             )
             occurrence_path = Path(created_occurrence["path"])
 
@@ -194,6 +200,7 @@ def ingest_meeting(vault_path: Path, event: dict, self_email: str) -> dict:
             vm.modify_section(
                 vault_path, series_template, note_id=series_id, section="History", content="\n".join(lines),
                 mode="replace", note_name=_NOTE_NAME_ROOT,
+                caller=_VM_CALLER,
             )
 
         target_note = occurrence_path
@@ -218,6 +225,7 @@ def ingest_meeting(vault_path: Path, event: dict, self_email: str) -> dict:
             created = vm.create(
                 vault_path, template, note_name=_NOTE_NAME_ROOT, title=subject, note_id=event["id"],
                 frontmatter={**logistics, "calendar_event_id": event["id"]}, folder_date=start[:10],
+                caller=_VM_CALLER,
             )
             note_path = Path(created["path"])
         target_note = note_path

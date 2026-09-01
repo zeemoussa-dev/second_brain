@@ -88,6 +88,11 @@ _KNOWN_FIELDS = {"Company Name", "Aliases", "Affiliate of", "Created", "Ignore",
 _CUSTOMER_TEMPLATE_ID = "customer"
 _PARTNER_TEMPLATE_ID = "partner"
 
+# REQ-SB-87-US-01-T04 -- one stable caller identity per SCRIPT, reused
+# across every vm.create()/vm.modify_section() call site in this file
+# (ADR-017's own per-caller section-access trust boundary).
+_VM_CALLER = "create_companies_partners"
+
 # Section-ownership guard, matching the same discipline every other
 # Skill's own vault_lib.py uses -- kept LOCAL (not promoted into
 # vault_manager.py) since it's about which FUNCTION IN THIS SCRIPT may
@@ -828,6 +833,7 @@ def build(vault_path: Path, entities_path: Path) -> dict:
             vm.create(
                 vault_path, _template_for(section), title=name, note_name=_hub_root(section),
                 frontmatter=_hub_frontmatter(name, entry["fields"].get("Domain", ""), entry["fields"].get("Aliases", "")),
+                caller=_VM_CALLER,
             )
         top_level_paths[name.lower()] = (md_path.parent, md_path, section)
         if already:
@@ -865,7 +871,10 @@ def build(vault_path: Path, entities_path: Path) -> dict:
             parent_section = entry["section"]
             parent_md = _hub_path(vault_path, affiliate_of, parent_section)
             if not parent_md.exists():
-                vm.create(vault_path, _template_for(parent_section), title=affiliate_of, note_name=_hub_root(parent_section))
+                vm.create(
+                    vault_path, _template_for(parent_section), title=affiliate_of, note_name=_hub_root(parent_section),
+                    caller=_VM_CALLER,
+                )
             parent_entry = {
                 "section": parent_section,
                 "heading": affiliate_of,
@@ -890,6 +899,7 @@ def build(vault_path: Path, entities_path: Path) -> dict:
                 vault_path, _template_for(parent_section), title=name,
                 frontmatter=_hub_frontmatter(name, entry["fields"].get("Domain", ""), entry["fields"].get("Aliases", "")),
                 parent_value=affiliate_of,
+                caller=_VM_CALLER,
             )
         if already:
             skipped_already.append(name)
