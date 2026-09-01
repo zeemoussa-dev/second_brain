@@ -598,8 +598,13 @@ class VaultManager:
         # previously desynced the display order from the actual "file"
         # classification for a handful of deeply-nested real notes.
         children = []
+        # Dot-prefixed folders (.git, .obsidian, .second-brain, ...) are
+        # real tooling/system directories, never shareable vault content --
+        # excluded here, unlike the `_`-prefixed archive convention above
+        # (real user content this endpoint deliberately DOES include).
+        all_entries = [(child, child.is_dir()) for child in current_dir.iterdir()]
         entries = sorted(
-            ((child, child.is_dir()) for child in current_dir.iterdir()),
+            (pair for pair in all_entries if not (pair[1] and pair[0].name.startswith("."))),
             key=lambda pair: (not pair[1], pair[0].name.lower()),
         )
         for child, child_is_dir in entries:
