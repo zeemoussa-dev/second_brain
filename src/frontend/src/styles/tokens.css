@@ -234,6 +234,27 @@ body {
   outline-offset: 2px;
 }
 
+/* Themed checkboxes/radios, app-wide (2026-09-02, operator: "change the
+   checkbox app wide to match the theme not the white background one") --
+   `accent-color` is the browser's own native theming hook for a checked
+   checkbox/radio's fill (every modern engine supports it, no custom SVG
+   replacement needed); the UNCHECKED state still renders with the OS/
+   browser's own default white box, which is what `color-scheme: dark`
+   fixes -- it tells the browser this page is dark-themed so its own
+   built-in form-control chrome (checkbox/radio borders, scrollbar
+   fallback, etc.) picks a dark-appropriate palette instead of assuming
+   light. Scoped to checkbox/radio only, not every input -- text/date/etc.
+   inputs already have their own explicit `.input` class styling
+   elsewhere and must stay unaffected. */
+:root {
+  color-scheme: dark;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--color-accent);
+}
+
 h1, h2, h3 { font-weight: 600; margin: 0 0 var(--space-4); }
 h1 { font-size: var(--font-size-xl); }
 h2 { font-size: var(--font-size-lg); }
