@@ -1,29 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { VaultSettingsNav } from '../features/settings/VaultSettingsNav';
 import { exportVaultData, fetchVaultExportTree, type VaultTreeNode } from '../features/settings/vaultApiClient';
 import { ApiError } from '../api/client';
 
 // Export Data folder-tree browser + multi-select + .md quick filter
-// (REQ-SB-86-US-01-T02) -- functional-first per the story's own
-// operator-overridden gate_reason (net-new-design-needed, deferred to a
-// later /design pass). No prior folder-tree component exists in this app;
-// the Set<string> selection shape mirrors SettingsArtifactsPage.tsx's own
-// established ephemeral-multi-select precedent (REQ-SB-85-US-01-T02).
-// The selection only ever holds real FILE paths -- selecting a folder adds
-// every real file path nested beneath it, never the folder's own path, so
-// a later consumer (REQ-SB-86-US-02-T03's Export trigger) can read this
-// state directly as "the exact files to export" with no further expansion.
-
-// Export-options trigger + flow (REQ-SB-86-US-02-T03) -- wires the
-// Export action onto the selection built above. Since T02's own
-// selectedFilePaths Set already holds ONLY real file paths (a folder
-// checkbox adds its descendant file paths at select-time, never its own
-// folder path -- see the MEMORY.md Pattern this task's Objective itself
-// names), the "expand any selected FOLDER path client-side" step this
-// task's own End-State describes is already satisfied by construction:
-// selectedFilePaths IS the flat, expanded file list by the time Export
-// is reached, with zero further expansion needed here.
+// (REQ-SB-86-US-01-T02), relocated 2026-09-02 (operator: "take export
+// Data outside of vault settings and be next to the artifacts in
+// Settings") -- was SettingsVaultExportDataPage.tsx under Settings ->
+// Vault's own sub-nav; now its own top-level Settings section, same flat
+// route shape SettingsArtifactsPage.tsx already established. The backend
+// routes it calls (GET /vault/export-data/tree, POST /vault/export-data/
+// export) are unchanged -- this is a frontend navigation move only, the
+// data still genuinely comes from the vault domain.
+//
+// The Set<string> selection shape mirrors SettingsArtifactsPage.tsx's own
+// established ephemeral-multi-select precedent. The selection only ever
+// holds real FILE paths -- selecting a folder adds every real file path
+// nested beneath it, never the folder's own path, so the Export trigger
+// can read this state directly as "the exact files to export" with no
+// further expansion.
 
 function extractErrorDetail(error: unknown): string {
   if (error instanceof ApiError) {
@@ -70,7 +65,7 @@ function filterToMd(node: VaultTreeNode): VaultTreeNode | null {
   return { ...node, children: filteredChildren };
 }
 
-export function SettingsVaultExportDataPage() {
+export function SettingsExportDataPage() {
   const [root, setRoot] = useState<string | null>(null);
   const [tree, setTree] = useState<VaultTreeNode | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -192,10 +187,22 @@ export function SettingsVaultExportDataPage() {
             checked={isChecked}
             onChange={() => (isFolder ? toggleFolderSelected(node) : toggleFileSelected(node.path))}
           />
-          <span className="material-symbols-outlined" aria-hidden="true" style={{ fontSize: '18px', color: 'var(--color-text-muted)' }}>
-            {isFolder ? 'folder' : 'description'}
+          {/* Name (+ its icon) is its own click target for expand/collapse,
+              separate from the checkbox -- operator, 2026-09-02: "the
+              Folder names should be clickable to expand and the checkbox
+              is the one i click on to select." A file's own name is inert
+              (no expand concept), so only the folder case wires an
+              onClick. */}
+          <span
+            data-testid={`tree-node-label-${node.path}`}
+            onClick={isFolder ? () => toggleExpanded(node.path) : undefined}
+            style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', cursor: isFolder ? 'pointer' : 'default' }}
+          >
+            <span className="material-symbols-outlined" aria-hidden="true" style={{ fontSize: '18px', color: 'var(--color-text-muted)' }}>
+              {isFolder ? 'folder' : 'description'}
+            </span>
+            <span>{node.name}</span>
           </span>
-          <span>{node.name}</span>
         </div>
         {isFolder && isExpanded && (node.children ?? []).map((child) => renderNode(child, depth + 1))}
       </div>
@@ -205,123 +212,117 @@ export function SettingsVaultExportDataPage() {
   return (
     <>
       <p className="text-muted"><Link className="text-muted" to="/settings">&larr; Settings</Link></p>
-      <h1>Vault</h1>
-      <div className="vault-settings-layout">
-        <VaultSettingsNav />
-        <div className="vault-settings-content">
-          <h2>Export Data</h2>
+      <h1>Export Data</h1>
+      <p className="text-muted" style={{ fontSize: 'var(--font-size-sm)' }}>
+        Browse your real vault's own folder tree and select whichever folders/files you want to
+        share. Selecting a folder includes every file nested beneath it; you can also select
+        individual files directly.
+      </p>
+
+      {error && <p style={{ color: 'var(--color-danger)' }}>{error}</p>}
+      {root && (
+        <p className="text-muted" style={{ fontSize: 'var(--font-size-sm)' }}>
+          Vault: {root}
+        </p>
+      )}
+
+      <div className="item-row-actions" style={{ marginBottom: 'var(--space-3)', alignItems: 'center' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <input
+            type="checkbox"
+            data-testid="md-filter-toggle"
+            checked={mdFilterOn}
+            onChange={(event) => setMdFilterOn(event.target.checked)}
+          />
+          .md files only
+        </label>
+        <button
+          type="button"
+          className="btn"
+          data-testid="clear-selection"
+          disabled={selectedFilePaths.size === 0}
+          onClick={clearSelection}
+        >
+          Clear selection
+        </button>
+        <button
+          type="button"
+          className="btn btn-primary"
+          data-testid="export-selection"
+          disabled={selectedFilePaths.size === 0}
+          onClick={openExportOptions}
+        >
+          Export…
+        </button>
+        <span className="text-muted" data-role="export-data-selection-summary">
+          {selectedFilePaths.size} file{selectedFilePaths.size === 1 ? '' : 's'} selected
+        </span>
+      </div>
+
+      {tree && (
+        <div className="card" data-role="export-data-tree">
+          {displayedChildren.map((child) => renderNode(child, 0))}
+          {displayedChildren.length === 0 && <p className="text-muted">No matching folders/files.</p>}
+        </div>
+      )}
+      {!tree && !error && <p className="text-muted">Loading…</p>}
+
+      {exportOptionsOpen && (
+        <div className="card" data-role="export-options" style={{ marginTop: 'var(--space-3)' }}>
+          <h3>Export options</h3>
           <p className="text-muted" style={{ fontSize: 'var(--font-size-sm)' }}>
-            Browse your real vault's own folder tree and select whichever folders/files you want to
-            share. Selecting a folder includes every file nested beneath it; you can also select
-            individual files directly.
+            Choose how the {selectedFilePaths.size} selected file{selectedFilePaths.size === 1 ? '' : 's'} should
+            be arranged inside the downloaded archive.
           </p>
-
-          {error && <p style={{ color: 'var(--color-danger)' }}>{error}</p>}
-          {root && (
-            <p className="text-muted" style={{ fontSize: 'var(--font-size-sm)' }}>
-              Vault: {root}
-            </p>
-          )}
-
-          <div className="item-row-actions" style={{ marginBottom: 'var(--space-3)', alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
               <input
-                type="checkbox"
-                data-testid="md-filter-toggle"
-                checked={mdFilterOn}
-                onChange={(event) => setMdFilterOn(event.target.checked)}
+                type="radio"
+                name="export-extraction"
+                data-testid="extraction-hierarchy"
+                checked={extraction === 'hierarchy'}
+                onChange={() => setExtraction('hierarchy')}
               />
-              .md files only
+              Preserve folder structure (hierarchy-preserving)
             </label>
-            <button
-              type="button"
-              className="btn"
-              data-testid="clear-selection"
-              disabled={selectedFilePaths.size === 0}
-              onClick={clearSelection}
-            >
-              Clear selection
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              data-testid="export-selection"
-              disabled={selectedFilePaths.size === 0}
-              onClick={openExportOptions}
-            >
-              Export…
-            </button>
-            <span className="text-muted" data-role="export-data-selection-summary">
-              {selectedFilePaths.size} file{selectedFilePaths.size === 1 ? '' : 's'} selected
-            </span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <input
+                type="radio"
+                name="export-extraction"
+                data-testid="extraction-flat"
+                checked={extraction === 'flat'}
+                onChange={() => setExtraction('flat')}
+              />
+              Flatten — every file in one folder
+            </label>
           </div>
-
-          {tree && (
-            <div className="card" data-role="export-data-tree">
-              {displayedChildren.map((child) => renderNode(child, 0))}
-              {displayedChildren.length === 0 && <p className="text-muted">No matching folders/files.</p>}
-            </div>
-          )}
-          {!tree && !error && <p className="text-muted">Loading…</p>}
-
-          {exportOptionsOpen && (
-            <div className="card" data-role="export-options" style={{ marginTop: 'var(--space-3)' }}>
-              <h3>Export options</h3>
-              <p className="text-muted" style={{ fontSize: 'var(--font-size-sm)' }}>
-                Choose how the {selectedFilePaths.size} selected file{selectedFilePaths.size === 1 ? '' : 's'} should
-                be arranged inside the downloaded archive.
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                  <input
-                    type="radio"
-                    name="export-extraction"
-                    data-testid="extraction-hierarchy"
-                    checked={extraction === 'hierarchy'}
-                    onChange={() => setExtraction('hierarchy')}
-                  />
-                  Preserve folder structure (hierarchy-preserving)
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                  <input
-                    type="radio"
-                    name="export-extraction"
-                    data-testid="extraction-flat"
-                    checked={extraction === 'flat'}
-                    onChange={() => setExtraction('flat')}
-                  />
-                  Flatten — every file in one folder
-                </label>
-              </div>
-              <button
-                type="button"
-                className="btn"
-                data-testid="export-cancel"
-                disabled={exportLoading}
-                onClick={() => setExportOptionsOpen(false)}
-                style={{ marginRight: 'var(--space-2)' }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                data-testid="export-confirm"
-                disabled={exportLoading}
-                onClick={handleConfirmExport}
-              >
-                {exportLoading ? 'Exporting…' : 'Confirm export'}
-              </button>
-            </div>
-          )}
-
-          {exportError && (
-            <div className="card" data-role="export-error" style={{ marginTop: 'var(--space-3)' }}>
-              <p style={{ color: 'var(--color-danger)' }}>{exportError}</p>
-            </div>
-          )}
+          <button
+            type="button"
+            className="btn"
+            data-testid="export-cancel"
+            disabled={exportLoading}
+            onClick={() => setExportOptionsOpen(false)}
+            style={{ marginRight: 'var(--space-2)' }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            data-testid="export-confirm"
+            disabled={exportLoading}
+            onClick={handleConfirmExport}
+          >
+            {exportLoading ? 'Exporting…' : 'Confirm export'}
+          </button>
         </div>
-      </div>
+      )}
+
+      {exportError && (
+        <div className="card" data-role="export-error" style={{ marginTop: 'var(--space-3)' }}>
+          <p style={{ color: 'var(--color-danger)' }}>{exportError}</p>
+        </div>
+      )}
     </>
   );
 }
