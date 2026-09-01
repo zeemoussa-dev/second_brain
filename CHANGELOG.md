@@ -18,6 +18,24 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix: `BUG-041` — exporting a Pipeline artifact (`.sbf`) never included
+  the Skills/scripts that actually implement it. Root cause: the
+  dependency resolver's Pipeline branch treated each `PipelineStep.id`
+  (e.g. "fetch-meetings") as an Agent id, but `PipelineStep` carries no
+  real Agent/Skill linkage — every lookup silently resolved to `None`, so
+  no real Pipeline export has ever included its Skill. Added
+  `PipelineManager.get_implementing_skill_id()`
+  (`app/business/core/pipelines/pipeline_manager.py`) — the real path is
+  `cron_job_id`/`cron_profile_id` → the live Hermes cron job → that job's
+  own `skill` field, normalized to the bare slug (confirmed live to be
+  inconsistent in shape across real jobs). Wired into
+  `artifact_dependency_resolver.py`'s Pipeline branch in place of the dead
+  step-traversal. Live-verified against all 3 real Pipelines
+  (`meeting-builder`, `threads-builder`, `company-discovery`) via export
+  preview and a real commit + zip inspection — each now correctly bundles
+  its real Skill's `SKILL.md`, every script, and its implicit Template
+  couplings.
+
 - feat: Export-options screen — flat/hierarchy choice, confirm, real
   browser download (`REQ-SB-86-US-02-T03`, story `REQ-SB-86-US-02` now
   `Done` — this closes `REQ-SB-86` end-to-end, both substories, all 5

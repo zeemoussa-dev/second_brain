@@ -114,6 +114,33 @@ class PipelineManager:
             return None
         return self._to_pipeline(pipeline_id, data)
 
+    def get_implementing_skill_id(self, pipeline_id: str) -> str | None:
+        """The real Skill id (bare slug) this Pipeline's own cron job
+        actually runs -- BUG-041's fix. `PipelineStep.id` (e.g.
+        "fetch-meetings") carries no Agent/Skill linkage at all (it only
+        drives the Job Tree visualization), so the ONE real path from a
+        Pipeline to the Skill that implements it is `cron_job_id`/
+        `cron_profile_id` -> the real Hermes cron job -> that job's own
+        `skill` field. Confirmed live across multiple real jobs this field
+        is inconsistent in shape -- sometimes a bare slug ("meeting-capture"),
+        sometimes Hermes' own raw "<category>/<slug>" form
+        ("knowledge-base/azure-kb-writer") -- normalized here via the same
+        "take the last `/`-segment" convention `AgentManager`/
+        `artifact_dependency_resolver.py` already use for `Agent.skill_ids`.
+        Returns None when `cron_job_id` is unset, the job can't be found, or
+        the job has no `skill` (some real jobs -- git-sync, index rebuilds --
+        aren't Skill-backed at all)."""
+        pipeline = self.get_by_id(pipeline_id)
+        if pipeline is None or pipeline.cron_job_id is None:
+            return None
+        job = next(
+            (j for j in get_client().cron.list_cron_jobs(pipeline.cron_profile_id) if j.name == pipeline.cron_job_id),
+            None,
+        )
+        if job is None or not job.skill:
+            return None
+        return job.skill.rsplit("/", 1)[-1]
+
     def import_pipeline(self, pipeline_id: str, data: dict) -> Pipeline:
         """Real, narrowly-scoped write path for import provisioning only
         (ADR-015). Validates `data` by round-tripping it through the

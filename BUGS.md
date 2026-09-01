@@ -69,6 +69,7 @@ is a thin status mirror of the index table below.
 | BUG-038 | BUG-036's raw-ID/DN naming produced full duplicate Meeting notes, not just bad names — 7 recurring series and 17 one-time meetings each existed twice (an old pre-`2026-08-21`-rewrite flat/raw-ID copy invisible to the current dedup scan, alongside a correctly-named replacement) | Logic | Major | Closed | 2026-08-24 | Direct fix, 2026-08-24 |
 | BUG-039 | Agents Map: `compass-solutions` not visually linked to `compass-expert`, even though its real `depends_on` is correct | UI | Minor | Closed | 2026-08-24 | Direct fix, 2026-08-24 |
 | BUG-040 | `propose_person_note_update` (Manual/Autonomous dispatch) writes a pending Person-note-edit proposal nobody can ever see, confirm, or discard | Logic | Minor | Open | 2026-08-26 | — |
+| BUG-041 | Exporting a Pipeline artifact (`.sbf`) never includes the Skills/scripts that actually implement it — the dependency resolver's Pipeline branch has no real path from a Job step to a Skill | Logic | Blocker | Closed | 2026-09-01 | Direct fix, 2026-09-01 |
 
 ---
 
@@ -1928,3 +1929,82 @@ is a thin status mirror of the index table below.
   story's own live-routing/threaded-reply scope. `threads.py`/
   `person_note_proposals.py` are left in place (still live for this one
   write path) rather than deleted.
+
+### BUG-041 — Exporting a Pipeline artifact (`.sbf`) never includes the Skills/scripts that actually implement it
+
+- **Area:** Logic
+- **Severity:** Blocker
+- **Status:** Open
+- **Found:** 2026-09-01, operator inspected a real exported `.sbf` archive
+  directly (Settings → Artifacts export flow, `REQ-SB-85`) and found the
+  Skills/scripts a pipeline actually needs to run were missing from the
+  zip. Confirmed by tracing the real code, not guessed: root cause is in
+  `app/business/logic/artifact_dependency_resolver.py`'s Pipeline branch —
+
+  ```python
+  elif kind == "pipeline":
+      ...
+      for step in pipeline.steps:
+          visit("agent", step.id, "dependency", f"pipeline:{id_} (step agent)")
+  ```
+
+  This treats every `PipelineStep.id` (e.g. `fetch-meetings`,
+  `resolve-meeting-folder`, `build-attendees`, `link-to-thread` — real
+  step ids on the live `meeting-builder` pipeline) as if it were an Agent
+  id and tries to resolve it via `AgentManager.get_by_id()`. But
+  `PipelineStep` (`app/business/core/pipelines/pipeline.py`) only carries
+  `id/name/description/depends_on/type` — no Agent or Skill linkage at
+  all; it exists purely to drive the Job Tree visualization in Agents Map.
+  None of these step ids exist in `AgentManager`, so every one of those
+  `visit("agent", step.id, ...)` calls resolves to `None` and returns
+  immediately — nothing is ever added to the closure for a Pipeline
+  selection beyond the Pipeline artifact itself. This is not narrow to
+  one pipeline: every real Pipeline (`company-discovery`,
+  `meeting-builder`, `threads-builder`) goes through this exact same
+  broken path, so no Pipeline export has ever included its real Skills.
+  There is currently no field anywhere connecting a Pipeline's Job steps
+  to the real Skill(s) that implement them — this may be a genuine data-
+  model gap (not just a resolver bug), worth confirming before scoping a
+  fix.
+- **Screen \ route:** Settings → Artifacts →
+  `src/frontend/src/pages/SettingsArtifactsPage.tsx` (export flow),
+  backed by `POST /artifacts/export/preview` / `/commit`.
+- **Repro steps:**
+  1. Open Settings → Artifacts.
+  2. Select the Pipeline artifact "Meeting Builder" (id: `meeting-builder`)
+     and/or "Threads Builder" (id: `threads-builder`) — operator
+     reproduced this exporting both together.
+  3. Run the export flow through to a downloaded `.sbf`.
+  4. Extract the `.sbf` and inspect its contents.
+- **Expected:** The exported `.sbf`'s dependency closure includes every
+  real Skill (and its scripts) the pipeline's own Jobs actually invoke —
+  the pipeline should be genuinely runnable once imported elsewhere.
+- **Actual:** The `.sbf` contains only the Pipeline artifact itself — no
+  Skills, no scripts.
+- **Screenshot:** N/A
+- **Resolution (direct fix, 2026-09-01, operator: "Just fix Straight no
+  need for story"):** the ONE real path from a Pipeline to the Skill that
+  implements it is `cron_job_id`/`cron_profile_id` → the real Hermes cron
+  job → that job's own `skill` field (confirmed live: inconsistent shape
+  across real jobs — bare slug for `meeting-capture-recurring`'s
+  `meeting-capture`, `category/slug` for e.g. `azure-kb-refresh`'s
+  `knowledge-base/azure-kb-writer`; some real jobs like git-sync/index
+  rebuilds have no `skill` at all). Added
+  `PipelineManager.get_implementing_skill_id()`
+  (`app/business/core/pipelines/pipeline_manager.py`) composing this live
+  lookup with the same bare-slug normalization
+  `artifact_dependency_resolver.py` already uses for `Agent.skill_ids`.
+  Replaced the resolver's dead `PipelineStep.id`-as-Agent-id traversal
+  (`app/business/logic/artifact_dependency_resolver.py`, Pipeline branch)
+  with a call to this new method, feeding the resolved Skill through the
+  existing `visit("skill", ...)` path (so its own implicit Template
+  coupling still resolves transitively, unchanged).
+  Live-verified against all 3 real Pipelines via `POST
+  /artifacts/export/preview` and a real `POST /artifacts/export/commit` +
+  zip inspection: `meeting-builder` → Skill `meeting-capture` (+7 real
+  Template couplings) with all 8 real script files + `SKILL.md` present
+  in the archive; `threads-builder` → Skill `email-thread-capture` with
+  all 9 real script files + `SKILL.md` present; `company-discovery` →
+  Skill `new-company-discovery` (+5 Template couplings). Scratch
+  verification `.sbf`/log files deleted after inspection — confirmed
+  absent.

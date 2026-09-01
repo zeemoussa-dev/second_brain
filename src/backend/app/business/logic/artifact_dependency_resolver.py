@@ -2,10 +2,21 @@
 -- given an initial (kind, id) selection, resolves and returns the FULL
 real dependency closure (an Agent's own Registry `skill_ids`/`depends_on`,
 recursed transitively; a Skill's own implicit Template.json coupling; a
-Pipeline's own step Agents, recursed the same way as a direct Agent
-selection), each with a human-readable reason it was included. Pure
+Pipeline's own real implementing Skill, recursed the same way as a direct
+Skill selection), each with a human-readable reason it was included. Pure
 composition over the 4 already-`Done` Managers -- no owned store, no file
 write of any kind (`sbf_archive.py`, T04, is the only writer).
+
+BUG-041 fix (2026-09-01): the Pipeline branch previously treated each
+`PipelineStep.id` (e.g. "fetch-meetings") as if it were an Agent id and
+tried to resolve it via `AgentManager.get_by_id()` -- but `PipelineStep`
+carries no real Agent/Skill linkage at all (it exists purely to drive the
+Job Tree visualization), so every one of those lookups silently resolved
+to `None` and nothing was ever added. Confirmed live: NO Pipeline export
+has ever included its real Skill. Fixed via
+`PipelineManager.get_implementing_skill_id()` -- the ONE real path from a
+Pipeline to its Skill, composed live from `cron_job_id`/`cron_profile_id`
+-> the real Hermes cron job -> that job's own `skill` field.
 
 A Skill's own shared-file `scripts/` copies are deliberately NOT added as
 separate closure entries -- ADR-013's own Decision text is explicit this is
@@ -133,8 +144,9 @@ def resolve_closure(selection: list[dict]) -> list[dict]:
             if pipeline is None:
                 return
             upsert(kind, id_, reason, depends_via)
-            for step in pipeline.steps:
-                visit("agent", step.id, "dependency", f"pipeline:{id_} (step agent)")
+            skill_id = _pipeline_manager.get_implementing_skill_id(id_)
+            if skill_id:
+                visit("skill", skill_id, "dependency", f"pipeline:{id_} (cron job skill)")
         # An unknown `kind` (never produced by the real 4-Manager
         # inventory this selection is sourced from) resolves to nothing,
         # same silent-skip discipline as an unresolvable id.

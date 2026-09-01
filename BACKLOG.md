@@ -253,3 +253,4 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 | BUG-037 | Cockpit (Inbox/Meeting) 404s entirely — archived router never rebuilt against the Hermes pivot | Logic | Closed | Direct fix, 2026-08-25 |
 | BUG-038 | BUG-036's raw-ID/DN naming produced full duplicate Meeting notes (7 recurring series + 17 one-time meetings each existed twice) | Logic | Closed | Direct fix, 2026-08-24 |
 | BUG-039 | Agents Map: `compass-solutions` not visually linked to `compass-expert` (a 2-outgoing-edge cap meant for pipeline Jobs also silently applied to agents) | UI | Closed | Direct fix, 2026-08-24 |
+| BUG-041 | Exporting a Pipeline artifact (`.sbf`) never includes the Skills/scripts that actually implement it — the dependency resolver's Pipeline branch has no real path from a Job step to a Skill | Logic | Closed | Direct fix, 2026-09-01 |
