@@ -4546,3 +4546,231 @@ an addition to an existing one. -->
 
 **Acceptance:** To be drafted as Gherkin at `/spec`, once REQ-SB-85
 ships.
+
+---
+
+### REQ-SB-87: Email Thread Capture — a New, LLM-Driven Pipeline (Classify, Skip Noise, Summarize, Find Pending Actions)
+
+**Scope expanded 2026-09-01, same day as the requirement's own original
+write-up (see the first raised-context comment below for that original,
+narrower framing — mechanics-migration only). The operator's own words,
+mid-session: "Focus on building the new Emails Pipeline, I don't mind
+what we do in the pipeline we can build a new one" — this requirement is
+no longer bounded to a drop-in write-mechanics swap; real new
+capability is explicitly in scope.**
+
+`email-thread-capture` (the Skill behind the live `email-delta-capture`
+cron job) is the one remaining real capture pipeline still writing
+Threads/RawMessages by hand, via its own standalone `vault_lib.py` — a
+614-line, stdlib-only port of `app/data_access/vault_writer.py`'s own
+primitives. `meeting-capture` (2026-08-25→27) and `create-companies-
+partners` (later) already migrated their own note-creation mechanics
+onto the shared `vault_manager.py` template engine — that mechanics
+question is still real, still in scope (see `REQ-SB-87-US-01`), but is
+no longer this requirement's own central point.
+
+**The real, validated problem (operator, verbatim): "so far the threads
+are just a copy of my inbox with a summary on top"** — confirmed live,
+2026-09-01, against a real captured Thread
+(`Work/Threads/2026-08-31 Masdar Open Items/...md`): `## Summary` and
+`## Actions` are BOTH genuinely empty, `last_summarized_at` is still an
+empty string, despite `tags` having changed (to a real, but WRONG,
+value — see `BUG-042`). This is not simply a missing feature — a real
+summary-writing mechanism already exists and is INTENDED to work
+(`apply_thread_review.py`'s own docstring: "the agent itself does ALL
+the real judgment -- reading a Thread's messages, writing its summary,
+deciding which known companies it's about... this script only ever
+applies decisions the agent already made") — it is failing to actually
+produce that output in practice. Diagnosing WHY is real, in-scope work
+for this requirement, not assumed away.
+
+**New capability, genuinely absent today, operator's own words: "Use
+LLM find pending actions, Classify the emails, Tag, Summarize this will
+make looking at the threads more useful."** Broken into its real parts:
+
+1. **Real, working summaries** — fix (or rebuild) whatever is causing
+   `## Summary` to land empty despite the existing design intending
+   otherwise.
+2. **Pending-action extraction** — nothing today writes to a Thread's
+   own `## Actions` section at all; a real, new LLM-driven mechanism is
+   needed.
+3. **Real classification, as structured data, not prose** (operator:
+   "Think Data") — every Thread should carry a real classification
+   value across four real categories the operator gave directly:
+   **Internal-only**, **Noise** (not worth importing), **Partner**-
+   related, or **Customer**-related. This is DISTINCT from (complements,
+   doesn't replace) the existing, finer-grained `customer/<slug>`/
+   `partner/<slug>` tag-matching `apply_thread_review.py` already
+   attempts (and currently gets wrong — `BUG-042`): the new
+   classification is the coarse bucket, the existing tag-matching is
+   which specific Customer/Partner within that bucket.
+4. **Noise is filtered at CAPTURE time, not Enrich time** — operator's
+   own explicit, deliberate choice (asked directly, both options laid
+   out: capture-everything-then-hide vs. judge-and-skip-at-capture; the
+   operator chose the latter). This is a REAL reversal of
+   `email-thread-capture`'s own current, documented Capture-phase
+   principle ("Never skip... even one that looks like spam... Judgment
+   about importance is NOT this Skill's job") — the new pipeline's own
+   Capture stage needs a real LLM-driven judgment step BEFORE a
+   Thread/RawMessage note is ever written, and a genuine "skip, don't
+   import" outcome that the old design never had.
+5. **Sent + Inbox stay combined**, unchanged (operator, verbatim: "Click
+   sent and Inbox Together, to know the Communication between me and
+   Customer") — confirms the existing 2026-08-24 Sent Mail inclusion
+   design (`outlook_lib.py`) is correct and wanted, not a bug (this was
+   briefly, mistakenly suspected as one earlier the same day — see
+   `BUG-041`'s sibling investigation).
+
+<!-- Original raised-context (2026-09-01, operator, verbatim, narrower
+framing — superseded in scope by the above, kept for traceability): "It
+Seems Since we have only Meetings and Threads are the only Old Pipelines
+that don't use the Vault Manager and Templates Lets do that now since we
+currently have issues with the pieplines" — raised the same day the real
+Hermes gateway process was found down all day (silently stalling
+`email-delta-capture`/`meeting-capture-recurring`/
+`job4-summarize-tag-threads`, fixed via a manual trigger + `hermes
+gateway install`, see MEMORY.md). -->
+
+<!-- Expanded-scope raised-context (2026-09-01, operator, verbatim, in
+order):
+1. "Focus on building the new Emails Pipeline, I don't mind what we do
+   in the pipeline we can build a new one, But so far the threads are
+   just a copy of my inbox with a summary on top, Use LLM find pending
+   actions, Classify the emails, Tag, Summarize this will make looking
+   at the threads more useful"
+2. (AskUserQuestion, rollout approach for REQ-SB-87-US-02, already
+   resolved on its own story) "1 As I can see now the Emails are missing
+   the Classification all emails come as unclassified, Lets Build a
+   small sample of 100 Emails to a new Pipeline we keep tweaking it when
+   done we change the OutputDirectory and move on" — the 100-email
+   scratch-sample proving-phase rollout this requirement's own
+   implementation should use, same as `REQ-SB-87-US-02`'s already-locked
+   Constraint.
+3. "Click sent and Inbox Together, to know the COmmunication between me
+   and Customer, DO some Classification is it internal only, Just a
+   noise I don't need to import, or Partner meeting or Customer
+   meetings, Think Data" — the four real classification categories, and
+   the "Think Data" instruction to model classification as real
+   structured frontmatter, not narrative text.
+4. (AskUserQuestion, noise-filtering timing) "Skip noise at Capture
+   time" — resolves whether noise-filtering happens in Capture or
+   Enrich; the operator chose Capture, a real, deliberate reversal of
+   this Skill's own current "never skip, never judge" Capture-phase
+   principle.
+5. "Use LLM to Define what noise is Not just a Judge" — the noise
+   mechanism is NOT a fresh, opaque per-email LLM judgment call each
+   time; the LLM instead DERIVES a real, structured, inspectable
+   definition/rule-set for what counts as noise (patterns, sender
+   shapes, subject shapes, etc.), and capture-time filtering runs
+   against that definition — consistent, auditable, and directly
+   tweakable during the 100-email scratch-sample proving phase (point
+   2 above), rather than re-deciding from scratch, differently, every
+   single run.
+
+6. "Minmize the amount of code think prompts that code, You Have the
+   Vault Manager That can be used for writes" — a real, binding
+   architectural principle for this whole requirement, not just a
+   preference: the classification/noise-definition/summarization/
+   pending-action work is Prompt-driven agent judgment, not hand-written
+   Python/heuristic code — the exact same division of labor
+   `apply_thread_review.py`'s own docstring already establishes for the
+   OLD design ("the agent itself does ALL the real judgment... this
+   script only ever applies decisions the agent already made" — and its
+   own even earlier operator quote, 2026-08-21: "This should be done by
+   Prompts as much as possible... Tagging is the only task that needs
+   code"). The MECHANICAL half — actually persisting whatever the agent
+   decided (writing a summary into `## Summary`, an action into
+   `## Actions`, a classification value into frontmatter, a
+   `customer/<slug>` tag) — goes through `vault_manager.py`'s own real
+   primitives (`create`/`modify_section`/`find_by_id`/etc., per
+   `REQ-SB-87-US-01`'s own template work), never a second, bespoke
+   write path. New CODE should be minimal and mechanical; the real
+   "intelligence" lives in prompts, the same way it already does for
+   summarize-and-tag-threads' own existing (if currently
+   under-performing) design.
+
+Still genuinely open, left to `/spec`: the exact shape of that noise
+definition/rule-set (a real config file under the Skill's own scripts/
+directory? a Template-adjacent data file? how it gets re-derived/
+updated — regenerated wholesale each tweak, or incrementally amended?);
+whether classification-as-structured-data is a new frontmatter
+field (e.g. `classification: "customer" | "partner" | "internal" |
+"noise"`) or reuses/extends an existing one; how pending-action
+extraction's own output shape maps onto `## Actions` (a wikilink-style
+list? real due dates? tied to `Work/Tasks/`, this vault's own existing
+Task concept, or Thread-local only); and whether the diagnosis of WHY
+`## Summary`/`## Actions` currently land empty changes the shape of the
+fix (an agent-prompt/execution problem vs. a real code gap in
+`apply_thread_review.py` itself). -->
+
+`meeting-capture` (2026-08-25→27) and `create-companies-partners`
+(later) already migrated their own note-creation mechanics onto the
+shared `vault_manager.py` template engine, both under the same
+disclosed boundary: **only the write-mechanics move — parsing, section
+find/replace, collision-avoidant filenames, frontmatter format — never
+the real business logic** (Meeting↔Thread linking, Person-note
+extraction, domain-based company matching, and the like all stayed
+hand-written on purpose in both precedents). That boundary still governs
+`REQ-SB-87-US-01`'s own mechanics-migration scope; it does NOT bound
+this expanded requirement's own new Capture-time classification/skip
+judgment or Enrich-stage summary/action/tag work, which are real new
+business logic, deliberately in scope.
+
+Two real, concrete gaps block a direct copy of that same pattern, found
+while scoping this requirement (not to be assumed away at `/spec`):
+
+1. **No `Thread` or `RawMessage` Template.json exists yet** anywhere in
+   the vault's own `.second-brain/data/Templates/` — both need
+   authoring from scratch, unlike `meeting-capture`'s migration, which
+   already had `meeting`/`meeting-series` templates ready to build
+   against.
+2. **The engine has no "growing, one-per-item children" primitive.** A
+   Thread's own `messages/` folder gets exactly one new RawMessage note
+   per captured email, unbounded, for as long as that Thread exists —
+   distinct from `root.children`'s existing shape (a small, FIXED,
+   known-in-advance sibling set, e.g. Customer's own `log`/`captures`).
+   Notably, `meeting-capture`'s own analogous unbounded-children case (a
+   recurring Meeting's `occurrences/` folder) was never solved
+   declaratively either — `ingest_meeting.py` still hand-builds that
+   nested path itself. Whether this requirement builds a real, reusable
+   engine primitive for this shape (benefiting Meeting's own future
+   cleanup too) or hand-builds the Thread-specific path construction the
+   same way `ingest_meeting.py` already does is genuinely open — a real
+   `/plan-tasks` architecture decision, not decided here.
+
+A related, smaller finding from the same scoping pass, in scope for this
+requirement's own cleanup even though it isn't new capability: the two
+currently-deployed `vault_manager.py` copies (`create-companies-
+partners`'s own and `meeting-capture`'s own) have **already drifted** —
+the former has real functions (`merge_tags`, `upsert_namespaced_tag`,
+`insert_body_line_if_missing`, `_tag_slugify`, `_child_note_name`) the
+latter doesn't — despite the engine's own stated "edit in exactly ONE
+place, then re-copy" discipline. A third copy for `email-thread-capture`
+should be the newest/most-capable version, re-synced backward into the
+other two, not a further-diverged fourth variant.
+
+<!-- Raised 2026-09-01, operator, verbatim: "It Seems Since we have only
+Meetings and Threads are the only Old Pipelines that don't use the Vault
+Manager and Templates Lets do that now since we currently have issues
+with the pieplines" — raised the same day the real Hermes gateway
+process was found down all day (silently stalling `email-delta-capture`/
+`meeting-capture-recurring`/`job4-summarize-tag-threads`, fixed via a
+manual trigger + `hermes gateway install`, see MEMORY.md) and a Sent-Mail
+item was briefly mistaken for a missing-inbox-email bug (confirmed
+working as designed, not a defect — `outlook_lib.py`'s own 2026-08-24
+Sent Mail inclusion). The operator's own "issues with the pipelines"
+framing is about RELIABILITY (today's real gateway-down incident), not a
+claim that email-thread-capture's OWN hand-written logic is itself
+broken — scoping confirmed no evidence of that; this requirement's real
+motivation is consolidating onto the one, already-twice-proven engine
+rather than a third independently-hand-maintained writer, the same
+"we don't need to edit N places, max is 2" principle `vault_manager.py`'s
+own module docstring already states (operator, 2026-08-25). Full scoping
+detail (current-state read of both Skills, the two precedent
+migrations' own real scope/risk, real Template.json inventory, the
+growing-children gap) is preserved in this session's own transcript —
+`/spec` should re-verify directly against the real, current code rather
+than trusting this PRD summary alone, per this project's own standing
+"verify against local source first" convention. -->
+
+**Acceptance:** To be drafted as Gherkin at `/spec`.

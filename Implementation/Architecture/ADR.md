@@ -1922,3 +1922,380 @@ manifest, a size cap, an import reader) is a natural extension point on
 point, not a closed enum" framing for `.sbf`.
 
 ---
+
+## ADR-017: `vault_manager.py` gains a declarative dynamic-child-note primitive (Thread's own `messages/`) and a per-caller section-write allow-list; `## Actions` writes use the same replace-mode `## Summary` already uses
+
+**Status:** Accepted
+**Date:** 2026-09-01
+
+**Context:** `REQ-SB-87-US-01` needs to author `thread`/`raw-message`
+`Template.json` definitions and resync the three-plus real deployed
+`vault_manager.py` copies, but two real, confirmed gaps in the engine
+itself block a direct copy of `meeting-capture`/`create-companies-partners`'s
+own migration pattern:
+
+1. **Growing, one-per-item children.** A Thread's own `messages/` folder
+   gets exactly one new RawMessage note per captured email, unbounded, for
+   as long as that Thread exists — structurally different from the engine's
+   existing `root.children` shape (Customer/Partner's own `log`/`captures`:
+   a small, FIXED, known-in-advance sibling set, created ONCE, atomically,
+   alongside the root note — confirmed directly reading `create()`'s own
+   real implementation in `Hermes-Provisioning/shared/vault_manager.py`,
+   lines ~919-936). Notably, the engine's OWN module docstring
+   (`load_template()`, written 2026-08-30, before this requirement existed)
+   already names this exact case: *"`root` is a single md node today --
+   fixed/dynamic `children` (OKF, Thread's messages/) are a real, later
+   addition to this same shape, not built here (nothing today needs
+   them)."* — this decision fulfils an already-anticipated evolution, not a
+   new invention.
+2. **No per-caller write granularity.** `_section_access()`/
+   `_require_machine_write()` (confirmed directly, same file) implement only
+   a binary `machine_write`/anything-else flag per section — no notion of
+   WHICH caller may write a `machine_write` section, unlike
+   `email-thread-capture`'s own `vault_lib.py`'s per-caller
+   `_CALLER_ALLOW_LISTS` (only `link_person_to_thread` may write
+   `## Related`, etc.) and `apply_thread_review.py`'s own separate
+   `_HUMAN_OWNED_HEADERS` guard. Reproducing today's real per-caller
+   restrictions on the Thread template — plus REQ-SB-87's own new,
+   deliberate NARROWING exception (`## Actions` becomes machine-writable by
+   exactly one new caller, `apply_thread_review.py`'s own
+   `REQ-SB-87-US-05` write, while `## Personal Notes` stays refused to
+   every caller with zero exception) — needs a genuine engine capability
+   addition, not just a `Template.json` string value.
+
+Separately, `REQ-SB-87-US-05`'s own Constraints leave open whether a fresh
+machine-written `## Actions` replaces the section's prior machine-written
+content wholesale (mirroring `## Summary`'s own existing behavior) or is
+designed to coexist with any human-added text in the same section — a real
+write-mechanics decision this ADR settles alongside the caller-allow-list it
+already governs for that same section.
+
+**Also confirmed directly (not new architecture, recorded here for
+traceability):** `Hermes-Provisioning/shared/vault_manager.py` is already
+the real, established canonical source (module docstring, 2026-08-25:
+"Editing the engine happens in exactly ONE place (this file, then
+re-copy)") and already contains every function `REQ-SB-87-US-01`'s own
+Scenario 1 checks for (`merge_tags`, `upsert_namespaced_tag`,
+`insert_body_line_if_missing`, `_tag_slugify`, `_child_note_name`,
+`root.children`, `parent.on_missing: "auto_create"`). Direct diff confirms
+exactly ONE of the real deployed copies has drifted BEHIND it —
+`meeting-capture/scripts/vault_manager.py` (0 of those 5 functions found) —
+while `create-companies-partners/scripts/vault_manager.py` already matches
+the canonical source byte-for-function. The real, full deployment inventory
+is nine copies, not three: `azure-kb-writer`, `compass-kb-writer`,
+`research-kb-writer`, `capture-files`, `capture-notes`, `vault-index`,
+`track-opportunities`, `create-companies-partners`, `meeting-capture` — all
+nine should be re-synced to byte-match the canonical source as part of this
+story's own Scenario 1, and two brand-new copies deployed for the first
+time (`email-thread-capture`, `REQ-SB-87-US-02`; `summarize-and-tag-threads`,
+`REQ-SB-87-US-04`). This is operational hygiene enforcing an
+already-established convention, not a new decision — no separate ADR
+governs it; recorded here only because this ADR is the one touching the
+same file.
+
+**Decision:**
+
+- **Dynamic children — build the real, declarative primitive (not a
+  hand-built Thread-specific path).** Extend `Template.json`'s existing
+  `root.children` array with a per-entry `"growth": "fixed" | "dynamic"`
+  field, defaulting to `"fixed"` — every existing template's shape/behavior
+  stays byte-identical (`REQ-SB-87-US-01`'s own Scenario 5). A `"dynamic"`
+  entry declares its own subfolder (e.g. `"folder": "messages"`), its own
+  `frontmatter_defaults`/`sections` (the RawMessage shape), and its own
+  natural-key identity fields (e.g. `conversation_id` + `message_id`) for
+  idempotent lookup — genuinely distinct from `root`'s own single `id`-based
+  identity. The engine gains one new verb (exact CLI/JSON shape is
+  decomposer/coder-level) that: resolves the ALREADY-EXISTING root note by
+  its own identity (never fabricates the root), idempotently checks whether
+  a child matching the given natural key already exists under that child's
+  own subfolder before creating a new one (`REQ-SB-87-US-01`'s own Scenario
+  4), and writes the new file at `<root-folder>/<child-folder>/
+  <generated-name>.md` — a genuinely nested subfolder, kept structurally
+  separate in the engine from the existing FIXED children's own flat
+  `<root-stem>-<suffix>.md` sibling convention, never force-unified with it.
+- **Per-caller section access — Template.json-declared allow-list, not
+  hardcoded Python.** A section's `access` entry gains an optional
+  `allowed_callers: [str, ...]` list alongside `"access": "machine_write"`.
+  When present, `create`/`modify-section` additionally require a
+  caller-identity argument on every call (a new parameter on both verbs,
+  exact naming decomposer/coder-level) and refuse the write unless that
+  identity is on the section's own `allowed_callers` — the same real
+  guarantee `vault_lib.py`'s own `_CALLER_ALLOW_LISTS` already provides,
+  now declared as data. A section with no `allowed_callers` key stays open
+  to any caller carrying `machine_write` access — zero behavior change for
+  every already-`Done` template. The Thread template's own declarations
+  (already locked by `REQ-SB-87-US-01`'s own Scenario 2 AC, restated here
+  for the engine's sake): `## Related` → `["link_person_to_thread"]`;
+  `## Files` → `["capture_attachments", "capture_file_link"]`;
+  `## Summary` → `["apply_thread_review"]`; `## Actions` →
+  `["apply_thread_review"]` (the SAME identity as `## Summary` — one
+  caller, two sections); `## Personal Notes` → `"access": "human_only"`,
+  no caller list, refused unconditionally, unchanged.
+- **`## Actions` writes use `mode=replace`, mirroring `## Summary` exactly
+  — resolves `REQ-SB-87-US-05`'s own flagged Constraint.** Not append, not
+  a coexist-with-human-content design. `## Actions` carries no real content
+  of either kind today — there is no existing data a replace could
+  destroy — and the agent's own re-summarization discipline already
+  re-reads the WHOLE Thread on every pass (`REQ-SB-87-US-05`'s own Scenario
+  5: the section must reflect "the CURRENT real state of what's pending
+  after reading the whole thread again," which append-only could never
+  achieve, since a resolved action must actually disappear). If a human
+  ever manually adds content to `## Actions` in the future, that is a NEW,
+  later, separately-flagged design question — nothing in `REQ-SB-87`
+  evidences or requests it today.
+- **Left explicitly open, not an architecture question:** the exact prose
+  shape of a `## Actions` entry (plain bullet text vs. an agent voluntarily
+  wikilinking a Person it names, mirroring how `## Summary` already
+  wikilinks companies). `REQ-SB-87-US-05`'s own Scenario 1 AC already
+  effectively locks this to "the agent's own real words describing what is
+  actually pending and, where identifiable, who it's waiting on" — freeform
+  prose needs zero new engine capability, since `modify-section` already
+  accepts arbitrary markdown text. The one sub-question that WOULD be a
+  real architecture decision — a dedicated `Work/Tasks/` integration (a new
+  note kind, a new hub-linking mechanism) — is already ruled out of this
+  story by its own Non-Goals ("not built unless/until that question is
+  resolved in that direction"). Deferred to the decomposer's task-authoring
+  / prompt design, not locked here.
+
+**Alternatives Considered:**
+- *Hand-build Thread-specific `messages/` path construction directly in
+  `ingest_email.py`, mirroring `ingest_meeting.py`'s own un-generalized
+  `occurrences/` precedent* — rejected: throws away a generalization the
+  engine's own design docs already earmarked for this exact case, and does
+  not reduce real implementation effort, since the idempotent-lookup/
+  creation logic has to exist either way — declaring it in `Template.json`
+  vs. hardcoding it in one script is a shape choice, not an effort
+  multiplier.
+- *Force the growing shape into the EXISTING `root.children` "fixed
+  sibling" array unchanged* — rejected: the existing mechanism is
+  structurally atomic-with-root-creation (every fixed child written once,
+  at `create()` time); a Thread's RawMessage set grows across the Thread's
+  WHOLE LIFETIME via repeated, independent calls. Force-fitting this would
+  either need an unbounded, ever-recomputed `children` array on every
+  single email arrival (fragile, defeats the "declared once" simplicity
+  fixed children exist for) or silently reuse one array shape for two
+  semantically different growth patterns, inviting future confusion.
+- *A flat `machine_write`/`human_only` model with a per-Skill hardcoded
+  exception list living OUTSIDE `Template.json` (a small Python dict inside
+  `vault_manager.py` itself, keyed by section+caller)* — rejected:
+  reintroduces exactly the hardcoded-per-caller Python logic
+  (`vault_lib.py`'s own `_CALLER_ALLOW_LISTS`) this whole migration exists
+  to retire, and contradicts the engine's own stated principle that new
+  capability comes from `Template.json` data, never new code.
+- *Append-mode (not replace) for `## Actions`, an audit-log-style
+  accumulation* — rejected: cannot represent "this pending action is now
+  resolved" (an append-only log can never remove a stale entry), directly
+  contradicting `REQ-SB-87-US-05`'s own Scenario 3/5 requirement that a
+  resolved item stop appearing.
+- *Give `## Actions` its own separate caller identity from `## Summary`
+  (two distinct allow-list entries for the one script)* — rejected as
+  unnecessary: `REQ-SB-87-US-01`'s own Scenario 2 AC already locks this to
+  "exactly ONE caller identity"; splitting it would add allow-list surface
+  with no real access-control benefit, since both sections are already
+  written by the same one script on the same one call path.
+
+**Consequences:**
+- Every already-`Done` template (Customer, Partner, Opportunity, Meeting,
+  meeting-series, Note, File, azure-kb-doc, compass-kb-doc, research-kb-doc)
+  is unaffected: `growth` defaults to `"fixed"`, `allowed_callers` is
+  absent (open to any `machine_write` caller) — confirmed by
+  `REQ-SB-87-US-01`'s own Scenario 5, byte-identical behavior required.
+- **Every mutating caller across every already-migrated Skill
+  (`meeting-capture`, `create-companies-partners`), not just the two this
+  requirement adds, must now pass its own stable caller-identity argument
+  on every `create`/`modify-section` call** — a small, mechanical signature
+  change with real retrofit surface across already-`Done` code. Flagged
+  explicitly so the decomposer sizes this into `REQ-SB-87-US-01`'s own task
+  breakdown rather than discovering it mid-build.
+- The dynamic-child primitive becomes immediately available (not built) for
+  `meeting-capture`'s own already-known, never-solved-declaratively
+  `occurrences/` folder — a real, disclosed, un-scheduled follow-up
+  opportunity, out of this story's own scope.
+- A caller identity is a bare, self-declared string the engine trusts (the
+  same trust boundary `vault_lib.py`'s own `_CALLER_ALLOW_LISTS` already
+  operated under — every real caller today is this project's own
+  first-party code) — a structural guard against an accidental/wrong
+  caller, not a security boundary against a malicious one.
+
+---
+
+## ADR-018: Capture-stage classify-or-skip judgment stays a bounded, one-shot `hermes chat -q` relay call embedded in the existing deterministic per-email loop — not a `job4`-style agentic restructure; the noise definition is a persisted, vault-side, LLM-derived artifact, re-derived out-of-band
+
+**Status:** Accepted
+**Date:** 2026-09-01
+
+**Context:** `REQ-SB-87-US-03` needs the Capture stage to judge each
+newly-seen email conversation against a real, LLM-derived noise definition
+and skip/classify it BEFORE any Thread/RawMessage note is written (PRD point
+4, the operator's own explicit, deliberate Capture-time-not-Enrich-time
+choice). A genuine architecture fork exists, confirmed by reading the real
+code directly, not assumed:
+
+- **Capture's own real code today is 100% non-agentic.** `run_delta_capture.py`
+  / `run_full_capture.py` (the live, recurring `email-delta-capture` cron's
+  own real path) implement the ENTIRE per-email loop as one deterministic
+  Python process — confirmed directly reading both files: plain
+  `subprocess.run()` dispatch to `ingest_email.py`/`link_person_to_thread.py`/
+  `rename_thread.py`/`capture_attachments.py`, zero LLM/agent call anywhere
+  in the loop. Both files' own module docstrings confirm this is DELIBERATE,
+  not an oversight: `run_full_capture.py`'s provenance note explains it was
+  adopted specifically because an earlier cron run's naive per-script
+  `terminal` dispatch (~4 LLM round trips per email) was expensive across a
+  full-history pull — "running the whole per-email loop as one background
+  `terminal` process... turns [O(N) round trips] into O(1) LLM calls." The
+  cron itself still fires ONE live `terminal` call to start the script; from
+  there, everything is deterministic Python.
+- **`summarize-and-tag-threads`'s own sibling recurring cron
+  (`job4-summarize-tag-threads`) is the opposite shape, by direct
+  contrast** — confirmed reading its own `SKILL.md`: every real run IS a
+  live Hermes agent session (`search_files`/`read_file` real Thread content,
+  reason, then `terminal`-call `apply_thread_review.py` per Thread),
+  explicitly designed to run "across MULTIPLE sessions" because 209 Threads'
+  worth of full multi-message conversation bodies is too much context for
+  one sitting (its own validation run used ~150K tokens for just 8
+  Threads).
+- **Real, same-day incident directly relevant to this decision:** the
+  Hermes gateway was found down ALL DAY the same day this requirement was
+  raised, silently stalling `email-delta-capture`, `meeting-capture-
+  recurring`, AND `job4-summarize-tag-threads` alike (`MEMORY.md`). Capture's
+  own recurring cadence is short and unattended (documented hourly-ish in
+  `SKILL.md`; the operator's own framing of this requirement cites a
+  ~30-minute interval) — any new per-tick dependency on live agent/gateway
+  machinery is real, current operational risk, not a hypothetical one.
+- **A real, already-proven, lighter-weight mechanism already exists in this
+  codebase for exactly this shape of problem**: the one-shot cross-profile
+  relay, `hermes -p <profile> chat -q "<question>"` — a single blocking CLI
+  call returning one structured response, with no live tool-calling loop,
+  no multi-session resumability machinery. Used extensively and
+  successfully elsewhere in this project (`CHANGELOG.md`, e.g. a real,
+  live-verified 3-level relay chain, one leg observed at 3m40s) and already
+  named in `architecture.md` (`REQ-SB-82`'s Meeting Preparation Agent) as
+  this codebase's own standard mechanism for "ask another profile one
+  self-contained question, get one answer back."
+
+**Decision:**
+
+- **Capture's own recurring loop stays the existing deterministic,
+  single-process, subprocess-orchestrated design.** It is NOT restructured
+  into a `job4`-style live, multi-turn, resumable agent session. The cron
+  still fires exactly ONE `terminal` call per tick to start
+  `run_delta_capture.py`; everything downstream stays real, deterministic
+  Python.
+- **The classify-or-skip judgment is invoked as ONE bounded, one-shot
+  `hermes -p <profile> chat -q "..."` relay subprocess call per
+  newly-first-seen `conversation_id` only** — never per message (matching
+  `REQ-SB-87-US-03`'s own Scenario 3, "decided once, at first sight") —
+  from inside `ingest_email.py`'s own `if existing_directory is None:`
+  branch (the real, confirmed insertion point named in that story's own
+  Context), executed BEFORE any Thread/RawMessage note is written, so a
+  genuine skip outcome (Scenario 1) never creates anything. This is the
+  SAME `subprocess.run()`-style dispatch technique `run_delta_capture.py`
+  already uses for every other per-email step — one more bounded call in
+  an already-established pattern, not a new invocation mechanism.
+- **A new, dedicated, lightweight Hermes profile is the anticipated target**
+  for this relay (exact profile identity/system-prompt design is
+  decomposer/coder-level) — fed the ALREADY-persisted noise-definition
+  artifact's own content plus the new email's own content (sender, subject,
+  body), returning one structured JSON verdict (exact field names
+  decomposer/coder-level; conceptually `{is_noise, classification,
+  reasoning}`). This is the SAME "the agent decides, the script only
+  applies" division of labor this codebase already uses everywhere else
+  (`apply_thread_review.py`'s own docstring, PRD point 7) — the call's own
+  RESPONSE is real agent judgment; the calling script's own new code is
+  limited to invoking the relay, parsing the structured response, and
+  mechanically acting on it (skip, or persist via `vault_manager.py`,
+  `ADR-017`).
+- **The noise-definition artifact is a real, structured, persisted file
+  under the VAULT's own `.second-brain/data/` tree** (a new sibling
+  directory to `Templates/`, e.g. `.second-brain/data/EmailCapture/
+  noise_definition.json` — exact naming decomposer-level) — never a
+  Skill-`scripts/`-folder file, and never baked into the classifier
+  profile's own static system prompt. This placement is structural, not
+  cosmetic: every Skill script already receives `--vault-path` on every
+  invocation, so any script can read this file directly with ZERO deploy/
+  redeploy step, mirroring the EXACT already-established convention
+  `Template.json` itself already uses (`MEMORY.md`, 2026-08-30 Decision:
+  "a `Template.json` change needs no separate deploy step") — satisfying
+  `REQ-SB-87-US-03`'s own Scenario 5 ("no change to any Capture-stage
+  script's own code is required" to re-tweak it) by construction, and its
+  own Scenario 4 ("the definition itself can be read/inspected
+  independently of any capture run") for free, since it is a plain,
+  directly-readable file.
+- **Derivation of the noise definition is a genuinely separate, out-of-band
+  act, decoupled from the recurring 30-minute capture tick.** Invoked
+  on-demand (e.g. during the 100-email scratch-sample proving phase, and
+  again whenever the operator wants to retune it) — never re-derived fresh
+  inside a live capture run. The exact derivation mechanism (a dedicated
+  one-off script, a live interactive Hermes agent session that free-writes
+  the artifact) is decomposer/coder-level; the binding constraint recorded
+  here is only that derivation and per-tick application are two
+  structurally separate acts, and the per-tick path ALWAYS reads an
+  already-persisted artifact, never invents one from scratch.
+
+**Alternatives Considered:**
+- *Restructure Capture's own recurring path into an agent-driven, resumable,
+  batch-by-batch shape mirroring `job4-summarize-tag-threads`* — rejected.
+  `job4`'s own resumability design solves a genuinely different problem (a
+  ONE-TIME, 209-Thread backlog too large for one session's context, full
+  multi-message Thread bodies). Capture's own new judgment is comparatively
+  tiny (one email's sender/subject/body, once per genuinely NEW conversation
+  only) on a short, unattended, recurring cadence — restructuring it into a
+  live, multi-turn agent session would trade away the EXACT property this
+  pipeline's own module docstring already deliberately engineered (O(1), not
+  O(N), LLM round trips per tick) for no matching benefit, and would make
+  EVERY unattended tick depend on a full live agent session succeeding
+  rather than one bounded subprocess call — a real reliability regression
+  given this SAME pipeline had a genuine, same-day gateway-down incident
+  that already silently stalled it once.
+- *A brand-new, bespoke direct-HTTP LLM client inside the Skill script,
+  mirroring `src/backend`'s own `compass_client.py` (`ADR-011`)* —
+  rejected. `compass_client.py` belongs to the separate `src/backend`
+  FastAPI codebase; `email-thread-capture` is explicitly Hermes-native with
+  NO Second Brain backend dependency (`ADR-002`, unchanged, still governs).
+  Inventing a second, standalone HTTP LLM client for one Skill would
+  duplicate what an already-proven, extensively-used mechanism in THIS SAME
+  ecosystem (`hermes chat -q`) already solves, and would need its own
+  independent credential/endpoint config outside Hermes' own already-
+  configured Provider routing.
+- *Bake the noise definition directly into the classifier profile's own
+  static system prompt, no separate artifact file* — rejected. Retuning it
+  would require editing and redeploying a Hermes PROFILE (a heavier, less
+  frequently-changed asset than a plain vault-side data file) every time the
+  operator wants to tweak it during the proving phase — directly
+  contradicting Scenario 5's own explicit "no change to any Capture-stage
+  script's own code" requirement, and losing the "inspectable independently
+  of any capture run" property Scenario 4 requires.
+- *Keep the "capture everything, filter/hide at Enrich time" original
+  design instead of any Capture-time judgment* — rejected outright by the
+  operator directly and explicitly (PRD point 4) — not re-litigated here.
+
+**Consequences:**
+- Every recurring capture tick now depends on the Hermes gateway/agent
+  runtime being reachable for potentially MULTIPLE additional one-shot relay
+  calls (one per genuinely-new conversation in that tick), not just the
+  single existing `terminal` call that starts the script — bounded by
+  new-conversation volume per tick (typically small for a short delta
+  window), but real, added latency and an added live-dependency surface per
+  tick that did not exist before this story. This is a disclosed, accepted
+  trade-off, not a silently-absorbed cost, given this SAME pipeline's own
+  recent gateway-down incident.
+- A relay call's own real latency is genuinely variable — this project's
+  own `Learnings.md` already documents a real range of tens of seconds to
+  several minutes for a single real relay/Provider round trip. The coder
+  building this should apply the SAME already-established discipline
+  (assume multi-minute latency is possible, never assume a hang, watch for
+  accumulating CPU/active-connection signals rather than wall-clock alone).
+- A new, real Hermes profile artifact needs its own definition/deployment,
+  on top of the two new `vault_manager.py` copies (`ADR-017`) and two new
+  templates this requirement already adds — real, if modest, additional
+  deployment surface for `REQ-SB-87-US-01`'s successors to account for.
+- **A relay failure/timeout for one conversation's classify-or-skip call
+  must degrade explicitly, never silently.** The existing per-email
+  `try/except ... continue` pattern already present in both orchestrators is
+  the natural place to handle it; the exact degrade behavior (skip
+  classification and fall back to a disclosed default vs. fail that one
+  conversation and retry next tick) is decomposer/coder-level, but MUST be
+  a disclosed, explicit choice — never a silent swallow that leaves a
+  Thread stuck in a partially-classified state.
+
+---

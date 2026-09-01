@@ -466,7 +466,134 @@ needs; neither substory adds a second door onto vault content.
   rule, and the explicit divergence from `ADR-013`'s machinery — see
   `ADR.md` for the full Context/Decision/Alternatives/Consequences.
 
-**Last reviewed:** 2026-09-01 (architect pass, `REQ-SB-86-US-01`/`US-02` —
+## Email Thread Capture — a New, LLM-Driven Pipeline (`REQ-SB-87`)
+
+Consolidates the one remaining real capture pipeline still writing by hand
+(`email-thread-capture`) onto the shared `vault_manager.py` template engine
+`meeting-capture`/`create-companies-partners` already proved (2026-08-25→27),
+and layers genuinely new capability on top: Capture-time noise-skip +
+Internal/Partner/Customer classification, and Enrich-stage pending-action
+extraction. Five stories: `US-01` (engine resync + templates, this section's
+own primary scope), `US-02` (`email-thread-capture` mechanics migration),
+`US-03` (Capture-time classification/skip), `US-04`
+(`summarize-and-tag-threads` mechanics migration), `US-05` (pending-action
+extraction).
+
+### §Canonical `vault_manager.py` Source & Deployment (`REQ-SB-87-US-01`)
+
+- **The canonical source already exists and was already the right place to
+  edit — confirmed, not invented this pass:** `Hermes-Provisioning/shared/
+  vault_manager.py` (module docstring, 2026-08-25: "Editing the engine
+  happens in exactly ONE place (this file, then re-copy)"). Direct diff
+  confirms it already carries every function `create-companies-partners`'s
+  own deployed copy has; the real drift is `meeting-capture`'s own deployed
+  copy alone, which lags behind it. Real, full deployment inventory: nine
+  copies today (`azure-kb-writer`, `compass-kb-writer`, `research-kb-writer`,
+  `capture-files`, `capture-notes`, `vault-index`, `track-opportunities`,
+  `create-companies-partners`, `meeting-capture`), all re-synced to
+  byte-match the canonical source by this story; two brand-new copies
+  deployed for the first time by the sibling stories
+  (`email-thread-capture`, `US-02`; `summarize-and-tag-threads`, `US-04`).
+- No new ADR governs the resync itself — it enforces an already-Accepted
+  convention. `ADR-017` (below) governs the real engine CAPABILITY changes
+  this story also needs.
+
+### §`vault_manager.py` Engine Extensions — Dynamic Children & Per-Caller Access (`REQ-SB-87-US-01`, `ADR-017`)
+
+- **Dynamic (unbounded) children:** `Template.json`'s existing `root.
+  children` array gains a per-entry `"growth": "fixed" | "dynamic"` field
+  (default `"fixed"`, every existing template unchanged). A `"dynamic"`
+  entry declares its own subfolder, its own `frontmatter_defaults`/
+  `sections`, and its own natural-key identity for idempotent lookup — the
+  real shape Thread's `messages/` folder needs (one new RawMessage note per
+  captured email, unbounded, over the Thread's whole lifetime), genuinely
+  distinct from the existing FIXED-sibling `children` shape (Customer/
+  Partner's `log`/`captures`, created once, atomically, at root-creation
+  time). The engine's own module docstring already named this exact case
+  as a planned, not-yet-built extension before this requirement existed.
+- **Per-caller section-write access:** a section's `access` declaration
+  gains an optional `allowed_callers: [str, ...]` list; `create`/
+  `modify-section` require a caller-identity argument on every call and
+  refuse a write not on that list — the same guarantee `vault_lib.py`'s own
+  `_CALLER_ALLOW_LISTS` already provided, now Template.json data instead
+  of hardcoded Python. No `allowed_callers` key = open to any
+  `machine_write` caller (zero behavior change for every already-`Done`
+  template). Every mutating caller in every already-migrated Skill
+  (`meeting-capture`, `create-companies-partners`), not just the new ones,
+  must pass this new caller-identity argument going forward.
+- **Thread template's own section-access shape:** `## Related` →
+  `link_person_to_thread` only; `## Files` → `capture_attachments`/
+  `capture_file_link` only; `## Summary` and `## Actions` → both
+  `apply_thread_review` only (one caller, two sections); `## Personal
+  Notes` → `human_only`, no exception.
+- **`## Actions` write mode is `replace`, mirroring `## Summary` exactly**
+  (resolves `US-05`'s own flagged Constraint) — not append, not a
+  coexist-with-human-content design; `## Actions` carries no real content
+  of either kind today, and a resolved pending action must actually
+  disappear on re-summarization, which append-only could never represent.
+- The exact `## Actions` entry PROSE shape (plain bullet vs. an agent
+  voluntarily wikilinking a Person) is left open, deliberately — no new
+  engine capability is needed either way; a dedicated `Work/Tasks/`
+  integration is already ruled out by `US-05`'s own Non-Goals. Decomposer/
+  coder-level prompt design.
+- See `ADR-017` for full Context/Alternatives/Consequences.
+
+### §Capture-Time Classification & Noise-Skip (`REQ-SB-87-US-03`, `ADR-018`)
+
+- **Capture's own recurring loop (`run_delta_capture.py`/
+  `run_full_capture.py`) stays the existing deterministic, single-process,
+  subprocess-orchestrated design** — confirmed directly, zero LLM/agent
+  call anywhere in today's real per-email loop, deliberately engineered
+  this way (O(1), not O(N), LLM round trips per tick). It is NOT
+  restructured into a `job4-summarize-tag-threads`-style live, multi-turn,
+  resumable agent session — that shape solves a different problem (a
+  one-time, 209-Thread backlog too large for one session's context), not a
+  short, unattended, ~30-minute-cadence recurring tick.
+  - **The classify-or-skip judgment is ONE bounded, one-shot `hermes -p
+    <profile> chat -q "..."` relay subprocess call per newly-first-seen
+    `conversation_id` only** (never per message), inserted into
+    `ingest_email.py`'s own `if existing_directory is None:` branch,
+    BEFORE any Thread/RawMessage note is written — the same already-proven
+    cross-profile relay mechanism this codebase uses everywhere else, and
+    the same `subprocess.run()`-style dispatch `run_delta_capture.py`
+    already uses for every other per-email step.
+  - **A new, dedicated, lightweight Hermes profile** is the relay's
+    anticipated target (exact identity/prompt design decomposer/
+    coder-level), returning one structured JSON verdict (`is_noise`,
+    `classification`, reasoning) — the agent decides, the script only
+    applies, same division of labor as `apply_thread_review.py`.
+  - **The noise-definition artifact is a real, structured, persisted file
+    under the vault's own `.second-brain/data/` tree** (a new sibling to
+    `Templates/`), never a Skill-`scripts/`-folder file, never baked into
+    the profile's own static prompt — every script already receives
+    `--vault-path`, so it reads with zero deploy step, mirroring
+    `Template.json`'s own already-established convention.
+  - **Derivation of the noise definition is a separate, out-of-band act**
+    (on-demand, e.g. during the 100-email scratch-sample proving phase),
+    decoupled from the recurring tick — the per-tick path always reads an
+    already-persisted artifact, never invents one fresh.
+- See `ADR-018` for full Context/Alternatives/Consequences, including the
+  disclosed reliability trade-off (added per-tick live-dependency surface,
+  given this same pipeline's own real, same-day gateway-down incident).
+
+### §Enrich-Stage Mechanics Migration & Pending-Action Extraction (`REQ-SB-87-US-04`/`US-05`)
+
+- `apply_thread_review.py` migrates its own hand-rolled `read_note`/
+  `merge_tags`/`upsert_frontmatter_key`/`replace_body_section`/
+  `_HUMAN_OWNED_HEADERS` primitives onto the resynced `vault_manager.py`
+  (a brand-new copy deployed to `summarize-and-tag-threads/scripts/`,
+  `US-04`) — no change to its own real judgment (company resolution,
+  the never-tag-Person-notes rule, log-entry re-sort).
+- Pending-action extraction (`US-05`) is agent-prompt judgment over a
+  Thread's own already-read messages, applied through the SAME migrated
+  `apply_thread_review.py` → `vault_manager.py` call path `US-04` builds —
+  no second, bespoke writer. Depends on `US-04` (the migrated call path)
+  and `US-01` (the widened `## Actions` access + replace-mode decision,
+  `ADR-017`) — both real, confirmed dependencies, not assumed.
+
+**Last reviewed:** 2026-09-01 (architect pass, `REQ-SB-87-US-01`/`US-03`/
+`US-05` — `ADR-017`/`ADR-018`, the Email Thread Capture pipeline
+consolidation + new Capture/Enrich capability; `REQ-SB-86-US-01`/`US-02` —
 `ADR-016`, the Vault Data Export subsystem; `REQ-SB-85-US-01`/`US-02`/
 `US-03` — `ADR-013`/`ADR-014`/`ADR-015`, the Artifact Export/Import
 subsystem, reviewed 2026-08-31).
