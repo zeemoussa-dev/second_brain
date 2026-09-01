@@ -70,6 +70,7 @@ is a thin status mirror of the index table below.
 | BUG-039 | Agents Map: `compass-solutions` not visually linked to `compass-expert`, even though its real `depends_on` is correct | UI | Minor | Closed | 2026-08-24 | Direct fix, 2026-08-24 |
 | BUG-040 | `propose_person_note_update` (Manual/Autonomous dispatch) writes a pending Person-note-edit proposal nobody can ever see, confirm, or discard | Logic | Minor | Open | 2026-08-26 | — |
 | BUG-041 | Exporting a Pipeline artifact (`.sbf`) never includes the Skills/scripts that actually implement it — the dependency resolver's Pipeline branch has no real path from a Job step to a Skill | Logic | Blocker | Closed | 2026-09-01 | Direct fix, 2026-09-01 |
+| BUG-042 | `summarize-and-tag-threads` tags real Customer-named Threads (e.g. "Masdar", "TAQA") as generic `"internal"` instead of matching them to the real `customer/<slug>` tag — every Thread shows as unclassified in My Day | Logic | Major | Open | 2026-09-01 | — |
 
 ---
 
@@ -2008,3 +2009,46 @@ is a thin status mirror of the index table below.
   Skill `new-company-discovery` (+5 Template couplings). Scratch
   verification `.sbf`/log files deleted after inspection — confirmed
   absent.
+
+### BUG-042 — `summarize-and-tag-threads` tags real Customer Threads as generic `"internal"` instead of `customer/<slug>`
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-09-01, operator noticed real captured emails showing as
+  unclassified in My Day. Confirmed live: `job4-summarize-tag-threads`
+  (`Hermes-Provisioning/skills/company-review/summarize-and-tag-threads/`,
+  `apply_thread_review.py`) genuinely ran — Thread frontmatter `tags`
+  changed from `[]` to a real, non-empty value between this session's
+  earlier read and now — but the value written is the generic
+  `"internal"`, not a real `customer/<slug>`/`partner/<slug>` tag, even
+  for Threads whose own subject IS a real Customer's name: real examples,
+  `Work/Threads/2026-08-31 Masdar Open Items/...md` and
+  `Work/Threads/2026-08-31 TAQA/...md` — both `tags: ["internal"]` — and
+  both `Masdar`/`TAQA` are real, existing Customer hub notes in this same
+  vault (`Work/Customers/Masdar/`, `Work/Customers/TAQA/`). The script's
+  own docstring says it should "add `customer/<slug>`/`partner/<slug>`
+  tags (one per resolved [company])" — this is not happening for these
+  threads. Root cause not yet diagnosed — `apply_thread_review.py` is
+  itself only the tag-writing half; the actual company-matching judgment
+  happens inside the LLM agent run driving it (per `job4`'s own real
+  prompt: "Build your own company list from `Work/Customers/**/*.md` and
+  `Work/Partners/**/*.md` first... work through `Work/Threads/`... call
+  `apply_thread_review.py` for each"), so this may be an agent-prompt/
+  matching-logic issue rather than a plain code bug — needs further
+  investigation before a fix is scoped.
+- **Screen \ route:** No screen of its own — surfaces as every Thread
+  showing `customer: null` (unclassified) on My Day → Emails
+  (`src/backend/app/business/my_day.py::customer_from_tags`, which only
+  ever matches `customer/`-prefixed tags) and presumably in Browse &
+  Search's own tag-filter chips.
+- **Repro steps:**
+  1. Let `job4-summarize-tag-threads` run against a real Thread whose
+     subject/content clearly names a real Customer (e.g. a Thread named
+     after "Masdar", where `Work/Customers/Masdar/` already exists).
+  2. Inspect the Thread's own frontmatter `tags` field afterward.
+- **Expected:** `tags` includes a real `customer/masdar`-shaped tag,
+  resolved against the real Customer hub note.
+- **Actual:** `tags: ["internal"]` — no real company match, even though
+  one plainly exists.
+- **Screenshot:** N/A
