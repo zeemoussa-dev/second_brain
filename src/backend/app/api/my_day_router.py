@@ -31,3 +31,8 @@ def get_calendar(day: str | None = None) -> list[dict]:
 @router.get("/todo")
 def get_todo() -> list[dict]:
     return my_day.list_todo_items()
+
+
+@router.post("/refresh")
+def post_refresh() -> list[dict]:
+    return my_day.trigger_refresh()

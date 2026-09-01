@@ -23,10 +23,21 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from app.business.core.pipelines.pipeline_manager import PipelineManager
 from app.business.core.vault.vault_manager import VaultManager
+from app.business.hermes.client import get_client
 from app.data_access import vault_writer
 
 _vault_manager = VaultManager()
+_pipeline_manager = PipelineManager()
+
+# The two real Pipelines whose own cron job actually populates My Day's
+# Emails/Calendar cards -- REQ-SB-?? manual-refresh button (operator,
+# 2026-09-02: "I need a button to refresh the emails and meetings in the
+# backend ... the Option to pull stuff manually", found live the same day
+# the real Hermes gateway had been down, silently stalling every
+# recurring job including these two).
+_REFRESH_PIPELINE_IDS = ["threads-builder", "meeting-builder"]
 
 _WINDOW_DAYS_BEFORE = 3
 _WINDOW_DAYS_AFTER = 3
@@ -281,6 +292,33 @@ def list_todo_items() -> list[dict]:
         })
     items.sort(key=lambda item: (item["due"] is None, item["due"] or "", item["subject"]))
     return items
+
+
+def trigger_refresh() -> list[dict]:
+    """Manually fires the real cron job behind each of `threads-builder`/
+    `meeting-builder` (operator: "the Option to pull stuff manually") --
+    reuses the SAME `cron_job_id`/`cron_profile_id` fields those Pipelines
+    already carry for cron-status display (`PipelineManager`/`ADR-005`),
+    never a second hardcoded copy of the job names. Fire-and-forget, same
+    as `HermesCLI.run_cron_job` itself -- this returns as soon as the
+    trigger request is sent, not when the real capture run finishes (that
+    can take a while; the caller's own next `/my-day/summary` poll will
+    reflect it once it lands). A Pipeline with no `cron_job_id` configured
+    is reported, not silently skipped -- the operator should see it, not
+    guess why nothing happened for that card."""
+    results = []
+    for pipeline_id in _REFRESH_PIPELINE_IDS:
+        pipeline = _pipeline_manager.get_by_id(pipeline_id)
+        if pipeline is None or pipeline.cron_job_id is None:
+            results.append({"pipeline_id": pipeline_id, "triggered": False, "detail": "no cron job configured"})
+            continue
+        triggered = get_client().cli.run_cron_job(pipeline.cron_job_id, pipeline.cron_profile_id)
+        results.append({
+            "pipeline_id": pipeline_id,
+            "triggered": triggered,
+            "detail": "triggered" if triggered else "Hermes CLI call failed",
+        })
+    return results
 
 
 def summary(day: str | None = None) -> dict:

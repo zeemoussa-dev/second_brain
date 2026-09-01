@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { fetchMyDaySummary, type MyDaySummary } from '../features/my-day/client';
+import { fetchMyDaySummary, triggerMyDayRefresh, type MyDaySummary } from '../features/my-day/client';
 import { fetchPendingApprovals } from '../features/agents-map/pendingApprovalsApiClient';
 
 const SECTIONS = [
@@ -38,10 +38,36 @@ export function MyDayPage() {
   const [selectedDay, setSelectedDay] = useState<string>(todayIso());
   const [summary, setSummary] = useState<MyDaySummary | null>(null);
   const [approvalsCount, setApprovalsCount] = useState<number | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
+
+  function reloadSummary() {
+    fetchMyDaySummary(selectedDay).then(setSummary);
+  }
 
   useEffect(() => {
-    fetchMyDaySummary(selectedDay).then(setSummary);
+    reloadSummary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDay]);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    setRefreshMessage(null);
+    try {
+      const outcomes = await triggerMyDayRefresh();
+      const failed = outcomes.filter((o) => !o.triggered);
+      setRefreshMessage(
+        failed.length === 0
+          ? 'Refresh triggered — new emails/meetings will show up once the capture run finishes.'
+          : `Triggered, but ${failed.map((o) => o.pipeline_id).join(', ')} failed to start.`,
+      );
+    } catch {
+      setRefreshMessage('Could not trigger refresh.');
+    } finally {
+      setRefreshing(false);
+      reloadSummary();
+    }
+  }
 
   useEffect(() => {
     fetchPendingApprovals({ status: 'pending' }).then((items) => setApprovalsCount(items.length));
@@ -58,11 +84,23 @@ export function MyDayPage() {
 
   return (
     <>
-      <h1>My Day</h1>
-      <p className="text-muted">
-        The day's most important actions, surfaced from your background
-        agents. Open a section for the full list.
-      </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+        <div>
+          <h1 style={{ marginBottom: 'var(--space-2)' }}>My Day</h1>
+          <p className="text-muted">
+            The day's most important actions, surfaced from your background
+            agents. Open a section for the full list.
+          </p>
+        </div>
+        <button type="button" className="btn" data-testid="my-day-refresh" disabled={refreshing} onClick={handleRefresh}>
+          {refreshing ? 'Refreshing…' : 'Refresh emails & meetings'}
+        </button>
+      </div>
+      {refreshMessage && (
+        <p className="text-muted" data-role="my-day-refresh-message" style={{ marginTop: 0 }}>
+          {refreshMessage}
+        </p>
+      )}
       <div className="my-day-navigator">
         <button
           type="button"

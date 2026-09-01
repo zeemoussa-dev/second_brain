@@ -104,8 +104,17 @@ class HermesCLI:
         return ["-p", profile_id]
 
     # -- Cron --------------------------------------------------------
-    def run_cron_job(self, job_name: str) -> bool:
-        return self._run_background(["cron", "run", job_name])
+    def run_cron_job(self, job_name: str, profile_id: str | None = None) -> bool:
+        """Real `hermes cron run <job_name>` (fire-and-forget -- the
+        scheduler picks it up on its next tick, this call doesn't block
+        on the run itself finishing). `profile_id` is required for any
+        job registered on a NAMED profile's own cron, not the shared
+        default/root one -- confirmed live, 2026-09-01:
+        `meeting-capture-recurring` (lives under `meeting-prep-agent`)
+        fails with "Job ... not found" when triggered with no `-p` flag
+        at all, the same per-profile-cron scoping `HermesCron` itself
+        already accounts for (see its own module docstring)."""
+        return self._run_background(self._profile_args(profile_id) + ["cron", "run", job_name])
 
     def create_cron_job(
         self, schedule: str, *, name: str | None = None, script: str | None = None,

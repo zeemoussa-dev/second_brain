@@ -43,3 +43,17 @@ export interface MyDayTodoItem {
 export function fetchMyDayTodo(): Promise<MyDayTodoItem[]> {
   return apiFetch<MyDayTodoItem[]>('/my-day/todo');
 }
+
+export interface MyDayRefreshOutcome {
+  pipeline_id: string;
+  triggered: boolean;
+  detail: string;
+}
+
+// Manually fires the real capture pipelines behind Emails/Calendar
+// (operator, 2026-09-02: "the Option to pull stuff manually") --
+// fire-and-forget, resolves once the trigger request is sent, not once
+// the real capture run finishes.
+export function triggerMyDayRefresh(): Promise<MyDayRefreshOutcome[]> {
+  return apiFetch<MyDayRefreshOutcome[]>('/my-day/refresh', { method: 'POST' });
+}
