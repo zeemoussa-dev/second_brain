@@ -8462,3 +8462,87 @@ each story's own `## Notes` for the authorization breadcrumb.)
   `Implementation/Learnings.md`.
   → `Implementation/Sprints/SPRINT-081-vault-export-data-folder-picker-and-archive-writer.md`
 
+- [x] 2026-09-01 · **REQ-SB-87-US-01** · Resolved 2026-09-01 — architect
+  decided the growing-children fork (see new `ADR-017` review entry below)
+  Resolution: build the real, reusable `Template.json`-declared
+  dynamic-child primitive (Option A), not a hand-built Thread-specific
+  path — the engine's own module docstring already named this exact case
+  as its planned, not-yet-built evolution. Also resolves the confirmed
+  per-caller section-access engine gap. Recorded in `ADR-017`; see the new
+  standalone review entry below for the actual human decision needed
+  (approve/reject the ADR).
+  → `Implementation/UserStories/REQ-SB-87-US-01-vault-manager-resync-and-thread-templates.md`
+
+- [ ] 2026-09-01 · **REQ-SB-87-US-01** · `ADR-017` (`vault_manager.py`
+  dynamic-children primitive + per-caller section-access model) was
+  written — review before tasks are locked
+  Plain English: the architect decided `Template.json` gains a real
+  `"growth": "dynamic"` child-note shape for Thread's `messages/` folder
+  (new engine verb, one-per-item, unbounded, idempotent by
+  conversation_id+message_id), plus a per-section `allowed_callers`
+  allow-list replacing today's binary machine/human section-access flag —
+  every existing mutating caller in every already-`Done` Skill
+  (`meeting-capture`, `create-companies-partners`) will need to start
+  passing a caller-identity argument on every write, not just the new
+  Thread work. `## Actions` also gets a resolved write-mode decision
+  (`mode=replace`, mirroring `## Summary`) as part of the same ADR.
+  **What to do:** review `ADR-017` in
+  `Implementation/Architecture/ADR.md`, approve or reject, then run
+  `/plan-tasks` again if you change it.
+  → `Implementation/UserStories/REQ-SB-87-US-01-vault-manager-resync-and-thread-templates.md`
+
+- [x] 2026-09-01 · **REQ-SB-87-US-02** · Resolved 2026-09-01 — operator
+  chose the phased scratch-sample rollout, made concrete
+  Resolution: operator, verbatim: "Lets Build a small sample of 100
+  Emails to a new Pipeline we keep tweaking it when done we change the
+  OutputDirectory and move on" — prove the migrated scripts against a
+  real ~100-email sample in a scratch vault (`--vault-path` pointed
+  elsewhere), iterate there, then cut the live cron job's own
+  `--vault-path` over to the real vault once satisfied. Locked into the
+  story's own Constraints/Notes for `/plan-tasks` to build tasks around.
+  → `Implementation/UserStories/REQ-SB-87-US-02-email-thread-capture-vault-manager-migration.md`
+
+- [x] 2026-09-01 · **REQ-SB-87-US-03** · Resolved 2026-09-01 — architect
+  decided the Capture-stage classify-or-skip mechanism (see new `ADR-018`
+  review entry below)
+  Resolution: Capture's own recurring loop STAYS the existing
+  deterministic, subprocess-orchestrated design (not restructured into a
+  `job4`-style agent session); the judgment is one bounded, one-shot
+  `hermes chat -q` relay call per newly-first-seen conversation only. The
+  noise-definition artifact is a real, persisted, vault-side
+  `.second-brain/data/`-tree file, read directly with zero deploy step.
+  Recorded in `ADR-018`; see the new standalone review entry below for the
+  actual human decision needed (approve/reject the ADR).
+  → `Implementation/UserStories/REQ-SB-87-US-03-capture-time-noise-definition-and-classification.md`
+
+- [ ] 2026-09-01 · **REQ-SB-87-US-03** · `ADR-018` (Capture-stage
+  classify-or-skip mechanism) was written — review before tasks are locked
+  Plain English: the architect decided against restructuring the live,
+  daily-use `email-delta-capture` cron into a `job4`-style live agent
+  session; instead, one bounded `hermes -p <profile> chat -q "..."` relay
+  call fires per genuinely-new email conversation only, embedded inside the
+  existing deterministic Python loop. This trades a small, real amount of
+  new per-tick latency/live-dependency (disclosed explicitly in the ADR's
+  own Consequences, given the SAME pipeline's real, same-day gateway-down
+  incident) for keeping the pipeline's own already-proven, low-risk
+  O(1)-LLM-round-trips design intact. Worth a second pair of eyes before
+  this reshapes `email-thread-capture`'s own live production script.
+  **What to do:** review `ADR-018` in
+  `Implementation/Architecture/ADR.md`, approve or reject, then run
+  `/plan-tasks` again if you change it.
+  → `Implementation/UserStories/REQ-SB-87-US-03-capture-time-noise-definition-and-classification.md`
+
+- [x] 2026-09-01 · **REQ-SB-87-US-05** · Resolved 2026-09-01 — architect
+  decided replace-vs-coexist; deliberately deferred the exact entry prose
+  shape, with reasoning
+  Resolution: `## Actions` writes use `mode=replace`, mirroring `## Summary`
+  exactly (recorded in `ADR-017`, which flags `REQ-SB-87-US-01` — see that
+  story's own `ADR-017` review entry above; not re-flagged here). The exact
+  entry prose shape (plain bullet vs. wikilinked mention) is NOT an
+  architecture question — the story's own AC already locks it to "the
+  agent's own real words," needs zero new engine capability, and a dedicated
+  `Work/Tasks/` integration is already ruled out by this story's own
+  Non-Goals — left to the decomposer's task-authoring / prompt design.
+  `gate` set to `clear`.
+  → `Implementation/UserStories/REQ-SB-87-US-05-enrich-pending-action-extraction.md`
+

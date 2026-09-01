@@ -18,6 +18,177 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- chore: `REQ-SB-87-US-01` (vault_manager.py convergence + Thread/RawMessage
+  Template authoring) closed out — `T06`'s full regression pass. Ran the
+  full `test_vault_manager.py` suite (52/52, zero regressions);
+  re-verified `ingest_meeting.py`/`create_companies_partners.py` end-to-end
+  against fresh scratch vaults seeded with the real, current
+  `meeting`/`meeting-series`/`customer`/`partner` Templates (both scripts'
+  own real, unmodified functions, direct-imported, a scoped spy confirming
+  every real `create`/`modify_section` call still carries its own script's
+  `caller=` identity); spot-checked every remaining already-`Done`
+  template-driven note kind (Opportunity, Note, File, `azure-kb-doc`,
+  `compass-kb-doc`, `research-kb-doc`) against the real, live vault via
+  `vault_manager.py find`/`get_section_content` — all found and read
+  correctly; re-confirmed all 82 real deployed `vault_manager.py` copies
+  (9 repo + 73 active Hermes profile) remain byte-identical to the
+  canonical source (SHA-256, same hash `T03` recorded). Bonus: one
+  combined scratch-vault pass creating a real Thread + 3 unbounded
+  RawMessage children + per-caller-access enforcement alongside an
+  unrelated Meeting note in the same process, confirming zero cross-kind
+  interference. Zero code changed (verification-only task). All 5 locked
+  ACs (`AC-01`..`AC-05`) verified live with a real positive result — story
+  `REQ-SB-87-US-01` and `SPRINT-082` both now `Done` (sprint retro
+  drafted, `gate: flagged` for human harvest into `Implementation/
+  Learnings.md`; the story's own standing `ADR-017` human-review flag
+  carries forward unresolved, see `REVIEW-QUEUE.md`).
+
+- feat: `vault_manager.py` — declarative dynamic (unbounded) child-note
+  primitive (`REQ-SB-87-US-01-T01`, `ADR-017`). `Template.json`'s
+  `root.children` entries gain an optional `"growth": "fixed" | "dynamic"`
+  field, defaulting to `"fixed"` — every already-`Done` template (Customer/
+  Partner/Opportunity's own `log`/`captures`) is byte-identical, confirmed
+  by a new regression test. A `"dynamic"` entry (identified by its own
+  `"name"` key) declares `"folder"`/`"identity_fields"`/optional
+  `"frontmatter_defaults"`/`"sections"` — the real shape Thread's own
+  `messages/` folder needs (one new RawMessage note per captured email,
+  unbounded, over the Thread's whole lifetime), genuinely distinct from
+  the engine's existing FIXED-sibling children (a small, known-in-advance
+  set created once, atomically, at root-creation time). New verb
+  `create_dynamic_child(vault_path, template, root_id, child_name,
+  identity, frontmatter=None, sections=None)` (CLI: `create-child`):
+  never fabricates the root (resolves it via `find_by_id`, a real
+  `VaultManagerError` if it doesn't exist), idempotently looks up an
+  existing child by the declared `identity_fields` natural key before
+  ever writing a new one, and supports a genuinely unbounded number of
+  real children under its own subfolder (always a real directory listing,
+  never a fixed-size structure). `Hermes-Provisioning/shared/
+  vault_manager.py`'s own module docstring updated to describe the new
+  shape; `Hermes-Provisioning/shared/tests/test_vault_manager.py` gained
+  6 new tests (50/50 passing, up from 44/44). Also verified live via a
+  real scratch-vault CLI session: two separate root notes (one via an
+  auto-created `parent`, one top-level) each grew their own dynamic-child
+  folder independently with zero collision even under identical identity
+  values, a repeated `create-child` call was a real, confirmed no-op
+  (same path, one file on disk), and the engine's existing `parent`
+  link-back + fixed `log` sibling both composed correctly alongside the
+  new primitive with zero regression.
+
+- feat: `vault_manager.py` — `Template.json`-declared per-caller
+  section-write access (`REQ-SB-87-US-01-T02`, `ADR-017`), replacing
+  `email-thread-capture`'s own hand-rolled `vault_lib.py::
+  _CALLER_ALLOW_LISTS` Python dict with real template data. A section
+  entry in `root.sections` gains an optional `"allowed_callers":
+  [str, ...]` list alongside its existing `"access"` key. `create()`/
+  `modify_section()` gain a matching optional `caller: str | None`
+  parameter (CLI: `--caller`), threaded through to
+  `_require_machine_write(template, section, caller)`: when a section's
+  own `allowed_callers` is declared and non-empty, a write is refused
+  with a real `VaultManagerError` naming both the section and the
+  refused caller unless `caller` is on that list. A section with no
+  `allowed_callers` key stays open to any `machine_write` caller — zero
+  behavior change for every already-`Done` template.
+  `Hermes-Provisioning/shared/vault_manager.py`'s own module docstring
+  updated to describe the new field; `Hermes-Provisioning/shared/tests/
+  test_vault_manager.py` gained 2 new tests (52/52 passing, up from
+  50/50). Also verified live via a real scratch-vault CLI session
+  mirroring the real Thread template shape (`## Related` →
+  `link_person_to_thread` only, `## Files` →
+  `capture_attachments`/`capture_file_link` only, `## Summary` →
+  `apply_thread_review` only, `## Personal Notes` → `human_only`, no
+  exception): every allowed-caller write landed, every disallowed-caller
+  write was refused with the section and caller both named and the
+  section's prior content left genuinely untouched, and this composed
+  cleanly in the same session with `T01`'s dynamic-child primitive and
+  the engine's existing fixed-child/auto-created-parent/link-back
+  mechanisms with zero regression.
+
+- chore: `vault_manager.py` — canonical source (post-`T01`/`T02`,
+  dynamic children + per-caller access) resynced to all real deployed
+  copies (`REQ-SB-87-US-01-T03`) — operational hygiene enforcing the
+  already-Accepted "edit in exactly ONE place, then re-copy" convention,
+  no engine behavior change. Re-`find`-ing the real inventory live
+  (rather than trusting the earlier-illustrative three-copy assumption)
+  turned up 9 real repo copies (`Hermes-Provisioning/skills/**/scripts/
+  vault_manager.py`: `azure-kb-writer`, `compass-kb-writer`,
+  `research-kb-writer`, `capture-files`, `capture-notes`, `vault-index`,
+  `track-opportunities`, `create-companies-partners`, `meeting-capture`)
+  and 73 real, active deployed copies under the operator's actual Hermes
+  profile install (`%LOCALAPPDATA%\hermes\profiles\<profile>\skills\
+  ...\scripts\vault_manager.py`, `_disabled-skills*` folders correctly
+  excluded) — all 82 real copies confirmed SHA-256-identical to the
+  canonical source both before (all differed, expected — T01/T02 landed
+  only on the canonical file) and after (all 82 match) the resync. Live
+  smoke-tested `meeting-capture`'s own resynced deployed copy end-to-end
+  against a scratch vault (`find` → `create` → `modify-section`, no
+  `--caller` argument, mirroring `ingest_meeting.py`'s real call shape)
+  — succeeded unchanged, confirming the newer engine is a strict
+  superset for this existing real caller; confirmed no real `Template.
+  json` in the live vault declares `allowed_callers` yet (`T05` not yet
+  built), so every existing real caller of every resynced copy stays
+  fully unaffected today. All 9 resynced repo copies also confirmed to
+  run cleanly as standalone scripts (`--help`, exit 0).
+
+- feat: `thread` `Template.json` authored at the live vault path
+  (`.second-brain/data/Templates/thread/Template.json`,
+  `REQ-SB-87-US-01-T05`, `ADR-017`) — the first real, template-driven
+  expression of the Thread/RawMessage concept, matching
+  `email-thread-capture/scripts/vault_lib.py`'s own real frontmatter/body
+  shape exactly (`type`, `conversation_id`, `tags`, `thread_name`,
+  `last_message_at`, `last_summarized_at`; `## Summary`/`## Personal
+  Notes`/`## Actions`/`## Related` in real baseline order, plus `## Files`
+  now always declared — a disclosed, deliberate normalization matching
+  every other already-`Done` template), plus a new `classification`
+  frontmatter field reserved empty for `REQ-SB-87-US-03`'s own future
+  write. Per-caller section access (`T02`'s `allowed_callers`): `##
+  Related` → `link_person_to_thread` only, `## Files` →
+  `capture_attachments`/`capture_file_link` only, `## Summary`/`##
+  Actions` → `apply_thread_review` only (one caller, two sections — `##
+  Actions` is a deliberate narrowing from today's blanket
+  never-machine-writable rule, per `ADR-017`), `## Personal Notes` →
+  `"access": "human_only"`, refused unconditionally with no exception.
+  RawMessage is declared as a `growth: "dynamic"` child (`T01`'s
+  primitive) under `messages/`, keyed by `(conversation_id, message_id)`,
+  genuinely unbounded. No separate `raw-message` template was authored —
+  every real caller only ever reaches a RawMessage through its own parent
+  Thread, confirmed by direct reading of `vault_lib.py`'s own real call
+  graph. Verified live against a scratch vault (deleted after
+  verification) with a COPY of the real template, driving the real,
+  unmodified `vault_manager.py` (both a direct-import script and the CLI):
+  created a real Thread, confirmed frontmatter/section shape and order
+  byte-for-byte on disk, confirmed every declared per-caller allow-list
+  refuses/allows exactly as declared (including all five real
+  `email-thread-capture` script identities refused on `## Actions`, and
+  `## Personal Notes` refused for every caller with no exception), created
+  3 distinct real RawMessage children under the Thread's own real
+  `messages/` folder (unbounded), and confirmed a repeated call with the
+  same `(conversation_id, message_id)` returned the existing path with no
+  duplicate created.
+
+- chore: `ingest_meeting.py` (`meeting-capture`) / `create_companies_partners.py`
+  (`create-companies-partners`) retrofitted to pass an explicit `caller=`
+  identity on every `vm.create()`/`vm.modify_section()` call
+  (`REQ-SB-87-US-01-T04`, `ADR-017`'s own Consequences) — one stable
+  identity string per SCRIPT (`caller="ingest_meeting"`,
+  `caller="create_companies_partners"`), reused across every call site in
+  that script, never varied per call. Pure mechanical signature retrofit,
+  zero business-logic change: no Meeting/Customer/Partner/Affiliate
+  `Template.json` declares `allowed_callers` today, so this is a genuine
+  no-op at runtime, future-proofing both scripts against a later
+  `allowed_callers` declaration on their own templates. Verified live
+  against a scratch vault (seeded from the real `meeting`/`meeting-series`/
+  `customer`/`partner` Templates, deleted after verification): drove the
+  real, unmodified `ingest_meeting()` across a recurring series' first and
+  second occurrence plus a one-time meeting (exercising all 4 real call
+  sites — series create, occurrence create, `History` `modify_section`,
+  one-time create) and the real, unmodified `build()` across a top-level
+  Customer, an auto-created Affiliate-of parent, and an Affiliate (all 3
+  real call sites) — a scoped spy on `vm.create`/`vm.modify_section`
+  confirmed every one of the 7 real calls carried its own script's exact
+  caller identity, and the written notes' real frontmatter/section output
+  was byte-for-byte the same shape this project's own prior `T03`
+  no-`--caller` smoke test already established.
+
 - fix: `BUG-041` — exporting a Pipeline artifact (`.sbf`) never included
   the Skills/scripts that actually implement it. Root cause: the
   dependency resolver's Pipeline branch treated each `PipelineStep.id`
