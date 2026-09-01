@@ -357,3 +357,142 @@
    Provider picker rows (REQ-SB-18/REQ-SB-19) — same .input visual language,
    sized to sit inline in a .kv-row instead of taking the full row width. */
 .kv-select { width: auto; min-width: 160px; padding: 2px var(--space-2); font-size: var(--font-size-sm); }
+
+/* ==========================================================================
+   Generic popup shell (Modal.tsx, 2026-09-02, operator: "The Confirmation
+   should be a popup not in the header of the Page") — same overlay/header/
+   close/body/footer chrome as agent-panel.css's .field-editor-modal*, kept
+   as its own class family (this codebase's own "each feature owns its own
+   modal classes" convention, not a shared cross-feature class) since this
+   one's footer is fully caller-controlled rather than a fixed Save/Cancel.
+   ========================================================================== */
+.settings-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, black 55%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 70;
+}
+
+.settings-modal {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 60px color-mix(in srgb, var(--color-text) 20%, transparent);
+  width: min(720px, 94vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.settings-modal-close {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.settings-modal-close:hover { color: var(--color-text); }
+
+.settings-modal-description {
+  margin: 0;
+  padding: 0 var(--space-4);
+  padding-top: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.settings-modal-body {
+  padding: var(--space-4);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.settings-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+/* Artifacts browser (SettingsArtifactsPage.tsx redesign, 2026-09-02,
+   operator: "Same style as the Vault Settings ... side Panel that
+   contains the Items") — reuses .vault-settings-layout/-nav/-nav-item
+   VERBATIM (same grid/sticky-nav shape), but the nav items here are
+   local-state tab buttons (kind switches, all on one route), not
+   react-router Links — .artifacts-nav-item is a plain extension of
+   .vault-settings-nav-item, not a fork of it. */
+.artifacts-nav-item {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+}
+
+/* Compact row variant (operator, 2026-09-02: "Much Less Text for the
+   Items Name and id is enough ... make it look better like this is now
+   a sub menu for the content") — name + id only, tight single-line rows
+   read as the active nav tab's own submenu content rather than a
+   separate card list. A scoped modifier over the shared .item-list/
+   .item-row (settings.css's own "generic item list, reused across My
+   Day"), never edited directly — this page's own tighter density has
+   no bearing on those other, unrelated call sites. */
+.artifacts-item-list { gap: 1px; }
+
+.artifacts-item-row {
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border-radius: var(--radius-sm);
+}
+
+.artifacts-item-row:hover { background: var(--color-surface-raised); }
+
+.artifacts-item-row .item-row-main { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); }
+.artifacts-item-row .item-row-title { font-weight: 500; font-size: var(--font-size-sm); }
+.artifacts-item-row .item-row-meta { font-size: 12px; }
+.artifacts-item-row .item-row-locked-hint { font-size: 11px; margin-left: auto; }
+
+/* A dependency-only item (included_reason: "dependency") — checked and
+   disabled, never directly toggleable; only removing the selected item
+   that pulled it in clears it. Dims the row content, not the checkbox
+   itself, so "why is this greyed out" reads as "locked", not "broken". */
+.item-row--locked .item-row-title,
+.item-row--locked .item-row-meta {
+  opacity: 0.7;
+}
+
+.item-row-locked-hint {
+  color: var(--color-accent);
+  font-size: var(--font-size-sm);
+}
+
+/* Persistent selection/action bar under the tabbed browser — deliberately
+   NOT part of the page's own <h1> header (operator: "The Confirmation
+   should be a popup not in the header of the Page"); the actual multi-step
+   confirmation lives in Modal.tsx instead, this bar only ever holds the
+   running total + the two entry points (Cancel/Export…, Import…). */
+.artifacts-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
