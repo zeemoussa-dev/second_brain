@@ -234,19 +234,56 @@ def render_report(domains: dict[str, dict]) -> str:
     return "\n".join(lines)
 
 
+_ENTRY_HEADING_RE = re.compile(r"^### ", re.M)
+
+
+def _existing_entry_count(path: Path) -> int:
+    """Cheap non-emptiness check, not a real parse -- this script only
+    ever needs to know "is there already real curation here", never the
+    entries themselves. Any real `### <name>` heading counts, in either
+    section; a not-yet-created file or a bare, entry-less template (the
+    genuine first-seed case) both count as zero."""
+    if not path.exists():
+        return 0
+    return len(_ENTRY_HEADING_RE.findall(path.read_text(encoding="utf-8-sig")))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--vault-path", required=True)
     parser.add_argument("--output-name", default="Entities.md")
+    parser.add_argument(
+        "--force", action="store_true",
+        help="Overwrite an already-curated Entities.md. Without this flag, "
+             "the script refuses (real curation -- Ignore flags, Affiliate "
+             "of, merged Aliases -- would be silently destroyed by this "
+             "script's own full-rewrite design otherwise; found live "
+             "2026-09-02, see MEMORY.md).",
+    )
     args = parser.parse_args()
 
     vault_path = Path(args.vault_path)
-    result = build_report(vault_path)
-    report_text = render_report(result["domains"])
-
     # Settings/Entities.md under .second-brain -- see find_new_entities.py's
     # own comment for the full 2026-08-27 relocation reasoning.
     output_path = vault_path / ".second-brain" / "Settings" / args.output_name
+
+    existing_count = _existing_entry_count(output_path)
+    if existing_count and not args.force:
+        print(json.dumps({
+            "error": "refused: Entities.md already has real curated entries",
+            "report_path": str(output_path),
+            "existing_entries": existing_count,
+            "hint": "This is Step 1, a ONE-TIME first seed for a genuinely "
+                    "new vault -- it always does a full rewrite, which would "
+                    "destroy real curation (Ignore flags, Affiliate of, "
+                    "merged Aliases) already in this file. Pass --force only "
+                    "if you genuinely want to discard everything currently "
+                    "in it and start over.",
+        }))
+        return 1
+
+    result = build_report(vault_path)
+    report_text = render_report(result["domains"])
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(report_text, encoding="utf-8")
 
@@ -254,6 +291,7 @@ def main() -> int:
         "report_path": str(output_path),
         "companies_found": len(result["domains"]),
         "threads_scanned": result["threads_scanned"],
+        "overwrote_existing_entries": existing_count,
     }))
     return 0
 

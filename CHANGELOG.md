@@ -4732,3 +4732,29 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   app-only guide, whose "hourly APScheduler capture" claim is now stale —
   capture is 100% Hermes cron jobs) marked superseded, not deleted, with
   its own stale section corrected in place.
+
+- fix: `create_companies_partners_runner.py`'s `VAULT_PATH` is now read
+  from `SECOND_BRAIN_VAULT_PATH` (falling back to this machine's own real
+  path) instead of a bare hardcoded literal — a real landmine for
+  onboarding a second person, found while scoping a multi-person
+  deployment. `index_adnoc.py`/`index_masdar.py`/`index_taqa.py`/
+  `personal_sync_runner.py` deliberately left untouched — personal,
+  account-specific jobs, not part of the generic/reusable layer.
+
+- fix: `build_entities_report.py` (entity-domain-extraction Step 1) now
+  refuses to overwrite an `Entities.md` that already has real curated
+  entries unless `--force` is passed — root-causes today's earlier
+  "Entities.md came back to the vault" episode (this script's own
+  always-full-rewrite design had no guard against a re-run, stale-path or
+  not, destroying real curation) and doubles as the real "seed a new
+  person's fresh vault safely" mechanism. Verified live: refused against
+  the real vault (48 entries, file untouched); succeeded against a fresh
+  scratch vault. Resynced to all 36 real deployed copies. See `MEMORY.md`.
+
+- Found, not yet fixed, disclosed: `create_companies_partners.py`'s Pass
+  2 affiliate resolution has no concept of a real 3-level company
+  hierarchy (`G42 -> M42 -> Diaverum`, all real data) — crashes on a
+  duplicate-title guard instead of resolving the known intermediate
+  parent. Pre-existing, not caused by today's work; surfaced by a routine
+  post-fix verification trigger. `create-companies-partners` will keep
+  failing every run until this is fixed. See `MEMORY.md`/`REVIEW-QUEUE.md`.
