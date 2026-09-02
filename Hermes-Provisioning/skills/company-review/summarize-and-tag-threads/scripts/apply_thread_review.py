@@ -45,6 +45,51 @@ THIS person's own email match a real hub note's own domain) and lives in
 create-companies-partners's own retag_people_by_domain, run once,
 idempotently, independent of any Thread content.
 
+`vault_manager.py`-based migration, ## Summary write + stamping only
+(2026-09-01, `REQ-SB-87-US-04-T01`): the Thread's "## Summary" write and
+its `last_message_at`/`last_summarized_at` stamping now go through the
+newly-deployed `vault_manager.py` copy in this Skill's own `scripts/`
+folder (`vm.modify_section`, `caller="apply_thread_review"`, per the
+Thread template's own declared `allowed_callers`; `vm.update` for
+stamping) instead of this file's own hand-rolled `insert_body_section_
+if_missing`/`replace_body_section`/`upsert_frontmatter_key`. A real
+Thread written before this migration carries no `id` frontmatter field
+at all -- the first migrated write to touch it mints one (`uuid4`) and
+backfills it via `vm.update`, matching `vault_manager.py`'s own stated
+id philosophy ("a NEW field no existing content has yet"); every later
+run reads that same id back. Company resolution and log-entry logic are
+UNCHANGED, still using this file's own hand-rolled `read_note` primitive
+below -- tag merging itself moves onto `vault_manager.py` at
+`REQ-SB-87-US-04-T02` (see below, now done).
+
+Tag-merge migration (2026-09-01, `REQ-SB-87-US-04-T02`): the Thread's own
+and every RawMessage's own `tags` frontmatter merge now goes through
+`vault_manager.py`'s shared `merge_tags` (the SAME real primitive
+`create_companies_partners.py` already uses) instead of this file's own
+hand-rolled `merge_tags` -- removed, zero remaining callers. Same
+contract: unions new tags into the existing `tags` list, never removes
+one, returns whether anything actually changed. Company resolution
+(`build_company_index`/`resolve_companies`), the never-tag-Person-notes
+rule, and `append_log_entry`'s own append/re-sort logic are UNCHANGED,
+still hand-written below -- this task's own scope only ever touches the
+tag-WRITE primitive each one's caller uses.
+
+Section-access convergence (2026-09-01, `REQ-SB-87-US-04-T03`): this
+file's own separate `_HUMAN_OWNED_HEADERS`/`_CALLER` guard and its local
+`replace_body_section`/`insert_body_section_if_missing` writers are
+removed -- every section write this script performs (`## Summary`,
+`T01`) already goes exclusively through `vm.modify_section`, which
+enforces access purely from the Thread template's own `allowed_callers`/
+`access: human_only` declarations (`REQ-SB-87-US-01-T05`, `ADR-017`). A
+`## Personal Notes` write attempted through `vm.modify_section` is
+refused with a real `VaultManagerError` -- the template's own
+`"access": "human_only"` declaration, not any code local to this file.
+`upsert_frontmatter_key` (superseded by `vm.update` at `T01`) and its
+now-orphaned `_format_frontmatter_value`/`_BODY_SECTION_HEADER_PATTERN`
+helpers are also removed -- zero remaining callers, a disclosed
+dead-code cleanup, not a behavior change (extends `T02`'s own precedent
+for the local `merge_tags` removal).
+
 Usage:
     python apply_thread_review.py --vault-path P --input-file F
 
@@ -69,30 +114,25 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import uuid
 from datetime import datetime
 from pathlib import Path
 
+import vault_manager as vm
+
 _FRONTMATTER_LINE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*):\s?(.*)$")
 _LIST_ITEM_PATTERN = re.compile(r'"((?:[^"\\]|\\.)*)"')
-_BODY_SECTION_HEADER_PATTERN = re.compile(r"^## .+$", re.MULTILINE)
 _LOG_LINE_PATTERN = re.compile(r"^- (\d{4}-\d{2}-\d{2}): (.+)$")
 
-_CALLER = "apply_thread_review.apply_thread_review"
-_HUMAN_OWNED_HEADERS = frozenset({"## Personal Notes", "## Actions"})
+_THREAD_TEMPLATE_ID = "thread"
+# The Thread template's own declared `allowed_callers` name for "## Summary"
+# (and "## Actions", T02+ scope) -- REQ-SB-87-US-04-T01, ADR-017.
+_VM_CALLER = "apply_thread_review"
 
 
 def _tag_slug(text: str) -> str:
     slug = re.sub(r"[^a-z0-9/]+", "-", text.lower()).strip("-")
     return slug or "untitled"
-
-
-def _format_frontmatter_value(value) -> str:
-    if isinstance(value, list):
-        return "[" + ", ".join(_format_frontmatter_value(v) for v in value) + "]"
-    if isinstance(value, str):
-        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-        return f'"{escaped}"'
-    return str(value)
 
 
 def _parse_frontmatter_value(raw: str):
@@ -123,92 +163,6 @@ def read_note(path: Path) -> tuple[dict, str]:
         if match:
             frontmatter[match.group(1)] = _parse_frontmatter_value(match.group(2))
     return frontmatter, body
-
-
-def merge_tags(path: Path, new_tags: list[str]) -> bool:
-    """Unions new_tags into path's own `tags` frontmatter list (creating
-    it if absent), preserving every other line -- including the body --
-    byte-for-byte. Returns True if the file was changed."""
-    frontmatter, _ = read_note(path)
-    existing = list(frontmatter.get("tags") or [])
-    merged = existing + [tag for tag in new_tags if tag not in existing]
-    if merged == existing:
-        return False
-    text = path.read_text(encoding="utf-8")
-    end = text.find("\n---\n", 4)
-    if end == -1:
-        return False
-    frontmatter_block = text[: end + 1]
-    rest = text[end + 1:]
-    lines = frontmatter_block.splitlines(keepends=True)
-    new_line = f"tags: {_format_frontmatter_value(merged)}\n"
-    replaced = False
-    for i, line in enumerate(lines):
-        match = _FRONTMATTER_LINE.match(line.rstrip("\n"))
-        if match and match.group(1) == "tags":
-            lines[i] = new_line
-            replaced = True
-            break
-    if not replaced:
-        lines.insert(-1, new_line)  # just before the closing "---\n"
-    path.write_text("".join(lines) + rest, encoding="utf-8")
-    return True
-
-
-def upsert_frontmatter_key(path: Path, key: str, value) -> bool:
-    """2026-08-21, operator: recurring runs need to tell "already
-    summarized, no new message since" apart from "needs a summary"
-    without re-reading every Thread's body -- this sets last_message_at/
-    last_summarized_at (see apply_thread_review below). Returns False,
-    no-op, if the key already holds this exact value."""
-    frontmatter, _ = read_note(path)
-    if key in frontmatter and frontmatter[key] == value:
-        return False
-    text = path.read_text(encoding="utf-8")
-    end = text.find("\n---\n", 4)
-    if end == -1:
-        return False
-    frontmatter_block = text[: end + 1]
-    rest = text[end + 1:]
-    lines = frontmatter_block.splitlines(keepends=True)
-    new_line = f"{key}: {_format_frontmatter_value(value)}\n"
-    replaced = False
-    for i, line in enumerate(lines):
-        match = _FRONTMATTER_LINE.match(line.rstrip("\n"))
-        if match and match.group(1) == key:
-            lines[i] = new_line
-            replaced = True
-            break
-    if not replaced:
-        lines.insert(-1, new_line)
-    path.write_text("".join(lines) + rest, encoding="utf-8")
-    return True
-
-
-def insert_body_section_if_missing(path: Path, header: str) -> bool:
-    text = path.read_text(encoding="utf-8")
-    header_line_pattern = re.compile(r"^" + re.escape(header) + r"$", re.MULTILINE)
-    if header_line_pattern.search(text) is not None:
-        return False
-    separator = "" if text.endswith("\n") else "\n"
-    path.write_text(text + separator + f"\n{header}\n", encoding="utf-8")
-    return True
-
-
-def replace_body_section(path: Path, header: str, new_content: str, *, caller: str) -> bool:
-    if header in _HUMAN_OWNED_HEADERS or caller != _CALLER:
-        raise PermissionError(f"caller {caller!r} is not allowed to write {header!r}")
-    text = path.read_text(encoding="utf-8")
-    header_line_pattern = re.compile(r"^" + re.escape(header) + r"$", re.MULTILINE)
-    header_match = header_line_pattern.search(text)
-    if header_match is None:
-        return False
-    region_start = header_match.end()
-    next_header_match = _BODY_SECTION_HEADER_PATTERN.search(text, region_start)
-    region_end = next_header_match.start() if next_header_match else len(text)
-    new_text = text[:region_start] + "\n\n" + new_content.strip("\n") + "\n\n" + text[region_end:]
-    path.write_text(new_text, encoding="utf-8")
-    return True
 
 
 # ── company resolution ──────────────────────────────────────────────────
@@ -294,10 +248,24 @@ def apply_thread_review(vault_path: Path, data: dict) -> dict:
     resolved, unresolved = resolve_companies(vault_path, company_names)
     tags = [f"{kind}/{slug}" for kind, slug, _ in resolved]
 
-    insert_body_section_if_missing(thread_path, "## Summary")
-    replace_body_section(thread_path, "## Summary", summary, caller=_CALLER)
+    thread_template = vm.load_template(vault_path, _THREAD_TEMPLATE_ID)
+    thread_frontmatter, _ = vm.read_note(thread_path)
+    thread_id = thread_frontmatter.get("id")
+    if not thread_id:
+        # A real Thread written before this migration carries no `id`
+        # field at all (confirmed live, 2026-09-01) -- mint one now and
+        # persist it, so vault_manager.py's own id-based `find_by_id`
+        # (what `modify_section` below resolves through) has a real key
+        # to find THIS exact note by. Every later run against this same
+        # Thread reads this same id back.
+        thread_id = str(uuid.uuid4())
+        vm.update(vault_path, thread_path, frontmatter={"id": thread_id})
+    vm.modify_section(
+        vault_path, thread_template, section="Summary", content=summary, mode="replace",
+        note_id=thread_id, caller=_VM_CALLER,
+    )
     if tags:
-        merge_tags(thread_path, tags)
+        vm.merge_tags(thread_path, tags)
 
     # 2026-08-21 bug fix: this used to ALSO tag every Person linked from
     # each message with the Thread's own company tags -- wrong (operator:
@@ -317,7 +285,7 @@ def apply_thread_review(vault_path: Path, data: dict) -> dict:
         for message_path in sorted(messages_dir.glob("*.md")):
             if not message_path.is_file():
                 continue
-            if merge_tags(message_path, tags):
+            if vm.merge_tags(message_path, tags):
                 messages_tagged += 1
 
     # log date: the Thread's own latest message date, matching
@@ -336,11 +304,16 @@ def apply_thread_review(vault_path: Path, data: dict) -> dict:
     # applied, so a future recurring run can skip this Thread outright
     # (last_summarized_at >= last_message_at) instead of re-reading it --
     # and correctly re-flags it the moment a genuinely new message's own
-    # last_message_at moves past this run's last_summarized_at.
-    if last_message_at:
-        upsert_frontmatter_key(thread_path, "last_message_at", last_message_at)
+    # last_message_at moves past this run's last_summarized_at. REQ-SB-87-
+    # US-04-T01: now one vault_manager.py `update()` call -- `last_message_at`
+    # only included when applicable (a real value was actually derived from
+    # a message above), `last_summarized_at` always, mirroring the original
+    # `if last_message_at:` guard exactly.
     last_summarized_at = datetime.now().isoformat(timespec="seconds")
-    upsert_frontmatter_key(thread_path, "last_summarized_at", last_summarized_at)
+    stamp_frontmatter = {"last_summarized_at": last_summarized_at}
+    if last_message_at:
+        stamp_frontmatter["last_message_at"] = last_message_at
+    vm.update(vault_path, thread_path, frontmatter=stamp_frontmatter)
 
     thread_wikilink = f"[[{thread_path.stem}]]"
     log_entries_added = []

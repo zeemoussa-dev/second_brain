@@ -4,9 +4,9 @@ title: Migrate summarize-and-tag-threads' write mechanics (apply_thread_review.p
 requirement_ids: [REQ-SB-87]
 requirement_section: "REQ-SB-87: Email Thread Capture — a New, LLM-Driven Pipeline (Classify, Skip Noise, Summarize, Find Pending Actions)"
 phase: P1
-status: Ready
-gate: clear
-gate_reason: "Production-risk trigger resolved by applying the operator's own already-locked rollout decision (REQ-SB-87-US-02's 100-email scratch-sample proving phase — PRD raised-context point 2 confirms this applies to the whole requirement's scope, not just that one story). The 'is Summary actually broken' question is resolved by direct diagnosis in Context, not left open. No other trigger fired."
+status: Done
+gate: flagged
+gate_reason: "Story-level production-risk trigger already resolved (see original text below). Now flagged for a NEW reason, `T04`'s own: two disclosed scope-internal judgment calls made during real-vault cutover verification (the never-yet-processed real Thread was NOT processed; the live job4 cron job was NOT manually triggered end-to-end, since its own real next batch would perform out-of-scope backfill work) — both resolved by favoring T04's own explicit Out of Scope boundary, both backed by direct real-vault evidence. See T04's own Implementation Log for the full reconciliation."
 sprint: "SPRINT-083"
 created: 2026-09-01
 updated: 2026-09-01
@@ -292,3 +292,86 @@ retrofit check + cutover. Every locked AC has at least one AC-tagged
 verification step, `depends_on` is acyclic — `status` advances `Draft →
 Ready`, all 4 tasks written at `status: Ready`. `gate` left untouched
 (`clear`, already resolved by direct diagnosis).
+
+**Coder pass (2026-09-01), `T01` Done:** deployed the first-ever
+`vault_manager.py` copy to `summarize-and-tag-threads/scripts/`; migrated
+`apply_thread_review.py`'s own `## Summary` write and `last_message_at`/
+`last_summarized_at` stamping onto `vault_manager.py`'s
+`modify_section`/`update`. `REQ-SB-87-US-04-AC-02` fully verified live
+against a scratch vault; `AC-01`'s Summary-write half verified live
+(company resolution/tag/log-entry half stays `T02`'s own scope). A real,
+disclosed gap found live against the real vault: existing Threads carry
+no `id` frontmatter field at all yet — resolved by minting+backfilling a
+`uuid4` on first migrated touch, logged as a scope-internal judgment call
+in `T01`'s own Implementation Log (not a flag trigger). Story status
+advances `Ready → In Progress` (`T02`-`T04` remain). See `T01`'s own file
+for the full live-verification record.
+
+**Coder pass (2026-09-01), `T02` Done:** migrated `apply_thread_review.
+py`'s own Thread + RawMessage tag-merge calls onto `vault_manager.py`'s
+shared `merge_tags` primitive; removed the file's own now-fully-dead local
+`merge_tags` function (zero remaining callers, logged as a scope-internal
+judgment call in `T02`'s own Implementation Log). Company resolution, the
+never-tag-Person-notes rule, and `append_log_entry`'s own append/re-sort
+logic are byte-for-byte unchanged. `REQ-SB-87-US-04-AC-01` fully closed
+out (combined with `T01`'s own Summary-write half); `AC-03`/`AC-04`/
+`AC-05` all verified live and pass — including a real out-of-order
+log-entry arrival landing in the correct sorted position, and two real
+Person notes confirmed byte-identical before/after despite being linked
+from tagged Threads/messages. Story remains `In Progress` (`T03`-`T04`
+remain). See `T02`'s own file for the full live-verification record.
+
+**Coder pass (2026-09-01), `T03` Done:** removed `apply_thread_review.
+py`'s own now fully-superseded `_HUMAN_OWNED_HEADERS`/`_CALLER` guard and
+its local `replace_body_section`/`insert_body_section_if_missing`
+writers — every section write this script performs already went
+exclusively through `vm.modify_section` (`T01`), so the local guard was
+dead weight; also removed `upsert_frontmatter_key` and its now-orphaned
+`_format_frontmatter_value`/`_BODY_SECTION_HEADER_PATTERN` helpers (zero
+remaining callers, disclosed dead-code cleanup, extends `T02`'s own
+precedent). Reconciled the `ADR-017` caller-identity question directly:
+`## Actions` shares the SAME `apply_thread_review` caller identity as
+`## Summary` (confirmed against `ADR-017` and the real, live vault's own
+Thread `Template.json`), not a different future caller — unaffected
+either way since this task's own locked scope never exercises `##
+Actions`. `REQ-SB-87-US-04-AC-06` fully verified live (both halves: `##
+Summary` still writes successfully; a disposable throwaway script's
+attempted `## Personal Notes` write via the real `vm.modify_section` was
+refused with a real `VaultManagerError`, enforced solely by
+`vault_manager.py`'s own template-declared access control). A full
+regression re-run of `T01`/`T02`'s own scenarios against a fresh scratch
+vault confirmed zero regression across `AC-01`-`AC-05`. Story remains
+`In Progress` (`T04` — real-vault retrofit/cutover — remains). See `T03`'s
+own file for the full live-verification record.
+
+**Coder pass (2026-09-01), `T04` Done -- story now `Done`.** Deployed the
+fully-migrated `apply_thread_review.py` + `vault_manager.py` to the real,
+active Hermes profile location this Skill actually runs from (previously
+holding only the pre-migration script, no `vault_manager.py` copy at
+all) -- byte-identical to the repo copies, confirmed by diff.
+`REQ-SB-87-US-04-AC-07` verified live, read-then-compare, against the
+REAL vault (`C:\myWorx\Moussa MD\Moussa Brain`): ran the deployed,
+migrated script against two real, already-`job4`-processed Threads
+("Masdar Open Items", "TAQA") reusing their own already-applied
+summary/companies verbatim -- both real runs produced a clean diff (only
+`last_summarized_at` advancing + a real, previously-absent `id` minted;
+`## Summary`, tags, and both companies' own `<Name>-log.md` files
+byte-identical before/after -- zero duplicate log entries, zero lost
+content). Cutover confirmed: `job4-summarize-tag-threads`'s own real cron
+prompt has always targeted the real vault directly (no separate
+`--vault-path` job-definition argument exists for this Skill to edit --
+a real, disclosed divergence from `REQ-SB-87-US-02-T05`'s own task text,
+which assumes a literal argument change; recorded in `MEMORY.md` for that
+still-`Ready` sibling task). **Two scope-internal judgment calls
+disclosed, story gate set to `flagged` for human spot-check:** (1) the
+one real, never-yet-summarized Thread named in this story's own coverage-
+gap note was deliberately NOT processed (real per-Thread judgment stays
+the agent's/operator's job, and this task's own Out of Scope excludes
+backfill); (2) the live `job4` cron job was NOT manually triggered
+end-to-end, since a real scan found ~27 real Threads currently satisfy
+its own skip rule's "needs summarizing" condition -- an uncontrolled real
+trigger would have performed genuine backfill work this task's own Out
+of Scope explicitly excludes. Both resolved by direct, bounded, real-
+vault evidence instead (above). All 4 tasks (`T01`-`T04`) now `Done`, all
+7 locked ACs (`AC-01`-`AC-07`) verified live. See `T04`'s own file for
+the full record.
