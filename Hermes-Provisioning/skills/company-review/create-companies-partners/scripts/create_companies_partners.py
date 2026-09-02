@@ -813,6 +813,7 @@ def build(vault_path: Path, entities_path: Path) -> dict:
     created: list[str] = []
     skipped_ignored: list[str] = []
     skipped_already: list[str] = []
+    skipped_unresolved: list[str] = []  # a real cycle in its own Affiliate-of chain -- never fabricated, always reported
     auto_created_parents: list[str] = []
     people_moved_total = 0
 
@@ -844,7 +845,122 @@ def build(vault_path: Path, entities_path: Path) -> dict:
         entry["fields"]["Created"] = "Yes"
         created.append(name)
 
-    # Pass 2: affiliates (needs pass 1's resolved parent paths)
+    # Pass 2: affiliates (recursive resolution -- an entry's own "Affiliate
+    # of" parent may ITSELF be another affiliate, not just a top-level
+    # entry: real, live data has genuine 3-level chains, e.g.
+    # G42 -> M42 -> Diaverum. The original flat single-pass version only
+    # ever checked already-resolved top-level entries, so a real
+    # affiliate-of-an-affiliate silently fell into the "unknown parent"
+    # branch below and crashed trying to re-create an already-existing
+    # note (found live 2026-09-02). `_resolve_affiliate_entry` resolves
+    # (and creates, if needed) on demand, memoizing into `top_level_paths`
+    # so file order between a child and its own multi-level parent never
+    # matters, and refuses to recurse through a real cycle
+    # (A affiliate-of B affiliate-of ... A) rather than looping forever.
+    entries_by_name: dict[str, dict] = {}
+    for entry in entries:
+        entries_by_name.setdefault(_entry_name(entry).lower(), entry)
+
+    def _resolve_affiliate_entry(entry: dict, resolving: set[str]) -> tuple[Path, Path, str] | None:
+        """Returns this entry's real (folder, md_path, section), creating
+        it -- and, recursively, any of its own unresolved affiliate
+        parents -- as needed. Returns None if this entry cannot be
+        resolved at all: a real cycle in its own Affiliate-of chain
+        (A affiliate-of B affiliate-of ... A), or a chain that runs
+        through an Ignored entry. Critically, None here means NOTHING is
+        created for this entry -- the caller must never treat None as
+        "unknown, go auto-create a placeholder" once the parent NAME was
+        found among real entries; that distinction is what stops a real
+        cycle from silently producing a duplicate/orphaned placeholder
+        note instead of a clean refusal (found live testing this fix,
+        2026-09-02 -- the first version of this recursion conflated the
+        two and duplicated a note under a fabricated placeholder for
+        exactly this case)."""
+        name = _entry_name(entry)
+        key = name.lower()
+        if key in top_level_paths:
+            return top_level_paths[key]
+        if key in resolving:
+            return None  # real cycle -- refuse to recurse forever
+        if entry["fields"].get("Ignore", "No").strip().lower() == "yes":
+            return None  # same precedent Pass 1 already sets: an ignored entry is never a usable parent
+        resolving.add(key)
+        try:
+            affiliate_of = (entry["fields"].get("Affiliate of") or "").strip()
+            if not affiliate_of:
+                return None  # a blank-Affiliate-of entry only ever gets here via the placeholder path below, which returns before recursing further; kept honest, not expected in practice
+            parent_key = affiliate_of.lower()
+            parent = top_level_paths.get(parent_key)
+            if parent is None:
+                parent_entry = entries_by_name.get(parent_key)
+                if parent_entry is not None:
+                    # A REAL, known entry names this parent -- resolve it
+                    # recursively. If THAT fails (cycle/ignore), this entry
+                    # is unresolvable too -- refuse cleanly, never fall
+                    # through to auto-creating a placeholder under a name
+                    # that's already a real, known (if currently stuck)
+                    # entry elsewhere in the file.
+                    parent = _resolve_affiliate_entry(parent_entry, resolving)
+                    if parent is None:
+                        skipped_unresolved.append(name)
+                        return None
+                else:
+                    # Genuinely unknown parent name -- not a single entry
+                    # anywhere in the file references it. 2026-08-21,
+                    # operator: "Add the Parent if it's not in the file, it
+                    # will come later when we start Parsing the files" --
+                    # auto-create a bare top-level placeholder (no domain,
+                    # no aliases -- we don't know them yet) rather than
+                    # skip the child.
+                    parent_section = entry["section"]
+                    parent_md = _hub_path(vault_path, affiliate_of, parent_section)
+                    if not parent_md.exists():
+                        vm.create(
+                            vault_path, _template_for(parent_section), title=affiliate_of, note_name=_hub_root(parent_section),
+                            caller=_VM_CALLER,
+                        )
+                    placeholder_entry = {
+                        "section": parent_section,
+                        "heading": affiliate_of,
+                        "fields": {"Company Name": affiliate_of, "Aliases": "", "Affiliate of": "", "Created": "Yes", "Ignore": "No", "Domain": ""},
+                    }
+                    entries.append(placeholder_entry)
+                    entries_by_name.setdefault(parent_key, placeholder_entry)
+                    parent = (parent_md.parent, parent_md, parent_section)
+                    top_level_paths[parent_key] = parent
+                    created.append(affiliate_of)
+                    auto_created_parents.append(affiliate_of)
+            parent_folder, parent_md, parent_section = parent
+            affiliate_md = _affiliate_path(parent_folder, name)
+            already = entry["fields"].get("Created", "No").strip().lower() == "yes"
+            if not affiliate_md.exists():
+                # parent_value=affiliate_of -- the engine's own resolve_parent
+                # finds parent_md (already guaranteed to exist above), auto-
+                # derives note_name from it (_child_note_name), and writes
+                # the "## Affiliates" back-link onto parent_md itself
+                # (parent.link_back_section) -- replaces this file's own
+                # former hand-rolled link_affiliate_to_parent entirely.
+                vm.create(
+                    vault_path, _template_for(parent_section), title=name,
+                    frontmatter=_hub_frontmatter(name, entry["fields"].get("Domain", ""), entry["fields"].get("Aliases", "")),
+                    parent_value=affiliate_of,
+                    caller=_VM_CALLER,
+                )
+            result = (affiliate_md.parent, affiliate_md, parent_section)
+            top_level_paths[key] = result
+            if already:
+                skipped_already.append(name)
+            else:
+                nonlocal people_moved_total
+                people_moved_total += move_people_for_domain(
+                    vault_path, entry["fields"].get("Domain", ""), affiliate_md.parent / "People", affiliate_md, parent_section,
+                )
+                entry["fields"]["Created"] = "Yes"
+                created.append(name)
+            return result
+        finally:
+            resolving.discard(key)
+
     for entry in entries:
         affiliate_of = (entry["fields"].get("Affiliate of") or "").strip()
         if not affiliate_of:
@@ -853,61 +969,7 @@ def build(vault_path: Path, entities_path: Path) -> dict:
         if entry["fields"].get("Ignore", "No").strip().lower() == "yes":
             skipped_ignored.append(name)
             continue
-        parent = top_level_paths.get(affiliate_of.lower())
-        if parent is None:
-            # 2026-08-21, operator: "Add the Parent if it's not in the
-            # file, it will come later when we start Parsing the files"
-            # -- auto-create a bare top-level placeholder (no domain, no
-            # aliases -- we don't know them yet) in the SAME section as
-            # the child that named it, rather than skipping the child.
-            # vault_manager's own create() would also auto-create a
-            # blank parent via parent.on_missing="auto_create" if this
-            # were left for it to discover on its own further down --
-            # resolved explicitly here instead because Entities.md also
-            # needs a matching placeholder ROW, which the engine has no
-            # way to know about. Step 4 (or the operator by hand) fills
-            # in the placeholder's own details later; it's still real
-            # enough to nest an Affiliate under today.
-            parent_section = entry["section"]
-            parent_md = _hub_path(vault_path, affiliate_of, parent_section)
-            if not parent_md.exists():
-                vm.create(
-                    vault_path, _template_for(parent_section), title=affiliate_of, note_name=_hub_root(parent_section),
-                    caller=_VM_CALLER,
-                )
-            parent_entry = {
-                "section": parent_section,
-                "heading": affiliate_of,
-                "fields": {"Company Name": affiliate_of, "Aliases": "", "Affiliate of": "", "Created": "Yes", "Ignore": "No", "Domain": ""},
-            }
-            entries.append(parent_entry)
-            top_level_paths[affiliate_of.lower()] = (parent_md.parent, parent_md, parent_section)
-            created.append(affiliate_of)
-            auto_created_parents.append(affiliate_of)
-            parent = top_level_paths[affiliate_of.lower()]
-        parent_folder, parent_md, parent_section = parent
-        affiliate_md = _affiliate_path(parent_folder, name)
-        already = entry["fields"].get("Created", "No").strip().lower() == "yes"
-        if not affiliate_md.exists():
-            # parent_value=affiliate_of -- the engine's own resolve_parent
-            # finds parent_md (already guaranteed to exist above), auto-
-            # derives note_name from it (_child_note_name), and writes
-            # the "## Affiliates" back-link onto parent_md itself
-            # (parent.link_back_section) -- replaces this file's own
-            # former hand-rolled link_affiliate_to_parent entirely.
-            vm.create(
-                vault_path, _template_for(parent_section), title=name,
-                frontmatter=_hub_frontmatter(name, entry["fields"].get("Domain", ""), entry["fields"].get("Aliases", "")),
-                parent_value=affiliate_of,
-                caller=_VM_CALLER,
-            )
-        if already:
-            skipped_already.append(name)
-            continue
-        moved = move_people_for_domain(vault_path, entry["fields"].get("Domain", ""), affiliate_md.parent / "People", affiliate_md, parent_section)
-        people_moved_total += moved
-        entry["fields"]["Created"] = "Yes"
-        created.append(name)
+        _resolve_affiliate_entry(entry, set())
 
     entities_path.write_text(render_entities(entries), encoding="utf-8")
 
@@ -925,6 +987,12 @@ def build(vault_path: Path, entities_path: Path) -> dict:
         "auto_created_parents": auto_created_parents,
         "skipped_ignored": skipped_ignored,
         "skipped_already": skipped_already,
+        # dict.fromkeys, not set() -- a cycle's own entries can each be
+        # visited more than once (direct outer-loop traversal AND
+        # recursion from the other cycle member), appending the same name
+        # more than once; de-duped here, preserving first-seen order,
+        # rather than at every append site.
+        "skipped_unresolved": list(dict.fromkeys(skipped_unresolved)),
         "people_moved": people_moved_total,
         "people_retagged": len(retag_result["tagged"]),
         "people_relinked": len(retag_result["linked"]),

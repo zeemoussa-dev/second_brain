@@ -9099,26 +9099,3 @@ each story's own `## Notes` for the authorization breadcrumb.)
   the `link_opportunity.py` stdout-encoding finding.
   → `Implementation/Sprints/SPRINT-085-summarize-and-tag-files-and-track-opportunities-vault-manager-migration.md`
 
-- [ ] 2026-09-02 · **create-companies-partners cron job** · Pass 2's
-  affiliate resolution can't handle a real 3-level company hierarchy —
-  the job is currently failing every run
-  Plain English: `create_companies_partners.py`'s own affiliate-resolution
-  logic only ever looks up a parent among already-processed TOP-LEVEL
-  entries. Real, live-curated data now has a genuine 3-level chain (`G42
-  -> M42 -> Diaverum`) — M42 is itself an affiliate of G42, not top-level,
-  so the lookup misses and the "unknown parent, auto-create a placeholder"
-  fallback fires instead, tries to create a note titled "M42" that already
-  exists, and crashes (`VaultManagerError: ... this template refuses to
-  create a duplicate`). Found live triggering a routine post-fix
-  verification run, NOT caused by anything changed today — a pre-existing
-  gap that only started failing once real data crossed into 3-level
-  territory. Directly relevant to the CBO's own future onboarding too:
-  any real company hierarchy deeper than two levels will hit the same wall.
-  **What to do:** decide whether to fix Pass 2 now (real logic work — needs
-  to resolve a parent recursively against ANY entry in the file, not just
-  already-processed top-level ones, with cycle protection for a bad
-  A-affiliate-of-B-affiliate-of-A loop) or accept the job staying broken
-  for now. Until fixed, either avoid triggering this cron job, or expect
-  every run to fail with this same error.
-  → `Hermes-Provisioning/skills/company-review/create-companies-partners/scripts/create_companies_partners.py`
-

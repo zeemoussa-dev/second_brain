@@ -4751,10 +4751,26 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   the real vault (48 entries, file untouched); succeeded against a fresh
   scratch vault. Resynced to all 36 real deployed copies. See `MEMORY.md`.
 
-- Found, not yet fixed, disclosed: `create_companies_partners.py`'s Pass
-  2 affiliate resolution has no concept of a real 3-level company
-  hierarchy (`G42 -> M42 -> Diaverum`, all real data) — crashes on a
-  duplicate-title guard instead of resolving the known intermediate
-  parent. Pre-existing, not caused by today's work; surfaced by a routine
-  post-fix verification trigger. `create-companies-partners` will keep
-  failing every run until this is fixed. See `MEMORY.md`/`REVIEW-QUEUE.md`.
+- fix: `create_companies_partners.py`'s Pass 2 affiliate resolution now
+  handles a real, arbitrarily-deep company hierarchy (e.g.
+  `G42 -> M42 -> Diaverum`, all real data), not just two levels — the
+  earlier "will keep failing every run" finding above, fixed same day.
+  Rewritten as a recursive `_resolve_affiliate_entry()` that looks up a
+  parent among ANY entry in the file, not just already-processed
+  top-level ones, memoized so file order never matters, with real cycle
+  protection. A genuine second bug found live WHILE TESTING this fix (a
+  real cycle silently produced a duplicate note instead of refusing) was
+  also fixed before this shipped — a failed recursive resolution now
+  refuses cleanly (`skipped_unresolved`), never fabricates a duplicate.
+  Verified on scratch (3-level chain, real cycle, both original 2-level
+  and unknown-parent cases regression-tested) before touching the real
+  vault; live-verified against real data, job now succeeds. Also fixed
+  in passing: a stale `vault_manager.py` (dated Aug 31, missing the
+  `caller=` parameter) at the no-agent cron wrapper's own dedicated
+  location (`%LOCALAPPDATA%\hermes\scripts\create_companies_partners\`)
+  — a real, separate deployment location today's earlier resync pass
+  had missed entirely. See `MEMORY.md` for the full detail, including a
+  real (unrelated) operational hazard found along the way: triggering
+  this job during active concurrent edits to `Entities.md` can catch it
+  mid-edit and misparse transient notes text as real company entries —
+  4 bogus, empty Partner notes this produced were found and archived.
