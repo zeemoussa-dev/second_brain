@@ -7,12 +7,20 @@ Prints a JSON array of email dicts to stdout, one per email:
 {id, subject, sender_name, sender_email, sender_department,
  sender_job_title, sender_company_name, received, body,
  attachments: [{filename, temp_path, size}], conversation_id,
- recipients: [{name, email, department, job_title, company_name}, ...]}
+ recipients: [{name, email, department, job_title, company_name, type}, ...],
+ direction}
 
 The department/job_title/company_name fields (2026-08-21) come from
 Outlook's own GetExchangeUser() GAL lookup -- populated only for
 internal, Exchange-resolved senders/recipients; blank for anyone
 external (no GAL entry to read).
+
+`direction` (2026-09-02, REQ-SB-87-US-02-T06) is "received" for an
+Inbox-sourced email or "sent" for a Sent-Mail-sourced one, stamped by
+outlook_lib.py at the real per-folder read. Each recipient's own `type`
+(2026-09-02) is "to" or "cc", read directly from Outlook's own
+recipient.Type at the COM layer. Both fields pass straight through this
+module unmodified -- no remapping happens here.
 
 `attachments[].temp_path` points at a real file on disk holding that
 attachment's raw bytes (None if it was too large to save) -- pass it

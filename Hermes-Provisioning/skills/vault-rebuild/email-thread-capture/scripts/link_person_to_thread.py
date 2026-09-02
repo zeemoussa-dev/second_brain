@@ -8,6 +8,18 @@ Usage:
 
 Prints {"linked": bool, ...} to stdout. Idempotent -- calling twice for
 the same sender on the same Thread adds the wikilink only once.
+
+2026-09-02 (REQ-SB-87-US-02-T03): Thread resolution now goes through
+`vault_manager.find_by_id` (matching `ingest_email.py`/`rename_thread.py`'s
+own established pattern) instead of `vault_lib.resolve_thread_directory`,
+and the "## Related" accumulation now goes through
+`vault_manager.get_section_content`/`vault_manager.modify_section(...,
+caller="link_person_to_thread")` instead of `vault_lib`'s own
+`insert_body_section_if_missing`/`read_body_section`/`replace_body_section`
+-- the Thread template's own `## Related` `allowed_callers` declaration
+(`REQ-SB-87-US-01-T05`) now enforces this section's per-caller restriction,
+replacing `vault_lib.py`'s own hardcoded `_CALLER_ALLOW_LISTS`.
+`ensure_bare_person_note` stays entirely hand-written, unchanged.
 """
 from __future__ import annotations
 
@@ -16,8 +28,9 @@ import json
 from pathlib import Path
 
 import vault_lib
+import vault_manager
 
-_CALLER = "link_person_to_thread.link_person_to_thread"
+_CALLER = "link_person_to_thread"
 
 
 def link_person_to_thread(vault_path: Path, conversation_id: str, sender_name: str, sender_email: str) -> dict:
@@ -29,19 +42,21 @@ def link_person_to_thread(vault_path: Path, conversation_id: str, sender_name: s
     person_stem = Path(person_note_path).stem
     wikilink = f"[[{person_stem}]]"
 
-    directory = vault_lib.resolve_thread_directory(vault_path, conversation_id)
-    if directory is None:
+    thread_template = vault_manager.load_template(vault_path, "thread")
+    concept_path = vault_manager.find_by_id(vault_path, conversation_id, note_name="Threads")
+    if concept_path is None:
         return {"linked": False, "reason": "no Thread found for this conversation_id"}
-    concept_path = directory / f"{directory.name}.md"
 
-    vault_lib.insert_body_section_if_missing(concept_path, "## Related")
-    existing = vault_lib.read_body_section(concept_path, "## Related")
+    existing = vault_manager.get_section_content(concept_path, "Related")
     if wikilink in existing:
         return {"linked": False, "reason": "already linked", "person_note_path": person_note_path}
 
     lines = [line for line in existing.splitlines() if line.strip()]
     lines.append(f"- {wikilink}")
-    vault_lib.replace_body_section(concept_path, "## Related", "\n".join(lines), caller=_CALLER)
+    vault_manager.modify_section(
+        vault_path, thread_template, section="Related", content="\n".join(lines), mode="replace",
+        note_id=conversation_id, note_name="Threads", caller=_CALLER,
+    )
     return {"linked": True, "person_note_path": person_note_path}
 
 

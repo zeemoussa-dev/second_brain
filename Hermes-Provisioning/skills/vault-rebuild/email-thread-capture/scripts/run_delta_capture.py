@@ -19,6 +19,13 @@ ever delta run) seeds a conservative 2-day lookback rather than either a
 full-history redo (full_capture.py already did that once) or blindly
 trusting "now" (which could silently miss a real gap since that last
 full run).
+
+2026-09-02 (REQ-SB-87-US-03-T04): the per-page and final summary dicts
+gain a "skipped_as_noise" count, aggregated the SAME way threads_created/
+messages_created already are -- reads ingest_email.py's own T03-added
+"skipped_as_noise" field on each ingest result. Purely additive
+reporting; no other orchestration logic (paging, watermark, subprocess
+dispatch) changed.
 """
 from __future__ import annotations
 import os
@@ -110,6 +117,11 @@ def main() -> int:
     total_threads_created = 0
     total_messages_created = 0
     total_attachments_captured = 0
+    # REQ-SB-87-US-03-T04: same aggregation shape as threads_created/
+    # messages_created above -- reads ingest_email.py's own T03-added
+    # "skipped_as_noise" field so the operator can always tell why a
+    # captured-email count looks lower than the real mailbox.
+    total_skipped_as_noise = 0
 
     page_num = 0
     before_ts: str | None = None
@@ -166,6 +178,7 @@ def main() -> int:
         page_threads_created = 0
         page_messages_created = 0
         page_attachments_captured = 0
+        page_skipped_as_noise = 0
 
         for e in new_emails:
             try:
@@ -187,6 +200,7 @@ def main() -> int:
                     "subject": subject,
                     "body": body,
                     "recipients": recipients,
+                    "direction": e.get("direction") or "",
                     "sender_department": e.get("sender_department") or "",
                     "sender_job_title": e.get("sender_job_title") or "",
                     "sender_company_name": e.get("sender_company_name") or "",
@@ -203,6 +217,8 @@ def main() -> int:
                             page_threads_created += 1
                         if result.get("message_created"):
                             page_messages_created += 1
+                        if result.get("skipped_as_noise"):
+                            page_skipped_as_noise += 1
                         message_path = result.get("message_path")
                     except Exception:
                         pass
@@ -249,6 +265,7 @@ def main() -> int:
         total_threads_created += page_threads_created
         total_messages_created += page_messages_created
         total_attachments_captured += page_attachments_captured
+        total_skipped_as_noise += page_skipped_as_noise
 
         progress.append({
             "page": page_num,
@@ -258,10 +275,11 @@ def main() -> int:
             "threads_created": page_threads_created,
             "messages_created": page_messages_created,
             "attachments_captured": page_attachments_captured,
+            "skipped_as_noise": page_skipped_as_noise,
             "date_range": {"newest": page_newest, "oldest": page_oldest},
         })
 
-        print(f"PAGE {page_num} done: seen={len(emails)} new={len(new_emails)} processed={page_processed} threads+={page_threads_created} messages+={page_messages_created}")
+        print(f"PAGE {page_num} done: seen={len(emails)} new={len(new_emails)} processed={page_processed} threads+={page_threads_created} messages+={page_messages_created} skipped_as_noise+={page_skipped_as_noise}")
 
         if reached_watermark:
             break
@@ -279,6 +297,7 @@ def main() -> int:
         "threads_created": total_threads_created,
         "messages_created": total_messages_created,
         "attachments_captured": total_attachments_captured,
+        "skipped_as_noise": total_skipped_as_noise,
         "progress": progress,
     }
     with open(SUMMARY_PATH, "w", encoding="utf-8") as f:

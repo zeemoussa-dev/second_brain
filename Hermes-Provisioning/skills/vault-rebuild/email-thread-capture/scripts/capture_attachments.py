@@ -17,6 +17,22 @@ F is a JSON file:
 Prints {"captured": [...], "skipped": [...]} to stdout -- both lists of
 filenames. An attachment with temp_path null (oversized, per
 outlook_lib.py's own size cap) is skipped, never written.
+
+2026-09-02 (REQ-SB-87-US-02-T03): Thread resolution now goes through
+`vault_manager.find_by_id`, and the "## Files" accumulation now goes
+through `vault_manager.get_section_content`/`vault_manager.modify_section(
+..., caller="capture_attachments")` instead of `vault_lib.
+insert_body_section_if_missing`/`read_body_section`/`replace_body_section`
+(via the old `link_file_to_thread` helper) -- the Thread template's own
+"## Files" `allowed_callers` declaration (`REQ-SB-87-US-01-T05`) now
+enforces this section's per-caller restriction. `write_file_companion`
+(the real byte-level attachment write) stays entirely hand-written,
+unchanged -- it never touches the Thread's own concept note, so the
+frontmatter-fence-vs-raw-attachment-bytes regression `REQ-SB-87-US-02-T02`
+found in `rename_thread.py`'s own companion-backlink glob loop does not
+reproduce here: this script never globs over `files/**/*.md`, it only
+ever writes the Thread's own single concept note (resolved by `id`) and
+the two files `write_file_companion` itself explicitly names.
 """
 from __future__ import annotations
 
@@ -27,8 +43,9 @@ import os
 from pathlib import Path
 
 import vault_lib
+import vault_manager
 
-_CALLER = "capture_attachments.capture_attachments"
+_CALLER = "capture_attachments"
 
 
 def capture_attachments(vault_path: Path, data: dict) -> dict:
@@ -38,9 +55,11 @@ def capture_attachments(vault_path: Path, data: dict) -> dict:
     message_path = data["message_path"]
     attachments = data.get("attachments") or []
 
-    directory = vault_lib.resolve_thread_directory(vault_path, conversation_id)
-    if directory is None:
+    thread_template = vault_manager.load_template(vault_path, "thread")
+    concept_path = vault_manager.find_by_id(vault_path, conversation_id, note_name="Threads")
+    if concept_path is None:
         return {"captured": [], "skipped": [], "reason": "no Thread found for this conversation_id"}
+    directory = concept_path.parent
 
     thread_link = f"[[{directory.name}]]"
     email_link = f"[[{Path(message_path).stem}]]"
@@ -67,7 +86,15 @@ def capture_attachments(vault_path: Path, data: dict) -> dict:
             source_email=email_link,
         )
         companion_stem = Path(result["companion_path"]).stem
-        vault_lib.link_file_to_thread(directory, f"[[{companion_stem}]]", caller=_CALLER)
+        wikilink = f"[[{companion_stem}]]"
+        existing = vault_manager.get_section_content(concept_path, "Files")
+        if wikilink not in existing:
+            lines = [line for line in existing.splitlines() if line.strip()]
+            lines.append(f"- {wikilink}")
+            vault_manager.modify_section(
+                vault_path, thread_template, section="Files", content="\n".join(lines), mode="replace",
+                note_id=conversation_id, note_name="Threads", caller=_CALLER,
+            )
         captured.append(filename)
         os.remove(temp_path)
 

@@ -9,6 +9,16 @@ Usage:
         --message-path MP --received R --label LABEL --url URL
 
 Prints {"companion_path": str} or {"reason": str} to stdout.
+
+2026-09-02 (REQ-SB-87-US-02-T03): Thread resolution now goes through
+`vault_manager.find_by_id`, and the "## Files" accumulation now goes
+through `vault_manager.get_section_content`/`vault_manager.modify_section(
+..., caller="capture_file_link")` -- mirrors `capture_attachments.py`'s
+own identical migration (see that file's own docstring for the full
+frontmatter-fence-vs-raw-attachment-bytes non-reproduction reasoning,
+which applies here unchanged since this script never globs over
+`files/**/*.md` either). `write_file_link_companion` (the real companion
+note write) stays entirely hand-written, unchanged.
 """
 from __future__ import annotations
 
@@ -17,14 +27,17 @@ import json
 from pathlib import Path
 
 import vault_lib
+import vault_manager
 
-_CALLER = "capture_file_link.capture_file_link"
+_CALLER = "capture_file_link"
 
 
 def capture_file_link(vault_path: Path, conversation_id: str, message_path: str, received: str, label: str, url: str) -> dict:
-    directory = vault_lib.resolve_thread_directory(vault_path, conversation_id)
-    if directory is None:
+    thread_template = vault_manager.load_template(vault_path, "thread")
+    concept_path = vault_manager.find_by_id(vault_path, conversation_id, note_name="Threads")
+    if concept_path is None:
         return {"reason": "no Thread found for this conversation_id"}
+    directory = concept_path.parent
 
     thread_link = f"[[{directory.name}]]"
     email_link = f"[[{Path(message_path).stem}]]"
@@ -35,7 +48,15 @@ def capture_file_link(vault_path: Path, conversation_id: str, message_path: str,
         source_thread=thread_link, source_email=email_link,
     )
     companion_stem = Path(result["companion_path"]).stem
-    vault_lib.link_file_to_thread(directory, f"[[{companion_stem}]]", caller=_CALLER)
+    wikilink = f"[[{companion_stem}]]"
+    existing = vault_manager.get_section_content(concept_path, "Files")
+    if wikilink not in existing:
+        lines = [line for line in existing.splitlines() if line.strip()]
+        lines.append(f"- {wikilink}")
+        vault_manager.modify_section(
+            vault_path, thread_template, section="Files", content="\n".join(lines), mode="replace",
+            note_id=conversation_id, note_name="Threads", caller=_CALLER,
+        )
     return result
 
 

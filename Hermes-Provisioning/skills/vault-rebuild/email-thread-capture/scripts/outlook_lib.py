@@ -181,6 +181,12 @@ def _resolve_attendees(item) -> list[dict]:
             recipient = recipients.Item(i)
             if recipient.Type not in (_OL_MEETING_RECIPIENT_REQUIRED, _OL_MEETING_RECIPIENT_OPTIONAL):
                 continue
+            # 2026-09-02 (REQ-SB-87-US-02-T06): these two constants are
+            # named for Outlook's MEETING-attendee enum but share their
+            # real integer values with mail's own olTo=1/olCC=2 -- reads
+            # directly off recipient.Type at the COM layer, never
+            # re-derived downstream.
+            recipient_type = "to" if recipient.Type == _OL_MEETING_RECIPIENT_REQUIRED else "cc"
             name = recipient.Name or ""
             address = recipient.Address or ""
             extra = {"department": "", "job_title": "", "company_name": ""}
@@ -191,7 +197,7 @@ def _resolve_attendees(item) -> list[dict]:
                     extra = _exchange_user_fields(exch_user)
             except Exception:
                 pass
-            attendees.append({"name": name, "email": address, **extra})
+            attendees.append({"name": name, "email": address, "type": recipient_type, **extra})
         except Exception:
             continue
     return attendees
@@ -201,11 +207,18 @@ def resolve_mail_recipients(item) -> list[dict]:
     return _resolve_attendees(item)
 
 
-def _list_folder_mail(folder, limit: int, since: str | None, before: str | None) -> list[dict]:
+def _list_folder_mail(
+    folder, limit: int, since: str | None, before: str | None, direction: str,
+) -> list[dict]:
     """One folder's own real, filtered/restricted read -- extracted so
     `list_recent_mail` can call this identically for Inbox and Sent Mail
     (2026-08-24 fix, see `_OL_FOLDER_SENT_MAIL`'s own comment) rather
-    than duplicating the restrict/iterate/filter logic per folder."""
+    than duplicating the restrict/iterate/filter logic per folder.
+
+    `direction` (2026-09-02, REQ-SB-87-US-02-T06) is stamped by the
+    caller from which of the two real folders this call is actually
+    querying ("received" for Inbox, "sent" for Sent Mail) -- never
+    inferred afterward from sender_email or participant matching."""
     items = folder.Items
     items.Sort("[ReceivedTime]", True)
     restrictions = []
@@ -237,6 +250,7 @@ def _list_folder_mail(folder, limit: int, since: str | None, before: str | None)
                 "attachments": _extract_attachments(item),
                 "conversation_id": getattr(item, "ConversationID", None) or "",
                 "recipients": resolve_mail_recipients(item),
+                "direction": direction,
             })
         except Exception:
             continue
@@ -256,8 +270,12 @@ def list_recent_mail(
         # between the two in any given window is unknown ahead of time;
         # merged and re-sorted below, THEN trimmed to the real `limit`,
         # so a page never silently favors one folder over the other.
-        inbox_results = _list_folder_mail(ns.GetDefaultFolder(_OL_FOLDER_INBOX), limit, since, before)
-        sent_results = _list_folder_mail(ns.GetDefaultFolder(_OL_FOLDER_SENT_MAIL), limit, since, before)
+        inbox_results = _list_folder_mail(
+            ns.GetDefaultFolder(_OL_FOLDER_INBOX), limit, since, before, direction="received",
+        )
+        sent_results = _list_folder_mail(
+            ns.GetDefaultFolder(_OL_FOLDER_SENT_MAIL), limit, since, before, direction="sent",
+        )
         merged = sorted(inbox_results + sent_results, key=lambda e: e["received"], reverse=True)
         return merged[:limit]
     finally:
