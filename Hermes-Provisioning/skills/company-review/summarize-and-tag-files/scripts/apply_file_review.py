@@ -29,8 +29,67 @@ Given one captured File's already-agent-written summary + short_summary
      scope-lock), so the Thread's own existing "## Files" section IS
      this Job's own log, per the operator's own request.
 
+`vault_manager.py`-based migration, ## Summary write + tag-merge only
+(2026-09-02, REQ-SB-88-US-01-T01): the File's "## Summary" write now
+goes through the newly-deployed `vault_manager.py` copy in this Skill's
+own `scripts/` folder (`vm.modify_section`, `caller="apply_file_review"`
+-- the File template's own `## Summary`/`## Details` sections declare no
+`allowed_callers`, open to any machine-write caller). A real
+pre-migration File note carries no `id` frontmatter field yet -- the
+first migrated write mints one (`uuid4`) and backfills it via
+`vm.update`, matching `apply_thread_review.py`'s own identical
+precedent. Tag merging now goes through `vault_manager.py`'s shared
+`merge_tags` instead of this file's own hand-rolled copy. Company
+resolution (`build_company_index`/`resolve_companies`) were UNCHANGED by
+that task.
+
+Files-log + Details/`--append` migration (2026-09-02,
+REQ-SB-88-US-01-T02): the Thread's own "## Files" line-replace and the
+`--append` "## Details" follow-up pass now also go through
+`vault_manager.py` (`vm.modify_section`, `caller="apply_file_review"`).
+The real, deployed Thread `Template.json` `## Files` section's own
+`allowed_callers` gained `apply_file_review` as a third, additive entry
+alongside `capture_attachments`/`capture_file_link` -- the exact
+`allowed_callers` extension mechanism ADR-017 already built. The
+line-replace ALGORITHM itself is unchanged (still hand-rolled here);
+only its persistence moved off the local `insert_body_section_if_missing`/
+`read_body_section`/`replace_body_section` trio. The Details append no
+longer manually reads-then-concatenates existing content -- `vm.
+modify_section(..., mode="append")` already performs that merge. Image
+copy/embed (`_attach_images`/`_unique_sibling_path`) is unrelated
+filesystem work, unchanged. The now-fully-superseded local
+`insert_body_section_if_missing`/`read_body_section`/`replace_body_section`/
+`merge_tags`/`_format_frontmatter_value` primitives and their own
+`_CALLER_ALLOW_LISTS`/`_HUMAN_OWNED_HEADERS` guard are removed -- zero
+remaining callers in this file. `read_note`/`_parse_frontmatter_value`
+stay -- still genuinely called by `build_company_index`/`resolve_companies`
+and this file's own `source_thread` frontmatter read.
+
+Mechanical already-summarized skip-guard (found live 2026-09-02, the
+real `job5-summarize-tag-files` cron job re-processed 4/15 already-
+summarized real Files in its own second run -- SKILL.md's documented
+"skip any File whose own `## Summary` is already non-empty" rule had
+zero code-level enforcement, 100% agent judgment): `apply_file_review`
+now reads the File's own current `## Summary` via `vm.get_section_content`
+BEFORE doing any real work and refuses (no-op, `"skipped": true`) a
+redundant initial-summary write whenever it is already non-empty --
+mirrors `summarize-and-tag-threads`/`job4`'s own existing mechanical
+safety net one layer up, adapted to Files' own real shape: Files have no
+`last_summarized_at`/`last_message_at`-equivalent freshness fields (the
+File template's own `frontmatter_defaults` carries only `type`/`tags`,
+confirmed live) because a captured File's own real content never changes
+after capture (SKILL.md's own documented reason Files never needed
+Threads' timestamp-based skip rule in the first place) -- so
+"`## Summary` already non-empty" IS the complete, correct freshness
+check for a File, not a partial substitute for one. A caller that
+genuinely needs to overwrite an existing summary (e.g. a corrected
+re-run) passes `--force` to bypass the guard explicitly. Only the
+initial-review path (`apply_file_review`) gets this guard -- the
+`--append`/`add_file_detail` "## Details" follow-up path is a
+deliberate, repeatable multi-call operation and is unaffected.
+
 Usage:
-    python apply_file_review.py --vault-path P --input-file F
+    python apply_file_review.py --vault-path P --input-file F [--force]
 
 F: {"file_path": str, "summary": str, "short_summary": str,
     "companies": [str, ...]}
@@ -38,7 +97,10 @@ F: {"file_path": str, "summary": str, "short_summary": str,
 relative.)
 
 Prints {"tags_applied": [...], "companies_unresolved": [...],
-"files_log_updated": bool}.
+"files_log_updated": bool} normally, or {"skipped": true, "reason":
+"summary_already_present", "tags_applied": [], "companies_unresolved":
+[], "files_log_updated": false} when the guard refuses a redundant
+write.
 """
 from __future__ import annotations
 
@@ -46,36 +108,26 @@ import argparse
 import json
 import re
 import shutil
+import uuid
 from pathlib import Path
+
+import vault_manager as vm
 
 _FRONTMATTER_LINE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*):\s?(.*)$")
 _LIST_ITEM_PATTERN = re.compile(r'"((?:[^"\\]|\\.)*)"')
-_BODY_SECTION_HEADER_PATTERN = re.compile(r"^## .+$", re.MULTILINE)
 _WIKILINK_PATTERN = re.compile(r"\[\[([^\]]+)\]\]")
 
-_SUMMARY_CALLER = "apply_file_review.apply_file_review"
-_FILES_LOG_CALLER = "apply_file_review.update_files_log_line"
-_DETAILS_CALLER = "apply_file_review.add_file_detail"
-_CALLER_ALLOW_LISTS = {
-    _SUMMARY_CALLER: frozenset({"## Summary"}),
-    _FILES_LOG_CALLER: frozenset({"## Files"}),
-    _DETAILS_CALLER: frozenset({"## Details"}),
-}
-_HUMAN_OWNED_HEADERS = frozenset({"## Personal Notes"})
+_FILE_TEMPLATE_ID = "file"
+_THREAD_TEMPLATE_ID = "thread"
+# The File/Thread templates' own declared caller identity for their
+# machine_write sections -- REQ-SB-88-US-01-T01/T02, mirrors
+# apply_thread_review.py's own _VM_CALLER precedent (REQ-SB-87-US-04-T01).
+_VM_CALLER = "apply_file_review"
 
 
 def _tag_slug(text: str) -> str:
     slug = re.sub(r"[^a-z0-9/]+", "-", text.lower()).strip("-")
     return slug or "untitled"
-
-
-def _format_frontmatter_value(value) -> str:
-    if isinstance(value, list):
-        return "[" + ", ".join(_format_frontmatter_value(v) for v in value) + "]"
-    if isinstance(value, str):
-        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-        return f'"{escaped}"'
-    return str(value)
 
 
 def _parse_frontmatter_value(raw: str):
@@ -106,71 +158,6 @@ def read_note(path: Path) -> tuple[dict, str]:
         if match:
             frontmatter[match.group(1)] = _parse_frontmatter_value(match.group(2))
     return frontmatter, body
-
-
-def merge_tags(path: Path, new_tags: list[str]) -> bool:
-    frontmatter, _ = read_note(path)
-    existing = list(frontmatter.get("tags") or [])
-    merged = existing + [tag for tag in new_tags if tag not in existing]
-    if merged == existing:
-        return False
-    text = path.read_text(encoding="utf-8")
-    end = text.find("\n---\n", 4)
-    if end == -1:
-        return False
-    frontmatter_block = text[: end + 1]
-    rest = text[end + 1:]
-    lines = frontmatter_block.splitlines(keepends=True)
-    new_line = f"tags: {_format_frontmatter_value(merged)}\n"
-    replaced = False
-    for i, line in enumerate(lines):
-        match = _FRONTMATTER_LINE.match(line.rstrip("\n"))
-        if match and match.group(1) == "tags":
-            lines[i] = new_line
-            replaced = True
-            break
-    if not replaced:
-        lines.insert(-1, new_line)
-    path.write_text("".join(lines) + rest, encoding="utf-8")
-    return True
-
-
-def insert_body_section_if_missing(path: Path, header: str) -> bool:
-    text = path.read_text(encoding="utf-8")
-    header_line_pattern = re.compile(r"^" + re.escape(header) + r"$", re.MULTILINE)
-    if header_line_pattern.search(text) is not None:
-        return False
-    separator = "" if text.endswith("\n") else "\n"
-    path.write_text(text + separator + f"\n{header}\n", encoding="utf-8")
-    return True
-
-
-def read_body_section(path: Path, header: str) -> str:
-    text = path.read_text(encoding="utf-8")
-    header_line_pattern = re.compile(r"^" + re.escape(header) + r"$", re.MULTILINE)
-    header_match = header_line_pattern.search(text)
-    if header_match is None:
-        return ""
-    region_start = header_match.end()
-    next_header_match = _BODY_SECTION_HEADER_PATTERN.search(text, region_start)
-    region_end = next_header_match.start() if next_header_match else len(text)
-    return text[region_start:region_end].strip("\n")
-
-
-def replace_body_section(path: Path, header: str, new_content: str, *, caller: str) -> bool:
-    if header in _HUMAN_OWNED_HEADERS or header not in _CALLER_ALLOW_LISTS.get(caller, frozenset()):
-        raise PermissionError(f"caller {caller!r} is not allowed to write {header!r}")
-    text = path.read_text(encoding="utf-8")
-    header_line_pattern = re.compile(r"^" + re.escape(header) + r"$", re.MULTILINE)
-    header_match = header_line_pattern.search(text)
-    if header_match is None:
-        return False
-    region_start = header_match.end()
-    next_header_match = _BODY_SECTION_HEADER_PATTERN.search(text, region_start)
-    region_end = next_header_match.start() if next_header_match else len(text)
-    new_text = text[:region_start] + "\n\n" + new_content.strip("\n") + "\n\n" + text[region_end:]
-    path.write_text(new_text, encoding="utf-8")
-    return True
 
 
 # ── company resolution (identical contract to apply_thread_review.py's
@@ -234,14 +221,13 @@ def _resolve_thread_path(vault_path: Path, thread_wikilink: str) -> Path | None:
     return candidate if candidate.exists() else None
 
 
-def update_files_log_line(thread_path: Path, file_stem: str, short_summary: str) -> bool:
+def update_files_log_line(vault_path: Path, thread_path: Path, file_stem: str, short_summary: str) -> bool:
     """Replaces (never duplicates) this file's own bare `- [[stem]]` line
     in the Thread's own "## Files" section with `- [[stem]] --
     <short_summary>`. Idempotent -- a rerun with the same short_summary
     is a no-op; a genuinely different one (re-summarized) replaces the
     line in place."""
-    insert_body_section_if_missing(thread_path, "## Files")
-    existing = read_body_section(thread_path, "## Files")
+    existing = vm.get_section_content(thread_path, "Files")
     wikilink = f"[[{file_stem}]]"
     new_entry_line = f"- {wikilink} -- {short_summary.strip()}"
     lines = [line for line in existing.splitlines() if line.strip()]
@@ -260,7 +246,20 @@ def update_files_log_line(thread_path: Path, file_stem: str, short_summary: str)
         new_lines.append(new_entry_line)
         changed = True
     if changed:
-        replace_body_section(thread_path, "## Files", "\n".join(new_lines), caller=_FILES_LOG_CALLER)
+        thread_template = vm.load_template(vault_path, _THREAD_TEMPLATE_ID)
+        thread_frontmatter, _ = vm.read_note(thread_path)
+        thread_id = thread_frontmatter.get("id")
+        if not thread_id:
+            # A real pre-migration Thread note carries no `id` field yet
+            # whenever it was never touched by apply_thread_review.py --
+            # mint one now and persist it, same id-mint-if-missing pattern
+            # this file's own Summary write already established at T01.
+            thread_id = str(uuid.uuid4())
+            vm.update(vault_path, thread_path, frontmatter={"id": thread_id})
+        vm.modify_section(
+            vault_path, thread_template, section="Files", content="\n".join(new_lines), mode="replace",
+            note_id=thread_id, caller=_VM_CALLER,
+        )
     return changed
 
 
@@ -324,10 +323,16 @@ def add_file_detail(vault_path: Path, file_path: str, details: str, images: list
     image_blocks = "\n\n".join(f"![[{name}]]" for name in attached_images)
     combined = "\n\n".join(part for part in (details, image_blocks) if part)
 
-    insert_body_section_if_missing(md_path, "## Details")
-    existing = read_body_section(md_path, "## Details")
-    merged = (existing + "\n\n" + combined).strip("\n") if existing else combined
-    replace_body_section(md_path, "## Details", merged, caller=_DETAILS_CALLER)
+    file_template = vm.load_template(vault_path, _FILE_TEMPLATE_ID)
+    file_frontmatter, _ = vm.read_note(md_path)
+    file_id = file_frontmatter.get("id")
+    if not file_id:
+        file_id = str(uuid.uuid4())
+        vm.update(vault_path, md_path, frontmatter={"id": file_id})
+    vm.modify_section(
+        vault_path, file_template, section="Details", content=combined, mode="append",
+        note_id=file_id, caller=_VM_CALLER,
+    )
 
     return {
         "appended": True,
@@ -338,7 +343,7 @@ def add_file_detail(vault_path: Path, file_path: str, details: str, images: list
 
 # ── main ─────────────────────────────────────────────────────────────────
 
-def apply_file_review(vault_path: Path, data: dict) -> dict:
+def apply_file_review(vault_path: Path, data: dict, force: bool = False) -> dict:
     file_path = Path(data["file_path"])
     if not file_path.is_absolute():
         file_path = vault_path / file_path
@@ -346,13 +351,42 @@ def apply_file_review(vault_path: Path, data: dict) -> dict:
     short_summary = data["short_summary"]
     company_names = data.get("companies") or []
 
+    # Mechanical already-summarized guard -- a captured File's own real
+    # content never changes after capture (unlike a Thread, which keeps
+    # receiving new messages), so "## Summary already non-empty" is a
+    # complete, sufficient freshness check here, not a partial one.
+    # Refuses a redundant write instead of relying purely on the calling
+    # agent's own judgment (found live, `REQ-SB-88-US-01-T04`: the real
+    # cron job re-processed 4/15 already-summarized real Files despite
+    # SKILL.md's documented skip rule).
+    if not force and file_path.is_file() and vm.get_section_content(file_path, "Summary"):
+        return {
+            "skipped": True,
+            "reason": "summary_already_present",
+            "tags_applied": [],
+            "companies_unresolved": [],
+            "files_log_updated": False,
+        }
+
     resolved, unresolved = resolve_companies(vault_path, company_names)
     tags = [f"{kind}/{slug}" for kind, slug, _ in resolved]
 
-    insert_body_section_if_missing(file_path, "## Summary")
-    replace_body_section(file_path, "## Summary", summary, caller=_SUMMARY_CALLER)
+    file_template = vm.load_template(vault_path, _FILE_TEMPLATE_ID)
+    file_frontmatter, _ = vm.read_note(file_path)
+    file_id = file_frontmatter.get("id")
+    if not file_id:
+        # A real pre-migration File note carries no `id` field yet
+        # (confirmed live) -- mint one now and persist it, same pattern
+        # REQ-SB-87-US-04-T01 established for Threads. Every later run
+        # against this same File reads this same id back.
+        file_id = str(uuid.uuid4())
+        vm.update(vault_path, file_path, frontmatter={"id": file_id})
+    vm.modify_section(
+        vault_path, file_template, section="Summary", content=summary, mode="replace",
+        note_id=file_id, caller=_VM_CALLER,
+    )
     if tags:
-        merge_tags(file_path, tags)
+        vm.merge_tags(file_path, tags)
 
     files_log_updated = False
     frontmatter, _ = read_note(file_path)
@@ -360,7 +394,7 @@ def apply_file_review(vault_path: Path, data: dict) -> dict:
     if source_thread:
         thread_path = _resolve_thread_path(vault_path, source_thread)
         if thread_path is not None:
-            files_log_updated = update_files_log_line(thread_path, file_path.stem, short_summary)
+            files_log_updated = update_files_log_line(vault_path, thread_path, file_path.stem, short_summary)
 
     return {
         "tags_applied": tags,
@@ -374,6 +408,7 @@ def main() -> int:
     parser.add_argument("--vault-path", required=True)
     parser.add_argument("--input-file", required=True)
     parser.add_argument("--append", action="store_true", help="Add a Details pass (optionally with diagram images) to an already-summarized File instead of applying an initial review.")
+    parser.add_argument("--force", action="store_true", help="Bypass the already-summarized skip-guard and overwrite an existing '## Summary' anyway.")
     args = parser.parse_args()
 
     vault_path = Path(args.vault_path)
@@ -386,7 +421,7 @@ def main() -> int:
             images=data.get("images") or [],
         )
     else:
-        result = apply_file_review(vault_path, data)
+        result = apply_file_review(vault_path, data, force=args.force)
     print(json.dumps(result, ensure_ascii=False))
     return 0
 

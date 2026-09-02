@@ -23,31 +23,57 @@ same title genuinely exists under more than one Customer.
 
 Prints {"linked": bool, "note_path": str, "opportunity_path": str} or
 {"error": str}.
+
+`vault_manager.py`-based migration, `opportunities` frontmatter write
+(2026-09-02, REQ-SB-88-US-02-T01): the target note's `opportunities`
+frontmatter-list write goes through this Skill's own already-deployed
+`vault_manager.py` copy (`vm.read_note`/`vm.update`) instead of this
+file's own hand-rolled frontmatter-line rewrite -- the same shape
+`apply_thread_review.py`'s own frontmatter stamping already uses.
+`resolve_opportunity()`/`_iter_opportunity_notes()` (title/`--customer`
+matching, ambiguity handling) are UNCHANGED, real Opportunity-specific
+business logic, still using this file's own local `read_note`.
+
+`## Related` write migration (2026-09-02, REQ-SB-88-US-02-T02): the
+`## Related` write now goes through `vm.modify_section`
+(`caller="link_opportunity"`), the same already-public, template-driven
+entry point `apply_thread_review.py` already uses -- no reach into any
+underscore-private helper. The target Template (`"thread"` or
+`"meeting"`) is derived from the note's own real `Work/Threads/` vs
+`Work/Meetings/` path prefix (`_template_id_for_note`). A real
+pre-migration Thread/Meeting note carries no `id` frontmatter field yet
+if no other migrated caller has touched it first -- the first migrated
+`## Related` write mints one and backfills it via `vm.update`, same
+id-mint-if-missing pattern this project's migrations already establish.
+The real, deployed Thread `Template.json`'s `## Related` section gained
+`link_opportunity` as a second, additive `allowed_callers` entry
+alongside `link_person_to_thread` -- the Meeting template's own
+`## Related` carries no `allowed_callers` key at all, so it needed no
+edit. The now-fully-superseded local `_RELATED_CALLER`/
+`_CALLER_ALLOW_LISTS` guard and the local `insert_body_section_if_missing`/
+`read_body_section`/`replace_body_section`/`_format_frontmatter_value`
+primitives are removed -- zero remaining callers. Access to `## Related`
+for a Thread target is now enforced SOLELY by the Thread template's own
+`allowed_callers` declaration, never local Python.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import re
+import uuid
 from pathlib import Path
+
+import vault_manager as vm
 
 _FRONTMATTER_LINE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*):\s?(.*)$")
 _LIST_ITEM_PATTERN = re.compile(r'"((?:[^"\\]|\\.)*)"')
-_BODY_SECTION_HEADER_PATTERN = re.compile(r"^## .+$", re.MULTILINE)
 
-_RELATED_CALLER = "link_opportunity.link_opportunity"
-_CALLER_ALLOW_LISTS = {
-    _RELATED_CALLER: frozenset({"## Related"}),
-}
-
-
-def _format_frontmatter_value(value) -> str:
-    if isinstance(value, list):
-        return "[" + ", ".join(_format_frontmatter_value(v) for v in value) + "]"
-    if isinstance(value, str):
-        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-        return f'"{escaped}"'
-    return str(value)
+# The Thread/Meeting templates' own declared caller identity for their
+# machine_write sections this script writes -- REQ-SB-88-US-02-T02,
+# mirrors apply_thread_review.py's own _VM_CALLER precedent
+# (REQ-SB-87-US-04-T01).
+_VM_CALLER = "link_opportunity"
 
 
 def _parse_frontmatter_value(raw: str):
@@ -80,42 +106,23 @@ def read_note(path: Path) -> tuple[dict, str]:
     return frontmatter, body
 
 
-def insert_body_section_if_missing(path: Path, header: str) -> bool:
-    text = path.read_text(encoding="utf-8")
-    header_line_pattern = re.compile(r"^" + re.escape(header) + r"$", re.MULTILINE)
-    if header_line_pattern.search(text) is not None:
-        return False
-    separator = "" if text.endswith("\n") else "\n"
-    path.write_text(text + separator + f"\n{header}\n", encoding="utf-8")
-    return True
-
-
-def read_body_section(path: Path, header: str) -> str:
-    text = path.read_text(encoding="utf-8")
-    header_line_pattern = re.compile(r"^" + re.escape(header) + r"$", re.MULTILINE)
-    header_match = header_line_pattern.search(text)
-    if header_match is None:
-        return ""
-    region_start = header_match.end()
-    next_header_match = _BODY_SECTION_HEADER_PATTERN.search(text, region_start)
-    region_end = next_header_match.start() if next_header_match else len(text)
-    return text[region_start:region_end].strip("\n")
-
-
-def replace_body_section(path: Path, header: str, new_content: str, *, caller: str) -> bool:
-    if header not in _CALLER_ALLOW_LISTS.get(caller, frozenset()):
-        raise PermissionError(f"caller {caller!r} is not allowed to write {header!r}")
-    text = path.read_text(encoding="utf-8")
-    header_line_pattern = re.compile(r"^" + re.escape(header) + r"$", re.MULTILINE)
-    header_match = header_line_pattern.search(text)
-    if header_match is None:
-        return False
-    region_start = header_match.end()
-    next_header_match = _BODY_SECTION_HEADER_PATTERN.search(text, region_start)
-    region_end = next_header_match.start() if next_header_match else len(text)
-    new_text = text[:region_start] + "\n\n" + new_content.strip("\n") + "\n\n" + text[region_end:]
-    path.write_text(new_text, encoding="utf-8")
-    return True
+def _template_id_for_note(vault_path: Path, note_path: Path) -> str:
+    """Derives which template to load from the target note's own real
+    location -- trivially derivable from its `Work/Threads/` vs
+    `Work/Meetings/` prefix (architect finding, REQ-SB-88-US-02). Never
+    guesses for a note outside either root -- refuses with a real error
+    instead."""
+    try:
+        relative_parts = note_path.relative_to(vault_path).parts
+    except ValueError:
+        relative_parts = note_path.parts
+    if len(relative_parts) >= 2 and relative_parts[0] == "Work" and relative_parts[1] == "Threads":
+        return "thread"
+    if len(relative_parts) >= 2 and relative_parts[0] == "Work" and relative_parts[1] == "Meetings":
+        return "meeting"
+    raise vm.VaultManagerError(
+        f"cannot derive a template for {note_path} -- expected it under Work/Threads/ or Work/Meetings/"
+    )
 
 
 def _iter_opportunity_notes(vault_path: Path):
@@ -169,38 +176,36 @@ def link_opportunity(vault_path: Path, note_path_str: str, opportunity_title: st
             }
         return {"error": f"no Opportunity named {opportunity_title!r} exists -- create it first"}
 
-    frontmatter, _ = read_note(note_path)
+    frontmatter, _ = vm.read_note(note_path)
     existing = list(frontmatter.get("opportunities") or [])
     wikilink = f"[[{opportunity_path.stem}]]"
     changed_frontmatter = False
     if wikilink not in existing:
         merged = existing + [wikilink]
-        text = note_path.read_text(encoding="utf-8")
-        end = text.find("\n---\n", 4)
-        if end != -1:
-            frontmatter_block = text[: end + 1]
-            rest = text[end + 1:]
-            lines = frontmatter_block.splitlines(keepends=True)
-            new_line = f"opportunities: {_format_frontmatter_value(merged)}\n"
-            replaced = False
-            for i, line in enumerate(lines):
-                m = _FRONTMATTER_LINE.match(line.rstrip("\n"))
-                if m and m.group(1) == "opportunities":
-                    lines[i] = new_line
-                    replaced = True
-                    break
-            if not replaced:
-                lines.insert(-1, new_line)
-            note_path.write_text("".join(lines) + rest, encoding="utf-8")
-            changed_frontmatter = True
+        vm.update(vault_path, note_path, frontmatter={"opportunities": merged})
+        changed_frontmatter = True
 
-    insert_body_section_if_missing(note_path, "## Related")
-    existing_related = read_body_section(note_path, "## Related")
+    existing_related = vm.get_section_content(note_path, "Related")
     changed_related = False
     if wikilink not in existing_related:
         lines = [line for line in existing_related.splitlines() if line.strip()]
         lines.append(f"- {wikilink}")
-        replace_body_section(note_path, "## Related", "\n".join(lines), caller=_RELATED_CALLER)
+        template_id = _template_id_for_note(vault_path, note_path)
+        template = vm.load_template(vault_path, template_id)
+        note_frontmatter, _ = vm.read_note(note_path)
+        note_id = note_frontmatter.get("id")
+        if not note_id:
+            # A real pre-migration Thread/Meeting note carries no `id`
+            # field yet whenever no other migrated caller has touched it
+            # first -- mint one now and persist it, same id-mint-if-
+            # missing pattern REQ-SB-87-US-04-T01/REQ-SB-88-US-01-T01
+            # already established.
+            note_id = str(uuid.uuid4())
+            vm.update(vault_path, note_path, frontmatter={"id": note_id})
+        vm.modify_section(
+            vault_path, template, section="Related", content="\n".join(lines), mode="replace",
+            note_id=note_id, caller=_VM_CALLER,
+        )
         changed_related = True
 
     return {
