@@ -1,5 +1,14 @@
 # Deployment Guide
 
+> **Superseded by [`/Deployment.md`](../Deployment.md)** (repo root),
+> which covers this app's own deployment *and* Hermes deployment/config
+> (previously undocumented) as one guide for standing everything up on a
+> fresh machine. This file's dev-server/port/troubleshooting detail below
+> is still accurate for this app specifically and is kept for reference,
+> but the "What starts automatically" section below is **stale** — the
+> backend no longer runs its own capture (APScheduler); all capture is
+> Hermes cron jobs now. Start with `Deployment.md`.
+
 Second Brain runs as two local dev servers (FastAPI backend + Vite
 frontend) plus an optional static prototype server. There is no hosted/
 cloud deployment target today — this guide covers running it on the
@@ -67,12 +76,13 @@ own preview tooling for in-session browser verification.
 
 ## What starts automatically
 
-The backend's FastAPI lifespan (`app/main.py`) kicks off an app-start
-capture catch-up and schedules hourly recurring capture (APScheduler) the
-moment `run-backend.cmd` starts — there is no separate "enable capture"
-step. If Outlook isn't reachable, capture logs a failure and the server
-keeps running (`app/data_access/outlook_com.py::check_reachable`); it does
-not block startup.
+**Stale as of the Hermes migration** (see the notice at the top of this
+file): the backend no longer schedules its own capture. All real
+email/meeting/company capture and enrichment happens via Hermes's own
+cron jobs, entirely outside this process — see `Deployment.md`. The
+backend's FastAPI lifespan (`app/main.py`) starts serving the vault and
+exposes a manual trigger (My Day's refresh button) that fires the real
+Hermes cron jobs on demand; it does not run any capture loop itself.
 
 ## Building the frontend for a non-dev run
 

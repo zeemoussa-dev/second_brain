@@ -18,6 +18,452 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix: `REQ-SB-87-US-02-T05` — closed the last disclosed pre-cutover gap:
+  `run_full_capture.py`/`run_delta_capture.py`'s own `ingest_payload` dict
+  construction now forwards the real `direction` field (`e.get("direction")
+  or ""`) alongside every other already-forwarded field, matching a
+  one-line, same-shape addition at both orchestrators.
+- fix: `REQ-SB-87-US-02-T05` — found and fixed live, before the real
+  retrofit ran: `ingest_email.py`'s Thread resolution (`find_by_id`, keyed
+  on a real `id` field) could not find ANY real, pre-migration Thread note
+  (none carry an `id` field; `thread/Template.json`'s own
+  `on_existing_title: "always_new"` gives `create()` no title-collision
+  safety net either) — left unfixed, retrofitting against the real vault
+  would have created a genuine duplicate Thread for every pre-existing
+  conversation touched. Fixed with the same "mint-and-backfill on first
+  touch" pattern `REQ-SB-87-US-04-T01`'s `apply_thread_review.py`
+  migration already established: on `find_by_id` miss, fall back to the
+  already-imported, unchanged `vault_lib.resolve_thread_directory`, and if
+  found, backfill `id=conversation_id` before treating it as an
+  already-existing Thread (no classify-or-skip relay call). See
+  `MEMORY.md`.
+- fix: `REQ-SB-87-US-02-T05` — found and fixed live during the real
+  retrofit: `ingest_email.py`'s own `main()` crashed with
+  `UnicodeEncodeError` printing its final JSON result whenever a real
+  subject/body carried a Unicode character (e.g. an emoji) outside
+  Windows' default console codepage — the same class of bug
+  `list_recent_emails.py` already fixed for itself on 2026-08-24. Fixed
+  identically (`sys.stdout.reconfigure(encoding="utf-8")` at the top of
+  `main()`). See `MEMORY.md`.
+- feat: `REQ-SB-87-US-02-T05` — real-vault verification, deployment, and
+  live cron cutover, closing `REQ-SB-87-US-02` (all 6 tasks, `AC-01`-`AC-09`
+  `Done`). The five migrated write-mechanics scripts, both orchestrators,
+  and a fresh `vault_manager.py` copy deployed to the real, active Hermes
+  profile location the `email-delta-capture` cron job runs from
+  (`%LOCALAPPDATA%\hermes\skills\vault-rebuild\email-thread-capture\
+  scripts\`) plus all 26 real, active per-profile copies of this Skill
+  (27 locations total, SHA-256-confirmed byte-identical to the migrated
+  repo source). Real retrofit-safety confirmed against the LIVE vault
+  (`C:\myWorx\Moussa MD\Moussa Brain`): two known real Threads re-ingested
+  idempotently (only the additive `id` backfill changed on disk, confirmed
+  via diff); a real ~100-message sample (last 100 Inbox+Sent, pulled via
+  the deployed `list_recent_emails.py`) retrofitted — 94 already-existing
+  conversations topped up with ZERO reclassification/relay calls and ZERO
+  duplicate Threads (Thread-directory count grew by exactly 5, matching
+  the 5 genuinely-new non-noise conversations), 6 genuinely-new
+  conversations correctly went through real classification (5 captured,
+  1 correctly skipped as noise), 0 Sent items incorrectly skipped. Live
+  cron cutover confirmed via a real, manually-triggered `email-delta-
+  capture` agentic run (not just a direct script call) against the real
+  vault — `exit`/JSON/watermark contract unchanged (`AC-05`
+  re-confirmed), including the new `skipped_as_noise` field. `SPRINT-083`
+  marked `Done` (its only two stories, `REQ-SB-87-US-02` and
+  `REQ-SB-87-US-04`, are both now `Done`); retrospective drafted,
+  `gate: flagged` for human harvest into `Implementation/Learnings.md`.
+
+- docs: `/plan-sprints` — created `SPRINT-085` (`Draft → Ready`, gate: clear)
+  grouping the two newly-`Ready` `REQ-SB-88` stories (`REQ-SB-88-US-01`
+  summarize-and-tag-files migration + new cron job, `REQ-SB-88-US-02`
+  track-opportunities migration) — independent Skills, same phase (P1), no
+  cross-sprint dependency needed (sole upstream `REQ-SB-87-US-01` already
+  `Done`). Bidirectional `sprint:` link written on both stories;
+  `BACKLOG.md` Sprint Status table and the `REQ-SB-88` row's Sprint column
+  updated.
+
+- test: `REQ-SB-87-US-03-T05` — closing, verification-only pass: real,
+  scratch-vault-only proving-phase confirmation of the FULL Capture-time
+  classify-or-skip + Internal/Partner/Customer classification mechanism
+  (`T01`-`T04`) end-to-end, closing `REQ-SB-87-US-03` (all 5 tasks, all 10
+  locked ACs `Done`). Zero code changed — `## Files to Modify` was `None`.
+  A real ~100-email, 12-day, unmodified scratch sample (pulled once via
+  `list_recent_emails.py`) processed with ZERO errors: 55 unique
+  conversations → 45 real Threads created (each with exactly one valid
+  `classification`, confirmed on-disk) + 10 correctly skipped as noise
+  with literal zero vault trace — all 10 real skips manually content-
+  verified genuinely noise-shaped (2 ServiceNow ticket updates, a Teams
+  notification, several live recurrences of `T01`'s own original seed
+  subjects 9 days later), zero apparent false positives. `[AC-04]`:
+  independently read the persisted `noise_definition.json`, cross-checked
+  2 fresh relay verdicts' own `reasoning` text against it. `[AC-05]`: a
+  disclosed, direct edit to a SCRATCH copy of the definition flipped a
+  real email's verdict with zero `ingest_email.py` change. `[AC-06]`: a
+  disclosed, in-process-monkeypatched "pre-`T03`" baseline (no literal
+  pre-change git commit exists) confirmed ZERO Sent+Inbox-combining
+  regressions across all 45 non-noise conversations, side-by-side against
+  the SAME byte-identical sample; 3 real conversations genuinely combine
+  a Sent + Inbox message into one Thread. A separate, fully-unmocked pass
+  through the REAL `run_delta_capture.py` orchestrator (genuine
+  subprocess-to-subprocess dispatch, never direct-imported — the first
+  such fully-real proof of the whole chain) independently reproduced 5 of
+  the same 45 Thread decisions plus 2 correct noise-skips, with an
+  accurate `skipped_as_noise: 2` written to a real `SUMMARY_PATH` JSON
+  file. The real vault's own already-persisted `noise_definition.json`
+  (`T01`) needed NO retune — found zero real misclassifications. One
+  already-known, already-`REVIEW-QUEUE.md`-tracked finding RECONFIRMED
+  live (not fixed here, outside this task's own scope): the real
+  orchestrators still don't forward `direction` to `ingest_email.py`,
+  tracked for `REQ-SB-87-US-02-T05`'s own future cutover pass. The actual
+  `--vault-path` cutover itself was explicitly held, per this task's own
+  locked Out-of-Scope — nothing touched the real vault or the real Hermes
+  profile/cron deployment. `REQ-SB-87-US-03` status → `Done`;
+  `SPRINT-084` stays `In Progress` (sibling `REQ-SB-87-US-05` remains
+  `Ready`).
+- feat: `REQ-SB-87-US-03-T04` — `run_full_capture.py`/`run_delta_capture.py`'s
+  own per-page and final JSON summaries gain a `skipped_as_noise` count,
+  aggregated the SAME way `threads_created`/`messages_created` already are —
+  reads `ingest_email.py`'s own `T03`-added `skipped_as_noise` field on each
+  ingest result. Purely additive reporting/aggregation, zero change to any
+  other orchestration logic (paging, watermark, subprocess dispatch). Live-
+  verified against both orchestrators' own real, unmodified `main()` with a
+  scoped, disclosed monkeypatch of the `run_script` subprocess boundary
+  (canned per-email `ingest_email.py`-shaped responses simulating a genuine
+  noise-skip, a genuine new capture, and a reply into an already-existing
+  Thread, across two pages) — `REQ-SB-87-US-03-AC-07` confirmed on both
+  scripts, plus the per-page-sums-to-total supporting check.
+- fix (partial, blocked): `REQ-SB-87-US-02-T01` — `ingest_email.py`'s Thread
+  resolve/create and `last_message_at` advances-only stamp migrated onto
+  `vault_manager.py` (`find_by_id`/`create`/`update`, `caller="ingest_email"`
+  on the mutating `create()` call, `id`/`title` = the Thread's own real
+  `conversation_id`). A fresh, byte-identical copy of the canonical
+  `vault_manager.py` deployed to `email-thread-capture/scripts/` for the
+  first time (SHA-256-confirmed match against `Hermes-Provisioning/shared/
+  vault_manager.py`). RawMessage creation stays on `vault_lib.py`'s own
+  `create_raw_message_note`, UNCHANGED — `vault_manager.py`'s
+  `create_dynamic_child()` has no way to write a flat, headerless real
+  email body (confirmed live: every RawMessage created through it today
+  would get an empty body), and closing that gap needs a file outside this
+  task's own `## Files to Modify` either way (the Thread template, or the
+  canonical engine + all 82 real deployed copies) — escalated rather than
+  silently forked or routed around (`ESC-061`, `REVIEW-QUEUE.md`).
+  `ensure_bare_person_note`/participant-link logic untouched, per this
+  story's own Constraints. Live-verified against a real ~100-email
+  scratch-vault sample (pulled live via `list_recent_emails.py`, never the
+  real vault): 51 distinct Threads + 100 messages created identically in a
+  migrated run vs. a same-sample pre-migration baseline run, zero real
+  frontmatter value mismatches, all 100 RawMessage notes and all 156 Person
+  notes byte-for-byte identical between the two runs, idempotent re-ingest
+  and advances-only `last_message_at` (including a genuine earlier-`received`
+  regression check) confirmed live. `AC-02` verified live and passes;
+  `AC-01` cannot be verified as fully passing until the RawMessage gap
+  above is resolved — task marked `Blocked`, not `Done`.
+
+- fix: `ESC-061` resolved (direct fix, operator-directed, no new story —
+  same precedent as `BUG-041`) — `create_dynamic_child()` (canonical
+  `Hermes-Provisioning/shared/vault_manager.py`) gained an additive
+  `body: str | None` parameter, mutually exclusive with `sections`, that
+  writes a dynamic child's real body flat and headerless (matching
+  `vault_lib.py::create_raw_message_note`'s own real RawMessage shape
+  exactly, byte-for-byte) instead of the original `sections`-only path,
+  which silently produced an EMPTY body for any dynamic child (like
+  Thread's own `messages`) whose `Template.json` declares no `sections`.
+  5 new automated tests added to `Hermes-Provisioning/shared/tests/
+  test_vault_manager.py` (56/56 passing overall, including all
+  pre-existing dynamic-child coverage unchanged). All 84 real deployed
+  `vault_manager.py` copies resynced and SHA-256-confirmed byte-identical
+  to the canonical source (11 repo copies under `Hermes-Provisioning/
+  skills/**/scripts/`, 73 live copies under `%LOCALAPPDATA%\hermes\
+  profiles\**\skills\...\scripts\`) — `src/backend/app/vault/
+  vault_manager.py` deliberately excluded (a different, actively-imported
+  FastAPI-app module, not part of this deployment model).
+
+- fix: `REQ-SB-87-US-02-T01` completed — `ingest_email.py`'s RawMessage
+  creation migrated onto `vault_manager.py`'s new `body=` flat-body mode
+  (`child_name="messages"`, `identity={conversation_id, message_id}`),
+  closing the gap the entry directly above left open. `ensure_bare_person_note`
+  itself stays byte-for-byte unchanged; only WHEN it's called changed
+  (unconditionally now, not gated behind a filename-existence pre-check
+  that would have been permanently stale post-migration) — safe per its
+  own already-documented idempotent, insert-if-missing contract. Re-verified
+  live end-to-end against a fresh real ~100-email scratch-vault sample
+  (never the real vault): 100/100 RawMessage bodies confirmed byte-for-byte
+  identical to a true pre-migration baseline run (direct `git show HEAD:...`
+  retrieval), 156/156 Person notes identical, 0 real frontmatter mismatches
+  beyond the already-`REQ-SB-87-US-01-T05`-accepted additive `id`/`title`/
+  `created` keys, idempotency and advances-only `last_message_at`
+  reconfirmed (including both an earlier- and a later-`received` re-ingest
+  check). One disclosed, non-blocking divergence: the RawMessage note's
+  own on-disk filename now follows `create_dynamic_child()`'s generic
+  ingestion-date-based naming, not `vault_lib`'s bespoke received-date-based
+  one (content/idempotency both unaffected) — flagged in `REVIEW-QUEUE.md`
+  for human spot-check ahead of `REQ-SB-87-US-02-T05`'s own future
+  real-vault cutover. Task marked `Done` — both locked ACs (`AC-01`,
+  `AC-02`) now verified with a real, live positive result. `ESC-061`
+  marked `Resolved` in `ESCALATIONS.md`.
+
+- fix: `REQ-SB-87-US-02-T02` completed — `rename_thread.py`'s Thread
+  resolution now goes through `vault_manager.find_by_id` (the Thread's own
+  real `id`, its `conversation_id`) instead of a directory-name scan; the
+  concept note's `thread_name`, every RawMessage's own `thread` backlink,
+  and every file companion's own `source_thread` field now go through
+  `vault_manager.update` instead of `vault_lib.upsert_frontmatter_key`. The
+  physical directory rename and the `sha256(conversation_id)[:8]`
+  collision-suffix disambiguation stay hand-written, unchanged
+  (`vault_manager.py` has no directory/file-rename primitive) — the
+  "already renamed" no-op check now compares against
+  `vault_manager._slugify(conversation_id)` (the convention that actually
+  created the directory post-`T01`), not `vault_lib._slugify`, a disclosed
+  scope-internal correctness fix. **Real regression found and fixed live**:
+  `vault_manager.update` always writes a frontmatter fence, unlike
+  `vault_lib.upsert_frontmatter_key`'s own safe no-op on a fence-less file
+  — the pre-existing `.md`-named-attachment companion-directory collision
+  case (the same one the `is_file()` guard already handles) can ALSO match
+  the raw, unfenced attachment bytes copy under the same glob; without an
+  extra guard this corrupted a real attachment by injecting a synthetic
+  frontmatter block. Fixed with an explicit
+  `path.read_text().startswith("---\n")` gate before calling `update()`,
+  reproducing `upsert_frontmatter_key`'s own no-op safety exactly (see
+  `MEMORY.md` Constraint entry for the generalized rule). Live-verified
+  against a fresh real scratch-vault sample (60 real emails pulled via
+  `list_recent_emails.py`, ingested via the already-migrated
+  `ingest_email.py`, never the real vault): a real multi-message Thread
+  renamed correctly with all message backlinks updated; re-running against
+  an already-renamed Thread stayed a correct no-op; two engineered real
+  Threads whose `conversation_id`s were made to clean to the IDENTICAL
+  `"<date> <subject>"` stem (including one landing exactly at the 80-char
+  cutoff) were correctly disambiguated via the real hash suffix, non-
+  truncated; a normal file companion's `source_thread` updated correctly
+  and the raw `.md`-named attachment bytes stayed byte-for-byte unchanged
+  after the fix. Task marked `Done` — its one locked AC (`AC-03`) verified
+  live.
+
+- fix: `REQ-SB-87-US-02-T03` completed — `link_person_to_thread.py`'s own
+  `## Related` accumulation, and `capture_attachments.py`'s/
+  `capture_file_link.py`'s own `## Files` accumulation, now go through
+  `vault_manager.get_section_content`/`vault_manager.modify_section(...,
+  caller=...)` instead of `vault_lib`'s own
+  `insert_body_section_if_missing`/`read_body_section`/
+  `replace_body_section`/`link_file_to_thread` — the Thread template's own
+  `allowed_callers` declarations (`REQ-SB-87-US-01-T05`) now enforce each
+  section's per-caller restriction, replacing `vault_lib.py`'s hardcoded
+  `_CALLER_ALLOW_LISTS`/`_HUMAN_OWNED_HEADERS`. Thread resolution in all
+  three scripts now goes through `vault_manager.find_by_id` instead of
+  `vault_lib.resolve_thread_directory`. `ensure_bare_person_note`/
+  `write_file_companion`/`write_file_link_companion` (dedup key, ignore
+  list, GAL fields, real byte-level attachment/link writes) stay entirely
+  hand-written, byte-for-byte unchanged. **Real bug found and fixed
+  during live verification (never shipped):** an initial draft passed
+  `"## "`-prefixed section names (`section="## Related"`/`"## Files"`,
+  matching the decomposer's own illustrative Test-step prose) to
+  `modify_section`/`get_section_content` — `modify_section`'s own
+  per-caller check does an exact match against `Template.json`'s BARE
+  `root.sections[].name` field, so the prefixed form silently found no
+  declared entry and fell through to the undeclared-section default
+  (`machine_write`, open to ANY caller) — a silent, no-error security
+  hole that would have defeated the whole per-caller restriction. Caught
+  live before shipping (the wrong-caller-refusal check didn't actually
+  raise on the first pass) and fixed to the bare form (`section="Related"`
+  /`"Files"`), matching `apply_thread_review.py`'s own already-`Done`
+  real call-site convention — see `MEMORY.md` Constraint entry for the
+  generalized rule. Explicitly re-verified `REQ-SB-87-US-02-T02`'s own
+  flagged frontmatter-fence-vs-raw-attachment-bytes risk: confirmed it
+  does NOT reproduce here (these three scripts never glob over
+  `files/**/*.md`; they only ever write the Thread's own single concept
+  note, resolved by `id`, plus the two files `write_file_companion`
+  itself explicitly names) — an engineered `.md`-named-attachment
+  collision case (a real, frontmatter-less attachment byte payload)
+  stayed byte-for-byte unchanged across every subsequent `## Related`/
+  `## Files` write. Live-verified against a fresh real scratch vault
+  (seeded with a real copy of the live `thread/Template.json`, a Thread +
+  RawMessage created via the already-`Done` `ingest_email.py`): a real
+  sender linked into `## Related` (idempotent re-run confirmed, no
+  duplicate); a real attachment captured into `## Files` with byte-exact
+  content; the engineered `.md`-collision case confirmed safe; a
+  URL-only file link captured into `## Files` (idempotent re-run
+  confirmed); every wrong-caller write against the OTHER script's own
+  exclusive section refused with a real `VaultManagerError`, content
+  unchanged; `## Personal Notes` refused to all three caller identities
+  (and to no caller), unconditionally; a positive-control write by the
+  correct caller still succeeded; a real CLI smoke call
+  (`link_person_to_thread.py`) confirmed the subprocess entry point
+  still works. Task marked `Done` — its one locked AC (`AC-04`) and the
+  `## Personal Notes` half of `AC-07` verified live with a real positive
+  result.
+
+- verify: `REQ-SB-87-US-02-T04` completed — confirmed, with real evidence
+  and zero code edits, that `run_full_capture.py`'s/`run_delta_capture.py`'s
+  own external CLI contract (arguments accepted, JSON printed to stdout,
+  exit codes, the watermark state file) is completely unaffected by
+  `T01`-`T03`'s migration of the five per-email scripts they orchestrate.
+  Ran both real orchestrators end-to-end against a fresh real scratch
+  vault (`--vault-path`/`SECOND_BRAIN_VAULT_PATH`, seeded with a real copy
+  of the live `thread/Template.json`), pulling real mail via the
+  unmodified `list_recent_emails.py` against live Outlook (707 real
+  Inbox+Sent items, no CLI bound needed). `run_full_capture.py` ran to
+  genuine natural completion (Outlook returned an empty page): 10 pages,
+  499 emails, 247 Threads, 499 messages, real `exit 0` (`$LASTEXITCODE`
+  captured directly, not inferred), the exact same `CAPTURE COMPLETE`
+  JSON summary shape as before this migration. A second, back-to-back
+  full-capture run confirmed real idempotency (`threads_created: 0`,
+  `messages_created: 0`, `.md` file count on disk unchanged at 1126
+  before/after) and a second real, direct `exit 0`. `run_delta_capture.py`
+  (fresh scratch vault, no prior watermark) bootstrapped its documented
+  2-day lookback, wrote `.second-brain/email_capture_state.json` for the
+  first time in its real, unchanged shape (`{"last_captured_at": ...}`),
+  real `exit 0`; a second, immediate delta pass correctly picked up ZERO
+  new emails (`new_emails: 0`, `watermark_before == watermark_after`),
+  proving the watermark-based incremental logic still correctly excludes
+  already-captured messages with no duplicate processing. Confirmed via
+  `git diff`/`git status` that this task's own two orchestrator files
+  carry no content diff — zero code edits made. One honest, disclosed
+  clarification (not a defect): `run_full_capture.py` itself has never
+  written the watermark state file, before or after this migration (only
+  `run_delta_capture.py` does) — the decomposer-authored Tests-step-1
+  prose reads as if both write it; verified this is pre-existing,
+  unchanged behavior, not a regression. Task marked `Done` — `AC-05`
+  verified live in full. Scratch vault (`C:\scratch-sb87t04\`) removed
+  after verification completed.
+
+- feat: `REQ-SB-87-US-02-T06` completed — `outlook_lib.py`'s per-folder
+  read (`_list_folder_mail`) now stamps a real `direction` key
+  (`"received"` for Inbox, `"sent"` for Sent Mail) at the point of the
+  real per-folder query, and `_resolve_attendees` now stamps a real
+  per-recipient `type` key (`"to"`/`"cc"`) read directly from Outlook's
+  own `recipient.Type` — both purely additive, no paging/restriction/
+  attachment logic touched. `list_recent_emails.py`'s module docstring
+  updated to document both new fields — `git diff` confirms zero logic
+  change. `ingest_email.py`'s RawMessage `frontmatter=` extended with
+  `direction` plus two new flat `to_recipients`/`cc_recipients`
+  email-string lists (not one combined `{email, type}` list — see the
+  `MEMORY.md` Constraint entry below for why). Live-verified against a
+  fresh real scratch vault (`C:\scratch-sb87t06\`, seeded with a real
+  copy of the live `thread/Template.json`), a real ~20-email sample
+  pulled via the unmodified `list_recent_emails.py`: one real Inbox
+  email (with a mixed To/CC recipient set) and one real Sent Mail email
+  ingested via the migrated `ingest_email.py`, on-disk frontmatter read
+  back directly via `vault_manager.read_note` — `direction` correct on
+  both (`"received"`/`"sent"`), `to_recipients`/`cc_recipients` correct
+  and per-individual-recipient distinguishable on the mixed email.
+  Re-running both ingests confirmed zero regression to idempotency
+  (`thread_created`/`message_created` both `false` on re-run, no
+  duplicate `.md` files). `AC-08`/`AC-09` verified live in full. A real
+  bug was found and fixed live before shipping: `vault_manager.py`'s own
+  hand-rolled (non-YAML) frontmatter writer silently drops a list of
+  dicts on read — see `MEMORY.md`'s new 2026-09-02 Constraint entry.
+  A real, disclosed, non-blocking gap flagged for `REQ-SB-87-US-02-T05`
+  (out of this task's own scope): `run_full_capture.py`/
+  `run_delta_capture.py`'s own `ingest_payload` construction doesn't yet
+  forward the new `direction` field (`recipients`/`type` already does,
+  unchanged) — see `REVIEW-QUEUE.md`.
+
+- feat: `summarize-and-tag-threads` — deployed the first-ever
+  `vault_manager.py` copy to its own `scripts/` folder (byte-identical to
+  the canonical source) and migrated `apply_thread_review.py`'s own
+  `## Summary` write + `last_message_at`/`last_summarized_at` stamping
+  onto it (`REQ-SB-87-US-04-T01`). `## Summary` now writes via
+  `vault_manager.modify_section(..., caller="apply_thread_review")`,
+  resolved by the Thread's own real frontmatter `id`; a Thread written
+  before this migration (confirmed live: every real Thread checked
+  carries no `id` field yet) has one minted (`uuid4`) and backfilled on
+  first migrated touch, idempotent on every later run. Stamping now goes
+  through one `vault_manager.update()` call, `last_message_at` included
+  only when a real value was derived from a message that run — same
+  "advances-only-where-applicable" semantics as before. Company
+  resolution, tag merging, and log-entry append/re-sort stay hand-written
+  and byte-for-byte unchanged (`REQ-SB-87-US-04-T02`'s own scope);
+  `_HUMAN_OWNED_HEADERS`/`_CALLER` retire at `T03`. Verified live against
+  a scratch vault seeded with the real, current `thread` Template.json
+  and realistic Thread/RawMessage notes: `REQ-SB-87-US-04-AC-02` fully
+  verified, `AC-01`'s Summary-write half verified (replace-not-append,
+  same `id` reused across runs, output JSON contract unchanged); bonus
+  live confirmation that a wrong-caller write and a `## Personal Notes`
+  write are both genuinely refused by the template's own access control.
+  Story `REQ-SB-87-US-04` status advances `Ready → In Progress`
+  (`T02`-`T04` remain).
+
+- refactor: `summarize-and-tag-threads` — `apply_thread_review.py`'s own
+  tag-merge calls (Thread + every RawMessage under it) migrated onto
+  `vault_manager.py`'s shared `merge_tags` primitive (`REQ-SB-87-US-04-T02`)
+  — the SAME real primitive `create_companies_partners.py` already uses.
+  This file's own hand-rolled `merge_tags` had zero remaining callers once
+  both call sites moved, so it was removed outright (not left unused for a
+  later retirement task, unlike `_HUMAN_OWNED_HEADERS`/`replace_body_section`
+  which are still load-bearing for `## Personal Notes`/`## Actions`/
+  `## Related`/`## Files` until `T03`). Company resolution
+  (`build_company_index`/`resolve_companies`), the never-tag-Person-notes
+  rule, and `append_log_entry`'s own append/re-sort logic are byte-for-byte
+  unchanged, still hand-written. Verified live against a scratch vault
+  seeded with the real, current `thread`/`customer`/`partner`
+  `Template.json`s and realistic Customer/Partner/Thread/RawMessage/Person
+  content: `REQ-SB-87-US-04-AC-01` fully closed out (tag-merge half, onto
+  a resolvable Acme/Beta Partner pair — combined with `T01`'s own Summary-
+  write confirmation), `AC-03` (company log-entry append/re-sort,
+  including a real out-of-order-arrival case landing in the correct sorted
+  position, plus a re-run confirming no duplicate entry/tag), `AC-04`
+  (two real Person notes linked via `participant_links` confirmed
+  byte-identical before/after), `AC-05` (an unresolvable company name
+  reported in `companies_unresolved`, no hub note fabricated) all verified
+  live and pass. Story `REQ-SB-87-US-04` remains `In Progress`
+  (`T03`-`T04` remain).
+
+- refactor: `summarize-and-tag-threads` — `apply_thread_review.py` converged
+  onto the Thread template's own section-access declarations
+  (`REQ-SB-87-US-04-T03`). Removed the file's own separate
+  `_HUMAN_OWNED_HEADERS`/`_CALLER` guard and its local
+  `replace_body_section`/`insert_body_section_if_missing` writers — every
+  section write this script performs (`## Summary`, `T01`) already went
+  exclusively through `vm.modify_section`, which enforces access purely
+  from the Thread template's own `allowed_callers`/`access: human_only`
+  declarations (`REQ-SB-87-US-01-T05`, `ADR-017`), so the local guard was
+  fully dead weight. Also removed `upsert_frontmatter_key` (superseded by
+  `vm.update` at `T01`) and its now-orphaned `_format_frontmatter_value`/
+  `_BODY_SECTION_HEADER_PATTERN` helpers — zero remaining callers, a
+  disclosed dead-code cleanup extending `T02`'s own precedent. Verified
+  live against a fresh scratch vault seeded with the real, current
+  `thread` Template.json: `## Summary` still writes successfully through
+  the migrated path (caller `apply_thread_review`); a disposable
+  throwaway script attempting a `## Personal Notes` write through the
+  same `vm.modify_section` call shape was refused with a real
+  `VaultManagerError` (`"section 'Personal Notes' is 'human_only' ...
+  no automated write is allowed here"`), confirmed enforced solely by
+  `vault_manager.py`'s own template-declared access control — the
+  finished file no longer defines any `_HUMAN_OWNED_HEADERS`-shaped
+  constant at all (`REQ-SB-87-US-04-AC-06`, both halves, pass). A full
+  regression re-run of `T01`/`T02`'s own scenarios (3 scratch Threads,
+  A→B→C plus a re-run of A) confirmed zero regression:
+  `REQ-SB-87-US-04-AC-01`/`AC-02`/`AC-03`/`AC-04`/`AC-05` all still pass
+  byte-for-byte identically to their own prior verification. Story
+  `REQ-SB-87-US-04` remains `In Progress` (`T04` — real-vault
+  retrofit/cutover — remains).
+
+- chore: `summarize-and-tag-threads` — real-vault retrofit-safety
+  verification, deployment, and live cron cutover (`REQ-SB-87-US-04-T04`,
+  no code changes — the last task of `REQ-SB-87-US-04`). Deployed the
+  fully-migrated `apply_thread_review.py` + `vault_manager.py` to the
+  real, active Hermes profile location this Skill runs from
+  (`AppData/Local/hermes/skills/company-review/summarize-and-tag-threads/
+  scripts/`, previously holding only the pre-migration script) —
+  byte-identical to the repo copies, confirmed by diff.
+  `REQ-SB-87-US-04-AC-07` verified live, read-then-compare, against the
+  REAL vault: ran the deployed script against two real, already-processed
+  Threads ("Masdar Open Items", "TAQA"), reusing their own already-applied
+  summary/companies verbatim — both runs left `## Summary`, tags, and
+  every resolved company's own `<Name>-log.md` byte-identical before/after
+  (only `last_summarized_at` advanced + a real, previously-absent `id`
+  minted), confirming zero duplicate log entries and zero lost content on
+  retrofit. Confirmed the live `job4-summarize-tag-threads` cron job's own
+  prompt has always targeted the real vault directly (no separate
+  `--vault-path` job-definition argument exists for this Skill) — the
+  cutover was the code deployment itself. Two scope-internal judgment
+  calls disclosed (task/story `gate: flagged`): the one real, never-yet-
+  summarized Thread was deliberately not processed (real judgment stays
+  the agent's job, explicitly out of this task's scope), and the live
+  `job4` cron was deliberately not manually triggered end-to-end (a real
+  scan found ~27 real Threads would be picked up by its own next batch —
+  genuine backfill work this task's own Out of Scope excludes) — both
+  resolved via the direct, bounded real-vault evidence above instead. All
+  4 tasks (`T01`-`T04`) and all 7 locked ACs now verified `Done`. Story
+  `REQ-SB-87-US-04` status advances `In Progress → Done`.
+
 - chore: `REQ-SB-87-US-01` (vault_manager.py convergence + Thread/RawMessage
   Template authoring) closed out — `T06`'s full regression pass. Ran the
   full `test_vault_manager.py` suite (52/52, zero regressions);
@@ -3984,3 +4430,305 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   schedules, etc. — its own per-concern-folder split) and migrating the
   ~150 legacy note-kind functions onto real Templates + `VaultClient`
   (needs a Template authored per kind first).
+
+- feat: `REQ-SB-87-US-03-T01` completed — new, standalone
+  `Hermes-Provisioning/skills/vault-rebuild/email-thread-capture/scripts/
+  derive_noise_definition.py`, a genuinely separate, out-of-band
+  derivation mechanism (`ADR-018`) that relays ONE one-shot
+  `hermes [-p PROFILE] chat -Q --query-file ...` question (defaults to
+  the root/default profile — no dedicated classifier profile exists yet,
+  that's `T02`'s own job) asking a real Hermes agent to derive a
+  structured noise definition from a real email sample, then persists
+  the response verbatim as `.second-brain/data/EmailCapture/
+  noise_definition.json` under the VAULT (a new real sibling to
+  `.second-brain/data/Templates/`) — never inside this repo, never a
+  Skill-`scripts/`-folder file, matching `Template.json`'s own
+  already-established live-vault-path convention (zero deploy step for
+  any future Capture-stage reader). Built-in default sample: the five
+  real, live, operator-confirmed noise-shaped subjects (`REQ-SB-87-US-03`
+  Scenario 10) copied directly from the real vault's own RawMessage
+  notes; `--sample-file` also accepts any JSON array of
+  `{subject, sender_email, body}` for a future retune pass. A failed
+  relay/parse leaves any previously-persisted artifact untouched (never
+  a silent clobber). Live-verified end-to-end, twice, against the real
+  Hermes install and the real vault (`hermes.exe` confirmed on PATH,
+  real Python resolved via `py -0p` after the sandboxed shell's own
+  `python` alias failed — Microsoft Store stub, not a real install):
+  run 1 (built-in 5-subject default sample) produced a real, structured,
+  legible `noise_definition.json` whose own `definition.category`
+  ("Automated/Broadcast Notifications") and `description` explicitly
+  frame the category as system/HR/security notifications, broadcast
+  newsletters, and event-announcement blasts — broader than, and never
+  mentioning, literal meeting-invite `.ics` items (confirmed directly in
+  `outlook_lib.py` that those are already filtered upstream via
+  `MessageClass`/`_MEETING_MESSAGE_CLASS_PREFIX`, before classification
+  would ever run); run 2 (a genuinely different, real 3-email sample —
+  distinct subjects/senders, none from run 1) produced a real, visibly
+  different `definition` (different criteria wording, new signals like
+  `RITM`/`INC` ticket-ID patterns and `List-Unsubscribe` headers that
+  only run 2's own sample surfaced), proving the artifact is a real,
+  re-derivable file, never a one-time frozen output. The persisted
+  artifact was then restored to run 1's own content (grounded in the
+  operator's exact five locked seed subjects), since that is this task's
+  own required "real, first derivation" and the one `T02`'s own AC-10
+  check depends on. `AC-04` verified live in full (both the primary and
+  the two unlabeled supporting Tests steps); `AC-05`'s and Scenario 5's
+  own "no Capture-stage code change needed to retune" property holds by
+  construction (`ingest_email.py`/`run_delta_capture.py` untouched,
+  confirmed via `git status` — this task touched no file outside its own
+  `## Files to Modify`). Deployed to the real profile-facing copy under
+  `AppData\Local\hermes\skills\vault-rebuild\email-thread-capture\
+  scripts\` for live execution, matching this project's own established
+  manual-deploy convention (`MEMORY.md`).
+
+- feat: `REQ-SB-87-US-03-T02` completed — new, real, live Hermes profile
+  `email-capture-classifier` (`%LOCALAPPDATA%\hermes\profiles\
+  email-capture-classifier\`, no checked-in repo file, per this task's
+  own `## Files to Modify`), the dedicated one-shot relay target
+  `ADR-018` anticipates for the per-email classify-or-skip judgment.
+  Cloned from `default` (real Compass/`gpt-5` model config inherited),
+  then structurally stripped to a bounded, zero-tool relay target: all
+  78 inherited skills deleted (0 remain), `config.yaml`'s
+  `platform_toolsets.cli` emptied to `[]` — "no vault-write capability,
+  no tool-calling loop" is now a real, structural property of the
+  profile, not just SOUL.md instruction. New `SOUL.md` instructs the
+  classifier to read the persisted noise definition (`T01`'s own
+  `noise_definition.json`) plus one new email's sender/recipients/
+  subject/body from the relay question text and reply with exactly one
+  JSON object — `{"is_noise": bool, "classification":
+  "internal"|"partner"|"customer"|null, "reasoning": str}`, matching
+  `ADR-018`'s own illustrative field names verbatim — never using a
+  tool, never writing to the vault. No cron job created. Live-verified,
+  7 real relay calls against the real, installed `hermes.exe` and real
+  Compass/`gpt-5` Provider, real content read directly from the real
+  vault's own Thread/RawMessage notes: `[REQ-SB-87-US-03-AC-10]` — all 5
+  real operator-confirmed seed subjects (Compass Alert, Core42 Security
+  Training, Learning Assignment Changes, Payslip, CRM Enhancements),
+  each using their own real RawMessage body content, all returned
+  `is_noise: true, classification: null`; `[REQ-SB-87-US-03-AC-02]` — a
+  real, content-rich, genuinely non-noise Thread (`customer/microsoft`,
+  `partner/core42` tags in the real vault) correctly returned `is_noise:
+  false` — confirming the classifier does not default everything to
+  noise — with `classification` improving from `"internal"` to the
+  correct `"customer"` once the relay's question text was widened to
+  include real recipients/participants, not sender-only (a live-
+  discovered `SOUL.md` refinement, disclosed, re-verified against a
+  re-run of a seed noise case to confirm no regression). Structurally
+  confirmed, not just asserted: a session export of one real call shows
+  `tool_call_count: 0`; a real vault file-timestamp sweep across the
+  whole verification pass shows zero new/modified files anywhere under
+  `Work/`; `cron list` shows "No scheduled jobs" throughout.
+
+- feat: `REQ-SB-87-US-03-T03` — the classify-or-skip relay call is now
+  wired live into `ingest_email.py` (`ADR-018`): inside the SAME
+  `if thread_path is None:` (genuinely first-seen `conversation_id`)
+  branch, BEFORE any Thread/RawMessage note is written, ONE bounded
+  `hermes -p email-capture-classifier chat -Q --query-file ...` relay
+  call reads `T01`'s own persisted `noise_definition.json` plus the new
+  email's sender/recipients/subject/body/direction, and reasons a
+  `{is_noise, classification, reasoning}` verdict. A `true` verdict
+  returns early with `skipped_as_noise: true` — no Thread, no
+  RawMessage, no Person-note side effect, nothing written anywhere;
+  every OTHER return path carries `skipped_as_noise: false`. A `false`
+  verdict creates the Thread exactly as before, additionally stamping
+  the real `classification` value (`"internal"|"partner"|"customer"`)
+  into the Thread's own `classification` frontmatter field
+  (`REQ-SB-87-US-01-T05`'s already-declared field). An already-existing
+  Thread's later messages never reach this branch at all — a structural
+  guarantee, not a runtime check — so the relay fires exactly once per
+  conversation, ever. **Operator-locked "No Sent Items are never
+  noise"** enforced on the CALLER'S side, not the classifier's: a
+  first-seen `direction: "sent"` message's own `is_noise` verdict is
+  never read/acted on (the skip path is structurally unreachable for
+  it) — it still gets a real, non-fabricated `classification` from the
+  same relay call. A relay failure/timeout/unparseable response/missing
+  noise-definition artifact all raise (uncaught) rather than silently
+  defaulting either way — no Thread is created, so the conversation is
+  naturally retried on the next capture tick (`existing_directory`
+  stays `None`), matching `ADR-018`'s own disclosed degrade default.
+  Live-verified against a fresh scratch vault (seeded with real copies
+  of `thread/Template.json` and `noise_definition.json`), driving the
+  real, unmodified `ingest_email.py` against the real, installed
+  `hermes.exe`/classifier profile: `[REQ-SB-87-US-03-AC-01]` — a
+  genuinely new noise-shaped conversation produced zero vault trace
+  (`skipped_as_noise: true`, no Thread directory ever created, confirmed
+  independently via a directory listing); `[REQ-SB-87-US-03-AC-02]` — a
+  genuinely new, content-rich Customer conversation was captured and
+  correctly stamped `classification: "customer"`;
+  `[REQ-SB-87-US-03-AC-03]`/`[REQ-SB-87-US-03-AC-09]` — a further,
+  deliberately noise-shaped message on the SAME already-classified
+  conversation was captured unconditionally (2 real messages under one
+  Thread) with the Thread's own classification unchanged AND a real,
+  in-process `subprocess.run` call-count wrap confirmed ZERO relay calls
+  were made for it; `[REQ-SB-87-US-03-AC-06]` — a real Inbox-then-Sent
+  pair on the same conversation still combined into one Thread (2
+  message files), the Sent item never excluded;
+  `[REQ-SB-87-US-03-AC-08]` — a first-seen `direction: "sent"` message
+  with deliberately noise-shaped content (reusing one of `T02`'s own
+  seed examples) was never skipped, captured with a real `classification:
+  "internal"`. An engineered relay failure (in-process monkeypatch of
+  `subprocess.run`, reverted) raised as expected with no Thread created,
+  and an unpatched retry of the SAME conversation then succeeded
+  normally, confirming the natural-retry degrade path.
+
+- feat: `REQ-SB-88-US-01-T01` — deployed a fresh `vault_manager.py` copy
+  into `summarize-and-tag-files/scripts/` (this Skill's first copy ever)
+  and migrated `apply_file_review()`'s own `## Summary` write and tag
+  merge onto `vm.modify_section`/`vm.merge_tags` (`caller=
+  "apply_file_review"`), mirroring `apply_thread_review.py`'s own
+  `REQ-SB-87-US-04-T01` id-mint-if-missing precedent. Company resolution
+  (`build_company_index`/`resolve_companies`) unchanged. Verified live
+  against a scratch vault: `[REQ-SB-88-US-01-AC-01]`/`[AC-02]` both PASS.
+- feat: `REQ-SB-88-US-01-T02` — migrated the Thread's own `## Files`
+  idempotent line-replace and the `--append` `## Details` follow-up pass
+  onto `vm.modify_section` (replace/append modes respectively); added
+  `apply_file_review` to the real, deployed Thread `Template.json`'s
+  `## Files` `allowed_callers` (additive). Removed the now-fully-dead
+  local `insert_body_section_if_missing`/`read_body_section`/
+  `replace_body_section`/`merge_tags`/`_format_frontmatter_value`
+  primitives (zero remaining callers). Verified live against a scratch
+  vault: `[REQ-SB-88-US-01-AC-01]`/`[AC-03]`/`[AC-04]` all PASS, incl. a
+  real wrong-caller refusal confirming the Template.json edit is
+  load-bearing.
+- fix: `REQ-SB-88-US-01-T03` — real-vault retrofit-safety confirmed for
+  the fully-migrated `apply_file_review.py`: a real, already-summarized
+  captured File (`2026-07-20 f4b90f65-Core42_Masdar_DataLake.pptx`)
+  re-run with its own already-applied summary/tags/companies left
+  `## Summary`/tags/the parent Thread's `## Files` line all byte-identical
+  (`[REQ-SB-88-US-01-AC-05]` PASS) — the only diff was one new, expected
+  `id` frontmatter line (first-touch id-mint, same accepted shape as
+  `REQ-SB-87-US-04-T04`'s own precedent). Migrated script + `vault_manager.py`
+  deployed to the real, active Hermes profile location
+  (`profiles/files-manager/skills/company-review/summarize-and-tag-files/scripts/`).
+- feat: `REQ-SB-88-US-01-T04` — provisioned a new, real, bounded/
+  repeat-limited Hermes cron job (`job5-summarize-tag-files`, interval
+  every 20m, `repeat.times` sized against the real current ~40-File
+  unsummarized backlog) for `summarize-and-tag-files`, mirroring
+  `job4-summarize-tag-threads`'s own shape. Enabled the Skill on the
+  primary/default Hermes profile (previously only present on the
+  `files-manager` profile, whose own gateway is not the one that fires
+  cron ticks) and deployed the migrated script there — a real,
+  coder-level provisioning detail this task's own text explicitly left
+  open. See `MEMORY.md` for the `hermes cron create` schedule-string
+  gotcha (`"20m"` → one-time; `"every 20m"` → the real recurring interval)
+  and the primary-profile skill-enablement requirement. Two real runs
+  confirmed live: 30 real captured Files genuinely summarized/tagged
+  (7 distinct real companies) across both runs, both stopping cleanly.
+  Disclosed finding, gate flagged (see `REVIEW-QUEUE.md`): the second
+  real run's own skip-rule application was unreliable — 4/15 Files were
+  already-summarized re-processing, not genuinely new (agent-judgment
+  gap, no code defect in the migrated script). Job paused (not removed)
+  pending a human decision on next steps; 2 of 4 budgeted runs consumed.
+- feat: `REQ-SB-88-US-02-T01` — reconfirmed the already-deployed
+  `track-opportunities/scripts/vault_manager.py` byte-current against the
+  canonical source (no resync needed) and migrated `link_opportunity()`'s
+  own `opportunities` frontmatter-list write onto `vm.read_note`/
+  `vm.update`. `resolve_opportunity()`/`_iter_opportunity_notes()`
+  unchanged. Verified live against a scratch vault:
+  `[REQ-SB-88-US-02-AC-01]`/`[AC-03]`/`[AC-04]` all PASS.
+- feat: `REQ-SB-88-US-02-T02` — migrated `link_opportunity()`'s own
+  `## Related` write onto the already-public, template-driven
+  `vm.modify_section` (deriving `"thread"`/`"meeting"` from the target
+  note's own `Work/Threads/`/`Work/Meetings/` path prefix); added
+  `link_opportunity` to the real, deployed Thread `Template.json`'s
+  `## Related` `allowed_callers` (additive, Meeting template needed no
+  edit). Retired the now-fully-superseded local `_RELATED_CALLER`/
+  `_CALLER_ALLOW_LISTS` guard and local section-write primitives — access
+  to `## Related` for a Thread target is now enforced solely by
+  `vault_manager.py`'s own template-declared control. Verified live
+  against both a Thread and a Meeting target:
+  `[REQ-SB-88-US-02-AC-02]` PASS.
+- fix: `REQ-SB-88-US-02-T03` — real-vault retrofit-safety confirmed for
+  the fully-migrated `link_opportunity.py`: a real Thread already linked
+  to a real Opportunity (`ADNOC AVS→Azure Native Landing Zone Amendment`)
+  re-run with the same note/Opportunity pair left `opportunities`
+  frontmatter and `## Related` both byte-identical
+  (`[REQ-SB-88-US-02-AC-05]` PASS). A full `T01`-`T02` regression pass
+  against a fresh scratch Thread confirmed zero cross-task regression.
+  Migrated script deployed to the real, active Hermes profile location
+  (`profiles/opp-manager/skills/company-review/track-opportunities/scripts/`).
+  Disclosed, non-blocking finding (pre-existing, not introduced by this
+  migration): `link_opportunity.py`'s own CLI `main()` crashes on
+  `print()` for a real Opportunity title containing a non-ASCII character
+  under a `cp1252` console — see `REVIEW-QUEUE.md`.
+- fix: direct implementation (outside the story/task/sprint pipeline, per
+  operator) — `apply_file_review.py` (`summarize-and-tag-files`) gains a
+  real, mechanical already-summarized skip-guard: refuses (no-op,
+  `"skipped": true`) a redundant `## Summary` write whenever the target
+  File's own `## Summary` is already non-empty, closing the real,
+  disclosed `REQ-SB-88-US-01-T04` finding (the real, now-indefinite
+  `job5-summarize-tag-files` cron job's own second run re-processed 4/15
+  already-summarized real Files — the documented skip rule had zero
+  code-level enforcement). A `--force` flag bypasses the guard for a
+  genuinely intentional re-summarization. Files have no
+  `last_summarized_at`/`last_message_at`-equivalent freshness fields (the
+  `file` template's own `frontmatter_defaults` carries only `type`/`tags`,
+  confirmed live) because a captured File's own content never changes
+  after capture — so "`## Summary` already non-empty" is a complete
+  freshness check on its own, unlike a Thread. Proven against a scratch
+  vault (refuse-on-non-empty, normal-write-on-empty, `--force` override,
+  `--append` path unaffected — all 4 cases pass) and live against the
+  real vault (`C:\myWorx\Moussa MD\Moussa Brain`): a poisoned second call
+  against an already-summarized real File was refused, real file content
+  and mtime byte-for-byte unchanged afterward. Deployed to both real,
+  live locations this script normally resyncs to: the primary/default
+  profile (`AppData/Local/hermes/skills/company-review/
+  summarize-and-tag-files/scripts/`, where the live `job5` cron job
+  actually executes from) and the specialized `files-manager` profile.
+  See `MEMORY.md`.
+- feat: direct implementation (outside the story/task/sprint pipeline,
+  per operator) — new `Hermes-Provisioning/skills/vault-rebuild/
+  email-thread-capture/scripts/retrofit_capture.py`, a reusable,
+  parameterized CLI (`--vault-path`, `--limit`, default 100) that bulk-
+  backfills the last N real Inbox+Sent messages through the FULL real
+  per-email pipeline (ingest → link-person → rename → attachments, in
+  that order, per message), closing the real, disclosed
+  `REQ-SB-87-US-02-T05` post-hoc finding (a direct-`ingest_email.py`-only
+  retrofit driver skipped the rename/person-link chaining, leaving
+  several real Threads stuck on their raw `conversation_id` folder name
+  with no automatic retry path). A thin sibling subprocess-orchestrator
+  (mirrors `run_full_capture.py`'s own `run_script()` pattern) rather
+  than a refactor of `run_full_capture.py`/`run_delta_capture.py`'s own
+  already-Done per-email loop — the smaller, lower-risk change; neither
+  existing orchestrator was touched. Prints a final JSON summary
+  (`total_processed`/`already_existing_topped_up`/
+  `genuinely_new_captured`/`skipped_as_noise`/`errors`). Proven against a
+  scratch vault (`--limit 15`: 15 processed, 8 genuinely new, 2 topped
+  up, 5 correctly skipped as noise, 0 errors — all 8 newly-created
+  Threads already correctly renamed, zero raw-hex stragglers) and then
+  against the real vault (`--limit 100`, run only once `email-delta-
+  capture` and `job5` were both confirmed idle — `job4`'s own concurrent
+  run was a disclosed, accepted low-severity residual risk, see
+  `MEMORY.md`): **100 processed, 97 already-existing topped up, 1
+  genuinely new captured, 2 correctly skipped as noise, 0 errors** — the
+  one new real Thread (`2026-09-02 Requested Item RITM0111324 has been
+  updated`) is already correctly renamed/classified/person-linked, and a
+  full `Work/Threads/` sweep afterward found zero raw-hex-named folders
+  (real Thread count 259→260, matching the +1 genuinely-new count
+  exactly). A forensic check confirmed no actual data loss from the
+  disclosed `job4` overlap: one real Thread's frontmatter was touched by
+  `job4` inside this retrofit's own write window, file re-read afterward
+  and confirmed fully intact/well-formed (this retrofit's own write for
+  that same Thread was a no-op, since the message was already captured
+  with no newer `last_message_at` to advance). See `MEMORY.md`.
+
+- docs: new `Deployment.md` (repo root) — a from-scratch deployment guide
+  for standing Second Brain up on a new machine, ahead of the operator's
+  own planned laptop migration. Covers Hermes deployment (the real,
+  no-admin-rights AppData-only install, the Startup-folder gateway
+  workaround for the blocked Scheduled Task, the Microsoft Store
+  python-alias trap), Hermes config (Compass model setup, WhatsApp QR
+  pairing, profile provisioning/trimming, Skill deployment, the two real
+  cron-syntax traps already in `MEMORY.md`), this app's own deployment,
+  and a first-run checklist — grounded in this session's own real,
+  verified install-state investigation (`hermes --version`, profile/cron
+  listings, PATH inspection, `setup-hermes.sh`) rather than assumption.
+  Two sub-sections (antivirus allowlisting, proxy config) are left as
+  explicit placeholders — the operator confirmed both were real blockers
+  during the original install, but no prior documentation of the exact
+  steps taken was found in this repo's own history, and fabricating specifics
+  would be worse than flagging the gap. `README.md`'s Quick Start now
+  points here first; `Documentation/DeploymentGuide.md` (the older,
+  app-only guide, whose "hourly APScheduler capture" claim is now stale —
+  capture is 100% Hermes cron jobs) marked superseded, not deleted, with
+  its own stale section corrected in place.
