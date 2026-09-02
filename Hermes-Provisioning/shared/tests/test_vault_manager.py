@@ -978,6 +978,108 @@ def test_dynamic_child_declared_alongside_fixed_children_is_skipped_at_root_crea
     assert (root_path.parent / "items").is_dir()
 
 
+# ── dynamic-child flat body mode -- ESC-061, REQ-SB-87-US-02-T01's own
+# live-found RawMessage empty-body gap ──────────────────────────────────
+
+def _write_dynamic_child_template_no_sections(vault: Path, **child_overrides) -> dict:
+    """Same shape as `_write_dynamic_child_template` above, but the
+    dynamic child declares NO `sections` list at all -- matches the real,
+    live `thread/Template.json`'s own `messages` child exactly
+    (`REQ-SB-87-US-01-T05`), the real shape that produced the genuine
+    empty-body gap this file's own `body=` mode closes."""
+    import json
+    template_path = vault / ".second-brain" / "data" / "Templates" / "thread-fixture-flat" / "Template.json"
+    template_path.parent.mkdir(parents=True, exist_ok=True)
+    child_spec = {
+        "growth": "dynamic", "name": "messages", "folder": "messages",
+        "identity_fields": ["external_id"],
+        "frontmatter_defaults": {"type": "RawMessageFixture"},
+    }
+    child_spec.update(child_overrides)
+    template_path.write_text(json.dumps({
+        "id": "thread-fixture-flat", "on_missing": "create",
+        "root": {
+            "on_existing_title": "update_section",
+            "frontmatter_defaults": {"type": "ThreadFixture"},
+            "sections": [{"name": "Summary", "access": "machine_write"}],
+            "children": [child_spec],
+        },
+    }), encoding="utf-8")
+    return vm.load_template(vault, "thread-fixture-flat")
+
+
+def test_create_dynamic_child_flat_body_mode_writes_raw_headerless_content(vault):
+    """(2026-09-01, ESC-061) A dynamic child whose Template.json declares
+    no sections at all (the real Thread `messages` shape) can still get a
+    real, non-empty body via `body=` -- preserving
+    `vault_lib.create_raw_message_note`'s own real, current RawMessage
+    body shape exactly: a flat, headerless string, never wrapped in a
+    synthetic `## Header`."""
+    template = _write_dynamic_child_template_no_sections(vault)
+    root = vm.create(vault, template, note_name="Threads", title="Vendor Renewal")
+
+    raw_email_body = "Hi team,\n\nPlease see the attached proposal.\n\nThanks,\nJane"
+    result = vm.create_dynamic_child(
+        vault, template, root_id=root["id"], child_name="messages",
+        identity={"external_id": "msg-1"}, frontmatter={"title": "First Item"},
+        body=raw_email_body,
+    )
+
+    assert result["created"] is True
+    _, written_body = vm.read_note(Path(result["path"]))
+    assert written_body.strip("\n") == raw_email_body
+    assert "## " not in written_body
+
+
+def test_create_dynamic_child_flat_body_mode_idempotent_second_call_preserves_original_body(vault):
+    """Re-running with the SAME identity never overwrites the first real
+    body -- same idempotency guarantee the sections-based mode already
+    has, reconfirmed for the new flat-body mode."""
+    template = _write_dynamic_child_template_no_sections(vault)
+    root = vm.create(vault, template, note_name="Threads", title="Vendor Renewal")
+
+    first = vm.create_dynamic_child(
+        vault, template, root_id=root["id"], child_name="messages",
+        identity={"external_id": "msg-1"}, body="original real body",
+    )
+    second = vm.create_dynamic_child(
+        vault, template, root_id=root["id"], child_name="messages",
+        identity={"external_id": "msg-1"}, body="should never land",
+    )
+
+    assert second["created"] is False
+    assert second["path"] == first["path"]
+    _, written_body = vm.read_note(Path(first["path"]))
+    assert written_body.strip("\n") == "original real body"
+
+
+def test_create_dynamic_child_body_and_sections_are_mutually_exclusive(vault):
+    """(2026-09-01, ESC-061) Passing both `body` and `sections` on the
+    same call is a real caller error, never a silently-resolved
+    precedence rule."""
+    template = _write_dynamic_child_template(vault)
+    root = vm.create(vault, template, note_name="Threads", title="Vendor Renewal")
+    with pytest.raises(vm.VaultManagerError, match="mutually exclusive"):
+        vm.create_dynamic_child(
+            vault, template, root_id=root["id"], child_name="items",
+            identity={"external_id": "msg-1"},
+            sections={"Body": "x"}, body="y",
+        )
+
+
+def test_create_dynamic_child_sections_mode_still_works_unchanged(vault):
+    """(2026-09-01, ESC-061) The original sections-based write path (a
+    dynamic child that DOES declare sections) is fully unaffected by the
+    new `body=` mode being added alongside it."""
+    template = _write_dynamic_child_template(vault)
+    root = vm.create(vault, template, note_name="Threads", title="Vendor Renewal")
+    result = vm.create_dynamic_child(
+        vault, template, root_id=root["id"], child_name="items",
+        identity={"external_id": "msg-1"}, sections={"Body": "sectioned content"},
+    )
+    assert vm.get_section_content(Path(result["path"]), "Body") == "sectioned content"
+
+
 # ── per-caller section-write access -- REQ-SB-87-US-01-T02, ADR-017 ─────
 
 def _write_caller_access_template(vault: Path) -> dict:
