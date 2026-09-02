@@ -176,7 +176,15 @@ CLI (one process per call, matching every existing Skill script's own
             # the declared identity_fields' real values -- the natural
             # key an already-existing child is idempotently matched
             # against before a new one is ever created.
-            "frontmatter": {...}?, "sections": {"Summary": "...", ...}?}
+            "frontmatter": {...}?, "sections": {"Summary": "...", ...}?,
+            # (2026-09-01, ESC-061) an alternative to "sections" for a
+            # dynamic child whose Template.json declares NO sections list
+            # at all (Thread's own real "messages" child) -- a flat,
+            # unheaded body string written AS-IS, preserving a
+            # RawMessage's real, current body shape exactly (never a
+            # synthetic "## Header"-wrapped one). Mutually exclusive with
+            # "sections" -- a real caller error if both are given.
+            "body": str?}
 
 Every command prints one JSON object to stdout: the real result, or
 {"error": str} (exit code 1) -- never raises an uncaught traceback for an
@@ -1040,6 +1048,7 @@ def create_dynamic_child(
     identity: dict,
     frontmatter: dict | None = None,
     sections: dict[str, str] | None = None,
+    body: str | None = None,
 ) -> dict:
     """The real primitive Thread's own `messages/` folder needs (2026-09-01,
     ADR-017): a `growth: "dynamic"` child grows ONE note at a time,
@@ -1060,7 +1069,27 @@ def create_dynamic_child(
     3. Genuinely UNBOUNDED -- always a real directory listing under the
        declared subfolder, never a small, fixed-size in-memory structure
        checked against a ceiling.
-    """
+
+    `body` (2026-09-01, `ESC-061` -- `REQ-SB-87-US-02-T01` found this gap
+    live: the real `thread/Template.json`'s own `messages` child declares
+    NO `sections` at all, so the original `sections`-only write path
+    always produced a genuinely EMPTY body for a RawMessage, silently
+    dropping the real email content) is an ADDITIVE second write mode,
+    mutually exclusive with `sections` -- a flat, unheaded body string
+    written to the child note exactly as given, matching
+    `vault_lib.py::create_raw_message_note`'s own real, current RawMessage
+    body shape (a plain email body, never a synthetic `"## Header"`-
+    wrapped document -- confirmed no real RawMessage note has ever had
+    section headers). The original `sections`-based mode is unchanged for
+    any other dynamic child that DOES declare a `sections` list."""
+    if body is not None and sections:
+        raise VaultManagerError(
+            "create_dynamic_child: 'body' and 'sections' are mutually "
+            "exclusive -- pass a flat body string for a dynamic child "
+            "whose template declares no sections, or a sections dict for "
+            "one that does, never both"
+        )
+
     root_path = find_by_id(vault_path, root_id)
     if root_path is None:
         raise VaultManagerError(
@@ -1099,11 +1128,18 @@ def create_dynamic_child(
     full_frontmatter.setdefault("id", str(uuid.uuid4()))
     full_frontmatter.setdefault("created", today_str)
 
-    body_parts = [
-        f"{_section_header(entry['name'])}\n\n{(sections or {}).get(entry['name'], '')}\n"
-        for entry in child_spec.get("sections", [])
-    ]
-    write_note(child_path, full_frontmatter, "\n" + "\n".join(body_parts) if body_parts else "\n")
+    if body is not None:
+        # Matches `_write_frontmatter_note`'s own real separator exactly
+        # (frontmatter fence + a blank line + the raw body, no header) --
+        # `write_note` already joins frontmatter with a single "\n", so
+        # one more leading "\n" here reproduces that same blank line.
+        write_note(child_path, full_frontmatter, "\n" + body)
+    else:
+        body_parts = [
+            f"{_section_header(entry['name'])}\n\n{(sections or {}).get(entry['name'], '')}\n"
+            for entry in child_spec.get("sections", [])
+        ]
+        write_note(child_path, full_frontmatter, "\n" + "\n".join(body_parts) if body_parts else "\n")
 
     return {
         "created": True, "updated": False, "path": str(child_path),
@@ -1348,7 +1384,7 @@ def main() -> int:
             out = create_dynamic_child(
                 vault_path, template, root_id=args.id, child_name=args.child,
                 identity=data["identity"], frontmatter=data.get("frontmatter"),
-                sections=data.get("sections"),
+                sections=data.get("sections"), body=data.get("body"),
             )
 
         print(json.dumps(out, ensure_ascii=False))
