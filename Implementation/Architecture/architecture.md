@@ -591,7 +591,114 @@ extraction).
   and `US-01` (the widened `## Actions` access + replace-mode decision,
   `ADR-017`) — both real, confirmed dependencies, not assumed.
 
-**Last reviewed:** 2026-09-01 (architect pass, `REQ-SB-87-US-01`/`US-03`/
+## Close the Remaining `vault_manager.py` Migration Gaps (`REQ-SB-88`)
+
+The last two real Skill scripts still writing by hand after `REQ-SB-87`'s own
+pass: `summarize-and-tag-files/scripts/apply_file_review.py` (never had a
+`vault_manager.py` copy at all) and `track-opportunities/scripts/
+link_opportunity.py` (a real, deployed, byte-current copy sits unused right
+next to it). Both confirmed, directly, purely additive/consumptive of
+capability `ADR-017` already built (per-caller `allowed_callers` allow-list on
+`modify_section`/`create`) — neither needs a new engine capability, so
+**neither substory gets a new ADR.**
+
+### §Files-Skill `vault_manager.py` Migration + Cron Provisioning (`REQ-SB-88-US-01`)
+
+- **Tenth deployed copy, sourced from the canonical file.** `summarize-and-
+  tag-files/scripts/` has never had a `vault_manager.py` copy (confirmed via
+  `Glob` — only `apply_file_review.py`/`render_pptx_slide_win32.py` exist
+  there today). Deploy fresh from `Hermes-Provisioning/shared/vault_manager.py`
+  (`REQ-SB-87-US-01`'s own canonical source), joining the nine-copy inventory
+  that section already tracks.
+- **`apply_file_review()`'s `## Summary` write and `merge_tags` call migrate
+  onto `vm.modify_section`/`vm.merge_tags`, exactly mirroring
+  `REQ-SB-87-US-04`'s own already-proven shape** — `vm.load_template(vault_path,
+  "file")`, read/mint the File's own `id` via `vm.update` (the File template's
+  `identity.strategy` is `"id"`, same as Thread; a real pre-migration File
+  note carries no `id` yet, same already-solved case), then `vm.modify_section
+  (..., section="Summary", mode="replace", note_id=..., caller="apply_file_
+  review")`. **Confirmed directly against the real, deployed `file` Template.json:**
+  both `## Summary` and `## Details` are already `"access": "machine_write"`
+  with **no `allowed_callers` key** — open to any machine-write caller today,
+  zero Template.json edit needed for either.
+- **`add_file_detail()`'s `## Details` append migrates the same way**
+  (`vm.modify_section(..., section="Details", mode="append", ...)` — the
+  engine's own `mode="append"` already does the existing-content-plus-new-
+  content merge `add_file_detail()` currently hand-rolls). Image copy/embed
+  (`_attach_images`/`_unique_sibling_path`) is plain filesystem work, unrelated
+  to any note-write primitive — stays hand-written, unchanged.
+- **`update_files_log_line()`'s Thread `## Files` write needs ONE
+  Template.json data edit, not a new engine capability:** the real, deployed
+  `thread` Template.json's `## Files` section currently declares
+  `"allowed_callers": ["capture_attachments", "capture_file_link"]`
+  (`ADR-017`) — `apply_file_review` is a new, third caller and must be ADDED
+  to that same array for its migrated write to be accepted by `vm.
+  modify_section`'s own `_require_machine_write` check. This is the exact,
+  already-anticipated extension mechanism `ADR-017` built (`allowed_callers`
+  is Template.json data, editing it is not an engine change) — ordinary
+  Template.json maintenance, not an architecture decision, so no ADR.
+  Company resolution (`build_company_index`/`resolve_companies`) stays
+  hand-written, unchanged, per `REQ-SB-87-US-04`'s own identical precedent.
+- **The new cron job is a Hermes `cron/jobs.json` entry under the
+  `files-manager` profile, mirroring `job4-summarize-tag-threads`'s own real,
+  confirmed shape** — read directly off the live `cron/jobs.json`:
+  `schedule: {"kind": "interval", "minutes": 20}`, a **bounded** `repeat.times`
+  budget (job4's own was `8`, against a 209-Thread backlog; this Skill's real
+  backlog is ~80 Files, per SKILL.md's own documented scale), `enabled: false`/
+  `state: "completed"` once the budget is exhausted — never an unbounded,
+  indefinitely-recurring job. Confirmed live: `files-manager`'s own profile
+  directory carries no `cron/` folder at all today, so this is a first-time
+  provisioning, not an edit. This is Hermes-side operational configuration
+  (a JSON job entry, same class as every other real job already in
+  `cron/jobs.json`), not a Second-Brain architecture change — no ADR. The
+  exact `repeat.times`/batch-size numbers are decomposer/coder-level, sized
+  against the real ~80-file backlog.
+
+### §`track-opportunities` Link-Write Migration (`REQ-SB-88-US-02`)
+
+- **No new copy — the already-deployed `track-opportunities/scripts/
+  vault_manager.py` is confirmed byte-current** (its own function/line
+  layout matches the canonical `Hermes-Provisioning/shared/vault_manager.py`
+  exactly, confirmed directly by reading both). `link_opportunity.py` simply
+  never imports it yet.
+- **Resolves the story's own disclosed open implementation-shape question:
+  the already-public, template-driven `vm.modify_section` entry point is
+  sufficient — no reach into underscore-private helpers (`_set_section_
+  content`), and no new public primitive needs promoting.** The only reason
+  this looked different from `REQ-SB-87-US-04`'s own precedent is that
+  `link_opportunity.py` receives a bare `note_path` rather than a `title` to
+  resolve — but `modify_section`'s `note_id`-based path (the SAME path
+  `apply_thread_review.py` already uses) only ever needs the target's own
+  `id`, which the script mints/reads via `vm.update` exactly like the
+  Thread-migration precedent, plus which TEMPLATE to load (`"thread"` vs.
+  `"meeting"`, trivially derivable from `note_path`'s own `Work/Threads/` vs.
+  `Work/Meetings/` prefix — decomposer/coder-level). No engine change.
+- **The frontmatter `opportunities` list write migrates onto `vm.read_note`
+  (read existing list) + `vm.update(..., frontmatter={"opportunities":
+  merged_list})`** — the same shape `apply_thread_review.py`'s own frontmatter
+  stamping already uses.
+- **The `## Related` write needs ONE Template.json data edit for the Thread
+  case, not a new capability — and confirms the Constraint's own "never a
+  silent widening" concern was real and must be resolved, not skipped:**
+  confirmed directly against both real, deployed Template.json files —
+  Thread's `## Related` already declares `"allowed_callers":
+  ["link_person_to_thread"]` (`ADR-017`), so a migrated call with
+  `caller="link_opportunity"` would be REFUSED outright unless
+  `link_opportunity` is added to that same array (a real correctness
+  requirement, not optional hardening — Scenario 2's own AC would fail
+  against a Thread target without it). Meeting's `## Related` has **no**
+  `allowed_callers` key at all (open to any machine-write caller today) —
+  confirmed directly, zero edit needed for the Meeting case. Same ordinary
+  Template.json maintenance as `US-01` above — no ADR.
+- `resolve_opportunity()`/`_iter_opportunity_notes()` (title/customer
+  matching, ambiguity handling) stay hand-written, unchanged — real,
+  Opportunity-specific business logic, not mechanics, per the story's own
+  Constraints.
+
+**Last reviewed:** 2026-09-02 (architect pass, `REQ-SB-88-US-01`/`US-02` —
+no new ADR, both stories confirmed purely additive/consumptive of `ADR-017`'s
+already-built per-caller `allowed_callers` mechanism plus ordinary
+Template.json data edits; 2026-09-01 architect pass, `REQ-SB-87-US-01`/`US-03`/
 `US-05` — `ADR-017`/`ADR-018`, the Email Thread Capture pipeline
 consolidation + new Capture/Enrich capability; `REQ-SB-86-US-01`/`US-02` —
 `ADR-016`, the Vault Data Export subsystem; `REQ-SB-85-US-01`/`US-02`/

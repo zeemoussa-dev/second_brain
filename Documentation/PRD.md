@@ -4620,6 +4620,52 @@ make looking at the threads more useful."** Broken into its real parts:
    design (`outlook_lib.py`) is correct and wanted, not a bug (this was
    briefly, mistakenly suspected as one earlier the same day — see
    `BUG-041`'s sibling investigation).
+6. **Two real, silently-conflated signals get real, explicit fields**
+   (found 2026-09-02 verifying the above against the real code, operator
+   confirmed both in scope): `outlook_lib.py`'s `list_recent_mail` reads
+   Inbox and Sent Mail as two separate real folder queries, then
+   concatenates and re-sorts them with **zero surviving marker for which
+   folder a message came from** — a real `direction: "sent" |
+   "received"` field must be threaded through from the folder read all
+   the way to the RawMessage's own frontmatter. Separately, mail
+   recipients are filtered via constants literally named
+   `_OL_MEETING_RECIPIENT_REQUIRED`/`_OL_MEETING_RECIPIENT_OPTIONAL`
+   (meeting-specific Outlook enum names reused for mail, which happens to
+   work only because `olTo`/`olCC` share the same integer values as
+   Required/Optional Attendee) — every recipient lands in one flat list
+   with **no marker for To vs. CC** either. Both are real REQ-SB-87-US-02
+   scope, not a separate requirement.
+7. **Noise classification rules, refined 2026-09-02 (operator, verbatim,
+   in order — see the expanded raised-context block below for the full
+   quotes):** Sent items are **never** classified as noise — a message
+   the operator themselves wrote is real signal by definition. Noise
+   judgment fires **only once, on a genuinely NEW `conversation_id`**
+   (already `ADR-018`'s own locked design — this is confirmation, not a
+   new mechanism) — once a Thread already exists, EVERY subsequent
+   message into it is captured regardless of what that individual
+   message would look like in isolation (an automated reply-all inside
+   an otherwise-real customer thread still gets stored). The real noise
+   definition itself: **anything automated/broadcast** — not limited to
+   literal meeting-invite `.ics` items (those are already filtered
+   upstream via `MessageClass` before classification ever runs) but the
+   broader real category: system/HR/security notifications, broadcast
+   newsletters, workshop/event announcement blasts — real, live examples
+   already in the vault: `Learning Assignment Changes Email
+   Notification`, `New Payslip available for viewing-download`, `Core42
+   Information Security Awareness Training`, `Compass Alert- Failed API
+   Calls`, `CRM Enhancements - Weekly Release Summary`.
+8. **The real 100-message retrofit must include real classification, not
+   just capture** (operator, verbatim: "You need to do the Classification
+   of Emails in this retrofit, I want 100 Concrete Messages not 100
+   Message 90 of them are noise... if you believe we should keep
+   everything that's fine but the Classification SHould Exist in the
+   front matter") — even where the ultimate decision is to keep
+   everything (never skip), the real classification VALUE must still be
+   computed and written into frontmatter for every one of the 100 real
+   retrofitted messages. This means `REQ-SB-87-US-03`'s own classification
+   capability must exist and be wired in BEFORE `REQ-SB-87-US-02`'s own
+   real-vault retrofit task runs — a real resequencing, not just an
+   ordering preference.
 
 <!-- Original raised-context (2026-09-01, operator, verbatim, narrower
 framing — superseded in scope by the above, kept for traceability): "It
@@ -4701,7 +4747,37 @@ list? real due dates? tied to `Work/Tasks/`, this vault's own existing
 Task concept, or Thread-local only); and whether the diagnosis of WHY
 `## Summary`/`## Actions` currently land empty changes the shape of the
 fix (an agent-prompt/execution problem vs. a real code gap in
-`apply_thread_review.py` itself). -->
+`apply_thread_review.py` itself).
+
+Second expanded-scope raised-context pass (2026-09-02, operator,
+verbatim, in order — after the operator asked what data is collected
+per email and how Sent vs. Inbox is distinguished in the Thread, and was
+told directly, grounded in the real code, that it currently ISN'T):
+1. "Yes, add a real direction field to US-02" — resolves point 6 above:
+   a real `direction`/recipient-type field, not an inferred one.
+2. "and You need to do the Classification of Emails in this retrofit , I
+   want 100 Concrete Messages not 100 Message 90 of them are noise, if
+   you believe we should keep everything that's fine but the
+   Classification SHould Exist in the front matter" — resolves point 8
+   above: real classification, not just capture, for the retrofit.
+3. (Claude's own finding, verified against the real code and offered
+   proactively, not assumed) the same silent-conflation problem also
+   affects mail recipients (To vs. CC, via reused meeting-attendee enum
+   constants) — operator: "Yes, add it to US-02 too."
+4. "and No Sent Items are never noise" — resolves the Sent-item
+   classification question directly.
+5. "and if we already have a thread and I kept it that means that the
+   emails that comes to this thread even if it counts as noise need to
+   be stored" — confirms `ADR-018`'s own once-per-new-conversation
+   judgment scope is the correct, intended shape (not a new mechanism,
+   but now an explicit, locked business rule rather than an implicit
+   consequence).
+6. "Now that I think about it Only Notifications, Meetings invites are
+   considered noise unless you see something else" then, after Claude
+   flagged that literal meeting invites are already filtered upstream
+   and asked whether the broader automated/broadcast category was meant:
+   "Yes, the broader case — anything automated/broadcast, not just
+   literal invites" — the real, locked noise definition. -->
 
 `meeting-capture` (2026-08-25→27) and `create-companies-partners`
 (later) already migrated their own note-creation mechanics onto the
@@ -4772,5 +4848,112 @@ growing-children gap) is preserved in this session's own transcript —
 `/spec` should re-verify directly against the real, current code rather
 than trusting this PRD summary alone, per this project's own standing
 "verify against local source first" convention. -->
+
+**Acceptance:** To be drafted as Gherkin at `/spec`.
+
+---
+
+### REQ-SB-88: Close the Remaining `vault_manager.py` Migration Gaps — Attachment Summarization + Opportunity Linking
+
+Raised 2026-09-02, same day as `REQ-SB-87`'s own build, directly out of two
+real findings from that work: (1) the operator asked whether captured
+email attachments get summarized — they don't, anywhere, today; (2) a
+full audit of every real deployed `vault_manager.py` copy plus every
+other real vault-note-writing Skill in the repo, run to answer "what
+code still duplicates and isn't migrated," found exactly two remaining
+real cases.
+
+**Finding 1 — `summarize-and-tag-files` (Job 5 of the company-review
+sequence): fully hand-rolled, never even given a `vault_manager.py`
+copy, and has no cron job at all.** Confirmed live: `capture_attachments.py`
+(the real, already-migrated `REQ-SB-87` Capture-phase script) writes
+every attachment's own companion note with a genuinely, permanently
+empty `## Summary` — by design, Capture never summarizes. A real,
+already-built Skill exists to do this Enrich-phase work
+(`Hermes-Provisioning/skills/company-review/summarize-and-tag-files/scripts/apply_file_review.py`,
+16KB, real judgment: reads actual PDF/DOCX/PPTX/XLSX/image content,
+writes a real prose summary, tags companies, updates the parent
+Thread's own `## Files` line with a short caption) — architecturally
+identical to `apply_thread_review.py` *before* `REQ-SB-87-US-04`'s own
+migration: its own hand-rolled `read_note()`/`merge_tags()`/
+`insert_body_section_if_missing()`/`replace_body_section()` clone,
+never touching `vault_manager.py` at all. Confirmed live against the
+real cron jobs list (`hermes cron list`): unlike `job4-summarize-tag-threads`
+(which exists, disabled, with a real repeat-budget history), there is
+**no job of any kind** — enabled, disabled, or otherwise — for this
+Skill. It was evidently run manually at some point in the past (the
+operator's own recollection, "at some point this was happening") and
+never scheduled again.
+
+**Finding 2 — `track-opportunities`: has a real, deployed
+`vault_manager.py` copy that sits completely unused.** Confirmed live:
+`link_opportunity.py` (the Skill's own real write script, maintaining
+an Opportunity's own `opportunities:` frontmatter list and `## Related`
+section) still runs entirely on its own separate, duplicated
+`_format_frontmatter_value`/`_parse_frontmatter_value`/`read_note()`/
+`insert_body_section_if_missing()`/`read_body_section()`/
+`replace_body_section()` clone — a dead engine copy in the same folder,
+never imported.
+
+**Confirmed NOT in scope, checked directly and ruled out:** `vault-index`
+(read-only against vault notes — correctly already reuses
+`vault_manager.read_note`, no write path exists to migrate);
+`person-lookup`/`new-company-discovery`/`entity-domain-extraction`
+(narrower append-only or non-template `Entities.md`-shaped writes — a
+genuinely different document class than what `vault_manager.py` handles,
+real edge cases, not this requirement's own scope); `files-manager`
+(a real, separate, live-triggered Agent for ad-hoc uploaded files with
+no stated context — confirmed to have zero cron job and a completely
+different real use case than email-attachment summarization; the
+operator's own words, verbatim: "We have 2 Jobs One for the file
+Uploads (Agent) and one for skills Emails and Companies" — this
+requirement's own `summarize-and-tag-files` work belongs with the
+latter, not `files-manager`).
+
+**Real scope, both under the same "mechanics move, business logic stays
+hand-written" boundary every other `vault_manager.py` migration this
+project has already done uses:**
+
+1. Migrate `apply_file_review.py`'s own write mechanics onto
+   `vault_manager.py` — the real judgment (reading actual file content,
+   writing a real summary, recognizing companies) stays exactly as-is,
+   hand-written, prompt-driven; only the mechanical persistence
+   (`## Summary` write, tag merge, the parent Thread's `## Files` line
+   update) moves to the engine, matching `REQ-SB-87-US-04`'s own
+   already-shipped precedent for `apply_thread_review.py` almost
+   exactly.
+2. Give it a real cron job — none exists today. Whether this mirrors
+   `job4`'s own real-repeat-limited-backfill shape (a finite number of
+   batched runs against the real, currently-un-summarized backlog) or a
+   different real schedule is left open, to be resolved at `/spec`/
+   `/plan-tasks` against the real, current backlog size (confirmed
+   ~80 real captured files at last count, per the Skill's own SKILL.md).
+3. Migrate `link_opportunity.py`'s own write mechanics onto its own
+   already-present (but currently dead) `vault_manager.py` copy — same
+   mechanics-only boundary; Opportunity-specific business logic
+   (resolving the parent Customer, whatever real linking rules exist)
+   stays hand-written.
+
+<!-- Raised 2026-09-02, operator, verbatim, in order:
+1. "Yes, add it and check the Jobs we have Because at somepoint this
+   was happening" — in response to being told attachments are never
+   summarized; asked to both add the capability and check for a real,
+   possibly-dormant job before assuming it needs building from scratch
+   (the same pattern that found `job4-summarize-tag-threads` disabled
+   earlier the same day).
+2. "We have 2 Jobs One for the file Uploads (Agent) and one for skills
+   Emails and Companies" — clarifying that `files-manager` (the
+   uploaded-file Agent) is a real, separate concern from this
+   requirement's own Enrich-phase attachment summarization, which
+   belongs with the company-review/emails sequence instead.
+3. "Spec both now" — in response to being asked whether to spec just
+   the files piece or both `summarize-and-tag-files` and
+   `track-opportunities` together; the operator chose both.
+Real audit backing both findings performed the same session, on request
+("What code we still have that duplicate and not migrated") — full
+per-Skill evidence (which scripts call `vault_manager.py`, which don't,
+and why) preserved in this session's own transcript; `/spec` should
+re-verify directly against the real, current code rather than trusting
+this PRD summary alone, per this project's own standing convention. -->
 
 **Acceptance:** To be drafted as Gherkin at `/spec`.

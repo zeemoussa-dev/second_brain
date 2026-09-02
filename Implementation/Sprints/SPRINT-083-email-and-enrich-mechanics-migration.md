@@ -1,15 +1,15 @@
 ---
 id: SPRINT-083
 title: Migrate email-thread-capture and summarize-and-tag-threads write mechanics onto vault_manager.py
-status: Ready                      # Draft | Ready | In Progress | Blocked | Done
-gate: clear                        # clear | flagged — flagged ⇒ parked in REVIEW-QUEUE.md
-gate_reason: ""                    # the MUST-FLAG trigger that fired, when gate: flagged
+status: Done                        # Draft | Ready | In Progress | Blocked | Done
+gate: flagged                      # clear | flagged — flagged ⇒ parked in REVIEW-QUEUE.md
+gate_reason: "Sprint retro drafted for human skim + Learnings.md harvest; both stories individually carry their own already-disclosed scope-internal judgement calls, see REVIEW-QUEUE.md"
 phase: P1                          # single phase only — a sprint never mixes phases
 depends_on_sprints: [SPRINT-082]   # SPRINT-NNN IDs that must be Done before this can start
 sizing_estimate: "~9 tasks, L"     # effort estimate (e.g. "~6 tasks, M"); checked vs actual in retro
 created: 2026-09-01
-started: ""                        # YYYY-MM-DD when status → In Progress
-completed: ""                      # YYYY-MM-DD when status → Done
+started: "2026-09-01"              # YYYY-MM-DD when status → In Progress
+completed: "2026-09-02"            # YYYY-MM-DD when status → Done
 ---
 
 <!-- STATUS LIFECYCLE — who drives each transition:
@@ -82,8 +82,8 @@ bidirectional link, written at sprint creation. Order by implementation dependen
 
 | Story | Title | Phase | Status |
 |---|---|---|---|
-| [REQ-SB-87-US-02](../UserStories/REQ-SB-87-US-02-email-thread-capture-vault-manager-migration.md) | Migrate email-thread-capture's write mechanics onto vault_manager.py | P1 | Ready (gate: clear) |
-| [REQ-SB-87-US-04](../UserStories/REQ-SB-87-US-04-summarize-and-tag-threads-vault-manager-migration.md) | Migrate summarize-and-tag-threads' write mechanics onto vault_manager.py | P1 | Ready (gate: clear) |
+| [REQ-SB-87-US-02](../UserStories/REQ-SB-87-US-02-email-thread-capture-vault-manager-migration.md) | Migrate email-thread-capture's write mechanics onto vault_manager.py | P1 | Done (gate: flagged) — all 6 tasks Done (T01 2026-09-01, `ESC-061` resolved same-day; T02-T04 2026-09-02; T06 2026-09-02; T05 2026-09-02, real-vault retrofit + live cron cutover), all 9 locked ACs verified live; 3 disclosed scope-internal judgement calls at T05 (2 real bugs found+fixed live, see T05's own Implementation Log) |
+| [REQ-SB-87-US-04](../UserStories/REQ-SB-87-US-04-summarize-and-tag-threads-vault-manager-migration.md) | Migrate summarize-and-tag-threads' write mechanics onto vault_manager.py | P1 | Done (gate: flagged) — all 4 tasks Done 2026-09-01, all 7 locked ACs verified live incl. real-vault retrofit-safety + cutover; 2 disclosed scope-internal judgment calls, see T04's own Implementation Log |
 
 ---
 
@@ -121,14 +121,14 @@ bidirectional link, written at sprint creation. Order by implementation dependen
 
 ## Definition of Done
 
-- [ ] Every story in scope has status `Done`
-- [ ] All story-level Definitions of Done satisfied
-- [ ] `BACKLOG.md` updated — every affected row reflects current status
-- [ ] `architecture.md` updated if the sprint changed an architectural fact
-- [ ] Any new ADRs recorded in `ADR.md` with status `Accepted`
-- [ ] `MEMORY.md` updated with any new decisions / patterns / constraints
-- [ ] `CHANGELOG.md` entry appended
-- [ ] Retrospective section below filled in
+- [x] Every story in scope has status `Done`
+- [x] All story-level Definitions of Done satisfied
+- [x] `BACKLOG.md` updated — every affected row reflects current status
+- [x] `architecture.md` updated if the sprint changed an architectural fact — n/a, no new architectural fact this sprint (confirmed by both stories' own architect passes)
+- [x] Any new ADRs recorded in `ADR.md` with status `Accepted` — n/a, no new ADR this sprint
+- [x] `MEMORY.md` updated with any new decisions / patterns / constraints
+- [x] `CHANGELOG.md` entry appended
+- [x] Retrospective section below filled in
 - [ ] **Human:** patterns and learnings from the retrospective propagated to `Implementation/Learnings.md` (the coder drafts the retro and gates it; the human harvests it)
 
 ---
@@ -173,28 +173,114 @@ record. The coder does NOT write Learnings.md directly. -->
 
 ### Sizing accuracy
 
-- **Estimated:** ~9 tasks, L — **Actual:** _(filled in by coder at close)_
+- **Estimated:** ~9 tasks, L — **Actual:** 10 tasks, L (9 originally
+  planned `T01`-`T05` x2 stories, plus one late-added `US-02-T06` for the
+  real `direction`/recipient-type fields, decomposed mid-sprint once the
+  requirement's own scope expanded 2026-09-02). Task count grew by
+  exactly one task and stayed within the `L` sizing band — the extra
+  task didn't push this sprint past this project's own previously-
+  confirmed 9-task ceiling by a meaningful margin. Both stories' own
+  real-vault retrofit + live cron cutover tasks (`US-02-T05`,
+  `US-04-T04`) were, as anticipated by the sizing rationale, the heaviest
+  by verification effort, not code volume.
 
 ### What worked
 
-- _(specific behaviour, decision, or technique that paid off)_
+- **Diamond-shaped sprint grouping (two independent stories sharing one
+  upstream prerequisite, zero edge between them) built cleanly in
+  parallel with zero reordering** — `US-02` and `US-04` never touched a
+  shared file, confirmed at close: the whole sprint closed with zero
+  cross-story rework.
+- **Reusing an already-established "mint-and-backfill on first touch"
+  pattern a second time, across two DIFFERENT scripts in the SAME
+  sprint** — `US-04-T01` (`apply_thread_review.py`) established it first
+  for a Thread with no `id` field; `US-02-T05` reused the exact same
+  shape (a real, live-confirmed second instance of the identical
+  no-id-on-pre-migration-content problem) for `ingest_email.py`, closing
+  a genuine live-found retrofit-duplication risk with zero new design.
+- **Verifying a retrofit-safety assumption statically, in isolation,
+  BEFORE running anything against real data** — a direct, scratch-copy
+  `find_by_id`/`_find_by_title` check surfaced the Thread-duplication
+  risk with zero real-vault exposure, before a single real write was
+  attempted. This is what turned a potential real-data-corruption
+  incident into a same-session, fully-controlled fix.
+- **A real ~100-message retrofit against the live vault, with an
+  explicit pre/post Thread-count and `.md`-count reconciliation**, gave
+  a strong, independently-verifiable positive result (Thread count +5,
+  exactly matching the 5 genuinely-new non-noise captures) rather than
+  trusting each individual script's own reported JSON alone.
 
 ### What didn't work
 
-- _(specific friction, dead end, or mistake — name the root cause if known)_
+- **A second real, pre-existing bug (`ingest_email.py`'s own missing
+  `sys.stdout.reconfigure(encoding="utf-8")`) was only found by actually
+  running the real ~100-message retrofit, not by any earlier task's own
+  scratch-vault verification** — every prior task's own scratch samples
+  happened not to include a subject with a character outside cp1252.
+  This is the SAME bug class `list_recent_emails.py` had already fixed
+  for itself weeks earlier in this same Skill; it should have been
+  checked for explicitly (a quick grep for `sys.stdout.reconfigure` across
+  every script in a Skill, once one script needs it) rather than
+  rediscovered live during the final, real-data-touching task.
+- **My own verification driver script hit this exact same
+  Windows-cp1252-redirected-stdout class of bug on itself**, twice
+  (once crashing mid-batch, requiring a resume-from-index re-run) —
+  should have applied `sys.stdout.reconfigure(encoding="utf-8")` to any
+  throwaway verification script from the start, not just the scripts
+  under test, given this project's own already-documented
+  `SPRINT-038` Antipattern on exactly this failure mode.
 
 ### Patterns to carry forward
 
 <!-- Copy these into Implementation/Learnings.md after human review. -->
 
-- _(pattern — short title — when to apply)_
+- **Before a retrofit/cutover task runs ANY write against real,
+  pre-existing production data, statically verify the migrated code's
+  own resolution mechanism (`find_by_id`-equivalent) actually recognizes
+  that pre-existing data — in isolation, on a throwaway scratch copy,
+  before the first real write** — this is what caught a genuine
+  duplicate-creation risk with zero real-vault exposure in
+  `REQ-SB-87-US-02-T05`, and should be a standing pre-flight step for
+  any future "migrate a script from a hand-rolled identity scheme onto
+  `vault_manager.py`'s id-based lookup" retrofit task, not something
+  discovered by accident.
+- **Once one script in a Skill needs `sys.stdout.reconfigure(encoding=
+  "utf-8")` for real Unicode content, grep every OTHER script in that
+  same Skill for the same gap immediately, rather than waiting for each
+  one to independently crash on real data** — `list_recent_emails.py`
+  fixed this for itself 2026-08-24; `ingest_email.py` carried the
+  identical gap, undiscovered, for over a week until real retrofit data
+  happened to trigger it.
+- **A pre/post structural count (Thread-directory count, total `.md`
+  count) reconciled against the exact expected delta is a strong,
+  cheap, independent cross-check for any real-vault write task** —
+  catches a duplication defect a script's own self-reported JSON summary
+  alone could not.
 
 ### Antipatterns to avoid
 
 <!-- Copy these into Implementation/Learnings.md after human review. -->
 
-- _(antipattern — short title — why to avoid)_
+- **Assuming a migrated script's own scratch-vault verification (built
+  from a FRESH sample every time) has exercised the "resolve an
+  ALREADY-EXISTING, pre-migration record" code path just because the
+  script LOOKS idempotent** — every prior scratch-vault check in this
+  exact sprint used freshly-pulled, never-before-seen email samples, so
+  the "does this find a real record with no `id` field" path was never
+  actually exercised until the real retrofit task ran. A migrated
+  script's idempotency against ITS OWN prior output is not the same
+  claim as its retrofit-safety against PRE-migration output.
 
 ### Open follow-ups
 
-- _(follow-up — filed as what and where?)_
+- `ADR-017` still awaits human review (standing flag, carried forward
+  from `SPRINT-082`, not resolved by this sprint's own closure) — see
+  `REVIEW-QUEUE.md`.
+- Several disclosed scope-internal judgement calls from `US-02-T01`/
+  `T02`/`T03`/`T06`/`T05` and `US-04-T04` still await human spot-check —
+  see `REVIEW-QUEUE.md` for the full list, not repeated here.
+- `email-capture-classifier`'s own deployed `SOUL.md` still documents
+  `direction` as `"inbound"`/`"sent"` instead of the real
+  `"received"`/`"sent"` values (`US-02-T06`'s own disclosed, non-blocking
+  finding) — a future small fix, filed to `REVIEW-QUEUE.md`, not done by
+  this sprint (out of every task's own `## Files to Modify`).

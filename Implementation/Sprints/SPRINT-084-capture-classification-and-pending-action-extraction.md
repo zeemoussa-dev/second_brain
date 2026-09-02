@@ -1,14 +1,14 @@
 ---
 id: SPRINT-084
 title: Capture-time noise/classification + Enrich-stage pending-action extraction
-status: Ready                      # Draft | Ready | In Progress | Blocked | Done
+status: In Progress                # Draft | Ready | In Progress | Blocked | Done
 gate: clear                        # clear | flagged — flagged ⇒ parked in REVIEW-QUEUE.md
 gate_reason: ""                    # the MUST-FLAG trigger that fired, when gate: flagged
 phase: P1                          # single phase only — a sprint never mixes phases
 depends_on_sprints: [SPRINT-083]   # SPRINT-NNN IDs that must be Done before this can start
 sizing_estimate: "~8 tasks, L"     # effort estimate (e.g. "~6 tasks, M"); checked vs actual in retro
 created: 2026-09-01
-started: ""                        # YYYY-MM-DD when status → In Progress
+started: "2026-09-02"              # YYYY-MM-DD when status → In Progress
 completed: ""                      # YYYY-MM-DD when status → Done
 ---
 
@@ -82,7 +82,7 @@ bidirectional link, written at sprint creation. Order by implementation dependen
 
 | Story | Title | Phase | Status |
 |---|---|---|---|
-| [REQ-SB-87-US-03](../UserStories/REQ-SB-87-US-03-capture-time-noise-definition-and-classification.md) | Capture-time noise definition, skip, and Internal/Partner/Customer classification | P1 | Ready (gate: flagged — `ADR-018` human review pending, see REVIEW-QUEUE.md) |
+| [REQ-SB-87-US-03](../UserStories/REQ-SB-87-US-03-capture-time-noise-definition-and-classification.md) | Capture-time noise definition, skip, and Internal/Partner/Customer classification | P1 | Done (gate: flagged — standing `ADR-018` human review still pending, see REVIEW-QUEUE.md; all 5 tasks `T01`-`T05` Done 2026-09-02, all 10 locked ACs verified live incl. a combined 100-email real run; real-vault cutover explicitly held for the sibling `REQ-SB-87-US-02-T05`) |
 | [REQ-SB-87-US-05](../UserStories/REQ-SB-87-US-05-enrich-pending-action-extraction.md) | Enrich-stage pending-action extraction into Thread `## Actions` | P1 | Ready (gate: clear) |
 
 ---
@@ -164,11 +164,44 @@ bidirectional link, written at sprint creation. Order by implementation dependen
   pass — the existing `REQ-SB-87-US-03`/`ADR-018` entry already covers the
   open review; duplicating it here would only fragment the same open item
   across two places.
+
+## Notes (coder, 2026-09-02 — `US-03-T01` built ahead of this sprint's own formal start gate)
+
+`REQ-SB-87-US-03-T01` (`depends_on: []`) was built and verified `Done`
+before this sprint's own `depends_on_sprints: [SPRINT-083]` edge was
+satisfied (`SPRINT-083` is still `In Progress`, its own `US-02` half
+`Blocked` on `ESC-061`) — under the launching agent's own explicit
+instruction that this specific, dependency-free task is safe to build in
+parallel with the concurrently-in-flight `REQ-SB-87-US-02-T06`, confirmed
+to touch zero files any other in-flight `REQ-SB-87` task touches and to
+need nothing `SPRINT-083` itself delivers (only `US-03-T03` reaches back
+into `SPRINT-083`, per this sprint's own Dependencies section above).
+`status`/`started` updated to reflect that real work has begun, disclosed
+here rather than silently backdated as if the formal gate had already
+cleared — see `T01`'s own Implementation Log and the new `REVIEW-QUEUE.md`
+entry for the full disclosure. This sprint's own `depends_on_sprints`
+edge is unchanged and still binding for every remaining task in both
+`US-03` and `US-05`.
 - With this sprint's own creation, `REQ-SB-87`'s full, real dependency
   graph (foundation → two parallel migrations → two parallel new
   capabilities) is now expressed as three ordered sprints
   (`SPRINT-082` → `SPRINT-083` → `SPRINT-084`), 6 + 9 + 8 = 23 tasks total,
   matching the decomposer's own reported task count exactly.
+
+## Notes (coder, 2026-09-02 — `REQ-SB-87-US-03` closes, sprint stays In Progress)
+
+`REQ-SB-87-US-03`'s own 5 tasks (`T01`-`T05`) are all `Done` — all 10
+locked ACs verified live, including `T05`'s own closing, combined
+~100-email real scratch-vault run (see that story's own Notes and `T05`'s
+own Implementation Log for the full write-up). This sprint's own
+`depends_on_sprints: [SPRINT-083]` edge only ever gated `US-03`'s own
+remaining tasks (`T02`-`T05`) plus `US-05`'s own `T01` — per this sprint's
+own already-disclosed 2026-09-02 note above, `SPRINT-083` reached `Done`
+before any of those remaining tasks were built, so no further gate
+disclosure is needed here. `SPRINT-084` itself stays `status: In Progress`
+— its sibling story `REQ-SB-87-US-05` (Enrich-stage pending-action
+extraction) remains `Ready`, untouched by this pass; the sprint cannot
+close until it is also `Done`.
 
 ---
 

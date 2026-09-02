@@ -4837,3 +4837,193 @@ verification; (b) if confirmed genuine, `T03`/`T05` may be able to verify
 **Resolving artefact:** Pending human review — no resolving artefact yet.
 
 **Status:** Open
+
+## ESC-061: `REQ-SB-87-US-02-T01`'s own locked `AC-01` cannot be fully closed — `vault_manager.py`'s `create_dynamic_child()` has no way to write a RawMessage's real flat, headerless body, and resolving it needs a file outside this task's own `## Files to Modify` — 2026-09-01
+
+**Category:** out-of-scope
+
+**Trigger:** `REQ-SB-87-US-01-T05`'s own Implementation Log already disclosed
+this gap as a `MEMORY.md` Constraint entry (2026-09-01) for this exact task
+to resolve: `create_dynamic_child()` can only write a dynamic child's body
+via its own declared `"## Header"`-style `sections` list (`body_parts` in
+`vault_manager.py` iterates ONLY `child_spec.get("sections", [])`, silently
+dropping any caller-supplied `sections` dict key that isn't declared there)
+— it has no primitive for a flat, unheaded body string the way
+`email-thread-capture/scripts/vault_lib.py::create_raw_message_note` writes
+a real RawMessage body today (a plain email body, no `## Header` at all,
+confirmed by direct reading, `_write_frontmatter_note(path, frontmatter,
+body)`). The real `thread/Template.json` (`REQ-SB-87-US-01-T05`, live vault
+copy read directly, 2026-09-01) deliberately declares NO `sections` on its
+`messages` dynamic-child entry, so calling `create_dynamic_child()` for a
+RawMessage today would create the note with an EMPTY body — a genuine,
+real content-loss regression against `AC-01`'s own locked wording ("the
+exact same real frontmatter, body-section, and file/folder layout... today"
+and the return contract), not an acceptable additive normalization the way
+`REQ-SB-87-US-01-T05`'s own empty `## Files`-at-creation judgement call was.
+
+Two ways to actually close this gap, both requiring a file OUTSIDE this
+task's own `## Files to Modify`
+(`Hermes-Provisioning/skills/vault-rebuild/email-thread-capture/scripts/
+ingest_email.py` + `scripts/vault_manager.py` **(new copy)**, i.e. the
+DEPLOYED copy, not a place to fork new engine capability per the engine's
+own explicit deployment-model docstring: "Editing the engine happens in
+exactly ONE place [the canonical `Hermes-Provisioning/shared/
+vault_manager.py`], then re-copy" — confirmed live, 82 real deployed copies
+today, `REQ-SB-87-US-01-T06`'s own CHANGELOG entry):
+1. **Declare a `"Body"` section on the `messages` dynamic-child entry** in
+   `.second-brain/data/Templates/thread/Template.json` — a live vault DATA
+   file `T05` already authored and closed out, not this task's own file.
+2. **Extend `create_dynamic_child()`** (canonical
+   `Hermes-Provisioning/shared/vault_manager.py`) to accept a raw,
+   unheaded body string, then re-deploy to all 82 real active copies — a
+   genuine engine-contract change with system-wide blast radius, an
+   architectural decision, not a local coder judgement call, and well
+   outside a single migration task's own scope.
+
+Neither was attempted — no parallel hand-rolled write path was built to
+route around this (that would silently reinvent what
+`REQ-SB-87-US-01-T01`'s own `create_dynamic_child()` primitive already
+owns, directly contrary to this task's own launch instructions). Instead:
+Thread resolve/create and the `last_message_at` advances-only stamp WERE
+migrated onto `vault_manager.py` (fully in-scope, no blocker) and verified
+live end-to-end against a real ~100-email scratch-vault sample (51 distinct
+Threads, 100 messages, zero regressions vs. a same-sample pre-migration
+baseline run — see the task's own Implementation Log for the full live
+evidence). RawMessage creation stays on `vault_lib.create_raw_message_note`,
+UNCHANGED, preserving its exact real body content — confirmed byte-for-byte
+identical across all 100 RawMessage notes and all 156 Person notes between
+the baseline and migrated runs.
+
+**Resolution:** Pending human decision on which of the two options above
+(or a third) to take before `AC-01`'s own RawMessage-creation clause can be
+migrated. `REQ-SB-87-US-02-T01` is marked `Blocked` (not `Done`) —
+`AC-01` cannot be verified as fully passing; `AC-02` (idempotency,
+advances-only `last_message_at`) DOES verify live and fully passes for the
+code as built. `T02`-`T05` (siblings, same story) are not blocked by
+this — they don't touch RawMessage creation.
+
+**Resolving artefact:** Pending human review — no resolving artefact yet.
+
+**Status:** Open
+
+---
+
+**Resolution (2026-09-01, same day, operator-directed direct fix -- no
+new story, per this project's own `BUG-041` precedent):** a THIRD option,
+replacing both of the two named above -- extend `create_dynamic_child()`
+(canonical `Hermes-Provisioning/shared/vault_manager.py`) to accept an
+optional, flat, unheaded `body: str | None` parameter, mutually exclusive
+with `sections`, written to the dynamic child's own body exactly as
+given. Preserves the real, current RawMessage body shape exactly (a plain
+email body, never a synthetic `## Header`-wrapped document) -- confirmed
+against `vault_lib.py::create_raw_message_note`'s own real write shape,
+byte-for-byte matched via a direct separator-construction comparison. The
+original `sections`-based path is completely unchanged for any other
+dynamic-child consumer. New automated tests added
+(`Hermes-Provisioning/shared/tests/test_vault_manager.py`, 5 new cases,
+56/56 passing overall). All 84 real deployed `vault_manager.py` copies
+(11 repo + 73 live Hermes profile) resynced and SHA-256-confirmed
+byte-identical to the canonical source post-fix. `ingest_email.py`'s
+RawMessage creation then migrated onto the new mode and re-verified live
+end-to-end against a fresh real ~100-email scratch-vault sample: 100/100
+RawMessage bodies confirmed byte-for-byte identical to a true
+pre-migration baseline run, 0 real frontmatter mismatches beyond the
+already-`REQ-SB-87-US-01-T05`-accepted additive keys, idempotency and
+advances-only `last_message_at` reconfirmed. `REQ-SB-87-US-02-T01` is now
+marked `Done` -- both its locked ACs (`AC-01`, `AC-02`) verified with a
+real, live positive result. One disclosed, non-blocking scope-internal
+judgement call carried forward (the RawMessage filename now follows
+`create_dynamic_child()`'s own generic ingestion-date-based naming, not
+`vault_lib`'s bespoke received-date-based one -- content/idempotency both
+unaffected) -- see the task's own Implementation Log and the new
+`REVIEW-QUEUE.md` entry.
+
+**Resolving artefact:** `REQ-SB-87-US-02-T01`'s own completion (this
+same-day follow-up coder pass); canonical `Hermes-Provisioning/shared/
+vault_manager.py` + `Hermes-Provisioning/skills/vault-rebuild/
+email-thread-capture/scripts/ingest_email.py`.
+
+**Status:** Resolved
+
+---
+
+## ESC-062: A sibling task's own real-vault cron cutover (`REQ-SB-87-US-02-T05`) went live DURING `SPRINT-085`'s own real-vault work window, changing state after this sprint's own start-of-session concurrency check — a real, disclosed near-miss with the project's own standing concurrent-write-race constraint, though forensic verification found no actual file collision — 2026-09-02
+
+**Category:** `out-of-scope`
+
+**Trigger:** `SPRINT-085`'s own dispatch explicitly named `REQ-SB-87-US-02-T05`
+(the sibling email-thread-capture real-vault retrofit + cron cutover) as a
+task that "may still be running in the background as of this dispatch"
+and instructed a live cron/process check before either of `SPRINT-085`'s
+own two real-vault-touching tasks (`REQ-SB-88-US-01-T03`,
+`REQ-SB-88-US-02-T03`). That check was performed and passed at
+session start (~13:41 AST): `REQ-SB-87-US-02-T05` was `status: Ready`
+(not started), and the `email-delta-capture` cron job was confirmed
+`"enabled": false`/`"state": "paused"` via a direct read of the real,
+live `cron/jobs.json`. Both of `SPRINT-085`'s own real-vault touches
+(`REQ-SB-88-US-01-T03` at ~13:54, `REQ-SB-88-US-02-T03` at ~13:56) ran
+against that confirmed-safe state, sequenced one at a time as required.
+
+However, `REQ-SB-87-US-02-T05` was picked up and completed by a
+CONCURRENT session sometime between ~13:52 and ~14:22 — discovered only
+when `REQ-SB-88-US-01-T04` (this sprint's own cron-provisioning task, a
+real-vault-writing action in its own right, not one of the two tasks the
+dispatch explicitly named as needing a fresh pre-check) triggered its own
+new cron job and a routine post-run sweep of the real vault's own file
+mtimes surfaced `email-delta-capture` with `"enabled": true`,
+`last_run_at: "2026-09-02T14:22:20"`, `completed: 303` — a state neither
+present nor possible at the 13:41 check. Direct confirmation:
+`REQ-SB-87-US-02-T05`'s own task file is now `status: Done`.
+
+**A genuine, disclosed process gap on this session's own part:** the
+concurrency check was performed once, correctly, before each of the two
+tasks the dispatch explicitly named — but NOT re-performed immediately
+before `REQ-SB-88-US-01-T04`'s own cron-job creation/trigger, even though
+that action is equally real-vault-writing (a new recurring cron job that
+calls the migrated `apply_file_review.py` against the real vault).
+`REQ-SB-88-US-01-T04` was not one of the two tasks the dispatch named as
+needing the check, but in hindsight it should have received the same
+fresh pre-check, since "provisioning a live cron job" is exactly the
+same class of real-vault-write risk as the two tasks that were checked.
+
+**Forensic verification performed (not assumed):** a direct sweep of
+every real vault `.md` file's own mtime across the full real-vault-write
+windows of BOTH this sprint's own actions (`REQ-SB-88-US-01-T03`'s single
+write at 13:54:06; `REQ-SB-88-US-02-T03`'s own touch produced no write at
+all, confirmed idempotent/no-op; `REQ-SB-88-US-01-T04`'s `job5-
+summarize-tag-files` cron run's own writes, 14:20:15-14:21:12) against
+the sibling job's own real write activity (a burst of new Thread/
+RawMessage creation, 14:01:00-14:03:00 — the actual live cutover moment —
+then a genuinely empty, no-op `email-delta-capture` tick at 14:22:20,
+confirmed zero files touched in that window) found **zero overlapping
+write timestamps and zero touched-by-both files** — no actual data
+collision or corruption occurred. The two real-vault-writing capabilities
+were simultaneously LIVE (both enabled, both capable of firing at any
+moment) for a real window, but never actually fired against the same file
+at the same moment, by timing alone, not by design.
+
+**Resolution:** No file-level damage found; nothing to repair. This
+entry is filed to make the near-miss visible, not to reverse any of
+`SPRINT-085`'s own already-verified work (its own tasks' real-vault
+checks each independently confirmed correct, byte-identical/expected-diff
+results). Filed as a standing process note for future sprints: (1) when
+a dispatch names a specific sibling task as a live concurrent-writer
+risk, treat EVERY real-vault-writing action in the current sprint as
+needing a fresh, immediate pre-check — not just the tasks the dispatch
+happened to name explicitly, since a decomposer/product-owner drafting a
+sprint ahead of time cannot always enumerate every real-vault-touching
+task a later architect/decomposer pass might add (here, `T04`'s own cron
+provisioning); (2) consider whether this project needs a stronger
+structural safeguard (e.g., a shared, filesystem-level "real vault write
+lock" file both this pipeline's own coder role and any live Hermes cron
+tick check/respect) rather than relying solely on point-in-time manual
+checks, now that multiple concurrent sessions/cron ticks against the same
+real vault are a demonstrated, real occurrence, not just a theoretical
+risk.
+
+**Resolving artefact:** Pending human decision on whether a structural
+concurrency safeguard is warranted; no code change made by this entry
+itself — `REQ-SB-88-US-01-T04`'s own real-vault write is independently
+confirmed clean (see its own Implementation Log).
+
+**Status:** Open

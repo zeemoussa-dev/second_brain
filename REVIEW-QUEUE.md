@@ -8270,6 +8270,38 @@ each story's own `## Notes` for the authorization breadcrumb.)
   → `src/backend/app/business/core/skills/skill_manager.py`
   → `MEMORY.md`
 
+- [ ] 2026-09-01 · **REQ-SB-87-US-04-T04** · two disclosed scope-internal
+  judgment calls made during the real-vault retrofit-safety verification
+  + `job4` cron cutover — both resolved, story `Done`, spot-check only
+  Plain English: (1) the one real, never-yet-summarized Thread named in
+  the parent story's own coverage-gap note
+  (`2026-08-19 ADNOC AI HPC expansion...`) was deliberately NOT processed
+  as part of this verification — writing a real summary for it is the
+  agent's/operator's own judgment, explicitly excluded by this task's own
+  Out of Scope ("Backfilling/re-running job4 against Threads it has never
+  processed... not this task's own job to close"), not a mechanics-
+  verification step. (2) The live `job4-summarize-tag-threads` cron job
+  was NOT manually triggered end-to-end as the task's own Tests block
+  illustratively suggested — a real, read-only scan of the vault found
+  ~27 real Threads currently satisfy the Skill's own "needs summarizing"
+  skip rule, so a real trigger would have caused an LLM agent to write
+  real, new judgment content for ~20 of them, directly contradicting this
+  same task's own Out of Scope. Resolved instead by running the newly-
+  deployed, migrated `apply_thread_review.py` directly against the real
+  vault for two real, already-processed Threads, confirming byte-for-byte
+  retrofit-safety (`AC-07`) with zero duplicate log entries and zero lost
+  content — genuinely stronger, fully-controlled evidence than an
+  uncontrolled agentic trigger would have given, without performing the
+  excluded backfill work as a side effect.
+  **What to do:** spot-check both calls; no action needed if acceptable.
+  If the operator wants the real ~27-Thread coverage gap closed, that is
+  a separate, legitimate follow-up (re-enable/trigger `job4` deliberately,
+  outside any task's verification step) — not something this entry asks
+  for.
+  → `Implementation/Tasks/REQ-SB-87-US-04-T04-scratch-proving-and-cutover.md`
+  → `Implementation/UserStories/REQ-SB-87-US-04-summarize-and-tag-threads-vault-manager-migration.md`
+  → `MEMORY.md`
+
 - [ ] 2026-09-01 · **REQ-SB-85-US-03-T06** · two scope-internal judgement
   calls from the Import flow UI build, logged for spot-check (not a
   blocking ambiguity)
@@ -8545,4 +8577,525 @@ each story's own `## Notes` for the authorization breadcrumb.)
   Non-Goals — left to the decomposer's task-authoring / prompt design.
   `gate` set to `clear`.
   → `Implementation/UserStories/REQ-SB-87-US-05-enrich-pending-action-extraction.md`
+
+- [ ] 2026-09-01 · **REQ-SB-87-US-02-T01** · spot-check the RawMessage filename-convention divergence introduced by the `ESC-061` fix, before `T05`'s own future real-vault cutover
+  Plain English: `ESC-061` (the RawMessage empty-body gap) was resolved as
+  a direct fix, same day: `vault_manager.py`'s `create_dynamic_child()`
+  gained an additive `body=` flat-body mode, all 84 real deployed copies
+  were resynced, and `ingest_email.py`'s RawMessage creation is now fully
+  migrated. `T01` is `Done` — both locked ACs verified live against a real
+  ~100-email scratch-vault sample (100/100 RawMessage bodies byte-for-byte
+  identical to a true pre-migration baseline, 156/156 Person notes
+  identical, idempotency/advances-only `last_message_at` reconfirmed). One
+  real, disclosed divergence remains: the migrated RawMessage note's own
+  on-disk FILENAME now follows `create_dynamic_child()`'s generic
+  mechanism (today's real ingestion date + a wall-clock collision suffix —
+  the same mechanism every other dynamic child already uses, unmodified),
+  not `vault_lib`'s bespoke one (the email's own `received` date/time + a
+  `message_id`-keyed hash suffix). Confirmed live: a message received
+  `2026-08-20 17:43` filed as `2026-08-20 1743 Ewec Discussion....md`
+  under the OLD scheme, `2026-09-01-Ewec Discussion....md` under the NEW
+  one — a real change to the chronological SORT ORDER of RawMessage notes
+  in a Thread's own `messages/` folder once this cuts over to the live
+  vault. Content and idempotency are BOTH unaffected (idempotency is
+  governed by the engine's own real `(conversation_id, message_id)`
+  identity-field match, never the filename) — this is a pure naming/UX
+  question, not a data-loss or duplication risk.
+  **What to do:** decide whether this naming divergence is acceptable
+  as-is for the real vault (matches this project's own precedent of
+  accepting mechanical, engine-driven normalizations — `T05`'s own
+  additive `id`/`title`/`created`/`classification` keys and empty
+  `## Files` header), or whether `create_dynamic_child()` should gain a
+  `folder_date`-style override (mirroring `create()`'s own existing
+  parameter for root notes) before `T05`'s own real-vault cutover task
+  runs. Either way, name the decision explicitly in `T05`'s own
+  Implementation Log when it runs.
+  → `Implementation/Tasks/REQ-SB-87-US-02-T01-migrate-ingest-email.md`
+  → `Implementation/Tasks/REQ-SB-87-US-02-T05-real-vault-verification-and-cutover.md`
+  → `ESCALATIONS.md` (`ESC-061`, Resolved)
+
+- [ ] 2026-09-02 · **REQ-SB-87-US-02-T02** · spot-check two scope-internal judgement calls in the migrated `rename_thread.py`
+  Plain English: `T02` (`rename_thread.py` migration onto `vault_manager.py`)
+  is `Done` — its one locked AC (`AC-03`) verified live against a fresh real
+  scratch-vault sample (relabeling, backlink updates, and the collision-
+  disambiguation case, including a stem landing exactly at the 80-char
+  cutoff, all confirmed correct). Two things worth a human look, neither
+  blocking: (1) the "already renamed" no-op check now compares against
+  `vault_manager._slugify(conversation_id)` instead of
+  `vault_lib._slugify(conversation_id)`, since `T01` made `vault_manager`
+  the real authority for how a raw Thread directory gets named — this is
+  the objectively correct mapping (the two slugify functions only disagree
+  on conversation_ids longer than 80 chars, none observed in this
+  deployment) but is a mechanical correctness call the task had to make,
+  not something a locked AC's wording spelled out. (2) A REAL regression
+  was found and fixed live during verification: `vault_manager.update()`
+  has no equivalent to `vault_lib.upsert_frontmatter_key()`'s own safe
+  no-op on a file with no frontmatter fence — the pre-existing (unchanged)
+  `.md`-named-attachment companion-directory collision case (the reason
+  the `is_file()` guard already exists) can ALSO match the raw, unfenced
+  attachment bytes copy under the same glob. Confirmed live: without an
+  extra guard, this migration would have silently corrupted a real
+  attachment by injecting a synthetic frontmatter block ahead of its real
+  content. Fixed within this task's own single file (`rename_thread.py`)
+  by adding an explicit "does this file already have a frontmatter fence"
+  gate before calling `vault_manager.update()` — reproduces the original
+  no-op safety exactly. Generalized as a `MEMORY.md` Constraint entry for
+  any FUTURE `upsert_frontmatter_key` → `vault_manager.update` call-site
+  migration (`T03` migrates 3 more scripts next, at least one of which —
+  `capture_attachments.py`/`capture_file_link.py` — writes into this exact
+  same `files/` companion shape).
+  **What to do:** confirm both calls are acceptable as-is (no code change
+  requested); when `T03` migrates `capture_attachments.py`/
+  `capture_file_link.py`/`link_person_to_thread.py`, check whether any of
+  their own `vault_lib.upsert_frontmatter_key`/`replace_body_section` call
+  sites have the same "target path isn't provably always a fenced note"
+  shape and needs the same guard.
+  → `Implementation/Tasks/REQ-SB-87-US-02-T02-migrate-rename-thread.md`
+  → `MEMORY.md` (2026-09-02 Constraint entry)
+
+- [ ] 2026-09-02 · **REQ-SB-87-US-02-T03** · spot-check a real section-name bug found and fixed live before shipping (`link_person_to_thread.py`/`capture_attachments.py`/`capture_file_link.py`)
+  Plain English: `T03` (migrating `link_person_to_thread.py`,
+  `capture_attachments.py`, `capture_file_link.py` onto `vault_manager.py`)
+  is `Done` — its locked ACs (`AC-04` in full; the `## Personal Notes` half
+  of `AC-07`) verified live against a fresh real scratch vault (seeded with
+  a real copy of the live `thread/Template.json`), re-run for real after a
+  mid-task machine-restart interruption. One thing worth a human look, not
+  blocking: an initial draft of this task's own code passed `"## "`-prefixed
+  section names (`section="## Related"`/`"## Files"`) to
+  `modify_section`/`get_section_content` — copied directly from this task's
+  own decomposer-authored Tests prose and `REQ-SB-87-US-01-T05`'s own
+  illustrative Test steps, both of which use the prefixed form. This is
+  WRONG: `modify_section`'s own per-caller access check matches the
+  `section` argument against `Template.json`'s BARE `root.sections[].name`
+  field via exact string equality — the prefixed form silently finds no
+  declared entry and falls through to the undeclared-section default (open
+  to ANY caller), a SILENT security hole with no error, that would have
+  quietly defeated the whole per-caller restriction `ADR-017` exists to
+  enforce. Caught live during this task's own verification (the
+  wrong-caller-refusal check did not actually raise on the first pass,
+  before the fix) — fixed to the bare form before the task ever reached
+  `Done`, matching `apply_thread_review.py`'s own already-`Done` real
+  call-site convention. Never shipped with the bug present. Generalized as
+  a `MEMORY.md` Constraint entry (2026-09-02, second entry).
+  **What to do:** confirm the fix (bare section names) is acceptable as-is
+  (no further code change requested); when any future task adds a NEW
+  `modify_section`/`create` call site meant to be caller-restricted, check
+  it reads the target `Template.json`'s own literal `root.sections[].name`
+  value directly (never copies prefixed prose from a task's own
+  illustrative Tests text) and live-verifies a wrong-caller write actually
+  raises before trusting it.
+  → `Implementation/Tasks/REQ-SB-87-US-02-T03-migrate-attachment-file-person-linking.md`
+  → `MEMORY.md` (2026-09-02 Constraint entry, second one)
+
+- [x] 2026-09-02 · **REQ-SB-87-US-02-T06** · `run_full_capture.py`/`run_delta_capture.py` don't yet forward the new `direction` field to `ingest_email.py` — needs a one-line orchestrator fix before `T05`'s live cutover — **Resolved 2026-09-02 by `T05`**: `"direction": e.get("direction") or "",` added to both orchestrators' `ingest_payload` construction, matching every other already-forwarded field's own shape; confirmed still open by direct read before fixing, per `T05`'s own Implementation Log.
+  Plain English: `T06` (thread `direction`/recipient-type fields into RawMessage
+  frontmatter) is `Done` — both locked ACs (`AC-08`, `AC-09`) verified live by
+  invoking the migrated `ingest_email.py` directly (this task's own Tests-block
+  method, matching `T01`'s precedent), against a real Inbox email (mixed To/CC
+  recipients) and a real Sent Mail email pulled fresh via the real, unmodified
+  `list_recent_emails.py`. Real on-disk frontmatter read back via
+  `vault_manager.read_note` confirmed `direction: "received"`/`"sent"` correctly
+  and `to_recipients`/`cc_recipients` correctly split per real recipient. A REAL
+  bug was found and fixed live before shipping: `vault_manager.py`'s own
+  hand-rolled (non-YAML) frontmatter writer silently drops a list of dicts on
+  read (`[]` back), so the recipient shape had to become two flat
+  `to_recipients`/`cc_recipients` email-string lists instead of one combined
+  `recipients: [{email, type}]` list — see `MEMORY.md`'s new 2026-09-02
+  Constraint entry. Separately, while building this task, direct reading of
+  `run_full_capture.py`/`run_delta_capture.py` (out of THIS task's own
+  `## Files to Modify` — untouched, per the story's own standing Constraint)
+  found their `ingest_payload` dict construction is a fixed, explicit key list
+  that does NOT include `"direction"` at all — confirmed live, both files, same
+  shape. `recipients` (and therefore each recipient's own `type`) DOES already
+  flow through both orchestrators correctly today, since they forward the whole
+  `e.get("recipients")` list object unchanged rather than rebuilding it
+  key-by-key. This means: as of `T06`, a message ingested THROUGH the real,
+  live orchestrators (not this task's own direct-invocation verification) would
+  still get an empty `direction` in its frontmatter — `[REQ-SB-87-US-02-AC-08]`
+  passes for `ingest_email.py` itself, but the live cron pipeline would not yet
+  deliver its real value end-to-end.
+  **What to do:** before `REQ-SB-87-US-02-T05`'s real-vault cutover, add
+  `"direction": e.get("direction") or ""` to both orchestrators' own
+  `ingest_payload` dict construction (`run_full_capture.py` line ~226,
+  `run_delta_capture.py` line ~181) — a one-line, same-shape addition matching
+  every other already-forwarded field, not a restructuring. This also matters
+  for `[REQ-SB-87-US-03]`'s own "Sent items are never Noise" guard (`Scenario 8`
+  there), which reads this same `direction` field from real, orchestrator-
+  ingested messages, not just directly-invoked ones.
+  → `Implementation/Tasks/REQ-SB-87-US-02-T06-raw-message-direction-and-recipient-type.md`
+  → `Implementation/Tasks/REQ-SB-87-US-02-T05-real-vault-verification-and-cutover.md`
+  → `MEMORY.md` (2026-09-02 Constraint entry, third one)
+
+- [ ] 2026-09-02 · **REQ-SB-87-US-02-T05** · spot-check 3 scope-internal judgement calls on the now-`Done` real-vault retrofit + live cron cutover (closes `REQ-SB-87-US-02` and `SPRINT-083`)
+  Plain English: `T05` (real-vault retrofit-safety verification + live
+  `email-delta-capture` cron cutover, per the operator's own "Run the
+  retrofit now" authorization) is `Done` — both locked ACs (`AC-05`,
+  `AC-06`) verified live against the REAL, live vault
+  (`C:\myWorx\Moussa MD\Moussa Brain`), not a scratch copy. Two real
+  Threads re-ingested idempotently (only the additive `id` backfill
+  changed on disk, `diff`-confirmed); a real ~100-message sample (last
+  100 real Inbox+Sent items) retrofitted — 94 already-existing
+  conversations topped up with zero relay calls and zero duplicate
+  Threads (real Thread-directory count grew by exactly 5, matching the 5
+  genuinely-new non-noise captures out of 6 genuinely-new conversations,
+  1 correctly skipped as noise, 0 Sent items incorrectly skipped). Live
+  cron cutover confirmed via a real, manually-triggered
+  `email-delta-capture` agentic run (not just a direct script call)
+  against the real vault, its own real per-run output file confirming
+  success on the newly-deployed code.
+
+  **Judgement call 1 — a real Thread-duplication bug found and fixed
+  live, BEFORE any real-vault write.** `ingest_email.py`'s Thread
+  resolution (`vault_manager.find_by_id`, keyed on a real `id`
+  frontmatter field) could not find ANY real, pre-migration Thread note
+  — `vault_lib.py`'s old implementation never wrote an `id` field, and
+  `thread/Template.json`'s own `on_existing_title: "always_new"` means
+  `create()`'s fallback title-lookup path never runs for this template
+  either. Left unfixed, retrofitting the real vault would have created a
+  genuine DUPLICATE Thread for every pre-existing conversation touched —
+  confirmed via a direct, isolated `find_by_id`/`_find_by_title` check
+  against a real scratch copy of a real Thread, BEFORE any real-vault
+  write was attempted. Fixed within `ingest_email.py`'s own already-open
+  file scope (not a new file, not this task's own literal `## Files to
+  Modify`): on a `find_by_id` miss, fall back to the already-imported,
+  unchanged `vault_lib.resolve_thread_directory` (the SAME hand-written
+  lookup `update_thread_last_message_at` already relies on), and if
+  found, backfill `id=conversation_id` and treat it as already-existing
+  — the SAME "mint-and-backfill on first touch" pattern
+  `REQ-SB-87-US-04-T01`'s own `apply_thread_review.py` migration already
+  established for the identical problem (2026-09-01 `MEMORY.md` entry).
+  Verified live on a scratch copy (3 real cases: idempotent re-ingest,
+  genuine top-up, genuinely-new conversation) before being applied to the
+  real vault.
+
+  **Judgement call 2 — a real Unicode print-crash bug found and fixed
+  live, during the retrofit itself.** 2 of the real 100 retrofitted
+  messages (real subjects containing 🚀) crashed `ingest_email.py`'s own
+  `main()` with `UnicodeEncodeError` on its final `print()` — the SAME
+  bug class `list_recent_emails.py` already fixed for itself 2026-08-24,
+  never applied to `ingest_email.py`. The underlying vault write had
+  already succeeded by the time of the crash (no data lost — confirmed
+  via re-run, both already showed as captured), but the script exited
+  non-zero with no JSON. Fixed identically to `list_recent_emails.py`'s
+  own established one-line pattern
+  (`sys.stdout.reconfigure(encoding="utf-8")`).
+
+  **Judgement call 3 — deployed to all 27 real active Hermes profile
+  locations, not just the one production/cron-facing location.** The
+  task's own text named "location(s)" (plural, undecided); this task
+  deployed to the ONE location the live cron job's own absolute path
+  calls, AND to all 26 real, active per-profile deployed copies of this
+  Skill, matching this project's own established multi-copy-resync
+  discipline (`vault_manager.py`'s own 82-copy resync precedent).
+
+  **What to do:** review both live-found-and-fixed bugs (judgement calls
+  1-2) for correctness and completeness — in particular, confirm no
+  OTHER script in this Skill (or a sibling Skill sharing the same
+  `always_new`+no-`id` template shape) has the same latent
+  retrofit-duplication risk, and confirm no other script in this Skill
+  still lacks `sys.stdout.reconfigure(encoding="utf-8")`. Also review the
+  all-27-locations deploy scope (judgement call 3) as a spot-check, not a
+  blocking question.
+
+  **Already checked, disclosed, NOT fixed (narrower, safe, non-blocking
+  residual):** `rename_thread.py`/`link_person_to_thread.py`/
+  `capture_attachments.py`/`capture_file_link.py` all ALSO resolve a
+  Thread via `vault_manager.find_by_id` alone, with no fallback — but
+  none of them has a `create()`-a-new-Thread path (unlike
+  `ingest_email.py`'s own `always_new` branch), so their failure mode
+  against an untouched, no-`id` pre-migration Thread is a SAFE no-op
+  ("no Thread found," nothing written), never a duplicate. Every real
+  orchestrator-driven call already runs `ingest_email.py` FIRST per
+  email (which now backfills `id`), so this only matters for a
+  hypothetical standalone, direct call against a Thread `ingest_email.py`
+  has never touched since this migration — narrow, safe, and out of this
+  task's own scope to close.
+  → `Implementation/Tasks/REQ-SB-87-US-02-T05-real-vault-verification-and-cutover.md`
+  → `Implementation/UserStories/REQ-SB-87-US-02-email-thread-capture-vault-manager-migration.md`
+  → `Implementation/Sprints/SPRINT-083-email-and-enrich-mechanics-migration.md`
+  → `MEMORY.md` (2026-09-02, two new Constraint entries)
+
+- [ ] 2026-09-02 · **REQ-SB-87-US-03-T01** · spot-check 3 scope-internal judgement calls on the now-`Done` noise-definition artifact + derivation script
+  Plain English: `T01` (noise-definition artifact + out-of-band derivation
+  mechanism, `ADR-018`) is `Done` — `[REQ-SB-87-US-03-AC-04]` verified live in
+  full (two real derivation runs against the real Hermes CLI and the real
+  vault; the persisted `.second-brain/data/EmailCapture/noise_definition.json`
+  is real, structured, LLM-derived content grounded in the operator's exact 5
+  locked seed subjects, framed as "anything automated/broadcast" with zero
+  mention of meeting invites; a second run against a genuinely different real
+  3-email sample proved the artifact updates, not frozen; restored back to the
+  seed-grounded Run 1 content before finishing). Three scope-internal
+  judgement calls were made and disclosed in the task's own Implementation
+  Log, none of them weakening any locked AC, but all worth a human glance: (1)
+  the derivation relay targets the default/root Hermes profile (no `-p` flag)
+  rather than a new dedicated profile — the task's own text explicitly allows
+  this as "this task's own disclosed choice," distinct from `T02`'s later,
+  separate classifier profile; (2) the persisted `definition`'s own JSON
+  schema (`category`/`description`/`criteria`/`positive_signals`/
+  `negative_signals`) was chosen by the coder — `ADR-018` explicitly leaves
+  exact field names open; (3) this task was built AHEAD of `SPRINT-084`'s own
+  formal `depends_on_sprints: [SPRINT-083]` start gate (`SPRINT-083` is still
+  `In Progress`, not `Done`) — done under the launching agent's own explicit
+  instruction that this specific, dependency-free task (`depends_on: []`) is
+  safe to build in parallel with `REQ-SB-87-US-02-T06`, confirmed to touch
+  zero files any other in-flight `REQ-SB-87` task touches.
+  **What to do:** skim the task's own Implementation Log's "Scope-internal
+  judgement calls" section; no action required unless the profile choice or
+  schema shape should be revised before `T02`/`T03` build on top of it.
+  → `Implementation/Tasks/REQ-SB-87-US-03-T01-noise-definition-artifact-and-derivation.md`
+
+- [ ] 2026-09-02 · **REQ-SB-87-US-03-T02** · spot-check 4 scope-internal judgement calls on the now-`Done` classifier Hermes profile
+  Plain English: `T02` (provision the dedicated Capture-classifier Hermes
+  profile, `ADR-018`) is `Done` — every locked AC verified live via 7 real
+  relay calls against the real, installed `hermes.exe`/Compass Provider,
+  real content read from the real vault (`[REQ-SB-87-US-03-AC-10]`: all 5
+  real operator-confirmed seed subjects correctly returned `is_noise:
+  true, classification: null`; `[REQ-SB-87-US-03-AC-02]`: a real,
+  content-rich, genuinely non-noise Thread correctly returned `is_noise:
+  false` with a real, non-fabricated classification — confirming the
+  classifier does not default everything to Noise; "no tool-calling loop"
+  and "no vault-write capability" structurally confirmed via a session
+  export showing `tool_call_count: 0` and a real vault file-timestamp
+  sweep showing zero writes). Four scope-internal judgement calls were
+  made and disclosed in the task's own Implementation Log: (1) beyond a
+  plain `--clone`, ALL inherited skills were deleted and
+  `platform_toolsets.cli` emptied to `[]` on the new profile — a
+  stronger, structural enforcement of "no tool use/no vault writes" than
+  this task's own text names, chosen because a plain clone alone would
+  have left that property resting on SOUL.md prompt discipline only; (2)
+  the `classification` field uses the exact lowercase strings
+  `"internal"`/`"partner"`/`"customer"` (matching this task's own
+  Objective/`ADR-018`'s illustrative shape) rather than the PRD/story's
+  title-case prose — `T03`+ should treat the lowercase strings as the
+  real values; (3) `SOUL.md` was widened mid-task to request real
+  recipients/participants, not just sender/subject/body, after a live
+  verification call surfaced a real, non-fabricated but arguably-wrong
+  `classification` from sender-only input — `T03`'s own relay-call
+  construction must pass real participant data for classification
+  accuracy to hold; (4) `agent.reasoning_effort` was left at the
+  inherited `medium` rather than lowered for speed, favoring accuracy
+  over per-call latency.
+  **What to do:** skim the task's own Implementation Log's "Scope-internal
+  judgement calls" section; no action required unless the toolset-
+  stripping mechanism, the lowercase classification values, or the
+  reasoning-effort choice should be revised before `T03` builds the actual
+  call site on top of it.
+  → `Implementation/Tasks/REQ-SB-87-US-03-T02-classifier-hermes-profile.md`
+
+- [ ] 2026-09-02 · **REQ-SB-87-US-03-T03** · spot-check 5 scope-internal judgement calls on the now-`Done` classify-or-skip relay wiring; one real doc/reality mismatch to fix in `T02`'s own `SOUL.md`
+  Plain English: `T03` (wire the classify-or-skip relay call into
+  `ingest_email.py`, `ADR-018`) is `Done` — all locked ACs (`AC-01`,
+  `AC-02`, `AC-03`, `AC-06`, `AC-08`, `AC-09`) plus the relay-failure
+  degrade default verified live against a fresh scratch vault and the
+  real, installed `email-capture-classifier` profile (see the task's own
+  Implementation Log for full detail: a genuinely new noise conversation
+  left zero vault trace; a genuinely new signal conversation was captured
+  and correctly classified `"customer"`; a second message on an
+  already-classified conversation was captured with a confirmed
+  zero-relay-call count even when deliberately noise-shaped; a real
+  Inbox+Sent pair combined into one Thread unaffected; a first-seen Sent
+  message with noise-shaped content was never skipped and got a real
+  classification; an engineered relay failure raised and left no Thread,
+  with a natural retry confirmed to succeed after). Five scope-internal
+  judgement calls disclosed: (1) the "Sent is never Noise" guard mechanism
+  — a hybrid effectively-(a) design (still relays for a real
+  classification, but structurally never reads/acts on `is_noise` for a
+  Sent first message) — the task's own text explicitly left the exact
+  mechanism open; (2) a real doc/reality mismatch found: `T02`'s own
+  deployed `SOUL.md` documents `direction` as `"inbound"`/`"sent"`, but
+  `T06`'s real field is `"received"`/`"sent"` — non-blocking today (this
+  task's own guard checks the real value literally for `"sent"`, which
+  matches), but `SOUL.md`'s own wording should be corrected so it doesn't
+  mislead a future reader/consumer of the `"received"` value; (3) the
+  JSON-extraction helper was duplicated into `ingest_email.py` rather than
+  imported from `derive_noise_definition.py`, to keep this task's own file
+  scope self-contained; (4) the relay's own question-text wording/format
+  is this task's own construction, not specified by `ADR-018`/`T02`; (5)
+  an invalid/missing `classification` on a non-noise verdict is treated as
+  a relay failure (raise, retry next tick) rather than fabricated.
+  **What to do:** skim the task's own Implementation Log's "Scope-internal
+  judgement calls" section; the one item that likely warrants a small
+  follow-up edit is (2) — correcting `email-capture-classifier`'s own
+  `SOUL.md` wording from `"inbound"` to `"received"` (a `T02`-scope file,
+  not touched by this task) so it matches the real field `T06` delivers.
+  → `Implementation/Tasks/REQ-SB-87-US-03-T03-wire-classify-or-skip-relay.md`
+
+- [ ] 2026-09-02 · **REQ-SB-88-US-02-T03** · `link_opportunity.py`'s CLI
+  `print()` crashes with `UnicodeEncodeError` for a real Opportunity title
+  containing a non-ASCII character (e.g. `→`), under a `cp1252` console
+  Plain English: found live during this task's own real-vault retrofit
+  check against a REAL, currently-live Opportunity
+  (`ADNOC AVS→Azure Native Landing Zone Amendment`). The underlying
+  `link_opportunity()` write logic ran and returned correctly (confirmed
+  by calling it directly in-process, bypassing the CLI); only `main()`'s
+  own final `print(json.dumps(...))` call crashed, and only because this
+  shell's stdout uses the Windows `cp1252` console codepage — the same,
+  already-documented class of issue this project's own
+  `Implementation/Learnings.md` names under `SPRINT-038`
+  ("Windows console codepage can silently mangle non-ASCII script
+  output"), now reconfirmed against a real vault entity rather than a
+  test string. Pre-existing — `main()`'s `print()`/`json.dumps()` call was
+  byte-unchanged by `REQ-SB-88-US-02-T01`/`T02`'s own migration, so this
+  is not a regression introduced by that work. Left un-fixed here because
+  it is outside `REQ-SB-88-US-02-T01`/`T02`/`T03`'s own `## Files to
+  Modify` scope (a CLI stdout-encoding robustness fix, not a write-
+  mechanics migration). Real impact: any agent/process that actually
+  invokes this script's CLI (not the function directly) for a real
+  Opportunity whose title contains a non-ASCII character, under a
+  `cp1252` console, will see the CLI crash on its own final print even
+  though the underlying link was applied/checked correctly.
+  **What to do:** decide whether to file this as a standalone `BUG-NNN`
+  via `/bug` (Area: Logic, likely Minor/Cosmetic since the actual write
+  succeeds and only the CLI's own final print fails) — the fix, if taken,
+  is the exact same one-line established pattern `MEMORY.md`'s own
+  2026-09-02 `REQ-SB-87-US-02-T05` entry already names and applied twice
+  in this codebase (`list_recent_emails.py`, then `ingest_email.py`):
+  call `sys.stdout.reconfigure(encoding="utf-8")` at the very start of
+  `main()`, before any `print()` of real content. Consider auditing
+  `apply_file_review.py`/`apply_thread_review.py`'s own CLI `main()`
+  functions for the same latent risk while at it, since they share the
+  same `print(json.dumps(...))` shape.
+  → `Implementation/Tasks/REQ-SB-88-US-02-T03-scratch-proving-and-real-vault-retrofit-check.md`
+
+- [ ] 2026-09-02 · **REQ-SB-87-US-02-T05** (Done, live post-hoc finding) · retrofit driver skipped rename/person-link chaining for its own newly-created real Threads — now manually remediated, root cause not yet fixed in the retrofit driver itself
+  Plain English: after `T05`'s real 100-message retrofit landed, the operator
+  observed live that several real Thread folders were still sitting on their
+  raw `conversation_id` hex name instead of a readable `<date> <subject>` one
+  (one was the pre-existing `1BF41BCBA5F543BEBF4909878D74CD38` the operator
+  had originally flagged before this migration even started; the other five
+  were brand-new, all from the retrofit's own 5 genuinely-new captures — four
+  found in an initial scan, a fifth found only in a later, wider follow-up
+  sweep once the retrofit had continued writing past the initial scan's own
+  timestamp).
+  Investigated live (not assumed): `rename_thread.py`'s own logic is correct
+  — manually invoking it against the real vault renamed all 6 successfully on
+  the first try, no code change needed. Root cause is a real gap in `T05`'s
+  own retrofit driver: per its Implementation Log, the retrofit called the
+  deployed `ingest_email.py` **directly**, one message at a time, to prove
+  dedup/classification correctness — but never chained the same per-email
+  follow-up steps `run_full_capture.py`/`run_delta_capture.py`'s own loop
+  always calls right after ingest (`rename_thread.py` step "2c", then
+  `link_person_to_thread.py`). Because these steps only ever fire again when
+  a NEW message arrives for that `conversation_id`, a Thread whose rename
+  step was skipped during a direct-`ingest_email.py` retrofit has no
+  automatic retry path — it stays stuck on its raw hex name indefinitely if
+  the conversation never receives another message. This is a retrofit-driver
+  completeness gap, not a defect in the shipped, live-cron-facing pipeline
+  code (which chains all three steps correctly, confirmed by this session's
+  own real cron-trigger check in `T05`).
+  **Remediation already applied (disclosed, not blocking):** manually ran
+  `rename_thread.py` then `link_person_to_thread.py` (both confirmed
+  idempotent/safe to re-run per their own docstrings) against the real vault
+  for all 6 affected `conversation_id`s — all renamed and person-linked
+  successfully, zero errors, zero duplicate/side-effect risk (verified via
+  each call's own JSON result); a final wildcard sweep of the whole real
+  `Work/Threads` tree afterward confirmed zero raw-hex-named Thread folders
+  remain. No code was changed to do this.
+  **What to do:** decide whether this is worth a small follow-up fix to
+  `T05`'s retrofit-driver pattern for future backfills (e.g. a documented
+  `Implementation/Learnings.md` note: "a retrofit that calls `ingest_email.py`
+  directly must also chain `rename_thread.py`/`link_person_to_thread.py` per
+  message, or manually run those two scripts afterward for every
+  newly-created Thread in the batch") — added directly to `MEMORY.md` as a
+  Pattern in the meantime since it is squarely relevant to `SPRINT-085`'s own
+  in-flight `REQ-SB-88` retrofit-check tasks. No `BUGS.md` entry filed: this
+  is a one-time retrofit-operation gap already fully remediated against the
+  real vault, not a standing defect in shipped code.
+  → `Implementation/Tasks/REQ-SB-87-US-02-T05-real-vault-verification-and-cutover.md`
+
+- [ ] 2026-09-02 · **SPRINT-085 (ESC-062)** · a concurrent session's own
+  `REQ-SB-87-US-02-T05` cron cutover went live DURING this sprint's real-vault
+  work window — no actual data collision found, but a real near-miss with
+  the project's own concurrent-write-race constraint, plus a self-disclosed
+  process gap on this sprint's own part
+  Plain English: this sprint's dispatch named `REQ-SB-87-US-02-T05` as a
+  possibly-still-running sibling task and required a live cron/process check
+  before this sprint's own two real-vault-touching tasks. That check passed
+  cleanly at session start (`email-delta-capture` cron confirmed `disabled`/
+  `paused`). Sometime later — before this sprint finished — a CONCURRENT
+  session completed `REQ-SB-87-US-02-T05` and cut its cron job live
+  (`email-delta-capture` now `enabled: true`, real writes at
+  14:01:00-14:03:00). This sprint's own `REQ-SB-88-US-01-T04` (cron
+  provisioning for `job5-summarize-tag-files`) was NOT re-checked for
+  concurrency immediately before its own cron-create/trigger (only
+  `REQ-SB-88-US-01-T03`/`REQ-SB-88-US-02-T03` were explicitly re-checked,
+  since the dispatch named only those two) — a real, disclosed gap in this
+  sprint's own diligence, even though `T04` is equally a real-vault-writing
+  action. A full forensic mtime sweep across every real-vault-writing
+  action's own write window (this sprint's `T03`/`T03`/`T04`, and the
+  sibling's own cutover burst + one later empty tick) found ZERO
+  overlapping write timestamps and ZERO files touched by both — no actual
+  corruption or lost data, confirmed, not assumed.
+  **What to do:** review `ESC-062` (full forensic detail); decide whether
+  this project needs a stronger structural concurrency safeguard (e.g. a
+  shared real-vault write-lock file both this pipeline's coder role and
+  live Hermes cron ticks respect) now that concurrent sessions against the
+  same real vault are a demonstrated occurrence, not just a theoretical
+  risk — or whether the existing manual-pre-check discipline is sufficient
+  once widened to cover every real-vault-writing action in a sprint (incl.
+  cron provisioning), not just the tasks a dispatch happens to name.
+  → `ESCALATIONS.md` (`ESC-062`)
+
+- [ ] 2026-09-02 · **REQ-SB-88-US-01-T04** · the real, scheduled
+  `job5-summarize-tag-files` cron job does NOT reliably honor
+  `summarize-and-tag-files`' own documented `## Summary`-non-empty skip
+  rule — 4/15 real Files in its own second run were already-summarized
+  re-processing, not genuinely new. Job paused, not removed.
+  Plain English: this task's own locked `AC-06` has two sub-clauses — "a
+  real, bounded cron job exists and processes real batches" (verified
+  live across 2 real runs, both stopped cleanly, both PASS) and "each run
+  only processes Files whose `## Summary` is still empty, skipping any
+  File a prior run already summarized" (verified live, and FAILS
+  materially: the job's own second real run re-processed 3 Files its own
+  FIRST run had already summarized ~1 hour earlier, plus one Real File
+  this same session's own `T03` had already confirmed summarized before
+  this task even started — 4 of 15 = ~27% of that batch was wasted
+  re-work, each producing a genuinely different, real, non-fabricated,
+  but UNNECESSARY new summary overwriting a perfectly good existing one).
+  No data was lost or corrupted — every overwrite was real, accurate
+  content about the same real document, `mode="replace"` behaving exactly
+  as `T01`/`T02` built and already verified it to. Root cause: SKILL.md's
+  own documented design places the ENTIRE skip decision on the agent's
+  own real-time judgment (no code-level enforcement exists, before or
+  after this migration) — unlike `job4`/`summarize-and-tag-threads`,
+  which has an additional timestamp-based (`last_summarized_at`/
+  `last_message_at`) mechanical safety net Files were never given. This
+  is a genuine Skill-design/agent-reliability characteristic, not a
+  regression introduced by this task's own migrated code (already
+  independently verified correct in `T01`-`T03`).
+  **Action already taken:** paused the job
+  (`hermes cron pause b88fd2bad795` — reversible, `enabled: false`,
+  2 of 4 budgeted runs consumed, 2 remain) rather than let 2 more runs
+  potentially repeat the same waste unattended before a human sees this.
+  **What to do:** decide between (a) accept as-is and
+  `hermes cron resume b88fd2bad795` to let the remaining 2 runs complete
+  (worst case: more wasted-but-harmless re-summarization, self-limiting
+  since `repeat.times` is bounded and the job naturally stops); (b) file a
+  small follow-up story/task to add a mechanical guard directly inside
+  `apply_file_review.py` (e.g. refuse/warn on a non-empty `## Summary`
+  unless an explicit override flag is passed — mirroring `job4`'s own
+  timestamp-based safety net one layer up for Files) before resuming;
+  (c) widen `job5`'s own prompt with stronger skip-rule emphasis and
+  re-test before resuming. Real content already written by both
+  completed runs (26 genuinely-new Files summarized across Run 1 + Run 2,
+  by this session's own cross-check) needs no remediation — it is all
+  real, accurate, non-destructive.
+  → `Implementation/Tasks/REQ-SB-88-US-01-T04-provision-cron-job.md`
+
+- [ ] 2026-09-02 · **SPRINT-085** · skim the sprint retrospective and harvest learnings
+  Plain English: SPRINT-085 (`REQ-SB-88-US-01`/`US-02`, the
+  `summarize-and-tag-files` + `track-opportunities` `vault_manager.py`
+  migrations) is `Done` — all 7 tasks built, all locked ACs verified live
+  (AC-01–AC-05 of `US-01` and all 5 of `US-02` fully pass; `US-01`'s own
+  `AC-06` carries one disclosed partial, see its own `T04` entry above).
+  The coder drafted a Retrospective (sizing accuracy, what worked/didn't,
+  patterns/antipatterns, open follow-ups) in the sprint file, but does
+  not write `Implementation/Learnings.md` directly — that's a human step.
+  **What to do:** read `## Retrospective` in the sprint file, then copy
+  (verbatim or expanded) the "Patterns to carry forward" and "Antipatterns
+  to avoid" entries into `Implementation/Learnings.md`. Also resolve (or
+  explicitly defer) the sprint's own three linked open follow-ups: the
+  `T04` cron skip-rule finding, `ESC-062`'s concurrency near-miss, and
+  the `link_opportunity.py` stdout-encoding finding.
+  → `Implementation/Sprints/SPRINT-085-summarize-and-tag-files-and-track-opportunities-vault-manager-migration.md`
 
