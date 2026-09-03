@@ -4936,3 +4936,19 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   an empty string on every import of the owning Skill, even when the
   target already had real data. Now only writes the blank placeholder
   when the target file doesn't already exist.
+
+- feat: Agents gained a new field `primary_routing_snippet` (Registry-side
+  metadata alongside icon/color) -- structured storage for "how a Primary/
+  delegating agent should route to this agent", settable via `POST /agents`/
+  `PATCH /agents/{id}`, automatically carried through `.sbf` export/import.
+  New endpoint `POST /artifacts/import/apply-primary-routing` explicitly
+  appends a deployed agent's own snippet to the target machine's real
+  Primary SOUL.md, wrapped in an idempotent per-agent marker pair --
+  never applied automatically. Populated for real on `notes-manager`/
+  `files-manager` for the CBO handoff. Frontend not yet built. See
+  `MEMORY.md`.
+- fix: documented (not a code bug) -- exporting an Agent via a raw script
+  instead of the running server silently drops that Agent's own
+  `Agent.json`/`soul.md` (Registry never booted -> `agent_data_dir()`
+  returns None -> the export's own "never fabricate" rule skips it
+  silently). Regenerated the CBO handoff `.sbf` correctly. See `MEMORY.md`.

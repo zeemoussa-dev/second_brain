@@ -137,8 +137,14 @@ def commit_import(
     return outcomes
 
 
-def _deployed(kind: str, artifact_id: str, *, deployed_as: str | None = None, detail: str = "deployed") -> dict:
-    return {"kind": kind, "id": artifact_id, "status": "deployed", "deployed_as": deployed_as, "detail": detail}
+def _deployed(
+    kind: str, artifact_id: str, *, deployed_as: str | None = None, detail: str = "deployed",
+    primary_routing_snippet: str | None = None,
+) -> dict:
+    return {
+        "kind": kind, "id": artifact_id, "status": "deployed", "deployed_as": deployed_as, "detail": detail,
+        "primary_routing_snippet": primary_routing_snippet,
+    }
 
 
 def _skipped(kind: str, artifact_id: str, *, detail: str = "skipped per operator decision") -> dict:
@@ -323,7 +329,14 @@ def _resolve_section_id(section_id: str | None) -> str:
     return section_manager.create(_FALLBACK_SECTION_NAME).id
 
 
-def _write_agent_registry_side(payload: dict[str, bytes], original_id: str, real_deployed_id: str) -> None:
+def _write_agent_registry_side(payload: dict[str, bytes], original_id: str, real_deployed_id: str) -> str | None:
+    """Returns the bundle's own `primary_routing_snippet` (or None) --
+    already lands on the target's own Agent.json for free (the whole
+    `config` dict is written through as-is, no per-field allowlist), but
+    the caller also needs the raw value to surface it as an import-time
+    suggestion (see apply_primary_routing_snippet -- never auto-applied
+    to the target's own Primary SOUL.md, that's a separate, explicit,
+    operator-triggered step)."""
     config_raw = payload.get(f"agents/{original_id}/Agent.json")
     soul_raw = payload.get(f"agents/{original_id}/soul.md")
     config = (
@@ -343,6 +356,7 @@ def _write_agent_registry_side(payload: dict[str, bytes], original_id: str, real
     )
     registry_writer.write_agent_files(agent_dir, config=config, soul_text=soul_text)
     asyncio.run(registry_loader.boot())
+    return config.get("primary_routing_snippet")
 
 
 def _deploy_agent(artifact_id: str, conflicts: bool, decision: str | None, payload: dict[str, bytes]) -> dict:
@@ -358,18 +372,59 @@ def _deploy_agent(artifact_id: str, conflicts: bool, decision: str | None, paylo
             ok, output = get_client().cli.import_profile(scratch_path)
             if not ok:
                 raise RuntimeError(f"hermes profile import failed for {artifact_id!r}: {output}")
-            _write_agent_registry_side(payload, artifact_id, artifact_id)
-            return _deployed(kind, artifact_id)
+            snippet = _write_agent_registry_side(payload, artifact_id, artifact_id)
+            return _deployed(kind, artifact_id, primary_routing_snippet=snippet)
 
         # decision == "keep_both"
         alt_id = f"{artifact_id}-imported"
         ok, output = get_client().cli.import_profile(scratch_path, name=alt_id)
         if not ok:
             raise RuntimeError(f"hermes profile import failed for {artifact_id!r}: {output}")
-        _write_agent_registry_side(payload, artifact_id, alt_id)
-        return _deployed(kind, artifact_id, deployed_as=alt_id)
+        snippet = _write_agent_registry_side(payload, artifact_id, alt_id)
+        return _deployed(kind, artifact_id, deployed_as=alt_id, primary_routing_snippet=snippet)
     finally:
         Path(scratch_path).unlink(missing_ok=True)
+
+
+# -- Primary routing (2026-09-03) -------------------------------------------
+#
+# A bundled Agent's own `primary_routing_snippet` (Registry-side metadata,
+# never a Hermes SOUL.md field) is surfaced to the operator as a suggestion
+# on every successful agent deploy (see _deploy_agent's own outcome, above)
+# -- never applied automatically. This is the ONE explicit, separate step
+# that actually writes it into the TARGET's own real Primary SOUL.md,
+# matching this whole subsystem's "never silent" discipline for anything
+# consequential (the same posture as the secret-scan redact/keep/cancel
+# decisions and the skill/template/agent conflict decisions -- an operator
+# action, not a side effect of import). Idempotent via a per-agent marker
+# pair, the same style `agent_manager.py`'s own _SPECIALISTS_BEGIN/_END
+# already establishes for a different auto-generated SOUL.md section.
+
+def _primary_routing_markers(agent_id: str) -> tuple[str, str]:
+    return (
+        f"<!-- BEGIN PRIMARY ROUTING: {agent_id} (added by Artifacts import) -->",
+        f"<!-- END PRIMARY ROUTING: {agent_id} -->",
+    )
+
+
+def apply_primary_routing_snippet(agent_id: str, snippet: str) -> dict:
+    """Appends `snippet` to this machine's real Primary SOUL.md
+    (`settings.hermes_home_path / "SOUL.md"`), wrapped in a marker pair
+    unique to `agent_id`. Re-running for the SAME agent_id is a safe
+    no-op (checked by marker presence, not text equality -- an operator
+    who's hand-edited the snippet in place since the last apply is never
+    silently overwritten). Raises FileNotFoundError if this machine has
+    no real Primary SOUL.md yet -- never fabricates one."""
+    soul_path = settings.hermes_home_path / "SOUL.md"
+    if not soul_path.is_file():
+        raise FileNotFoundError(f"no Primary SOUL.md found at {soul_path}")
+    begin, end = _primary_routing_markers(agent_id)
+    text = soul_path.read_text(encoding="utf-8")
+    if begin in text:
+        return {"agent_id": agent_id, "applied": False, "detail": "already applied -- marker already present"}
+    block = f"\n\n{begin}\n{snippet.strip()}\n{end}\n"
+    soul_path.write_text(text.rstrip("\n") + block, encoding="utf-8")
+    return {"agent_id": agent_id, "applied": True, "detail": f"appended to {soul_path}"}
 
 
 # -- Seed / blank data files -------------------------------------------------

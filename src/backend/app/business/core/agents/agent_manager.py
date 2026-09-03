@@ -193,6 +193,7 @@ class AgentManager:
             depends_on=registry_agent.config.depends_on if registry_agent is not None else [],
             preferred_index_ids=registry_agent.config.preferred_index_ids if registry_agent is not None else [],
             tools=tools,
+            primary_routing_snippet=registry_agent.config.primary_routing_snippet if registry_agent is not None else None,
         )
 
     def get_all(self, *, exclude_types: list[str] | None = None) -> list[Agent]:
@@ -454,6 +455,7 @@ class AgentManager:
         scope: dict | None = None,
         preferred_index_ids: list[str] | None = None,
         tools: list[str] | None = None,
+        primary_routing_snippet: str | None = None,
         clone_from: str = "default",
     ) -> Agent:
         """Real Hermes-side profile creation (`hermes profile create
@@ -486,6 +488,7 @@ class AgentManager:
                 "is_background_agent": is_background_agent,
                 "depends_on": depends_on or [], "provider_id": None, "skill_ids": [],
                 "preferred_index_ids": preferred_index_ids or [],
+                "primary_routing_snippet": primary_routing_snippet,
             },
             icon=None, color=None, soul_text=soul_text,
         )
@@ -514,6 +517,7 @@ class AgentManager:
         scope: dict | None = None,
         preferred_index_ids: list[str] | None = None,
         tools: list[str] | None = None,
+        primary_routing_snippet: str | None = None,
     ) -> Agent | None:
         """Same omitted-vs-explicit convention as SectionManager.update:
         `None` (field omitted) = leave unchanged. Dispatches to whichever
@@ -566,6 +570,9 @@ class AgentManager:
         new_type = type if type is not None else current.type
         new_depends_on = depends_on if depends_on is not None else current.depends_on
         new_preferred_index_ids = preferred_index_ids if preferred_index_ids is not None else current.preferred_index_ids
+        new_primary_routing_snippet = (
+            primary_routing_snippet if primary_routing_snippet is not None else current.primary_routing_snippet
+        )
         new_icon = icon if icon is not None else current.icon
         new_color = color if color is not None else current.color
         new_prompt = prompt if prompt is not None else current.prompt
@@ -574,7 +581,10 @@ class AgentManager:
 
         moved = (new_section_id, new_is_background) != (current.section_id, current.is_background_agent)
         registry_changed = moved or any(
-            v is not None for v in (name, type, is_background_agent, depends_on, section_id, preferred_index_ids)
+            v is not None for v in (
+                name, type, is_background_agent, depends_on, section_id, preferred_index_ids,
+                primary_routing_snippet,
+            )
         )
         soul_changed = any(v is not None for v in (prompt, guardrails, scope))
 
@@ -601,6 +611,7 @@ class AgentManager:
                     "is_background_agent": new_is_background,
                     "depends_on": new_depends_on, "provider_id": None, "skill_ids": current.skill_ids,
                     "preferred_index_ids": new_preferred_index_ids,
+                    "primary_routing_snippet": new_primary_routing_snippet,
                 },
                 icon=new_icon, color=new_color, soul_text=soul_text,
             )

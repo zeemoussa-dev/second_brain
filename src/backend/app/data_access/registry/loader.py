@@ -177,6 +177,7 @@ def _load_one_agent(agent_dir: Path, section_id: str | None) -> Agent:
             icon=config_raw.get("icon"),
             color=config_raw.get("color"),
             preferred_index_ids=list(config_raw.get("preferred_index_ids", [])),
+            primary_routing_snippet=config_raw.get("primary_routing_snippet"),
         ),
         soul=soul,
         section_id=section_id,

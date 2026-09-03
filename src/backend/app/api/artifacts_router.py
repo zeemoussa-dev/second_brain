@@ -104,3 +104,21 @@ async def commit_import(
         raise HTTPException(status_code=400, detail=str(exc))
     finally:
         os.remove(scratch_path)
+
+
+class ApplyPrimaryRoutingBody(BaseModel):
+    agent_id: str
+    snippet: str
+
+
+@router.post("/import/apply-primary-routing")
+def apply_primary_routing(body: ApplyPrimaryRoutingBody) -> dict:
+    """Explicit, separate, operator-triggered step (never run as part of
+    /import/commit) -- appends an imported agent's own suggested routing
+    text to THIS machine's real Primary SOUL.md. See artifact_import.
+    apply_primary_routing_snippet's own docstring for the idempotency/
+    never-silent contract."""
+    try:
+        return artifact_import.apply_primary_routing_snippet(body.agent_id, body.snippet)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
