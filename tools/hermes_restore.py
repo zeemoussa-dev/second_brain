@@ -19,10 +19,12 @@ Real, disclosed behaviour, not silent:
     the TARGET's own now-configured default -- its own real secrets, not
     the source machine's), then the backed-up SOUL.md/skills/memories
     are overlaid on top.
-  - Every real occurrence of the backup's own `source_vault_path` (in
-    cron job prompts, SOUL.md, anywhere) is rewritten to the new
-    `--vault-path` -- both the raw and JSON-double-backslash-escaped
-    forms.
+  - Every `@@SECOND_BRAIN_VAULT_PATH@@`/`@@SECOND_BRAIN_HERMES_HOME@@`/
+    `@@SECOND_BRAIN_DATA_PATH@@` placeholder (in cron job prompts,
+    SOUL.md, anywhere -- hermes_backup.py substitutes the real values for
+    these at bundle time) is substituted back for this restore's own
+    real, resolved target paths -- both the raw and JSON-double-
+    backslash-escaped forms.
   - cron/jobs.json (top-level AND every real per-profile
     `profiles/<id>/cron/jobs.json`, e.g. `meeting-prep-agent`) is MERGED
     by real job `id`, never overwritten wholesale -- a job id that
@@ -62,32 +64,51 @@ _SUPPORTED_FORMAT_VERSION = 1
 _TEXT_SUFFIXES = {".md", ".json", ".yaml", ".yml", ".py", ".txt"}
 
 
-def _replace_both_forms(text: str, old: str, new: str) -> str:
-    """Replaces every real occurrence of old with new, in both its raw
-    form and its JSON-double-backslash-escaped form (a Windows path
-    embedded in a JSON string value always carries doubled backslashes)."""
-    text = text.replace(old, new)
-    text = text.replace(old.replace("\\", "\\\\"), new.replace("\\", "\\\\"))
+# Placeholder tokens, matching hermes_backup.py's own identically-named
+# constants exactly (duplicated, not imported, per this tool-pair's own
+# established convention) -- hermes_backup.py substitutes real paths for
+# these at BUNDLE time; this module substitutes them back for the
+# TARGET's own real, resolved paths at restore time. Chosen over the
+# older "rewrite literal old-path -> literal new-path" design (operator,
+# 2026-09-03: "C:\myWorx\Moussa MD\Moussa Brain should be a place holder
+# and pass it on Restore and same for the other Path") after a real bug
+# in that design: second_brain_data_path is a real, longer string that
+# CONTAINS the vault path as its own prefix whenever it's vault-relative
+# (the common case) -- rewriting the vault path first silently consumed
+# that shared prefix, leaving the data-path rewrite nothing left to
+# match, and restore fell back to the wrong (vault-relative) location
+# instead of the real, resolved target. A placeholder is a fixed, unique
+# token with no such overlap risk by construction, and restore no longer
+# needs to know the SOURCE machine's own old values at all -- only the
+# target's own real, resolved paths.
+_PLACEHOLDER_VAULT_PATH = "@@SECOND_BRAIN_VAULT_PATH@@"
+_PLACEHOLDER_HERMES_HOME = "@@SECOND_BRAIN_HERMES_HOME@@"
+_PLACEHOLDER_DATA_PATH = "@@SECOND_BRAIN_DATA_PATH@@"
+
+
+def _substitute_both_forms(text: str, placeholder: str, real_value: str) -> str:
+    """Replaces every real occurrence of placeholder with real_value, in
+    both its raw form and its JSON-double-backslash-escaped form (a
+    Windows path embedded in a JSON string value always carries doubled
+    backslashes on the way back out)."""
+    text = text.replace(placeholder, real_value)
+    text = text.replace(placeholder, real_value.replace("\\", "\\\\"))
     return text
 
 
-def _rewrite_path_refs(text: str, old_vault: str, new_vault: str, old_hermes_home: str, new_hermes_home: str) -> str:
-    """Two independent rewrite targets, not one -- found live, operator:
-    "Skills that needs the full Path of things like...Entities.md this
-    is different path". The vault path (cron job prompts, SOUL.md
-    narrative text) is one target; the SEPARATE full absolute Hermes
-    install path -- which SKILL.md files embed verbatim in their own
-    example terminal commands, e.g. "C:\\Users\\<user>\\AppData\\Local\\
-    hermes\\skills\\...\\vault_manager.py" -- is a different target that
-    also carries the Windows USERNAME, not just a different root. Both
-    must be rewritten; neither substring is a prefix of the other, so
-    order between the two calls doesn't matter."""
-    text = _replace_both_forms(text, old_vault, new_vault)
-    text = _replace_both_forms(text, old_hermes_home, new_hermes_home)
+def _substitute_placeholders(text: str, vault_path: str, hermes_home: str, second_brain_data_path: str) -> str:
+    """No ordering concern here (unlike the old rewrite-based design) --
+    each placeholder is a unique, non-overlapping token, so substitution
+    order genuinely doesn't matter; kept in the same vault/hermes_home/
+    data_path order as hermes_backup.py's own substitution purely for
+    readability."""
+    text = _substitute_both_forms(text, _PLACEHOLDER_VAULT_PATH, vault_path)
+    text = _substitute_both_forms(text, _PLACEHOLDER_HERMES_HOME, hermes_home)
+    text = _substitute_both_forms(text, _PLACEHOLDER_DATA_PATH, second_brain_data_path)
     return text
 
 
-def _rewrite_tree(root: Path, old_vault: str, new_vault: str, old_hermes_home: str, new_hermes_home: str) -> int:
+def _rewrite_tree(root: Path, vault_path: str, hermes_home: str, second_brain_data_path: str) -> int:
     rewritten = 0
     for path in root.rglob("*"):
         if not path.is_file() or path.suffix.lower() not in _TEXT_SUFFIXES:
@@ -96,7 +117,7 @@ def _rewrite_tree(root: Path, old_vault: str, new_vault: str, old_hermes_home: s
             text = path.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
             continue
-        new_text = _rewrite_path_refs(text, old_vault, new_vault, old_hermes_home, new_hermes_home)
+        new_text = _substitute_placeholders(text, vault_path, hermes_home, second_brain_data_path)
         if new_text != text:
             path.write_text(new_text, encoding="utf-8")
             rewritten += 1
@@ -272,20 +293,23 @@ def restore(
         # real target completely untouched.
         _validate(scratch, manifest, hermes_home, vault_path)
 
-        old_vault = manifest["source_vault_path"]
-        new_vault = str(vault_path)
-        old_hermes_home = manifest.get("source_hermes_home", "")
-        new_hermes_home = str(hermes_home)
+        # Resolved BEFORE the rewrite step (not just before its own later
+        # use restoring second-brain-data-root) -- a SKILL.md example can
+        # embed the @@SECOND_BRAIN_DATA_PATH@@ placeholder directly (e.g.
+        # vault-index's own --data-path), and needs the real, resolved
+        # TARGET value to substitute in, same as vault/hermes-home below.
+        second_brain_data_path = _resolve_second_brain_data_path(
+            vault_path, Path(__file__).resolve().parent.parent, second_brain_data_path_override,
+        )
 
-        # Rewrite every real vault-path AND hermes-home-path reference
-        # INSIDE the extracted scratch copy first, before anything is
-        # overlaid onto the real install -- so what lands on disk is
-        # already correct. Two independent targets (see
-        # _rewrite_path_refs's own docstring) -- a SKILL.md's own example
-        # command embeds the full Hermes path (including the Windows
-        # username), separate from any vault-path reference in the same
-        # or a different file.
-        files_rewritten = _rewrite_tree(scratch, old_vault, new_vault, old_hermes_home, new_hermes_home)
+        # Substitute every real @@SECOND_BRAIN_VAULT_PATH@@/
+        # @@SECOND_BRAIN_HERMES_HOME@@/@@SECOND_BRAIN_DATA_PATH@@
+        # placeholder INSIDE the extracted scratch copy first, before
+        # anything is overlaid onto the real install -- so what lands on
+        # disk is already correct. No dependency on the manifest's own
+        # source_* values here (placeholders, not old->new string
+        # rewriting -- see _substitute_placeholders's own docstring).
+        files_rewritten = _rewrite_tree(scratch, str(vault_path), str(hermes_home), str(second_brain_data_path))
 
         profile_results = {}
         for profile_id in manifest["profiles"]:
@@ -315,18 +339,28 @@ def restore(
                 target_cron_path = _profile_root(hermes_home, profile_id) / "cron" / "jobs.json"
                 cron_result[profile_id] = _merge_cron_jobs(target_cron_path, profile_cron_dir / "jobs.json")
 
-        second_brain_data_path = _resolve_second_brain_data_path(
-            vault_path, Path(__file__).resolve().parent.parent, second_brain_data_path_override,
-        )
-        app_data_result = {}
-        for kind, sub in (("data", "second-brain-data"), ("pipelines", "second-brain-pipelines")):
-            target = second_brain_data_path / kind
-            existing_count = sum(1 for _ in target.rglob("*") if _.is_file()) if target.exists() else 0
-            if existing_count and not force:
-                app_data_result[kind] = {"status": "refused", "reason": "already has real content", "existing_files": existing_count}
-                continue
-            copied = _overlay(scratch / sub, target)
-            app_data_result[kind] = {"status": "restored", "files": copied}
+        # One wholesale root, matching hermes_backup.py's own
+        # _add_second_brain_data_root shape (Registry data/, Pipelines/,
+        # Settings/ -- real curated data, deliberately included, see that
+        # function's own docstring -- AND every loose top-level file:
+        # agent_visuals.json, agent_sections.json, cockpit_chat.json,
+        # email_staging/, tools/registry.json, ...). The "already has
+        # real content" refuse-check looks at the whole real target root,
+        # excluding only index/ (which the backup itself never touches
+        # either, so its real presence on the target is never a reason to
+        # refuse) -- same guard, correctly scoped to what this restore
+        # step actually writes.
+        existing_count = 0
+        if second_brain_data_path.exists():
+            existing_count = sum(
+                1 for p in second_brain_data_path.rglob("*")
+                if p.is_file() and p.relative_to(second_brain_data_path).parts[0] != "index"
+            )
+        if existing_count and not force:
+            app_data_result = {"status": "refused", "reason": "already has real content", "existing_files": existing_count}
+        else:
+            copied = _overlay(scratch / "second-brain-data-root", second_brain_data_path)
+            app_data_result = {"status": "restored", "files": copied}
 
         return {
             "profiles": profile_results,
@@ -334,8 +368,13 @@ def restore(
             "second_brain_data_path": str(second_brain_data_path),
             "second_brain_data": app_data_result,
             "path_rewrite": {
-                "vault": {"from": old_vault, "to": new_vault},
-                "hermes_home": {"from": old_hermes_home, "to": new_hermes_home},
+                # Purely informational here -- the actual substitution
+                # never reads these; the manifest's own real source_*
+                # values are kept only so this summary can show a human
+                # what changed.
+                "vault": {"from": manifest.get("source_vault_path"), "to": str(vault_path)},
+                "hermes_home": {"from": manifest.get("source_hermes_home"), "to": str(hermes_home)},
+                "second_brain_data_path": {"from": manifest.get("source_second_brain_data_path"), "to": str(second_brain_data_path)},
                 "files_rewritten": files_rewritten,
             },
             "manual_follow_ups": [
