@@ -1,0 +1,336 @@
+"""Restores a *.sbb (Second Brain Backup, see hermes_backup.py) onto a
+NEW machine's already-installed, already-configured Hermes (Deployment.md
+Sections 1-2 done first: hermes installed, `default` profile authenticated
+with the NEW machine's own real secrets/model config) and the new vault's
+own `.second-brain/` tree.
+
+This is deliberately NOT a substitute for the initial Hermes install --
+it restores structural content (Agents/Profiles' own identity, Cron,
+Skills) onto an already-real, already-secret-configured install, the
+same "reflect the backed-up structure onto a fresh, working install"
+shape as every other real onboarding step in this vault.
+
+Real, disclosed behaviour, not silent:
+  - `default`'s own content is OVERLAID onto the target's already-real
+    default profile (never replaces its own config.yaml/secrets, which
+    this backup never captured in the first place).
+  - Every OTHER profile that doesn't yet exist on the target is created
+    fresh via a real `hermes profile create <name> --clone` (inherits
+    the TARGET's own now-configured default -- its own real secrets, not
+    the source machine's), then the backed-up SOUL.md/skills/memories
+    are overlaid on top.
+  - Every real occurrence of the backup's own `source_vault_path` (in
+    cron job prompts, SOUL.md, anywhere) is rewritten to the new
+    `--vault-path` -- both the raw and JSON-double-backslash-escaped
+    forms.
+  - cron/jobs.json is MERGED by real job `id`, never overwritten wholesale
+    -- a job id that already exists on the target is left alone and
+    reported, never silently replaced.
+  - The Second Brain app's own data (`.second-brain/data/`,
+    `.second-brain/pipelines/`) is only written if the target vault's own
+    copy doesn't already have real content there -- same "refuse to
+    overwrite already-curated data" discipline as
+    `build_entities_report.py`'s own guard. `--force` overrides.
+
+Usage:
+    python hermes_restore.py --archive backup.sbb --vault-path NEW_P
+        [--hermes-home H] [--force]
+
+Prints a real JSON summary: profiles created, profiles overlaid, cron
+jobs added/skipped, app-data restored or refused, and files rewritten.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import shutil
+import subprocess
+import sys
+import tempfile
+import zipfile
+from pathlib import Path
+
+sys.stdout.reconfigure(encoding="utf-8")
+
+_SUPPORTED_FORMAT_VERSION = 1
+_TEXT_SUFFIXES = {".md", ".json", ".yaml", ".yml", ".py", ".txt"}
+
+
+def _replace_both_forms(text: str, old: str, new: str) -> str:
+    """Replaces every real occurrence of old with new, in both its raw
+    form and its JSON-double-backslash-escaped form (a Windows path
+    embedded in a JSON string value always carries doubled backslashes)."""
+    text = text.replace(old, new)
+    text = text.replace(old.replace("\\", "\\\\"), new.replace("\\", "\\\\"))
+    return text
+
+
+def _rewrite_path_refs(text: str, old_vault: str, new_vault: str, old_hermes_home: str, new_hermes_home: str) -> str:
+    """Two independent rewrite targets, not one -- found live, operator:
+    "Skills that needs the full Path of things like...Entities.md this
+    is different path". The vault path (cron job prompts, SOUL.md
+    narrative text) is one target; the SEPARATE full absolute Hermes
+    install path -- which SKILL.md files embed verbatim in their own
+    example terminal commands, e.g. "C:\\Users\\<user>\\AppData\\Local\\
+    hermes\\skills\\...\\vault_manager.py" -- is a different target that
+    also carries the Windows USERNAME, not just a different root. Both
+    must be rewritten; neither substring is a prefix of the other, so
+    order between the two calls doesn't matter."""
+    text = _replace_both_forms(text, old_vault, new_vault)
+    text = _replace_both_forms(text, old_hermes_home, new_hermes_home)
+    return text
+
+
+def _rewrite_tree(root: Path, old_vault: str, new_vault: str, old_hermes_home: str, new_hermes_home: str) -> int:
+    rewritten = 0
+    for path in root.rglob("*"):
+        if not path.is_file() or path.suffix.lower() not in _TEXT_SUFFIXES:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        new_text = _rewrite_path_refs(text, old_vault, new_vault, old_hermes_home, new_hermes_home)
+        if new_text != text:
+            path.write_text(new_text, encoding="utf-8")
+            rewritten += 1
+    return rewritten
+
+
+def _overlay(src: Path, dst: Path) -> int:
+    """Copies every real file from src onto dst, creating dst's own
+    parent dirs as needed, overwriting file-for-file (never a wholesale
+    directory replace, so anything on the target that this backup never
+    touched -- e.g. a target-only .env -- is left alone)."""
+    if not src.exists():
+        return 0
+    if src.is_file():
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+        return 1
+    count = 0
+    for path in src.rglob("*"):
+        if not path.is_file():
+            continue
+        target = dst / path.relative_to(src)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, target)
+        count += 1
+    return count
+
+
+def _profile_root(hermes_home: Path, profile_id: str) -> Path:
+    return hermes_home if profile_id == "default" else hermes_home / "profiles" / profile_id
+
+
+def _ensure_profile_exists(hermes_home: Path, profile_id: str) -> str:
+    """Returns "existing" if the profile is already real on this
+    machine, "created" if a real `hermes profile create --clone` was
+    just run for it. Never touches `default` -- that one is assumed
+    already real (Deployment.md Sections 1-2 done first)."""
+    if profile_id == "default":
+        return "existing"
+    root = _profile_root(hermes_home, profile_id)
+    if root.exists():
+        return "existing"
+    result = subprocess.run(
+        ["hermes", "profile", "create", profile_id, "--clone"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"hermes profile create {profile_id!r} --clone failed: {result.stderr.strip()}")
+    return "created"
+
+
+class RestoreValidationError(Exception):
+    """Raised when validation finds one or more real problems -- carries
+    the full list, never just the first. Raising this means NOTHING has
+    been written to the real target yet (operator, 2026-09-03: "should
+    say error in restore instead of Destroying my self") -- every check
+    in _validate() runs read-only, against the extracted scratch copy and
+    the target's own current state, before restore() does its first real
+    write."""
+
+    def __init__(self, problems: list[str]):
+        self.problems = problems
+        super().__init__("; ".join(problems))
+
+
+def _validate(scratch: Path, manifest: dict, hermes_home: Path, vault_path: Path) -> None:
+    problems: list[str] = []
+
+    if "source_vault_path" not in manifest:
+        problems.append("manifest.json is missing source_vault_path -- archive is malformed or from an incompatible version")
+
+    # Every real JSON file this restore will actually read (cron jobs.json,
+    # any Agent.json under the app-data bundle) must parse -- a corrupt
+    # archive member is caught HERE, read-only, not mid-write.
+    for path in scratch.rglob("*.json"):
+        try:
+            json.loads(path.read_text(encoding="utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            problems.append(f"{path.relative_to(scratch)}: invalid JSON ({exc})")
+
+    # "default" must already be real on the target -- Deployment.md
+    # Sections 1-2 (install + `hermes setup`) done first, with the
+    # target's OWN real secrets. Restoring onto a machine with no Hermes
+    # install at all is out of this tool's own scope by design.
+    if not hermes_home.exists():
+        problems.append(
+            f"target Hermes home {hermes_home} doesn't exist -- install and configure Hermes there first "
+            f"(Deployment.md Sections 1-2), then restore onto it"
+        )
+    elif not (hermes_home / "SOUL.md").exists():
+        problems.append(
+            f"{hermes_home} exists but has no SOUL.md -- doesn't look like a real, already-configured "
+            f"default profile yet (Deployment.md Sections 1-2)"
+        )
+
+    if not vault_path.exists():
+        problems.append(f"target vault path {vault_path} doesn't exist -- copy the real vault there first, then restore")
+
+    hermes_cli = shutil.which("hermes")
+    if hermes_cli is None:
+        problems.append("the `hermes` CLI isn't on PATH -- needed to create any profile this backup carries that doesn't already exist on the target")
+
+    if problems:
+        raise RestoreValidationError(problems)
+
+
+def _merge_cron_jobs(hermes_home: Path, backed_up_jobs_path: Path) -> dict:
+    target_path = hermes_home / "cron" / "jobs.json"
+    if not backed_up_jobs_path.exists():
+        return {"added": [], "skipped_existing": []}
+    backed_up = json.loads(backed_up_jobs_path.read_text(encoding="utf-8"))
+    target_data = json.loads(target_path.read_text(encoding="utf-8")) if target_path.exists() else {"jobs": [], "updated_at": None}
+    existing_ids = {j.get("id") for j in target_data.get("jobs", [])}
+
+    added, skipped = [], []
+    for job in backed_up.get("jobs", []):
+        job_id = job.get("id")
+        if job_id in existing_ids:
+            skipped.append({"id": job_id, "name": job.get("name")})
+            continue
+        target_data.setdefault("jobs", []).append(job)
+        added.append({"id": job_id, "name": job.get("name")})
+
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    target_path.write_text(json.dumps(target_data, indent=2), encoding="utf-8")
+    return {"added": added, "skipped_existing": skipped}
+
+
+def restore(archive_path: Path, hermes_home: Path, vault_path: Path, force: bool) -> dict:
+    scratch = Path(tempfile.mkdtemp(prefix="second-brain-restore-"))
+    try:
+        with zipfile.ZipFile(archive_path) as zf:
+            zf.extractall(scratch)
+
+        manifest_path = scratch / "manifest.json"
+        if not manifest_path.exists():
+            raise RestoreValidationError(["archive has no manifest.json -- not a real .sbb backup, or corrupted"])
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise RestoreValidationError([f"manifest.json is not valid JSON ({exc})"]) from exc
+        if manifest.get("format_version") != _SUPPORTED_FORMAT_VERSION:
+            raise RestoreValidationError([f"unsupported backup format_version {manifest.get('format_version')!r} (this tool supports {_SUPPORTED_FORMAT_VERSION})"])
+
+        # Full validation pass -- read-only, against the extracted scratch
+        # copy and the target's own current state. Raises with every real
+        # problem found (not just the first) if anything is wrong; NOTHING
+        # below this line has run yet, so a validation failure leaves the
+        # real target completely untouched.
+        _validate(scratch, manifest, hermes_home, vault_path)
+
+        old_vault = manifest["source_vault_path"]
+        new_vault = str(vault_path)
+        old_hermes_home = manifest.get("source_hermes_home", "")
+        new_hermes_home = str(hermes_home)
+
+        # Rewrite every real vault-path AND hermes-home-path reference
+        # INSIDE the extracted scratch copy first, before anything is
+        # overlaid onto the real install -- so what lands on disk is
+        # already correct. Two independent targets (see
+        # _rewrite_path_refs's own docstring) -- a SKILL.md's own example
+        # command embeds the full Hermes path (including the Windows
+        # username), separate from any vault-path reference in the same
+        # or a different file.
+        files_rewritten = _rewrite_tree(scratch, old_vault, new_vault, old_hermes_home, new_hermes_home)
+
+        profile_results = {}
+        for profile_id in manifest["profiles"]:
+            state = _ensure_profile_exists(hermes_home, profile_id)
+            src_root = scratch / "hermes" / profile_id
+            target_root = _profile_root(hermes_home, profile_id)
+            copied = _overlay(src_root, target_root)
+            profile_results[profile_id] = {"state": state, "files_overlaid": copied}
+
+        # Top-level "cron/jobs.json" archive member, deliberately separate
+        # from "hermes/<profile>/" -- see hermes_backup.py's own comment.
+        # This is the ONLY code path that ever touches the target's own
+        # cron/jobs.json; the profile-overlay loop above never includes it.
+        cron_result = _merge_cron_jobs(hermes_home, scratch / "cron" / "jobs.json")
+
+        app_data_result = {}
+        for kind, sub in (("data", "second-brain-data"), ("pipelines", "second-brain-pipelines")):
+            target = vault_path / ".second-brain" / kind
+            existing_count = sum(1 for _ in target.rglob("*") if _.is_file()) if target.exists() else 0
+            if existing_count and not force:
+                app_data_result[kind] = {"status": "refused", "reason": "already has real content", "existing_files": existing_count}
+                continue
+            copied = _overlay(scratch / sub, target)
+            app_data_result[kind] = {"status": "restored", "files": copied}
+
+        return {
+            "profiles": profile_results,
+            "cron": cron_result,
+            "second_brain_data": app_data_result,
+            "path_rewrite": {
+                "vault": {"from": old_vault, "to": new_vault},
+                "hermes_home": {"from": old_hermes_home, "to": new_hermes_home},
+                "files_rewritten": files_rewritten,
+            },
+            "manual_follow_ups": [
+                "hermes setup model  # config.yaml was never backed up -- point the default profile at Compass on THIS machine",
+                "hermes -p <profile> whatsapp  # per profile that needs WhatsApp delivery -- pairing never travels in a backup, real QR scan required each time",
+                "hermes gateway install / verify Startup-folder entries for any profile a restored cron job targets",
+                "hermes cron list  # confirm every merged job's own schedule/state before trusting it to fire unattended",
+            ],
+        }
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--archive", required=True)
+    parser.add_argument("--vault-path", required=True)
+    parser.add_argument("--hermes-home", default=None, help="Defaults to the real, current machine's own Hermes home (%%LOCALAPPDATA%%\\hermes).")
+    parser.add_argument("--force", action="store_true", help="Overwrite already-present Second Brain app data instead of refusing.")
+    args = parser.parse_args()
+
+    import os
+    hermes_home = Path(args.hermes_home) if args.hermes_home else Path(os.path.expandvars(r"%LOCALAPPDATA%\hermes"))
+
+    # Never a raw traceback -- operator, 2026-09-03: "should say error in
+    # restore instead of Destroying my self". RestoreValidationError means
+    # the real target was never touched at all (validation runs before
+    # the first write); any OTHER exception means something failed
+    # mid-restore (e.g. a real `hermes profile create` call) -- reported
+    # just as cleanly, but real partial state on the target is possible
+    # in that case and is named explicitly, not papered over.
+    try:
+        result = restore(Path(args.archive), hermes_home, Path(args.vault_path), args.force)
+    except RestoreValidationError as exc:
+        print(json.dumps({"status": "refused", "problems": exc.problems}, indent=2, ensure_ascii=False))
+        return 1
+    except Exception as exc:  # noqa: BLE001 -- last resort, must never leak a raw traceback to the operator
+        print(json.dumps({"status": "failed_mid_restore", "error": str(exc)}, indent=2, ensure_ascii=False))
+        return 1
+
+    print(json.dumps({"status": "ok", **result}, indent=2, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

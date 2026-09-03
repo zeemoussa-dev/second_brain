@@ -4963,3 +4963,42 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   this job during active concurrent edits to `Entities.md` can catch it
   mid-edit and misparse transient notes text as real company entries —
   4 bogus, empty Partner notes this produced were found and archived.
+
+- feat: `tools/hermes_backup.py` + `tools/hermes_restore.py` — a real,
+  tested `.sbb` backup/restore pair for the Hermes-side structural
+  content (Agents/Profiles, Cron, Skills) and the Second Brain app's own
+  matching Registry/Pipeline data, built for the operator's own laptop
+  migration. Excludes Hermes instance config (`config.yaml`) and every
+  real secret; two independent path-rewrite targets on restore (vault
+  path, and the full Hermes-home path including the Windows username,
+  which `SKILL.md` files embed verbatim in their own example commands).
+  Restore validates the whole archive and target state before any real
+  write — a bad input refuses cleanly, never partially applies and
+  crashes mid-way. Three real bugs found and fixed live during
+  build/test: a duplicate-bundling double-add, a serious one where
+  `cron/jobs.json` could have been silently clobbered by the generic
+  profile-overlay step before the dedicated merge-by-id logic ever ran
+  (fixed by making it a fully separate archive member), and — from the
+  operator's own "why is it 400 MB" question against the very first real
+  backup of this actual machine — Skills are now scoped to only this
+  project's own canonical ids rather than a profile's full deployed tree
+  (which also carried every stock Hermes-bundled skill and a 39.6 MB
+  per-profile internal cache). Real result: 400 MB / 18,112 files → 7.1
+  MB / 1,490 files. See `MEMORY.md` for full detail on all three.
+
+- feat: `Settings > Backup & Restore` UI (`SettingsBackupPage.tsx`,
+  `backupApiClient.ts`, `POST /backup/export`/`/backup/restore`) — a
+  thin layer over `tools/hermes_backup.py`/`hermes_restore.py`
+  (`app/business/logic/hermes_backup.py` shells out via subprocess, same
+  shape `HermesCLI` already establishes for the real `hermes` CLI).
+  Export streams a real `.sbb` download; restore accepts a real
+  multipart upload and returns the script's own structured result
+  verbatim. Live-verified end-to-end: a real browser click confirmed
+  `200 OK` on export; a real multipart restore against a tiny scratch
+  backup created a real new profile via `hermes profile create`,
+  correctly refused to touch the real vault's own already-populated app
+  data, and rewrote both real paths correctly. Since any restore through
+  this endpoint always overlays `default` too, the real machine's own
+  `SOUL.md` was saved (md5-verified) before this live test and restored
+  byte-for-byte afterward; the disposable test profile was deleted. See
+  `MEMORY.md` for the curl multipart syntax gotcha hit along the way.
