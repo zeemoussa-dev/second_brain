@@ -18,6 +18,30 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix(config): `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` and
+  `HERMES_MCP_SHARED_SECRET` now default to `""` in `app/config.py` instead of
+  being required. They had no defaults, so omitting them failed startup with a
+  pydantic `ValidationError` (3 missing fields) even though nothing uses them.
+  Verified before loosening: the `anthropic` SDK is no longer imported anywhere
+  under `app/` (agent chat moved to Hermes in the 2026-08-20 pivot), and the
+  only remaining reader is `data_access/providers.py`, which seeds a Provider
+  row for display — an empty credential correctly shows as unconfigured.
+  Confirmed live afterwards: `app.main` imports and the backend serves
+  `GET /health` → `{"status":"ok"}` with all three absent.
+  **Security caveat recorded in code and in `Deployment.md` §4:** an empty
+  `hermes_mcp_shared_secret` *disables* the `/mcp/*` gate rather than closing
+  it — `hermes/inbound_auth.py` compares the caller's header to the string, so
+  a remote caller sending none matches `""` and passes. Harmless only because
+  `data_access/system/tools/registry.json` registers no Tools, so nothing is
+  mounted under `/mcp/*`; a real secret must be set before the first Tool is
+  registered.
+- docs: `Deployment.md` — §4 marks those three settings no longer required and
+  explains why, plus the empty-secret caveat. Refreshed the status block: the
+  app's `.env` is now complete and boot-verified, the vault is located, and the
+  remaining blocker is WhatsApp pairing, which must be confirmed from the
+  operator's own shell rather than a tool shell (per the shell-asymmetry
+  constraint in `MEMORY.md`).
+
 - docs: `Deployment.md` — merged this session's §1/§3/§4 rewrite with the
   concurrent session's TLS work. The `Corporate TLS interception (the
   G42Decrypt / Zscaler middlebox)` section is authoritative; this session's

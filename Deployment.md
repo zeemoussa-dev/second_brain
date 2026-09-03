@@ -19,8 +19,6 @@ Pipelines assume Hermes cron jobs already exist.
 
 ---
 
----
-
 ## Where this deployment actually stands (2026-09-03, second machine)
 
 Live status of the fresh corporate laptop, so the next session doesn't
@@ -58,51 +56,31 @@ have to rediscover it. Update this block as it moves.
 **Not done — each needs the operator personally, and each blocks what
 follows it:**
 
-1. **Compass — config applied, key still missing.** The
-   `custom_providers` block and the `model:` switch from OpenRouter to
-   `compass`/`gpt-5` are **done** (2026-09-03) and verified: the YAML
-   parses, and `hermes doctor` reports `Config version up to date (v40)`
-   with no deprecated-key complaints. Backup of the stock file is at
-   `config.yaml.pre-compass.bak`.
+1. **WhatsApp pairing** (`hermes whatsapp`) — needs a QR scan from the
+   phone, and must be run from a real interactive terminal. Blocked on
+   2026-09-03 by `Connection closed (reason: 500)`; the cause and fix are
+   the corporate TLS interception (§1) — `NODE_OPTIONS=--use-system-ca`
+   is now set both as a User variable and in `%LOCALAPPDATA%\hermes\.env`,
+   and the gateway restarted. **Still to be confirmed from the operator's
+   own shell** — see the shell-asymmetry warning in `MEMORY.md`: verifying
+   this from a tool shell that is not behind the interception produces a
+   confident false pass.
+   Not a blocker for capture — the gateway runs cron jobs with no
+   messaging platform enabled. Do **not** enable WhatsApp before pairing
+   succeeds: enabled-but-unpaired takes the whole gateway down (§2).
+2. **Let the vault finish syncing** before any capture or cron job runs.
+3. Specialist profiles, Skill deployment, cron jobs — §2, in that order.
 
-   What remains is the secret. Add one line to
-   `%LOCALAPPDATA%\hermes\.env` (confirmed absent as of now):
+**Second Brain's own `.env` is complete.** Backend verified booting
+against it — `GET /health` → `{"status":"ok"}`. `COMPASS_BASE_URL` carries
+the full-completions form, `COMPASS_API_KEY` and `SELF_EMAIL` are set,
+`VAULT_PATH` resolves, and `SECOND_BRAIN_DATA_PATH` deliberately points
+outside the synced vault.
 
-   ```
-   HERMES_CUSTOM_API_CORE42_AI_API_KEY=<the real Compass key>
-   ```
-
-   Then prove it end-to-end — `hermes doctor` will **not** catch a wrong
-   key, because its connectivity suite only covers its own 40 built-in
-   providers and knows nothing about a custom one:
-
-   ```powershell
-   hermes chat -q "reply with OK"
-   ```
-
-   Everything else waits on this round-trip actually passing, because
-   cloned profiles inherit the default profile's model.
-2. **WhatsApp pairing** (`hermes whatsapp`) — needs a QR scan from the
-   phone. Can't be automated. Not a blocker for capture: the gateway
-   already runs cron jobs without any messaging platform enabled.
-3. **The Obsidian vault is not on this machine.** No `.obsidian` folder
-   exists anywhere under the user profile or `C:\myWorx`. Copy the real
-   vault from the old laptop before any capture job runs, or the cron
-   jobs will write into a vault that isn't the real one.
-4. Gateway Startup item, specialist profiles, Skill deployment, cron
-   jobs — §1's gateway section and §2, in that order.
-
-**Second Brain's own `.env` — 4 values left, all secrets/identity.**
-`src/backend/.env` has every derivable value filled, including the
-correct full-completions `COMPASS_BASE_URL` and a verified `VAULT_PATH`.
-Still `<FILL ME>`:
-
-| Variable | Where to get it |
-|---|---|
-| `COMPASS_API_KEY` | **The same key already in `%LOCALAPPDATA%\hermes\.env`** as `HERMES_CUSTOM_API_CORE42_AI_API_KEY` (present, 32 chars). One gateway, two consumers — copy it across. |
-| `ANTHROPIC_API_KEY` | Anthropic console. Powers agent chat (LangGraph) only. |
-| `SELF_EMAIL` | The Outlook mailbox capture runs against. Required to boot, but has no real callers left (`REQ-SB-84`). |
-| `HERMES_MCP_SHARED_SECRET` | Invent any long random string; use the identical value on the Hermes side. Not yet wired up here. |
+`ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` and `HERMES_MCP_SHARED_SECRET` are
+intentionally left unset — they became optional on 2026-09-03 because
+nothing uses them (§4 records the verification and the one security
+caveat on the empty MCP secret).
 
 **Vault located, but it was still syncing when set.**
 `C:\Users\mahmoud.moussa\OneDrive - G42\myData\Moussa Brain\second-brain`
@@ -927,11 +905,31 @@ has no defaults, by design):
 | `COMPASS_BASE_URL` | **The FULL completions URL**, ending in `/chat/completions` — see the warning below |
 | `COMPASS_API_KEY` | API key for Compass (the same key Hermes uses as `HERMES_CUSTOM_API_CORE42_AI_API_KEY`) |
 | `COMPASS_MODEL` | Model name Compass classification calls use |
-| `ANTHROPIC_API_KEY` | Powers real conversational agent chat (LangGraph) |
-| `ANTHROPIC_MODEL` | Anthropic model name |
+| ~~`ANTHROPIC_API_KEY`~~ | **No longer required** (2026-09-03) — see below |
+| ~~`ANTHROPIC_MODEL`~~ | **No longer required** (2026-09-03) — see below |
 | `VAULT_PATH` | Absolute path to the Obsidian vault directory (copied over from the old laptop) |
 | `SELF_EMAIL` | The Outlook mailbox address capture runs against |
-| `HERMES_MCP_SHARED_SECRET` | Shared secret gating the `/mcp` write-capable tool endpoint |
+| ~~`HERMES_MCP_SHARED_SECRET`~~ | **No longer required** (2026-09-03) — see below |
+
+> **Three settings became optional on 2026-09-03.**
+> `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` and `HERMES_MCP_SHARED_SECRET`
+> now default to `""` in `app/config.py`. They were declared required with
+> no defaults, so commenting them out stopped the backend booting with a
+> `ValidationError` — even though nothing uses them.
+>
+> Verified before loosening them: the `anthropic` SDK is no longer
+> imported anywhere under `app/` (agent chat moved to Hermes in the
+> 2026-08-20 pivot), and the only remaining reader is
+> `data_access/providers.py`, which seeds a Provider row for display — an
+> empty credential just shows as unconfigured, which is accurate.
+>
+> **Security note on the empty shared secret.** `inbound_auth.py` compares
+> the caller's header against this string, so an **empty** value *disables*
+> the `/mcp/*` gate rather than closing it: a remote caller sending no
+> header matches `""` and is allowed through. That is harmless today only
+> because `data_access/system/tools/registry.json` registers no Tools, so
+> nothing is mounted under `/mcp/*` to reach. **Set a real secret before
+> registering the first Tool.**
 
 > **The two Compass base URLs are deliberately different. Do not
 > reconcile them.**

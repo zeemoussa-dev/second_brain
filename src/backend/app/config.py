@@ -10,11 +10,27 @@ class Settings(BaseSettings):
     compass_base_url: str
     compass_api_key: str
     compass_model: str
-    anthropic_api_key: str
-    anthropic_model: str
+    # Optional since 2026-09-03. Nothing calls Anthropic any more: the
+    # `anthropic` SDK is no longer imported anywhere in `app/`, and agent chat
+    # moved to Hermes in the 2026-08-20 pivot. The only remaining readers are
+    # `data_access/providers.py`, which seeds a Provider row for display -- an
+    # empty credential simply shows as unconfigured, which is accurate.
+    # Requiring them only stopped a fresh install from booting.
+    anthropic_api_key: str = ""
+    anthropic_model: str = ""
     vault_path: Path
     self_email: str
-    hermes_mcp_shared_secret: str
+    # Optional since 2026-09-03, matching `app/hermes/config.py`, which already
+    # defaulted it to "". Gates the write-capable `/mcp/*` tool endpoints
+    # against non-loopback callers.
+    #
+    # SECURITY: an EMPTY value disables that gate rather than closing it --
+    # `inbound_auth.py` compares the caller's header to this string, so a
+    # remote caller sending no header matches "" and is let through. That is
+    # harmless today ONLY because `data_access/system/tools/registry.json`
+    # registers no Tools, so nothing is mounted under `/mcp/*` to reach.
+    # Set a real secret before registering the first Tool.
+    hermes_mcp_shared_secret: str = ""
     # Outbound direction (Second Brain calling INTO Hermes' own local
     # backend, https://github.com/nousresearch/hermes-agent -- the reverse
     # of hermes_mcp_shared_secret above, which authenticates Hermes calling
