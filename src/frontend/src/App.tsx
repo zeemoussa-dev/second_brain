@@ -18,6 +18,7 @@ import { SettingsVaultTemplatesPage } from './pages/SettingsVaultTemplatesPage';
 import { SettingsVaultIndexBuilderPage } from './pages/SettingsVaultIndexBuilderPage';
 import { SettingsVaultIndexFilteringPage } from './pages/SettingsVaultIndexFilteringPage';
 import { SettingsExportDataPage } from './pages/SettingsExportDataPage';
+import { SettingsBackupPage } from './pages/SettingsBackupPage';
 import { SettingsConfigPage } from './pages/SettingsConfigPage';
 import { SettingsUIPage } from './pages/SettingsUIPage';
 import { SystemHealthPage } from './pages/SystemHealthPage';
@@ -53,6 +54,7 @@ function App() {
           <Route path="/settings/ui" element={<SettingsUIPage />} />
           <Route path="/settings/artifacts" element={<SettingsArtifactsPage />} />
           <Route path="/settings/export-data" element={<SettingsExportDataPage />} />
+          <Route path="/settings/backup" element={<SettingsBackupPage />} />
           <Route path="/system-health" element={<SystemHealthPage />} />
           <Route path="/agent-activity" element={<AgentActivityPage />} />
           <Route path="/browse" element={<VaultBrowserPage />} />

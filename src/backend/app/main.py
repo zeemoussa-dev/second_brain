@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.business.core.vault.vault_manager import VaultManager
 from app.api.agents_router import router as agents_router
 from app.api.artifacts_router import router as artifacts_router
+from app.api.backup_router import router as backup_router
 from app.api.boot_router import router as boot_router
 from app.api.cockpit_router import router as cockpit_router
 from app.api.health_check_router import router as health_check_router
@@ -128,6 +129,7 @@ app.add_middleware(
 
 app.include_router(health_check_router)
 app.include_router(artifacts_router)
+app.include_router(backup_router)
 app.include_router(boot_router)
 app.include_router(cockpit_router)
 app.include_router(my_day_router)

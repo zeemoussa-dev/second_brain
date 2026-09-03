@@ -4817,3 +4817,20 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   (which also carried every stock Hermes-bundled skill and a 39.6 MB
   per-profile internal cache). Real result: 400 MB / 18,112 files → 7.1
   MB / 1,490 files. See `MEMORY.md` for full detail on all three.
+
+- feat: `Settings > Backup & Restore` UI (`SettingsBackupPage.tsx`,
+  `backupApiClient.ts`, `POST /backup/export`/`/backup/restore`) — a
+  thin layer over `tools/hermes_backup.py`/`hermes_restore.py`
+  (`app/business/logic/hermes_backup.py` shells out via subprocess, same
+  shape `HermesCLI` already establishes for the real `hermes` CLI).
+  Export streams a real `.sbb` download; restore accepts a real
+  multipart upload and returns the script's own structured result
+  verbatim. Live-verified end-to-end: a real browser click confirmed
+  `200 OK` on export; a real multipart restore against a tiny scratch
+  backup created a real new profile via `hermes profile create`,
+  correctly refused to touch the real vault's own already-populated app
+  data, and rewrote both real paths correctly. Since any restore through
+  this endpoint always overlays `default` too, the real machine's own
+  `SOUL.md` was saved (md5-verified) before this live test and restored
+  byte-for-byte afterward; the disposable test profile was deleted. See
+  `MEMORY.md` for the curl multipart syntax gotcha hit along the way.
