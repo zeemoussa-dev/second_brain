@@ -45,6 +45,12 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   the CBO handoff, since the same failure could recur there. See
   `MEMORY.md`.
 
+- fix: confirmed the `hermes profile import` PermissionError noted above
+  is transient, not structural -- retried both `notes-manager` and
+  `files-manager` (the larger one included) directly against the real
+  Hermes CLI with no code changes; both succeeded cleanly. See
+  `MEMORY.md`.
+
 ## 0.1.0 -- 2026-09-03 (first real version)
 
 - docs: `Deployment.md` — replaced the "If network/proxy blocks downloads"
