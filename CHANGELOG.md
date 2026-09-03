@@ -18,6 +18,27 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- docs: `Deployment.md` — replaced the "If network/proxy blocks downloads"
+  placeholder (which explicitly deferred to a live troubleshooting session)
+  with the **verified** corporate-TLS-interception fix, solved live
+  2026-08-20: outbound HTTPS is re-signed by a G42 middlebox
+  (`*.host → G42Decrypt (t) → G42Decrypt → AD-EC-CA-01-CA`), Windows trusts
+  that root but Node ignores the Windows store, so every Node-based
+  integration fails with a misleading error. Fix is
+  `NODE_OPTIONS=--use-system-ca` (Node ≥ 22.15) set as a User env var *and*
+  in Hermes' `.env`, with a `NODE_EXTRA_CA_CERTS` PEM-export fallback, a
+  chain-inspection one-liner, and an explicit warning against
+  `NODE_TLS_REJECT_UNAUTHORIZED=0`.
+- docs: `Deployment.md` — expanded "WhatsApp (QR-code pairing)" from three
+  lines into a real runbook: the TLS prerequisite, the two independent
+  enable gates (`.env` `WHATSAPP_ENABLED` + `config.yaml`
+  `platforms.whatsapp.enabled`) and the dashboard endpoint that sets both,
+  the enabled-but-unpaired failure that takes the **entire gateway** down
+  (exit 78, all channels and cron with it), the CLI/adapter session-path
+  split, and four real troubleshooting entries — chiefly that
+  `Connection closed (reason: 500)` is TLS, not `badSession`, because
+  `bridge.js` hardcodes `pino({level:'warn'})` and discards the real
+  `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`.
 - fix: `REQ-SB-87-US-02-T05` — closed the last disclosed pre-cutover gap:
   `run_full_capture.py`/`run_delta_capture.py`'s own `ingest_payload` dict
   construction now forwards the real `direction` field (`e.get("direction")

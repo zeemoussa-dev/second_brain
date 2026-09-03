@@ -125,19 +125,78 @@ laptop are:
 paragraph with the real fix — this is a starting point, not a verified
 replay.)*
 
-### If network/proxy blocks downloads
+### Corporate TLS interception (the G42Decrypt / Zscaler middlebox)
 
-Also a real blocker during the original install, but neither of us
-remembers the exact mechanism or fix well enough to write it down
-correctly — rather than guess, **troubleshoot it live if it recurs on
-the new laptop**, then come back and replace this section with what
-actually worked. Starting points worth checking first: a corporate
-proxy env-var convention (`HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`) IT may
-already push via GPO; `git config http.proxy` / `npm config set proxy`
-if it's tool-specific rather than system-wide; and whether it's actually
-TLS interception (a corporate root CA needs adding to git/Node/Python's
-trust store) rather than a plain proxy address problem, if the failure
-looks like a certificate error rather than a connection timeout.
+**Solved live 2026-08-20 — this is the verified fix, not a starting
+point.** Do this *before* anything else on a new corporate laptop; it is
+the single highest-value step in this document, because every failure it
+causes is reported by the failing tool as something else entirely.
+
+Outbound HTTPS on this corporate network is decrypted and re-signed by a
+G42 middlebox. The real chain presented for any external host is:
+
+```
+*.<host>  →  G42Decrypt (t)  →  G42Decrypt  →  AD-EC-CA-01-CA (self-signed root)
+                                               sha1 1BE89EE7E18FDB1264739C0AC1C221F93C030F18
+```
+
+Windows trusts that root, so browsers work fine. **Node does not** — it
+ships its own bundled CA store and ignores the Windows store entirely.
+Python has the same problem (which is why the Hermes venv carries
+`pip_system_certs`). The fix for Node, set once, machine-wide:
+
+```powershell
+# Node 22.15+ only. Reads the live Windows trust store, so it keeps
+# working when G42 rotates the root — no cert file to regenerate.
+[Environment]::SetEnvironmentVariable('NODE_OPTIONS','--use-system-ca','User')
+```
+
+Use `'Machine'` instead of `'User'` from an elevated shell if it must
+apply to every account — but **only if every Node on the box is ≥ 22.15**:
+older Node *refuses to start* with an unrecognised `NODE_OPTIONS`, which
+is a miserable failure to diagnose. Check with
+`Get-Command node -All | ForEach-Object { & $_.Source --version }`.
+
+Also add it to `%LOCALAPPDATA%\hermes\.env`, because Windows environment
+changes don't reach already-running processes, and Hermes re-reads `.env`
+via `load_dotenv` on every process start:
+
+```
+NODE_OPTIONS=--use-system-ca
+```
+
+**Fallback if `--use-system-ca` is unavailable** (Node < 22.15): export
+the root CA to a PEM and point `NODE_EXTRA_CA_CERTS` at it. This is a
+static snapshot and breaks silently on CA rotation, so prefer the above.
+
+```powershell
+$c = Get-ChildItem Cert:\LocalMachine\Root, Cert:\CurrentUser\Root |
+     Where-Object { $_.Thumbprint -eq '1BE89EE7E18FDB1264739C0AC1C221F93C030F18' } |
+     Select-Object -First 1
+"-----BEGIN CERTIFICATE-----`r`n" +
+  [Convert]::ToBase64String($c.RawData,'InsertLineBreaks') +
+  "`r`n-----END CERTIFICATE-----`r`n" |
+  Set-Content "$env:LOCALAPPDATA\hermes\corporate-root-ca.pem" -Encoding ascii -NoNewline
+```
+
+To confirm what the middlebox is actually presenting on a given host
+(rather than assuming the root), connect with verification off and walk
+the chain — inspection only, sends no data:
+
+```powershell
+node -e "const t=require('tls');const s=t.connect({host:'web.whatsapp.com',port:443,servername:'web.whatsapp.com',rejectUnauthorized:false},()=>{let c=s.getPeerCertificate(true),d=0;const seen=new Set();while(c&&c.subject&&!seen.has(c.fingerprint256)){seen.add(c.fingerprint256);console.log(d++,JSON.stringify(c.subject),'<-',JSON.stringify(c.issuer));if(c.issuerCertificate&&c.issuerCertificate!==c)c=c.issuerCertificate;else break;}s.destroy();});"
+```
+
+**Never fix this with `NODE_TLS_REJECT_UNAUTHORIZED=0`.** It is the top
+search result for the error and it does make the symptom disappear — by
+disabling certificate validation entirely, leaving the connection open to
+anyone. The CA fix costs one line and keeps verification intact.
+
+Still worth checking if the above doesn't explain a failure: the proxy
+env-var convention (`HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`) IT may push via
+GPO, and `git config http.proxy` / `npm config set proxy` if it's
+tool-specific rather than system-wide. A *connection timeout* points
+there; a *certificate error* points at the TLS interception above.
 
 ---
 
@@ -161,18 +220,94 @@ Compass up on `default` first, before cloning any specialists.
 
 ### WhatsApp (QR-code pairing)
 
-This install uses personal WhatsApp linked like WhatsApp Web, not the
-Business Cloud API:
+> **Do the TLS-interception fix in section 1 first.** Pairing cannot
+> succeed without it on a corporate machine, and every error you get
+> instead will point somewhere else. This cost a full session on
+> 2026-08-20 before the real cause surfaced.
+
+This install uses personal WhatsApp linked like WhatsApp Web (a Baileys
+bridge under `scripts/whatsapp-bridge`), not the Business Cloud API:
 
 ```powershell
-hermes whatsapp          # prints a QR code — scan it from the WhatsApp
-                          # mobile app (Linked Devices → Link a Device)
+hermes whatsapp          # interactive; needs a real TTY. Choose bot vs
+                          # self-chat, then scan from the phone:
+                          # Linked Devices → Link a Device
 ```
 
-The session persists locally after that (no re-scan needed until the
-link is manually revoked or expires). Real chat/channel routing state
-lives in `%LOCALAPPDATA%\hermes\channel_directory.json` — don't hand-edit
-it; it's maintained by Hermes itself as conversations happen.
+The QR rotates every ~20s — have the phone already on the Link a Device
+screen before running it. The session persists locally afterwards (no
+re-scan until the link is revoked or expires).
+
+**Two independent enable gates, and both must agree.** Resolution lives
+in `gateway/config.py`; the env var wins when it is an explicit
+`true`/`false`, otherwise the YAML value stands:
+
+| Gate | Where |
+|---|---|
+| `WHATSAPP_ENABLED` | `%LOCALAPPDATA%\hermes\.env` |
+| `platforms.whatsapp.enabled` | `%LOCALAPPDATA%\hermes\config.yaml` |
+
+Set both through the dashboard's own endpoint rather than by hand, so
+they can't drift apart:
+
+```powershell
+# token is embedded in GET / as window.__HERMES_SESSION_TOKEN__
+Invoke-RestMethod -Method Put -Uri 'http://127.0.0.1:9119/api/messaging/platforms/whatsapp' `
+  -Headers @{ 'x-hermes-session-token' = $tok } -ContentType 'application/json' `
+  -Body '{"enabled": true, "env": {"WHATSAPP_ENABLED": "true"}}'
+```
+
+**Enabled-but-unpaired takes the whole gateway down, not just WhatsApp.**
+The adapter treats a missing `creds.json` as a *non-retryable* startup
+conflict, so the gateway exits (code 78) and every other channel and all
+cron jobs stop with it. If you need the gateway up before pairing is
+sorted, disable WhatsApp on both gates and restart — don't leave it
+enabled and unpaired.
+
+Session credentials land in `%LOCALAPPDATA%\hermes\whatsapp\session`
+(`creds.json` plus several hundred key files). Note the CLI hardcodes
+that legacy path while the adapter and dashboard resolve via
+`get_hermes_dir("platforms/whatsapp/session", "whatsapp/session")` — they
+agree only because `get_hermes_dir` prefers the legacy location once it
+has content. Harmless in practice, but don't "tidy up" by moving the
+session directory.
+
+Real chat/channel routing state lives in
+`%LOCALAPPDATA%\hermes\channel_directory.json` — don't hand-edit it; it's
+maintained by Hermes itself as conversations happen.
+
+#### Troubleshooting pairing
+
+**`Connection closed (reason: 500)` in a reconnect loop, no QR.** This is
+*not* a bad session, despite 500 mapping to Baileys'
+`DisconnectReason.badSession`. It is almost always the TLS interception:
+Baileys wraps the WebSocket error in a Boom with a generic 500, and
+`bridge.js` hardcodes `pino({ level: 'warn' })`, so the real cause
+(`UNABLE_TO_GET_ISSUER_CERT_LOCALLY`) never prints. Verify the session
+directory is genuinely empty before believing "bad session" — if it is,
+the credentials cannot be the problem. Apply the section 1 fix.
+
+**Dashboard QR box stays blank forever.** Same root cause. The onboarding
+API reports `status: "waiting"` with `qr_payload: null` indefinitely,
+because the bridge it spawned died on the TLS handshake and emitted a
+`disconnected` event rather than a `qr` one. The CLI gives better signal
+than the dashboard here.
+
+**`reason: 408` once, then QR appears.** Benign — the previous QR expired
+unscanned. Baileys refreshes automatically; just scan the new one.
+
+**`WHATSAPP_ENABLED=WHATSAPP_ENABLED` in `.env`.** A real dashboard-toggle
+bug seen on 2026-08-20: it wrote the *key name* as the value. That string
+is neither truthy nor an explicit false, so resolution silently falls
+through to the YAML gate and the toggle appears to do nothing. Check the
+literal value if enabling from the dashboard seems to have no effect.
+
+Confirm it actually came up:
+
+```powershell
+(Invoke-RestMethod http://127.0.0.1:9119/api/status).gateway_platforms
+# expect: whatsapp = @{ state = connected; error_code = }
+```
 
 ### Provisioning a profile (specialist agent)
 
