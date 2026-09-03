@@ -4897,3 +4897,42 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   `email_staging` members bundled, file count dropped by the expected 10
   (1556 -> 1546), no regression in `Settings/`/`.curator_backups`/loose
   root files. See `MEMORY.md`.
+
+- fix: `hermes_restore.py` -- CRITICAL fix to the placeholder-restore
+  mechanism itself. `_substitute_both_forms` tried both the raw and
+  JSON-escaped form of a real value in sequence against the same
+  placeholder token; the first replace consumed every occurrence, so the
+  second (the one a `.json` file needed) always found nothing left,
+  silently producing invalid JSON (unescaped backslashes inside a JSON
+  string) on restore. Latent in the already-shipped placeholder mechanism
+  (commits `ee5d1ff`/`e83fdfe`/`375be20`) the whole time -- no prior
+  round trip this session happened to carry a placeholder inside a
+  `.json` file. Fixed by threading a `json_escaped` flag through
+  `_substitute_placeholder(s)`, set per-file by `_rewrite_tree` from the
+  real file suffix, instead of guessing by trying both output forms.
+  Verified via a scratch round trip covering both a `.json` file (3
+  placeholders) and a `.py` file (1 placeholder). See `MEMORY.md`.
+
+- feat: Artifacts export/import (`.sbf` bundles) gained the same
+  placeholder-substitution portability mechanism as
+  `hermes_backup.py`/`hermes_restore.py` -- a Skill's `SKILL.md`/
+  `scripts/**`, a Template's `Template.json`, an Agent's registry-side
+  `Agent.json`/`soul.md`, and a Pipeline's `pipelines/<id>.json` are now
+  substituted real-path -> placeholder on export and placeholder ->
+  real-path on import, keyed off this machine's own `settings.vault_path`/
+  `.second_brain_data_path`/`.hermes_home_path`. Found live auditing this
+  subsystem with the same lens as the backup fixes: 16 of ~17 real
+  canonical Skills' own `SKILL.md` bake this machine's literal vault path
+  into the exact example command the agent is told to run, and 3 real
+  capture scripts fall back to a hardcoded literal because the env var
+  they check is never actually set. The nested Hermes profile
+  `.tar.gz` is deliberately untouched (stays opaque, `ADR-014`'s
+  boundary). Verified with a real export/import round trip against the
+  live `track-opportunities` Skill: placeholder present in the exported
+  archive, real path correctly restored (no leftover placeholder) after
+  import under an alternate id.
+- fix: `artifact_import.py`'s seed/blank-data writer (`Settings/
+  Entities.md`) unconditionally overwrote the target's real content with
+  an empty string on every import of the owning Skill, even when the
+  target already had real data. Now only writes the blank placeholder
+  when the target file doesn't already exist.

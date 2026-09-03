@@ -32,11 +32,51 @@ from app.business.core.skills.skill_manager import SkillManager
 from app.business.core.templates.template_manager import TemplateManager
 from app.business.hermes.client import get_client
 from app.business.logic import artifact_import_conflicts, sbf_archive
+from app.config import settings
 from app.data_access import entities as entities_data
 from app.data_access.registry import loader as registry_loader
 from app.data_access.registry import writer as registry_writer
 
 _FALLBACK_SECTION_NAME = "Data Gatherer"  # Same real fallback AgentManager/PipelineManager already use.
+
+# Portability placeholders -- the import-side half of artifact_export.py's
+# own identically-named constants/mechanism (which itself mirrors `tools/
+# hermes_backup.py`/`hermes_restore.py`, MEMORY.md 2026-09-03). Substitutes
+# this TARGET machine's own real vault/data/hermes-home path back in for
+# every placeholder token a bundle's own Skill/Template/Agent-registry/
+# Pipeline text carries, so a Skill deployed here always resolves against
+# THIS deployment, never the source machine's own path. Duplicated (not
+# imported) from artifact_export.py, matching this codebase's own
+# established "each module owns its own business interpretation"
+# convention (see this module's own _SEED_DATA_ALLOWLIST docstring).
+_PLACEHOLDER_VAULT_PATH = "@@SECOND_BRAIN_VAULT_PATH@@"
+_PLACEHOLDER_HERMES_HOME = "@@SECOND_BRAIN_HERMES_HOME@@"
+_PLACEHOLDER_DATA_PATH = "@@SECOND_BRAIN_DATA_PATH@@"
+
+
+def _substitute_placeholder(text: str, placeholder: str, real_value: str, *, json_escaped: bool) -> str:
+    """Replaces every occurrence of placeholder with real_value -- the
+    JSON-double-backslash-escaped form when the containing file is JSON,
+    the raw form otherwise. BUG FIX (2026-09-03, found live building
+    this): trying BOTH forms unconditionally in sequence against the same
+    placeholder is wrong on this (restore) side -- the first `.replace()`
+    call consumes every occurrence, so a second call for the escaped form
+    always finds nothing left, silently leaving invalid JSON. Exact same
+    fix applied to `tools/hermes_restore.py`'s own identically-shaped bug
+    the same day (`MEMORY.md`) -- the placeholder token itself carries no
+    backslashes, so which form is needed can never be recovered from the
+    token alone; the caller must say so via `json_escaped`."""
+    value = real_value.replace("\\", "\\\\") if json_escaped else real_value
+    return text.replace(placeholder, value)
+
+
+def _restore_placeholders(text: str, *, json_escaped: bool) -> str:
+    """No ordering concern (unlike a literal-rewrite design) -- each
+    placeholder is a unique, non-overlapping token."""
+    text = _substitute_placeholder(text, _PLACEHOLDER_VAULT_PATH, str(settings.vault_path), json_escaped=json_escaped)
+    text = _substitute_placeholder(text, _PLACEHOLDER_HERMES_HOME, str(settings.hermes_home_path), json_escaped=json_escaped)
+    text = _substitute_placeholder(text, _PLACEHOLDER_DATA_PATH, str(settings.second_brain_data_path), json_escaped=json_escaped)
+    return text
 
 # Same v1 disclosed allowlist as `artifact_export.py`'s own
 # `_SEED_DATA_ALLOWLIST` -- {real target-relative seed/blank-data path ->
@@ -51,6 +91,9 @@ _SEED_DATA_ALLOWLIST: dict[str, str] = {
 }
 _SEED_DATA_WRITERS: dict[str, "callable"] = {
     "Settings/Entities.md": entities_data.write_raw,
+}
+_SEED_DATA_READERS: dict[str, "callable"] = {
+    "Settings/Entities.md": entities_data.read_raw,
 }
 
 _SKILL_FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
@@ -130,10 +173,15 @@ def _deploy_one(entry: dict, decision: str | None, payload: dict[str, bytes], sk
 
 def _skill_content_from_payload(payload: dict[str, bytes], skill_id: str) -> tuple[str, dict[str, str]]:
     skill_md_bytes = payload.get(f"skills/{skill_id}/SKILL.md")
-    skill_md = skill_md_bytes.decode("utf-8") if skill_md_bytes is not None else ""
+    skill_md = (
+        _restore_placeholders(skill_md_bytes.decode("utf-8"), json_escaped=False)
+        if skill_md_bytes is not None else ""
+    )
     scripts_prefix = f"skills/{skill_id}/scripts/"
     scripts = {
-        member_path[len(scripts_prefix):]: content.decode("utf-8")
+        member_path[len(scripts_prefix):]: _restore_placeholders(
+            content.decode("utf-8"), json_escaped=member_path.endswith(".json"),
+        )
         for member_path, content in payload.items()
         if member_path.startswith(scripts_prefix)
     }
@@ -212,7 +260,7 @@ def _deploy_skill(
 def _deploy_template(artifact_id: str, conflicts: bool, decision: str | None, payload: dict[str, bytes]) -> dict:
     kind = "template"
     raw = payload.get(f"templates/{artifact_id}/Template.json")
-    data = json.loads(raw.decode("utf-8")) if raw is not None else {}
+    data = json.loads(_restore_placeholders(raw.decode("utf-8"), json_escaped=True)) if raw is not None else {}
 
     if not conflicts or decision == "overwrite":
         TemplateManager().import_template(artifact_id, data)
@@ -229,7 +277,7 @@ def _deploy_template(artifact_id: str, conflicts: bool, decision: str | None, pa
 def _deploy_pipeline(artifact_id: str, conflicts: bool, decision: str | None, payload: dict[str, bytes]) -> dict:
     kind = "pipeline"
     raw = payload.get(f"pipelines/{artifact_id}.json")
-    data = json.loads(raw.decode("utf-8")) if raw is not None else {}
+    data = json.loads(_restore_placeholders(raw.decode("utf-8"), json_escaped=True)) if raw is not None else {}
 
     if not conflicts or decision == "overwrite":
         PipelineManager().import_pipeline(artifact_id, data)
@@ -278,8 +326,14 @@ def _resolve_section_id(section_id: str | None) -> str:
 def _write_agent_registry_side(payload: dict[str, bytes], original_id: str, real_deployed_id: str) -> None:
     config_raw = payload.get(f"agents/{original_id}/Agent.json")
     soul_raw = payload.get(f"agents/{original_id}/soul.md")
-    config = json.loads(config_raw.decode("utf-8")) if config_raw is not None else {}
-    soul_text = soul_raw.decode("utf-8") if soul_raw is not None else f"You are {real_deployed_id}."
+    config = (
+        json.loads(_restore_placeholders(config_raw.decode("utf-8"), json_escaped=True))
+        if config_raw is not None else {}
+    )
+    soul_text = (
+        _restore_placeholders(soul_raw.decode("utf-8"), json_escaped=False)
+        if soul_raw is not None else f"You are {real_deployed_id}."
+    )
     config = {**config, "id": real_deployed_id}
 
     section_id = _resolve_section_id(config.get("section_id"))
