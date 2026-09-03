@@ -36,6 +36,26 @@ Deliberately excludes (operator, 2026-09-03):
     data that already travels with a real vault-folder copy; out of this
     tool's own scope, not re-bundled here.
 
+The Second Brain app's own data folder is READ FROM REAL SETTINGS
+(`src/backend/.env`'s own `SECOND_BRAIN_DATA_PATH`), never assumed to be
+`<vault>/.second-brain` -- that's only the backend's own DEFAULT when the
+setting is unset (`app/config.py::Settings._default_second_brain_data_path`),
+not a guarantee. Found live, 2026-09-03: a real backup taken on a machine
+where this had been relocated off the vault silently missed the entire
+Registry (every Agent's own Section placement -- what the operator calls
+"Visual", since it's the real data behind Agents Map positioning) because
+the tool looked in the wrong place, not because that data doesn't exist.
+`--second-brain-data-path` overrides this resolution explicitly if needed.
+
+Per-profile cron schedules are ALSO real and separate from the top-level
+`cron/jobs.json` -- a profile that has ever run `hermes -p <profile> cron
+create` gets its own `profiles/<id>/cron/jobs.json`, confirmed live on
+`meeting-prep-agent`/`azure-expert`/`compass-expert` (this is what the
+operator calls "Schedule"). Each is bundled as its own dedicated archive
+member (`cron/profiles/<id>/jobs.json`), same "never nested under the
+generic profile-overlay tree" discipline as the top-level file, for the
+exact same restore-side clobber-avoidance reason.
+
 The archive is a plain zip -- no business logic, matching this project's
 own established `sbf_archive.py`/`sbd_archive.py` "pure I/O" convention.
 A `manifest.json` at the root records `source_vault_path` (so
@@ -189,15 +209,39 @@ def _add_profile(zf: zipfile.ZipFile, profile_root: Path, profile_id: str, extra
     return count
 
 
-def build_backup(hermes_home: Path, vault_path: Path, output_path: Path, repo_root: Path) -> dict:
+def _resolve_second_brain_data_path(vault_path: Path, repo_root: Path, override: str | None) -> Path:
+    """Real settings, not a hardcoded vault-relative guess -- mirrors
+    `app/config.py::Settings._default_second_brain_data_path` exactly:
+    `SECOND_BRAIN_DATA_PATH` from the backend's own real `.env` if set to
+    a non-empty value, else the same default the backend itself falls
+    back to. `override` (the CLI flag) wins over both when given."""
+    if override:
+        return Path(override)
+    env_path = repo_root / "src" / "backend" / ".env"
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("SECOND_BRAIN_DATA_PATH="):
+                value = stripped.split("=", 1)[1].strip().strip('"').strip("'")
+                if value:
+                    return Path(value)
+    return vault_path / ".second-brain"
+
+
+def build_backup(
+    hermes_home: Path, vault_path: Path, output_path: Path, repo_root: Path,
+    second_brain_data_path_override: str | None = None,
+) -> dict:
     profiles_root = hermes_home / "profiles"
     profile_ids = sorted(p.name for p in profiles_root.iterdir() if p.is_dir()) if profiles_root.exists() else []
     canonical_skill_ids = _canonical_skill_ids(repo_root)
+    second_brain_data_path = _resolve_second_brain_data_path(vault_path, repo_root, second_brain_data_path_override)
 
     manifest = {
         "format_version": _FORMAT_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source_vault_path": str(vault_path),
+        "source_second_brain_data_path": str(second_brain_data_path),
         # Skills' own SKILL.md files embed the FULL absolute path to their
         # deployed scripts in example commands (e.g. "C:\Users\<user>\
         # AppData\Local\hermes\skills\...\vault_manager.py") -- this
@@ -225,19 +269,32 @@ def build_backup(hermes_home: Path, vault_path: Path, output_path: Path, repo_ro
 
         for profile_id in profile_ids:
             total_files += _add_profile(zf, profiles_root / profile_id, profile_id, [], canonical_skill_ids)
+            # A profile's own cron/jobs.json (real once that profile has
+            # ever run `hermes -p <profile> cron create`) is, same as the
+            # top-level one above, its OWN dedicated archive member --
+            # never nested under "hermes/<profile>/" where the generic
+            # overlay step in hermes_restore.py could reach it. "cron" is
+            # not in _PROFILE_INCLUDE, so the loop above never touches it;
+            # this is the only place it's ever bundled.
+            total_files += _add_tree(
+                zf, profiles_root / profile_id / "cron" / "jobs.json", f"cron/profiles/{profile_id}/jobs.json",
+            )
 
         # The Second Brain app's own matching data -- Registry (Agents/
         # Skills/Sections/Providers/Tools) and Pipelines, both real,
-        # vault-relative, non-secret. Bundled here as a convenience copy
-        # (the primary copy of this data travels with the real vault
-        # folder itself, which the operator copies separately) so this
-        # .sbb is self-contained even before the vault is in place.
-        total_files += _add_tree(zf, vault_path / ".second-brain" / "data", "second-brain-data")
-        total_files += _add_tree(zf, vault_path / ".second-brain" / "pipelines", "second-brain-pipelines")
+        # non-secret. Read from the REAL configured location (see
+        # _resolve_second_brain_data_path), not assumed vault-relative --
+        # bundled here as a convenience copy (the primary copy of this
+        # data travels with the real vault folder itself, which the
+        # operator copies separately) so this .sbb is self-contained even
+        # before the vault is in place.
+        total_files += _add_tree(zf, second_brain_data_path / "data", "second-brain-data")
+        total_files += _add_tree(zf, second_brain_data_path / "pipelines", "second-brain-pipelines")
 
     return {
         "output": str(output_path),
         "profiles": manifest["profiles"],
+        "second_brain_data_path": str(second_brain_data_path),
         "files_bundled": total_files,
         "size_bytes": output_path.stat().st_size,
     }
@@ -252,10 +309,20 @@ def main() -> int:
         default=os.path.expandvars(r"%LOCALAPPDATA%\hermes"),
         help="Defaults to the real, current machine's own Hermes home.",
     )
+    parser.add_argument(
+        "--second-brain-data-path",
+        default=None,
+        help="Defaults to reading SECOND_BRAIN_DATA_PATH from src/backend/.env, "
+             "falling back to <vault-path>/.second-brain only if that's unset -- "
+             "same resolution the backend itself uses. Override explicitly if needed.",
+    )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parent.parent
-    result = build_backup(Path(args.hermes_home), Path(args.vault_path), Path(args.output), repo_root)
+    result = build_backup(
+        Path(args.hermes_home), Path(args.vault_path), Path(args.output), repo_root,
+        second_brain_data_path_override=args.second_brain_data_path,
+    )
     print(json.dumps(result, ensure_ascii=False))
     return 0
 
