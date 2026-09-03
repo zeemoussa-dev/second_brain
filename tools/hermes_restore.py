@@ -86,25 +86,47 @@ _PLACEHOLDER_HERMES_HOME = "@@SECOND_BRAIN_HERMES_HOME@@"
 _PLACEHOLDER_DATA_PATH = "@@SECOND_BRAIN_DATA_PATH@@"
 
 
-def _substitute_both_forms(text: str, placeholder: str, real_value: str) -> str:
-    """Replaces every real occurrence of placeholder with real_value, in
-    both its raw form and its JSON-double-backslash-escaped form (a
-    Windows path embedded in a JSON string value always carries doubled
-    backslashes on the way back out)."""
-    text = text.replace(placeholder, real_value)
-    text = text.replace(placeholder, real_value.replace("\\", "\\\\"))
-    return text
+def _substitute_placeholder(text: str, placeholder: str, real_value: str, *, json_escaped: bool) -> str:
+    """Replaces every occurrence of placeholder with real_value -- the
+    JSON-double-backslash-escaped form when the containing file is JSON
+    (a Windows path in a JSON string always carries doubled backslashes),
+    the raw form otherwise.
+
+    BUG FIX (2026-09-03, found live testing the Artifacts export/import
+    path that reuses this exact mechanism): the original version of this
+    function tried BOTH forms unconditionally, in sequence --
+    `text.replace(placeholder, real_value)` followed by
+    `text.replace(placeholder, escaped_value)`. That is safe on the
+    EXPORT side (hermes_backup.py's own identically-shaped helper), which
+    searches for two DIFFERENT candidate real-value spellings and
+    replaces both with the SAME placeholder -- no conflict. It is wrong
+    here: the first `.replace()` call consumes every real placeholder
+    occurrence in the text, so the second call (the one a `.json` file
+    actually needs) always finds nothing left to replace -- silently
+    leaving raw, unescaped backslashes inside a JSON string, which is
+    invalid JSON. Confirmed live: a bundled `.json` file referencing
+    `@@SECOND_BRAIN_VAULT_PATH@@` came back holding a raw, single-
+    backslash path where a JSON string needs doubled backslashes -- an
+    unparsable string. Since the placeholder token itself carries no backslashes, it
+    looks identical whether it originated in a `.json` file or a
+    `.py`/`.md`/`.txt` one -- there is no way to recover which form is
+    needed from the token alone, so the caller must say so via
+    `json_escaped` instead of this function blindly trying both."""
+    value = real_value.replace("\\", "\\\\") if json_escaped else real_value
+    return text.replace(placeholder, value)
 
 
-def _substitute_placeholders(text: str, vault_path: str, hermes_home: str, second_brain_data_path: str) -> str:
+def _substitute_placeholders(
+    text: str, vault_path: str, hermes_home: str, second_brain_data_path: str, *, json_escaped: bool,
+) -> str:
     """No ordering concern here (unlike the old rewrite-based design) --
     each placeholder is a unique, non-overlapping token, so substitution
     order genuinely doesn't matter; kept in the same vault/hermes_home/
     data_path order as hermes_backup.py's own substitution purely for
     readability."""
-    text = _substitute_both_forms(text, _PLACEHOLDER_VAULT_PATH, vault_path)
-    text = _substitute_both_forms(text, _PLACEHOLDER_HERMES_HOME, hermes_home)
-    text = _substitute_both_forms(text, _PLACEHOLDER_DATA_PATH, second_brain_data_path)
+    text = _substitute_placeholder(text, _PLACEHOLDER_VAULT_PATH, vault_path, json_escaped=json_escaped)
+    text = _substitute_placeholder(text, _PLACEHOLDER_HERMES_HOME, hermes_home, json_escaped=json_escaped)
+    text = _substitute_placeholder(text, _PLACEHOLDER_DATA_PATH, second_brain_data_path, json_escaped=json_escaped)
     return text
 
 
@@ -117,7 +139,9 @@ def _rewrite_tree(root: Path, vault_path: str, hermes_home: str, second_brain_da
             text = path.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
             continue
-        new_text = _substitute_placeholders(text, vault_path, hermes_home, second_brain_data_path)
+        new_text = _substitute_placeholders(
+            text, vault_path, hermes_home, second_brain_data_path, json_escaped=path.suffix.lower() == ".json",
+        )
         if new_text != text:
             path.write_text(new_text, encoding="utf-8")
             rewritten += 1
