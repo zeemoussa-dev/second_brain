@@ -5019,3 +5019,34 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   confirming all 4 real cron members and all 160 real Registry files
   now bundle correctly. The existing Settings-page UI/API layer needed
   no changes. See `MEMORY.md`.
+
+- fix: `hermes_backup.py`/`hermes_restore.py` — three more real bugs
+  found live and fixed in the same session: (1) the entire `Settings/`
+  folder was wrongly excluded (real curated data, not secrets — only
+  `.env` files are); (2) bundling only walked `data/`/`pipelines/`,
+  missing 18+ real loose top-level files (`agent_visuals.json`,
+  `agent_sections.json`, `agent_schedules.json`, `cockpit_chat.json`,
+  `email_staging/`, ...) — now a wholesale walk of the whole
+  `second_brain_data_path` root (excluding only regenerable `index/`),
+  archive layout changed from two members to one (`second-brain-data-root`);
+  (3) `memories/*.lock` files were leaking into the backup despite being
+  documented as excluded — `.lock`/`.pid` exclusion now actually enforced.
+  Also now includes `.curator_backups/` (skill rollback history, real
+  operator choice). See `MEMORY.md`.
+
+- refactor: `hermes_backup.py`/`hermes_restore.py` path handling switched
+  from literal old-path->new-path string rewriting to placeholder tokens
+  (`@@SECOND_BRAIN_VAULT_PATH@@`/`@@SECOND_BRAIN_HERMES_HOME@@`/
+  `@@SECOND_BRAIN_DATA_PATH@@`). Root cause for the switch: a real bug
+  found testing the earlier third-rewrite-target fix — when the data path
+  is vault-relative on the source (the common case), it's a longer string
+  containing the vault path as its own prefix; rewriting the vault path
+  first silently consumed that prefix, and the data-path rewrite silently
+  fell back to the wrong (vault-relative) target instead of the real,
+  relocated one. Placeholders have no such overlap risk by construction.
+  Verified: the exact failure scenario now produces the correct result;
+  full round-trip re-verified with zero regressions; a real backup's own
+  extracted content fully audited for any remaining hardcoded absolute
+  path (found none beyond the two already-known, already-handled roots);
+  confirmed against real production content (`vault-index/SKILL.md`, real
+  `cron/jobs.json` prompts) with zero real-path leakage. See `MEMORY.md`.
