@@ -7,7 +7,13 @@ pywin32>=306; sys_platform == "win32"
 apscheduler>=3.10
 langgraph>=1,<2
 langchain-openai
-mcp
+# Pinned <2 (2026-09-03, found on the first fresh-machine install): mcp 2.x
+# renamed FastMCP to MCPServer and changed other APIs, so an unpinned install
+# now resolves to a version this code cannot import. app/data_access/system/
+# tools/registry.py uses the v1 `from mcp.server.fastmcp import FastMCP` API.
+# Migrating to 2.x is real work, tracked separately -- this pin restores the
+# version the code was actually written against.
+mcp<2
 langchain-mcp-adapters
 anthropic
 pypdf
