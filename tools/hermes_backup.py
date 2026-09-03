@@ -179,15 +179,35 @@ _TOP_LEVEL_EXTRA_INCLUDE = [
 _DISABLED_SKILLS_PREFIX = "_disabled-skills"
 
 
-_SECOND_BRAIN_DATA_ROOT_EXCLUDE = {"index"}
+_SECOND_BRAIN_DATA_ROOT_EXCLUDE = {"index", "email_staging"}
 
 
 def _is_excluded_second_brain_root(path: Path, root: Path) -> bool:
     """Applied only to the top-level children of second_brain_data_path
-    itself, not the whole subtree. `index/` (real size, 3.7 MB, but fully
-    regenerable via the `vault-index` Skill, same "don't bundle a real
-    cache with zero unique content" reasoning already applied to Hermes'
-    own `.hub/`) is the only real top-level item excluded here.
+    itself, not the whole subtree.
+
+    `index/` (real size, 3.7 MB, but fully regenerable via the
+    `vault-index` Skill, same "don't bundle a real cache with zero unique
+    content" reasoning already applied to Hermes' own `.hub/`).
+
+    `email_staging/` -- found live, operator: "Now Email Staging Caused
+    an Error" during a real restore/validation. Root cause: its own
+    folder-naming convention is the RAW Outlook EntryID (130+ hex chars),
+    and "email_staging/<id>/attachments/" alone, once nested inside a
+    real restore scratch path ("%TEMP%/second-brain-restore-XXXXXXXX/
+    second-brain-data-root/email_staging/<id>/attachments"), measured
+    263 characters -- past Windows' 260-char MAX_PATH -- with a real
+    attachment filename inside pushing it further still; `zipfile.
+    extractall()` fails outright on a path like this (the same class of
+    error hit independently earlier this same session auditing a backup
+    archive's own extracted content). Confirmed genuinely safe to drop
+    entirely, not just a risk/reward tradeoff like `.curator_backups`
+    below: NO real script anywhere (this repo's own canonical Skills, the
+    backend, or any real deployed Hermes profile) reads or writes this
+    folder at all, and its own real content is stale (last touched
+    2026-08-23, 11+ days before this fix, zero activity since) --
+    orphaned data from a retired capture mechanism, not live state.
+
     `Settings/` is DELIBERATELY NOT excluded -- an earlier version of
     this tool excluded it entirely, on a real misunderstanding: the
     operator's own "Secrets is what i meant with settings" (MEMORY.md,

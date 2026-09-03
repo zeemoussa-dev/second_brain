@@ -5050,3 +5050,18 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   path (found none beyond the two already-known, already-handled roots);
   confirmed against real production content (`vault-index/SKILL.md`, real
   `cron/jobs.json` prompts) with zero real-path leakage. See `MEMORY.md`.
+
+- fix: `hermes_backup.py` — `email_staging/` excluded from the wholesale
+  `second_brain_data_path` root bundle (`_SECOND_BRAIN_DATA_ROOT_EXCLUDE`,
+  alongside `index/`). Its own folder-naming convention is the raw
+  Outlook EntryID (130+ hex chars); nested inside a real restore scratch
+  path, just the `attachments` subfolder measured 263 chars -- already
+  past Windows' 260-char MAX_PATH before any real attachment filename
+  inside, causing a real restore validation failure ("Now Email Staging
+  Caused an Error"). Confirmed genuinely dead, not just risky: no script
+  anywhere (this repo, the backend, or any deployed Hermes profile) reads
+  or writes it, and its real content was last touched 2026-08-23 with
+  zero activity since. Verified via a real backup run: zero
+  `email_staging` members bundled, file count dropped by the expected 10
+  (1556 -> 1546), no regression in `Settings/`/`.curator_backups`/loose
+  root files. See `MEMORY.md`.
