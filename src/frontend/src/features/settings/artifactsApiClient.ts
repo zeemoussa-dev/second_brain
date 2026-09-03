@@ -88,10 +88,16 @@ export interface ImportArtifactPreview {
   category: string | null;
 }
 
+export interface AvailableSection {
+  id: string;
+  name: string;
+}
+
 export interface ImportPreviewResult {
   manifest: unknown;
   artifacts: ImportArtifactPreview[];
   available_profiles: string[];
+  available_sections: AvailableSection[];
 }
 
 export interface ImportOutcome {
@@ -100,7 +106,13 @@ export interface ImportOutcome {
   status: 'deployed' | 'skipped' | 'failed';
   deployed_as: string | null;
   detail: string;
+  primary_routing_snippet: string | null;
 }
+
+// "__create_new__:<name>" prefix -- matches artifact_import.py's own
+// _CREATE_NEW_SECTION_PREFIX exactly; a section decision either names a
+// real, existing target section id as-is, or this sentinel to create one.
+export const CREATE_NEW_SECTION_PREFIX = '__create_new__:';
 
 export function previewImport(file: File): Promise<ImportPreviewResult> {
   const formData = new FormData();
@@ -112,10 +124,30 @@ export function commitImport(
   file: File,
   decisions: Record<string, 'overwrite' | 'skip' | 'keep_both'>,
   skillTargetProfiles: Record<string, string[]>,
+  agentSectionDecisions: Record<string, string>,
 ): Promise<ImportOutcome[]> {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('decisions', JSON.stringify(decisions));
   formData.append('skill_target_profiles', JSON.stringify(skillTargetProfiles));
+  formData.append('agent_section_decisions', JSON.stringify(agentSectionDecisions));
   return apiFetch('/artifacts/import/commit', { method: 'POST', body: formData });
+}
+
+// Primary-routing apply (2026-09-03) -- a thin client over the real,
+// already-Done POST /artifacts/import/apply-primary-routing endpoint.
+// Separate, explicit, operator-triggered -- never called automatically
+// as part of commitImport above.
+
+export interface ApplyPrimaryRoutingResult {
+  agent_id: string;
+  applied: boolean;
+  detail: string;
+}
+
+export function applyPrimaryRouting(agentId: string, snippet: string): Promise<ApplyPrimaryRoutingResult> {
+  return apiFetch('/artifacts/import/apply-primary-routing', {
+    method: 'POST',
+    body: JSON.stringify({ agent_id: agentId, snippet }),
+  });
 }

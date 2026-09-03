@@ -18,6 +18,33 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+## 0.2.0 -- 2026-09-03
+
+- feat: Frontend UI for the two Artifacts-import features that were
+  backend/API-only until now:
+  - **Section picker** (`ArtifactImportModal.tsx`) -- each bundled
+    Agent in the import preview gets a real Section dropdown (every
+    existing target section, plus "+ Create new section..." with a
+    name field), replacing the silent Data Gatherer fallback with an
+    actual choice. Left unset, behavior is unchanged (falls back to
+    Data Gatherer).
+  - **Primary-routing suggestion** -- a successfully deployed Agent that
+    carries a `primary_routing_snippet` now shows it after import with
+    an explicit "Add to Primary's SOUL.md" button (POST
+    `/artifacts/import/apply-primary-routing`), never applied
+    automatically.
+  Verified live end-to-end (real upload, real section-picker dropdown
+  populated with this machine's actual 6 sections, real "create new"
+  flow, real commit against the notes-manager/files-manager bundle --
+  9 of 11 artifacts deployed correctly under "keep both", with real
+  cleanup afterward). Found live, unrelated to this UI work: `hermes
+  profile import` failed for both real Agent entries with a Windows
+  `PermissionError` during Hermes' own CLI rename step -- a real issue
+  in Hermes' own external code/environment, not something this project
+  builds (per this repo's own standing rule); worth knowing about before
+  the CBO handoff, since the same failure could recur there. See
+  `MEMORY.md`.
+
 ## 0.1.0 -- 2026-09-03 (first real version)
 
 - docs: `Deployment.md` — replaced the "If network/proxy blocks downloads"
