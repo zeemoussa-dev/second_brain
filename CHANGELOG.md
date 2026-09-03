@@ -18,6 +18,8 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+## 0.1.0 -- 2026-09-03 (first real version)
+
 - docs: `Deployment.md` — replaced the "If network/proxy blocks downloads"
   placeholder (which explicitly deferred to a live troubleshooting session)
   with the **verified** corporate-TLS-interception fix, solved live
@@ -4959,3 +4961,13 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   or create a new one), replacing the always-silent "Data Gatherer"
   fallback. Omitting a decision keeps the prior fallback behavior
   unchanged. Frontend not yet built.
+
+- feat: Second Brain has a real version number for the first time
+  (repo-root `VERSION` file, semver). Read via `GET /health`'s own
+  `version` field (`app/version.py`), shown in the sidebar UI (always
+  visible, not buried in a Settings sub-page). Convention going forward:
+  MAJOR = breaking (read CHANGELOG before assuming a pull just works),
+  MINOR = feature, PATCH = fix -- bumped by hand alongside a real
+  CHANGELOG entry on every push, per operator instruction, 2026-09-03.
+  Everything above this line, accumulated before a version number
+  existed, is retroactively version 0.1.0.
