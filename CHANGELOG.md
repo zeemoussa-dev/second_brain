@@ -4952,3 +4952,10 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   `Agent.json`/`soul.md` (Registry never booted -> `agent_data_dir()`
   returns None -> the export's own "never fabricate" rule skips it
   silently). Regenerated the CBO handoff `.sbf` correctly. See `MEMORY.md`.
+
+- feat: Artifacts import gained a real, explicit section-placement choice
+  for Agents (`available_sections` in the preview response,
+  `agent_section_decisions` on commit -- pick an existing target section
+  or create a new one), replacing the always-silent "Data Gatherer"
+  fallback. Omitting a decision keeps the prior fallback behavior
+  unchanged. Frontend not yet built.

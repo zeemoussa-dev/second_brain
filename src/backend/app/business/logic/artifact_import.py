@@ -102,22 +102,41 @@ _SKILL_FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
 def preview_import(archive_path: str) -> dict:
     """Parses + flags conflicts without deploying anything (Scenario 1).
     `MalformedBundleError` (`T01`) propagates uncaught -- the router maps
-    it to a clean 4xx."""
+    it to a clean 4xx. `available_sections` (2026-09-03) lets the operator
+    make a real, explicit choice for every "agent" entry instead of the
+    section placement always silently landing on "Data Gatherer" -- a
+    bundled Agent's own `Agent.json` never carries a `section_id` at all
+    (confirmed by direct reading), so this decision is relevant for
+    EVERY agent import, not just a conflict case."""
     manifest, _payload = sbf_archive.read_archive(archive_path)
     artifacts = artifact_import_conflicts.detect_conflicts(manifest["artifacts"])
     available_profiles = [profile.id for profile in get_client().profiles.get_all()]
-    return {"manifest": manifest, "artifacts": artifacts, "available_profiles": available_profiles}
+    available_sections = [{"id": s.id, "name": s.name} for s in SectionManager().get_all()]
+    return {
+        "manifest": manifest, "artifacts": artifacts,
+        "available_profiles": available_profiles, "available_sections": available_sections,
+    }
 
 
 def commit_import(
     archive_path: str, decisions: dict[str, str], skill_target_profiles: dict[str, list[str]],
+    agent_section_decisions: dict[str, str] | None = None,
 ) -> list[dict]:
     """Re-parses AND re-detects conflicts fresh -- never trusts a cached
     preview response (same staleness-safety principle as `commit_export`).
     Deploys every artifact per its resolved decision, one outcome dict per
-    artifact, regardless of success/failure."""
+    artifact, regardless of success/failure.
+
+    `agent_section_decisions` ({agent_id: section_id | "__create_new__:
+    <name>"}) is OPTIONAL, unlike `decisions` -- section placement is an
+    organizational choice, never a destructive one, so an agent id with
+    no entry here keeps the existing, always-safe fallback behavior
+    (`_resolve_section_id`'s own "Data Gatherer" default) rather than
+    failing the whole deploy the way an undecided skill/template/agent
+    CONFLICT does."""
     manifest, payload = sbf_archive.read_archive(archive_path)
     artifacts = artifact_import_conflicts.detect_conflicts(manifest["artifacts"])
+    agent_section_decisions = agent_section_decisions or {}
 
     outcomes: list[dict] = []
     deployed_skill_ids: set[str] = set()
@@ -126,7 +145,10 @@ def commit_import(
         artifact_id = entry["id"]
         decision = decisions.get(f"{kind}:{artifact_id}")
         try:
-            outcome = _deploy_one(entry, decision, payload, skill_target_profiles)
+            outcome = _deploy_one(
+                entry, decision, payload, skill_target_profiles,
+                agent_section_decisions.get(artifact_id) if kind == "agent" else None,
+            )
         except Exception as exc:  # noqa: BLE001 -- one real failure must never abort the batch (Scenario 9).
             outcome = {"kind": kind, "id": artifact_id, "status": "failed", "deployed_as": None, "detail": str(exc)}
         outcomes.append(outcome)
@@ -151,7 +173,10 @@ def _skipped(kind: str, artifact_id: str, *, detail: str = "skipped per operator
     return {"kind": kind, "id": artifact_id, "status": "skipped", "deployed_as": None, "detail": detail}
 
 
-def _deploy_one(entry: dict, decision: str | None, payload: dict[str, bytes], skill_target_profiles: dict) -> dict:
+def _deploy_one(
+    entry: dict, decision: str | None, payload: dict[str, bytes], skill_target_profiles: dict,
+    section_decision: str | None,
+) -> dict:
     kind = entry["kind"]
     artifact_id = entry["id"]
     conflicts = bool(entry.get("conflicts"))
@@ -171,7 +196,7 @@ def _deploy_one(entry: dict, decision: str | None, payload: dict[str, bytes], sk
     if kind == "pipeline":
         return _deploy_pipeline(artifact_id, conflicts, decision, payload)
     if kind == "agent":
-        return _deploy_agent(artifact_id, conflicts, decision, payload)
+        return _deploy_agent(artifact_id, conflicts, decision, payload, section_decision)
     raise ValueError(f"unrecognized artifact kind {kind!r}")
 
 
@@ -309,27 +334,51 @@ def _write_agent_scratch_tarball(payload: dict[str, bytes], artifact_id: str) ->
     return scratch_path
 
 
-def _resolve_section_id(section_id: str | None) -> str:
-    """A bundled Agent's own `section_id` is used as-is only if it
-    genuinely exists on THIS target machine; otherwise (including the
-    real, current bundle shape, which never carries one -- `Agent.json`
-    only ever stores section placement via its own folder path, never as
-    a JSON field, confirmed by direct reading of `AgentManager.
-    _write_registry_agent`/`registry_writer.write_agent_files`) falls
-    back to the target's own real "Data Gatherer" section, matching the
-    Constraint's own "never lands under a section that doesn't exist"
-    requirement -- an honest, always-safe fallback, never a fabricated
-    section."""
+_CREATE_NEW_SECTION_PREFIX = "__create_new__:"
+
+
+def _resolve_section_id(bundled_section_id: str | None, operator_decision: str | None) -> str:
+    """Three ways this resolves, in priority order:
+
+    1. `operator_decision` (2026-09-03, the new explicit picker) -- an
+       existing target section id, used as-is; or `"__create_new__:<name>"`
+       to create a brand new one. Since this was an EXPLICIT choice, an
+       id that doesn't actually exist on this machine is a real error
+       (fail loud), never silently swapped for a fallback.
+    2. A bundled `section_id`, used as-is only if it genuinely exists on
+       THIS target machine -- in practice this never fires today (the
+       real, current bundle shape never carries one at all: `Agent.json`
+       only ever stores section placement via its own folder path, never
+       as a JSON field, confirmed by direct reading of `AgentManager.
+       _write_registry_agent`/`registry_writer.write_agent_files`) --
+       kept for forward-compat if a future export ever does carry one.
+    3. No decision at all -- falls back to the target's own real "Data
+       Gatherer" section (creating it if missing), matching the
+       Constraint's own "never lands under a section that doesn't exist"
+       requirement. Organizational default, never a destructive one --
+       unlike an undecided skill/template/agent CONFLICT, an unset
+       section decision never fails the import."""
     section_manager = SectionManager()
-    if section_id is not None and section_manager.get_by_id(section_id) is not None:
-        return section_id
+    if operator_decision is not None:
+        if operator_decision.startswith(_CREATE_NEW_SECTION_PREFIX):
+            name = operator_decision[len(_CREATE_NEW_SECTION_PREFIX):].strip()
+            if not name:
+                raise ValueError(f"{_CREATE_NEW_SECTION_PREFIX!r} decision needs a real section name after the prefix")
+            return section_manager.create(name).id
+        if section_manager.get_by_id(operator_decision) is None:
+            raise ValueError(f"section {operator_decision!r} does not exist on this machine")
+        return operator_decision
+    if bundled_section_id is not None and section_manager.get_by_id(bundled_section_id) is not None:
+        return bundled_section_id
     for section in section_manager.get_all():
         if section.name == _FALLBACK_SECTION_NAME:
             return section.id
     return section_manager.create(_FALLBACK_SECTION_NAME).id
 
 
-def _write_agent_registry_side(payload: dict[str, bytes], original_id: str, real_deployed_id: str) -> str | None:
+def _write_agent_registry_side(
+    payload: dict[str, bytes], original_id: str, real_deployed_id: str, section_decision: str | None,
+) -> str | None:
     """Returns the bundle's own `primary_routing_snippet` (or None) --
     already lands on the target's own Agent.json for free (the whole
     `config` dict is written through as-is, no per-field allowlist), but
@@ -349,7 +398,7 @@ def _write_agent_registry_side(payload: dict[str, bytes], original_id: str, real
     )
     config = {**config, "id": real_deployed_id}
 
-    section_id = _resolve_section_id(config.get("section_id"))
+    section_id = _resolve_section_id(config.get("section_id"), section_decision)
     is_background_agent = bool(config.get("is_background_agent", False))
     agent_dir = registry_writer.agent_dir(
         real_deployed_id, section_id=section_id, is_background_agent=is_background_agent,
@@ -359,7 +408,10 @@ def _write_agent_registry_side(payload: dict[str, bytes], original_id: str, real
     return config.get("primary_routing_snippet")
 
 
-def _deploy_agent(artifact_id: str, conflicts: bool, decision: str | None, payload: dict[str, bytes]) -> dict:
+def _deploy_agent(
+    artifact_id: str, conflicts: bool, decision: str | None, payload: dict[str, bytes],
+    section_decision: str | None,
+) -> dict:
     kind = "agent"
     if conflicts and decision == "skip":
         return _skipped(kind, artifact_id)
@@ -372,7 +424,7 @@ def _deploy_agent(artifact_id: str, conflicts: bool, decision: str | None, paylo
             ok, output = get_client().cli.import_profile(scratch_path)
             if not ok:
                 raise RuntimeError(f"hermes profile import failed for {artifact_id!r}: {output}")
-            snippet = _write_agent_registry_side(payload, artifact_id, artifact_id)
+            snippet = _write_agent_registry_side(payload, artifact_id, artifact_id, section_decision)
             return _deployed(kind, artifact_id, primary_routing_snippet=snippet)
 
         # decision == "keep_both"
@@ -380,7 +432,7 @@ def _deploy_agent(artifact_id: str, conflicts: bool, decision: str | None, paylo
         ok, output = get_client().cli.import_profile(scratch_path, name=alt_id)
         if not ok:
             raise RuntimeError(f"hermes profile import failed for {artifact_id!r}: {output}")
-        snippet = _write_agent_registry_side(payload, artifact_id, alt_id)
+        snippet = _write_agent_registry_side(payload, artifact_id, alt_id, section_decision)
         return _deployed(kind, artifact_id, deployed_as=alt_id, primary_routing_snippet=snippet)
     finally:
         Path(scratch_path).unlink(missing_ok=True)

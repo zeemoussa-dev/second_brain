@@ -94,11 +94,13 @@ async def commit_import(
     file: UploadFile = File(...),
     decisions: str = Form("{}"),
     skill_target_profiles: str = Form("{}"),
+    agent_section_decisions: str = Form("{}"),
 ) -> list[dict]:
     scratch_path = await _scratch_sbf_from_upload(file)
     try:
         return artifact_import.commit_import(
             scratch_path, json.loads(decisions), json.loads(skill_target_profiles),
+            json.loads(agent_section_decisions),
         )
     except MalformedBundleError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
