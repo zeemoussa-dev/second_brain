@@ -18,6 +18,30 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix(restore): placeholder expansion now picks the backslash form by target
+  file type, fixing an `Invalid \escape` failure mid-restore.
+  `_substitute_both_forms` claimed to substitute both the raw and the
+  JSON-escaped form of a Windows path, but used an IDENTICAL needle for both
+  replaces -- so the first consumed every occurrence with the raw value and the
+  second line was unreachable. Every path written back into a JSON file
+  therefore carried single backslashes ("C:\Users\..."), which are invalid JSON
+  escapes, corrupting the file the restore then parsed. Found live: a real
+  restore failed after creating 40 profiles but before the cron merge.
+  Replaced with `_substitute_one(..., json_escaped=...)`, chosen per file from
+  `path.suffix == ".json"` in `_rewrite_tree`.
+  The asymmetry with `hermes_backup.py` is intentional and now documented:
+  backup collapses two distinct real forms into one token (many-to-one, so
+  replacing both needles in sequence is correct there); restore must expand one
+  token back into the form a given file needs (one-to-many), which a text
+  replace cannot infer. Known limitation in the docstring: a `.md`/`.yaml`
+  embedding a JSON snippet gets the raw form -- a fully faithful round trip
+  would need backup to emit two distinct tokens, a format-version change
+  deliberately not made here.
+  Verified against a jobs.json-shaped fixture (parses as valid JSON, all three
+  paths intact) and a SKILL.md fixture (raw backslashes kept). No backend
+  restart needed: `business/logic/hermes_backup.py` runs these scripts via
+  subprocess, not import.
+
 - docs: `Deployment.md` — added the Backup & Restore "`hermes` CLI isn't on
   PATH" refusal to §4 troubleshooting. Hit live 2026-09-03 during a real
   restore. The refusal is correct (`hermes_restore.py::_validate` does
