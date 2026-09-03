@@ -18,6 +18,31 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- docs: `Deployment.md` — merged this session's §1/§3/§4 rewrite with the
+  concurrent session's TLS work. The `Corporate TLS interception (the
+  G42Decrypt / Zscaler middlebox)` section is authoritative; this session's
+  overlapping notes were trimmed to a cross-reference plus the one thing it
+  did not cover — **uv**, which trips on the same middlebox *before a Hermes
+  install exists at all*, so the installer fails first (`UV_SYSTEM_CERTS=1`).
+  Also removed this session's own WhatsApp `reason: 500` entry: it attributed
+  the failure to Baileys' `badSession`, which the authoritative entry
+  explicitly corrects — it is the TLS interception, with the real
+  `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` hidden by `bridge.js`'s hardcoded
+  `pino({level:'warn'})`.
+- fix(config): `src/backend/.env` — inline `# comment` text after a value is
+  read as the value, not stripped. Three optional settings had been
+  uncommented in that form and silently took comment strings as their values:
+  `HERMES_BASE_URL`, `HERMES_HOME_PATH` (making `.exists()` False) and
+  `CORS_ALLOWED_ORIGINS` (a single bogus origin, which rejects every frontend
+  request with an opaque CORS failure). Restructured so explanatory text sits
+  on its own line above each setting, and documented the trap in
+  `Deployment.md` §4.
+- chore(hermes): added `NODE_OPTIONS=--use-system-ca` to
+  `%LOCALAPPDATA%\hermes\.env` (not only the User environment variable) per
+  the guide's own note that Windows env changes never reach already-running
+  processes while Hermes re-reads `.env` via `load_dotenv` on every process
+  start; restarted the gateway to pick it up.
+
 - docs: `Deployment.md` — replaced the "If network/proxy blocks downloads"
   placeholder (which explicitly deferred to a live troubleshooting session)
   with the **verified** corporate-TLS-interception fix, solved live
@@ -39,6 +64,125 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   `Connection closed (reason: 500)` is TLS, not `badSession`, because
   `bridge.js` hardcodes `pino({level:'warn'})` and discards the real
   `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`.
+- docs: `Deployment.md` — added the WhatsApp pairing failure the guide had
+  no entry for at all ("Connection is closed, reason 500"). Root cause is
+  the §1 corporate TLS interception reaching a third runtime: Node, after
+  uv. Fix is `NODE_OPTIONS=--use-system-ca` at User scope plus a gateway
+  restart (a detached gateway never inherits a shell variable). Also
+  documented that `500` is Baileys' `DisconnectReason.badSession` rather
+  than an HTTP status, the full code table (401/408/428/440/500/515, with
+  515 being *normal* right after a successful pair), and that
+  `bridge.js` handles only `loggedOut` — every other code falls through to
+  a 3-second reconnect that loops forever and never self-heals. Recorded
+  the four things ruled out (bridge deps, QR renderer/console encoding,
+  network blocking — the real endpoint `wss://web.whatsapp.com/ws/chat`
+  completes a WebSocket upgrade fine, and the `g.whatsapp.net` reset is a
+  red herring — and stale local session state).
+- docs: `Deployment.md` — generalised §1's TLS section from a uv-specific
+  fix into a per-runtime table (uv / Node / Python, each with its own
+  symptom and lever), named the actual interceptor (`Zscaler Root CA`,
+  alongside the internal G42/Injazat CAs), noted these must be set at User
+  scope so detached gateway/cron processes inherit them, and added a
+  ready-to-run snippet for exporting the Zscaler root to a `.pem`.
+- chore(hermes): set `NODE_OPTIONS=--use-system-ca` at User scope on the
+  new machine and restarted the gateway to pick it up. Verified Node now
+  validates the intercepted chain (`web.whatsapp.com` → HTTP 200).
+- chore(deploy): located the real vault on the new machine
+  (`~\OneDrive - G42\myData\Moussa Brain\second-brain`) and set
+  `VAULT_PATH`; verified `app/config.py` resolves it and derives
+  `second_brain_data_path` correctly. Recorded in `Deployment.md` that it
+  was still mid-OneDrive-sync when set (skeleton complete, most folders
+  empty, no online-only placeholders — genuine absence, not unfetched
+  stubs) and that no capture/cron job should run until the sync completes,
+  since dedup cannot see notes that have not arrived. Also flagged that
+  the 71-character vault root leaves only ~189 characters before this
+  host's silent 260-char `MAX_PATH` failure.
+- fix(deps): pinned `mcp<2` in `src/backend/requirements.txt`. The entry
+  was unpinned, so a fresh install now resolves to mcp 2.x, which renamed
+  `FastMCP` to `MCPServer` — the backend died on import at
+  `app/data_access/system/tools/registry.py`. Pinning restores 1.29.1, the
+  API the code is written against. Found on the first fresh-machine
+  install; an existing venv hides this entirely.
+- fix(tooling): `tools\run-backend.cmd`, `run-frontend.cmd`,
+  `run-prototype.cmd` and `run-demo-backend.cmd` all hardcoded
+  `C:\myWorx\Projects\Second Brain\...` — the first machine's path — so
+  none of them worked on any other checkout (and `start.bat` failed with
+  them, despite resolving its own location correctly). All four now
+  resolve paths from `%~dp0`. `run-prototype.cmd` additionally called
+  `py -m http.server`, impossible on a fresh Windows machine with no `py`
+  launcher; it now uses the backend venv's Python. The backend/frontend
+  launchers also now emit a readable error when the venv or `tools\node`
+  is missing.
+- chore(deploy): configured this repo's backend and frontend on the new
+  machine — backend venv (Python 3.11.16) + deps via uv, `tools\node`
+  populated from Hermes's portable Node 22.23.2, 134 frontend packages
+  installed, and `src/backend/.env` authored with every non-secret value
+  (secrets left as explicit `<FILL ME>` placeholders). Verified live:
+  backend `GET /health` → `{"status":"ok"}` and frontend dev server →
+  HTTP 200, both launched through the repaired `.cmd` launchers.
+- docs: `Deployment.md` — rewrote §3/§4 against the real install. §3 now
+  uses uv (a fresh machine has no system Python, and pip hits the same TLS
+  wall as §1), documents populating `tools\node` from Hermes's copy rather
+  than re-downloading, and records the two defects a fresh machine exposes
+  (the `mcp` pin; `npm run build`'s 8 pre-existing TypeScript errors,
+  which do not affect `npm run dev`). §4 now warns that this app's
+  `COMPASS_BASE_URL` **must** end in `/chat/completions` while Hermes's
+  must **not** — the same key, two deliberately different URLs — and lists
+  the settings that have working defaults. Also refined the "port already
+  in use" troubleshooting: reproduced live, the socket was held by a
+  **dead** PID while a `--reload` multiprocessing fork child kept serving,
+  and that child's command line contains neither `uvicorn` nor `app.main`,
+  so the previously documented filter misses it. Added the
+  bind-test as the authoritative check, plus two trap warnings (exclude
+  `$PID` or you kill your own shell; scope by path or you kill the Hermes
+  gateway, which is also a `python.exe`).
+- chore(hermes): installed and started the gateway on the new machine
+  (2026-09-03) via `hermes gateway install --start-on-login --start-now`.
+  Verified running (login item + live PID + healthy `gateway.log`).
+- docs: `Deployment.md` — rewrote the gateway section. Hermes v0.21.0
+  **generates the Startup-folder `.vbs` itself**; it is no longer a
+  hand-authored workaround. The elevation wall is still real, but the CLI
+  now offers a UAC prompt and degrades to the login item automatically
+  when it is declined (or when run non-interactively, where empty stdin
+  auto-skips it) — so answering `y` during an elevated session is the
+  supported route to the durable Scheduled Task the old note was waiting
+  for. Documented the real three-file launch chain
+  (Startup `.vbs` → `gateway-service\.vbs` → `.cmd` → venv Python), why it
+  is robust (invokes venv Python directly, so `PATH` cannot break it; runs
+  via `wscript.exe`, so PowerShell execution policy does not apply), and
+  that `No messaging platforms enabled` in the log is expected and
+  harmless because cron execution — the part Second Brain needs — runs
+  regardless.
+- chore(hermes): applied this repo's verified Compass `custom_providers`
+  entry to the new machine's real `%LOCALAPPDATA%\hermes\config.yaml`
+  (2026-09-03), switching `model:` off the stock OpenRouter default to
+  `compass`/`gpt-5`. Stock file backed up as `config.yaml.pre-compass.bak`;
+  YAML re-parsed and `hermes doctor` re-run to confirm (`Config version up
+  to date (v40)`, no deprecated keys). The API key itself is deliberately
+  NOT applied — it belongs in `%LOCALAPPDATA%\hermes\.env` as
+  `HERMES_CUSTOM_API_CORE42_AI_API_KEY` and is the operator's own step.
+  Recorded in `Deployment.md`'s status block, including that `hermes
+  doctor` cannot validate a custom provider's key (its connectivity suite
+  only covers built-in providers) — `hermes chat -q` is the real check.
+- docs: `Deployment.md` — rewrote §1 (Hermes deployment) against a real,
+  second from-scratch install on a fresh corporate laptop (2026-09-03).
+  The official installer is now the recommended path (it works here,
+  contrary to prior belief), with the manual `git clone` route demoted to
+  a fallback and its `<hermes-agent-repo-url>` placeholder filled in
+  (`github.com/NousResearch/hermes-agent`). Resolved the previously
+  unanswered "If network/proxy blocks downloads" section: the real blocker
+  is **corporate TLS interception**, which only `uv` trips (it validates
+  against its own bundled root store, not the Windows certificate store),
+  fixed with `UV_SYSTEM_CERTS=1` at User scope. Also added: a verified
+  "what a good install looks like" baseline (v0.21.0, expected `hermes
+  doctor` warnings, the mandatory v0→v40 config migration), two
+  non-interactive-install gotchas (the `cua-driver` stdin hang; a
+  non-zero exit code despite a correct install), the corrected
+  `hermes.exe` path (`%LOCALAPPDATA%\hermes\bin\`, not under
+  `hermes-agent\`), a replacement for the `py -0p` advice (there is no
+  `py` launcher on a fresh machine), the real Compass `custom_providers`
+  procedure with its two paid-for traps, and a dated status block
+  recording exactly what is done and what still needs the operator.
 - fix: `REQ-SB-87-US-02-T05` — closed the last disclosed pre-cutover gap:
   `run_full_capture.py`/`run_delta_capture.py`'s own `ingest_payload` dict
   construction now forwards the real `direction` field (`e.get("direction")

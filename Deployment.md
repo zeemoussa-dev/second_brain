@@ -19,6 +19,123 @@ Pipelines assume Hermes cron jobs already exist.
 
 ---
 
+---
+
+## Where this deployment actually stands (2026-09-03, second machine)
+
+Live status of the fresh corporate laptop, so the next session doesn't
+have to rediscover it. Update this block as it moves.
+
+**Done — Hermes is installed and healthy:**
+
+- Hermes Agent **v0.21.0** at `%LOCALAPPDATA%\hermes`, Python 3.11.16,
+  portable Node 22.23.2, uv 0.12.9, ripgrep, ffmpeg. `hermes --version`
+  and `hermes doctor` both pass.
+- `UV_SYSTEM_CERTS=1` persisted at **User** scope — the corporate-TLS fix
+  without which nothing installs. Leave it set.
+- Config migrated v0 → v40 (`hermes doctor --fix`).
+- **Compass provider applied** to `config.yaml` (`model:` switched off the
+  stock OpenRouter default to `compass`/`gpt-5`). Confirmed reaching
+  Compass for real: Hermes has since discovered and written back the full
+  Compass model catalogue (`models_discovered: true`), which only happens
+  on a successful authenticated call. Note Hermes rewrites this file
+  programmatically, so hand-written comments in it do not survive.
+- **Gateway installed and running** via
+  `hermes gateway install --start-on-login --start-now` — Startup-folder
+  login item (UAC declined), gateway process up, log healthy.
+- **Backend and frontend both build and run** (§3). Backend venv on
+  Python 3.11.16 with all deps installed; started through the fixed
+  `tools\run-backend.cmd` and `GET /health` returned
+  `{"status":"ok"}`. Frontend: `tools\node` populated (Node 22.23.2 /
+  npm 10.9.8), 134 packages installed, dev server served HTTP 200 on
+  5173 via `tools\run-frontend.cmd`. Both were stopped again afterwards —
+  nothing is left running.
+- **`tools\*.cmd` launchers repaired** — they all hardcoded the first
+  machine's path and could never have worked here (§3).
+- **`requirements.txt` pinned `mcp<2`** — an unpinned `mcp` broke the
+  backend outright on a fresh resolve (§3).
+
+**Not done — each needs the operator personally, and each blocks what
+follows it:**
+
+1. **Compass — config applied, key still missing.** The
+   `custom_providers` block and the `model:` switch from OpenRouter to
+   `compass`/`gpt-5` are **done** (2026-09-03) and verified: the YAML
+   parses, and `hermes doctor` reports `Config version up to date (v40)`
+   with no deprecated-key complaints. Backup of the stock file is at
+   `config.yaml.pre-compass.bak`.
+
+   What remains is the secret. Add one line to
+   `%LOCALAPPDATA%\hermes\.env` (confirmed absent as of now):
+
+   ```
+   HERMES_CUSTOM_API_CORE42_AI_API_KEY=<the real Compass key>
+   ```
+
+   Then prove it end-to-end — `hermes doctor` will **not** catch a wrong
+   key, because its connectivity suite only covers its own 40 built-in
+   providers and knows nothing about a custom one:
+
+   ```powershell
+   hermes chat -q "reply with OK"
+   ```
+
+   Everything else waits on this round-trip actually passing, because
+   cloned profiles inherit the default profile's model.
+2. **WhatsApp pairing** (`hermes whatsapp`) — needs a QR scan from the
+   phone. Can't be automated. Not a blocker for capture: the gateway
+   already runs cron jobs without any messaging platform enabled.
+3. **The Obsidian vault is not on this machine.** No `.obsidian` folder
+   exists anywhere under the user profile or `C:\myWorx`. Copy the real
+   vault from the old laptop before any capture job runs, or the cron
+   jobs will write into a vault that isn't the real one.
+4. Gateway Startup item, specialist profiles, Skill deployment, cron
+   jobs — §1's gateway section and §2, in that order.
+
+**Second Brain's own `.env` — 4 values left, all secrets/identity.**
+`src/backend/.env` has every derivable value filled, including the
+correct full-completions `COMPASS_BASE_URL` and a verified `VAULT_PATH`.
+Still `<FILL ME>`:
+
+| Variable | Where to get it |
+|---|---|
+| `COMPASS_API_KEY` | **The same key already in `%LOCALAPPDATA%\hermes\.env`** as `HERMES_CUSTOM_API_CORE42_AI_API_KEY` (present, 32 chars). One gateway, two consumers — copy it across. |
+| `ANTHROPIC_API_KEY` | Anthropic console. Powers agent chat (LangGraph) only. |
+| `SELF_EMAIL` | The Outlook mailbox capture runs against. Required to boot, but has no real callers left (`REQ-SB-84`). |
+| `HERMES_MCP_SHARED_SECRET` | Invent any long random string; use the identical value on the Hermes side. Not yet wired up here. |
+
+**Vault located, but it was still syncing when set.**
+`C:\Users\mahmoud.moussa\OneDrive - G42\myData\Moussa Brain\second-brain`
+— confirmed resolving, and `.second-brain` state will default inside it.
+When first pointed at, the OKF skeleton was complete but nearly empty
+(People 96, Research 3, Threads 2, everything else 0, 112 files / 0.1 MB
+total, and **zero** OneDrive online-only placeholders, so it was genuine
+absence rather than unfetched stubs). **Let the sync finish before running
+any capture or cron job** — dedup only protects against duplicates it can
+structurally see, so a half-synced vault will get duplicate notes for
+everything that had not yet arrived.
+
+**Watch the 260-char `MAX_PATH` trap here.** This vault root is already
+**71 characters**, leaving ~189 for everything beneath it. Real note
+paths nest deep (`Work\Threads\<thread title>\messages\<date> <HH:MM>
+<sender>.md`), and on this host `Path.exists()`/`is_file()`/`is_dir()`
+silently return `False` past that limit rather than raising — so an
+over-long note reads as "missing" with no error anywhere. Worth
+re-checking if notes start mysteriously not being found.
+
+**Known-broken, left alone deliberately:** `npm run build` fails on 8
+pre-existing TypeScript errors (§3). `npm run dev` is unaffected, which
+is what the launchers and the actual workflow use.
+
+**Machine baseline found before installing** (useful for judging whether
+a future machine is comparable): Git for Windows already present
+user-scope; Outlook desktop installed but not running; **no** real
+Python, **no** `py` launcher, **no** Node, **no** `uv`; execution policy
+`Undefined` at every persistent scope; network reachable to github.com,
+nousresearch, astral.sh.
+
+---
+
 ## 1. Hermes Deployment
 
 ### What "no admin rights" forces
@@ -40,23 +157,130 @@ user-writable path that needs zero elevation —
 
 ### Real install steps
 
+**Use the official installer — it works on a locked-down machine.**
+Verified end-to-end on the second real install (2026-09-03, fresh
+corporate laptop, no admin rights). Earlier belief that "the official
+installer doesn't work here" was *almost* right but misattributed: it
+fails at exactly **one** step, for a reason that has nothing to do with
+admin rights (see the TLS section below), and once that one thing is
+fixed it completes. Reach for the manual `git clone` route only if the
+installer fails for some *other* reason.
+
 ```powershell
-# 1. Clone hermes-agent under a writable, non-Program-Files path
-git clone <hermes-agent-repo-url> "$env:LOCALAPPDATA\hermes\hermes-agent"
-cd "$env:LOCALAPPDATA\hermes\hermes-agent"
+# 0. PREREQUISITE on a TLS-intercepting corporate network — set this
+#    FIRST, before running the installer, or it will fail at the
+#    "Installing Python 3.11" step. See "TLS interception" below.
+[Environment]::SetEnvironmentVariable('UV_SYSTEM_CERTS','1','User')
+$env:UV_SYSTEM_CERTS = '1'
 
-# 2. Run the bundled setup script (creates the uv-managed venv, installs
-#    deps, symlinks the `hermes` command into a user bin dir)
-bash setup-hermes.sh
+# 1. Run the official installer (user-scope, no elevation)
+iex (irm https://hermes-agent.nousresearch.com/install.ps1)
 
-# 3. Confirm it's really on PATH and really runs
+# 2. Confirm it's really on PATH and really runs (NEW SHELL — the
+#    installer edits the User PATH, which existing shells don't see)
 hermes --version
 ```
 
-If `git`/`bash`/`uv` themselves aren't available and can't be installed
-(same admin-rights wall), Git for Windows and a portable `uv.exe` both
-have no-admin, user-scope installers — install those first, same
-principle: user-writable paths, User `PATH` only.
+What the installer really does, confirmed by reading it and by watching
+it run — it is **user-scope and needs no elevation**, which is why it is
+viable here at all:
+
+| It installs | Where |
+|---|---|
+| `uv` | `%LOCALAPPDATA%\hermes\bin\uv.exe` |
+| Python 3.11 (via uv) | `%APPDATA%\uv\python\cpython-3.11...` |
+| PortableGit (only if `git` is missing) | `%LOCALAPPDATA%\hermes\git\` |
+| Node.js 22 LTS (portable) | `%LOCALAPPDATA%\hermes\node\` |
+| `hermes-agent` repo + its venv | `%LOCALAPPDATA%\hermes\hermes-agent\` |
+| ripgrep, ffmpeg (optional, via winget) | winget's own user scope |
+
+It writes **User** `PATH` and `HERMES_HOME`/`HERMES_GIT_BASH_PATH` only,
+never System, and it creates **no** service, Scheduled Task, or Startup
+item — so the gateway login-item workaround below is still a separate,
+manual step afterwards.
+
+**Non-issues you will see in its output and can safely ignore:**
+
+- `Trying SSH clone... Host key verification failed.` — expected on a
+  machine with no GitHub SSH key. The installer falls back to HTTPS by
+  itself and the clone succeeds. Not an error to chase.
+- `[!] TUI npm install failed -- exit code` (with a *blank* exit code,
+  while the captured npm output directly above it says
+  `Node dependencies installed`). This is an installer bug in its own
+  success-detection, not a real failure. Verify rather than assume: if
+  `ui-tui\node_modules` exists, it worked. If it genuinely didn't,
+  the installer prints the manual recovery itself —
+  `cd "%LOCALAPPDATA%\hermes\hermes-agent\ui-tui"; npm install`.
+
+#### TLS interception — the one real blocker (2026-09-03)
+
+This supersedes the old speculative "If network/proxy blocks downloads"
+section further down. The failure is specific and reproducible:
+
+```
+error: Failed to install cpython-3.11.16-windows-x86_64-none
+  Caused by: invalid peer certificate: UnknownIssuer
+```
+
+**Why it happens, and why it is confusing:** the corporate network does
+TLS interception, so every HTTPS response is re-signed by a corporate
+root CA. That CA *is* in the Windows certificate store — which is why
+`Invoke-WebRequest https://github.com/...` returns `200` happily, and
+why `git clone` over HTTPS works fine. But `uv` is a Rust binary that
+validates TLS against its **own bundled root store**, which does not
+contain the corporate CA. So uv alone fails, on the exact same host that
+every other tool reaches without complaint. A reachability test with
+PowerShell will therefore *not* reproduce this — don't let a green
+connectivity check talk you out of this diagnosis.
+
+**Fix:** tell uv to use the Windows certificate store instead of its
+bundled one.
+
+```powershell
+[Environment]::SetEnvironmentVariable('UV_SYSTEM_CERTS','1','User')
+```
+
+Set it at **User** scope (no elevation), not just for the current shell:
+uv runs again later for dependency installs, and Hermes itself may
+invoke it after install. Naming note: the variable used to be
+`UV_NATIVE_TLS`, which still works but now prints
+`the UV_NATIVE_TLS environment variable is deprecated ... Use
+UV_SYSTEM_CERTS instead` — use the new name.
+
+**This is the same middlebox documented in full under
+["Corporate TLS interception (the G42Decrypt / Zscaler middlebox)"](#corporate-tls-interception-the-g42decrypt--zscaler-middlebox)
+later in this section** — read that for the real chain, the thumbprint,
+the Node and Python levers, and the PEM-export fallback. That section is
+authoritative; the note here exists only because uv trips on it *before
+you have a Hermes install at all*, so the installer fails first.
+
+**uv is the third runtime to hit it,** after Node and Python, and it is
+the one this section is about. Its tell is distinct — `invalid peer
+certificate: UnknownIssuer` — and its lever is its own:
+
+| Runtime | Tell | Lever |
+|---|---|---|
+| **uv** (Rust/rustls) | `invalid peer certificate: UnknownIssuer` | `UV_SYSTEM_CERTS=1` |
+| **Node** | see the authoritative section | `NODE_OPTIONS=--use-system-ca` |
+| **Python** | see the authoritative section | `pip_system_certs` / `SSL_CERT_FILE` |
+
+Set it at **User** scope, not just in your shell: the gateway and its
+cron jobs run detached and never see an interactive session's variables.
+
+#### Fallback: the manual `git clone` route
+
+Only if the official installer fails for a reason other than the TLS one
+above. Needs `uv` and `bash` present already (Git for Windows supplies
+bash at `%LOCALAPPDATA%\Programs\Git\bin\bash.exe`; a portable `uv.exe`
+has a no-admin user-scope installer):
+
+```powershell
+git clone https://github.com/NousResearch/hermes-agent "$env:LOCALAPPDATA\hermes\hermes-agent"
+cd "$env:LOCALAPPDATA\hermes\hermes-agent"
+bash setup-hermes.sh   # creates the uv-managed venv, installs deps,
+                       # puts the `hermes` command on the User PATH
+hermes --version
+```
 
 **Known trap:** a bare `python`/`python3` on this machine's `PATH` may
 resolve to the **Microsoft Store execution-alias stub**
@@ -64,11 +288,105 @@ resolve to the **Microsoft Store execution-alias stub**
 was not found; run without arguments to install from the Microsoft
 Store" instead of actually running anything — it is not a real
 interpreter. This bit us more than once mid-session when invoking a
-Hermes-deployed script directly (outside the Hermes CLI's own venv). Find
-the real interpreter with `py -0p` (lists every real registered install)
-rather than trusting a bare `python` call, or point directly at
-`hermes-agent`'s own venv (`hermes-agent\venv\Scripts\python.exe`) when
-you specifically need Hermes's own environment.
+Hermes-deployed script directly (outside the Hermes CLI's own venv).
+
+**Correction from the 2026-09-03 install — `py -0p` is not a reliable
+escape hatch.** The old advice here was to find a real interpreter with
+`py -0p`. On a genuinely fresh machine there is no `py` launcher at all
+(it ships with a full python.org install, which this laptop never had),
+so that command fails too and tells you nothing. Before Hermes is
+installed there is simply **no real Python on the machine** — the Store
+stub is all you have.
+
+Use, in order of preference:
+
+```powershell
+# 1. Hermes's own venv — what you want whenever the script is a
+#    Hermes-deployed Skill script and needs Hermes's own dependencies
+& "$env:LOCALAPPDATA\hermes\hermes-agent\venv\Scripts\python.exe" --version
+
+# 2. The uv-managed interpreter Hermes installed, for anything standalone
+& "$env:LOCALAPPDATA\hermes\bin\uv.exe" python list --only-installed
+```
+
+`uv python list --only-installed` is the replacement for `py -0p` on
+this machine: it lists the real, resolvable interpreter paths.
+
+### What a good install looks like (verified 2026-09-03)
+
+Baseline to compare against when something later seems off. Installed
+version was **Hermes Agent v0.21.0 (2026.8.31)**, Python 3.11.16, install
+method `git`. (Note the drift: `MEMORY.md` records `hermes-agent==0.20.4`
+on the first machine. Don't assume Skill/CLI behaviour is identical
+across the two installs — check before blaming a Skill.)
+
+```powershell
+hermes --version   # v0.21.0, install dir + Python version
+hermes doctor      # the real health check — run it before anything else
+```
+
+**Path correction:** the `hermes` executable is at
+`%LOCALAPPDATA%\hermes\bin\hermes.exe` — *not*
+`%LOCALAPPDATA%\hermes\hermes-agent\bin\hermes.exe`, which is what
+`Implementation/Tasks/REQ-SB-85-US-02-T01-hermes-cli-export-import-wrappers.md`
+records. `hermes-agent\` is the cloned repo; `bin\` is its sibling.
+
+**`hermes` not found right after installing?** The installer writes the
+**User** `PATH`, which already-open shells never see. Open a new terminal.
+To refresh inside an existing PowerShell session without restarting it:
+
+```powershell
+$env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' +
+            [Environment]::GetEnvironmentVariable('Path','User')
+```
+
+On a healthy fresh install `hermes doctor` reports Python env, SSL CA
+bundle, config files, and directory structure all ✓, and these tools
+available — which is the set Second Brain's pipelines actually depend on:
+`terminal`, `cronjob`, `file`, `skills`, `delegation`, `memory`,
+`code_execution`, `session_search`.
+
+**Warnings that are expected and safe to ignore on this deployment:**
+
+- Every unconfigured auth provider (Nous Portal, OpenAI Codex, MiniMax,
+  xAI) and every tool marked `system dependency not met` (`vision`,
+  `tts`, `image_gen`, `spotify`, `discord`, …). None are used here.
+- `Playwright Chromium not installed` — browser tools only.
+- The npm advisories in `agent-browser` / `web` workspaces. Optional
+  browser tooling, off the Outlook/cron path. `hermes doctor --fix`
+  deliberately leaves these; they need a manual `npm audit fix`.
+
+**One thing genuinely worth fixing on a fresh install:** `hermes doctor`
+reports `Config version outdated (v0 → v40)`. Fix it immediately, before
+creating profiles or cron jobs, so everything downstream is authored
+against the current schema:
+
+```powershell
+hermes doctor --fix    # migrates the config; reports what it couldn't fix
+```
+
+#### Installing non-interactively? Two real gotchas
+
+Only relevant when driving the installer from a script or an automation
+tool rather than typing it into a real terminal:
+
+- **It can hang forever at `Installing Computer Use driver
+  (cua-driver)`.** That step spawns `powershell.exe -Version 5.1 -s`
+  (stdin/server mode), which blocks reading standard input that never
+  arrives. Symptom: zero output for many minutes, and the child process
+  burning ~0 CPU. `cua-driver` is desktop-control tooling that this
+  deployment does not use — killing that child process lets the installer
+  finish normally. Diagnose with:
+
+  ```powershell
+  Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'powershell' } |
+    Select-Object ProcessId, ParentProcessId, CreationDate, CommandLine
+  ```
+
+- **A non-zero exit code does not mean the install failed.** This run
+  exited `1` because of that killed optional step plus the cosmetic npm
+  false-failure, while having installed everything correctly. Judge by
+  `hermes --version` and `hermes doctor`, not by the exit code.
 
 ### The gateway (cron scheduler) — the real nightmare
 
@@ -77,19 +395,60 @@ background service** — the closest Windows equivalent is a Scheduled
 Task, and creating a real one that survives a reboot requires the same
 elevation this machine doesn't have.
 
-**Workaround used here:** a Windows **Startup-folder login item** instead
-— a `.vbs` launcher script dropped into
-`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\`
-(`Hermes_Gateway.vbs`; a second one per additional profile that needs its
-own gateway, e.g. `Hermes_Gateway_meeting-prep-agent.vbs`) that starts
-`hermes gateway run` silently on login.
+**Update 2026-09-03 — you no longer hand-author the `.vbs`.** Hermes
+v0.21.0 does the whole fallback itself. Run one command:
 
 ```powershell
-hermes gateway install    # attempts the real service; on this machine,
-                           # falls back to / needs to be paired with the
-                           # Startup-folder .vbs approach above
-hermes gateway status      # confirms it's actually running + heartbeat
+hermes gateway install --start-on-login --start-now
+hermes gateway status     # confirms login item + running PID
+hermes gateway list       # per-profile view
 ```
+
+The elevation wall is still real — that part of the old note was
+correct. What changed is that the CLI now detects it and degrades
+gracefully instead of leaving you to build the workaround by hand. The
+real output on this machine:
+
+```
+↻ Scheduled Task install may need administrator approval on this Windows account.
+  Open the UAC prompt now? [y/N]:
+  Skipped elevation. Falling back to Startup folder.
+✓ Installed Windows login item: ...\Startup\Hermes_Gateway.vbs
+✓ Gateway started via direct spawn (PID 23200)
+```
+
+**Answer `y` if you can.** The prompt offers a real UAC elevation, and
+if you have any way to approve it (your own admin, or IT granting a
+one-time elevated session) you get a genuine Scheduled Task instead of
+the login-item fallback — which is the durable fix the old note below
+was waiting for. Answering `N`, or running non-interactively (where
+stdin is empty and it auto-skips, as happened here), gets the fallback.
+
+**What it actually builds** — worth knowing, because debugging a silent
+gateway means knowing which link broke:
+
+| File | Role |
+|---|---|
+| `%APPDATA%\...\Startup\Hermes_Gateway.vbs` | Login-triggered shim. Checks the target exists, then launches it hidden (`WScript.Shell.Run ..., 0, False`). |
+| `%LOCALAPPDATA%\hermes\gateway-service\Hermes_Gateway.vbs` | The real launcher it delegates to. |
+| `%LOCALAPPDATA%\hermes\gateway-service\Hermes_Gateway.cmd` | Sets `HERMES_HOME`, `VIRTUAL_ENV`, `PYTHONPATH`, then runs `venv\Scripts\python.exe -m hermes_cli.main gateway run`. |
+
+Two useful properties of that chain: it invokes the **venv Python
+directly**, so a broken/unset `PATH` cannot stop the gateway starting;
+and it runs through `wscript.exe`, so **PowerShell execution policy is
+irrelevant** to it (which is why `.vbs` was the right choice).
+
+**A healthy gateway log** (`%LOCALAPPDATA%\hermes\logs\gateway.log`)
+shows the control pipe listening, turn machinery warmed, housekeeping
+started, and — expected before WhatsApp is paired:
+
+```
+WARNING gateway.run: No messaging platforms enabled.
+INFO    gateway.run: Gateway will continue running for cron job execution.
+```
+
+That warning is **not** a problem. Cron execution is exactly what
+Second Brain needs from the gateway; messaging platforms are additive.
 
 **This is a known, disclosed, still-open gap, not a solved problem:** a
 Startup-folder item only fires on interactive login, not on a true
@@ -101,6 +460,14 @@ assume it's durable — check `hermes gateway status` after every reboot
 until a real elevated Scheduled Task becomes possible** (e.g., if IT
 grants a one-time elevated session to register it properly, that's worth
 doing instead of this fallback).
+
+Getting to that real Scheduled Task no longer needs any manual task
+authoring — just re-run `hermes gateway install --force --start-on-login`
+in an interactive terminal during an elevated session and answer `y` to
+the UAC prompt. Until then the login-item caveat above stands in full,
+and `hermes gateway status` after a reboot remains the check that
+matters, because a down gateway is silent: every cron job still looks
+correctly `enabled` in `hermes cron list` while nothing runs.
 
 ### If the antivirus/Defender flags it
 
@@ -121,9 +488,21 @@ laptop are:
   execution policy — that needs an IT-side AMSI exclusion, not something
   fixable user-side.
 
-*(Once you've actually hit and solved this again, replace this
-paragraph with the real fix — this is a starting point, not a verified
-replay.)*
+**2026-09-03 update — it did not recur.** The second from-scratch
+install on a fresh corporate laptop hit no antivirus, AMSI, or
+execution-policy interference at any point: the installer, its bundled
+`setup-hermes.sh`, winget, and every spawned script ran unimpeded, with
+the execution policy left at its stock `Undefined` (no
+`Set-ExecutionPolicy` was needed). So this is *not* a reliable,
+every-machine blocker — treat it as something that happened once and may
+not happen again, and don't pre-emptively change execution policy or
+raise an IT ticket for it before actually seeing a failure.
+
+Worth knowing if it does resurface: the one component that runs a
+`.vbs` at login is the gateway workaround below, which is a different
+mechanism from anything the installer executes — so an AV problem at
+install time and an AV problem at gateway-startup time are separate
+diagnoses, not the same one.
 
 ### Corporate TLS interception (the G42Decrypt / Zscaler middlebox)
 
@@ -206,17 +585,64 @@ there; a *certificate error* points at the TLS interception above.
 
 "Compass" is the same internal LLM endpoint both Second Brain's own
 backend and every Hermes profile's model calls use — one company gateway,
-two consumers. Hermes needs its own model pointed at it:
+two consumers. Hermes needs its own model pointed at it.
+
+**Do this by editing `config.yaml` directly, not through `hermes setup
+model`.** Registering a *custom* (Compass-shaped) provider is not exposed
+as a documented non-interactive CLI flag — this repo's own
+`Hermes-Provisioning/config/custom_providers.yaml` is the verified,
+already-proven mechanism, and is the intended reuse point. A fresh
+install ships pointing at OpenRouter
+(`model.default: anthropic/claude-opus-4.6`), so this is a real change,
+not a no-op.
+
+**Step 1 — merge the provider entry into
+`%LOCALAPPDATA%\hermes\config.yaml`.** Back the file up first
+(`copy config.yaml config.yaml.pre-compass.bak`), then replace the whole
+stock `model:` block with:
+
+```yaml
+model:
+  default: gpt-5
+  provider: compass
+  base_url: https://api.core42.ai/v1
+custom_providers:
+  - name: compass
+    base_url: https://api.core42.ai/v1
+    key_env: HERMES_CUSTOM_API_CORE42_AI_API_KEY
+    model: gpt-5
+```
+
+Two traps, both already paid for once (see
+`Hermes-Provisioning/config/custom_providers.yaml`'s own header):
+
+- `base_url` **must not** end in `/chat/completions`. Hermes appends that
+  itself, and the doubled path returns a real 404. Do **not** copy Second
+  Brain's own `COMPASS_BASE_URL` value (which *does* include it) verbatim.
+- There are two `base_url` fields for the same logical provider. Only
+  `custom_providers[].base_url` is actually read when building requests
+  (`auth_commands.py::_provider_base_url`); `model.base_url` is kept in
+  sync by hand so the two never disagree.
+
+**Step 2 — put the key in `%LOCALAPPDATA%\hermes\.env`** (which the
+installer creates), never in `config.yaml`:
+
+```
+HERMES_CUSTOM_API_CORE42_AI_API_KEY=<the real Compass key>
+```
+
+**Step 3 — verify it actually reaches Compass** before building anything
+on top of it:
 
 ```powershell
-hermes setup model      # interactive: point the default model/provider at Compass
-# or non-interactively, whatever the real provider/base-url/key values are
-hermes model            # confirm/select after setup
+hermes model                       # should show compass / gpt-5
+hermes chat -q "reply with OK"     # a real round-trip through Compass
 ```
 
 Every specialist profile created via `--clone` (see below) inherits
 whatever model/provider the `default` profile has configured — set
-Compass up on `default` first, before cloning any specialists.
+Compass up on `default` first, and confirm Step 3 passes, before cloning
+any specialists. Cloning first means re-fixing the same setting N times.
 
 ### WhatsApp (QR-code pairing)
 
@@ -399,21 +825,63 @@ run.
 
 ## 3. System Deployment (this repo)
 
+Verified end-to-end 2026-09-03. The old version of this section said
+`python -m venv` + `pip install`; neither works on a fresh machine —
+there is no system Python, and pip would hit the same corporate-TLS wall
+described in §1. Use uv (installed by Hermes) for both reasons.
+
 ```powershell
-git clone <this-repo-url>
-cd "Second Brain"
+git clone https://github.com/zeemoussa-dev/second_brain.git
+cd second_brain
 
-# Backend
-cd src/backend
-python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt   # or however deps are pinned
+# --- Backend: venv + deps, via uv -----------------------------------------
+cd src\backend
+$env:UV_SYSTEM_CERTS = '1'          # corporate TLS; see §1
+$uv = "$env:LOCALAPPDATA\hermes\bin\uv.exe"
+& $uv venv --python 3.11 .venv
+& $uv pip install --python .venv\Scripts\python.exe -r requirements.txt
 
-# Frontend
+# --- Portable Node toolchain at tools\node --------------------------------
+# /tools/node/ is gitignored: the repo expects a portable Node there, but
+# does not ship one. Hermes already installed a correct Node 22 LTS, so copy
+# it rather than re-downloading through the intercepted network:
+Copy-Item -Recurse "$env:LOCALAPPDATA\hermes\node" "<repo>\tools\node"
+
+# --- Frontend -------------------------------------------------------------
 cd ..\..\src\frontend
-..\..\tools\node\npm.cmd install                # portable Node toolchain
-                                                 # lives at tools/node — no
-                                                 # global Node install needed
+..\..\tools\node\npm.cmd install
 ```
+
+**Two real defects this install surfaced.** Both are repo bugs a fresh
+machine exposes and an existing one hides:
+
+1. **`requirements.txt` had `mcp` unpinned** — a fresh resolve now pulls
+   **mcp 2.x**, which renamed `FastMCP` to `MCPServer`. The backend then
+   dies on import at
+   `app/data_access/system/tools/registry.py`'s `from mcp.server.fastmcp
+   import FastMCP`. **Fixed** by pinning `mcp<2` (resolves to 1.29.1,
+   the API the code is written against). Migrating to 2.x is separate,
+   real work. Other unpinned entries (`langchain-openai`, `anthropic`,
+   `pypdf`, `pyyaml`, `python-multipart`, `langchain-mcp-adapters`) are
+   the same class of risk and have not bitten yet.
+2. **`npm run build` fails** — 8 pre-existing TypeScript errors
+   (7 × `TS7053` indexing `CSSProperties` with a `string` in the
+   agents-map components, 1 × `TS2741` missing `onOpen` prop in
+   `Cockpit.tsx`). This is **not** a deployment problem: `vite build`
+   alone succeeds (376 modules), and `npm run dev` runs fine, because
+   Vite does not typecheck. It means `tsc -b` was already broken before
+   this machine existed — the workflow here is `npm run dev`, and nobody
+   runs the production build. Real, but app code, not config.
+
+**The `tools\*.cmd` launchers were broken and are now fixed.** Every one
+of them hardcoded `C:\myWorx\Projects\Second Brain\...` — the *first*
+machine's path, with a space — so they failed on any other checkout.
+They now resolve everything from `%~dp0` (the script's own location), so
+the repo can live anywhere and be renamed freely. `run-prototype.cmd`
+additionally called `py -m http.server`, which cannot work on a fresh
+machine (no `py` launcher, §1); it now uses the backend venv's Python.
+`run-backend.cmd`/`run-frontend.cmd` also now fail with a readable
+message instead of a cryptic one when the venv or `tools\node` is absent.
 
 **Prerequisites:**
 
@@ -456,14 +924,51 @@ has no defaults, by design):
 
 | Variable | What it's for |
 |---|---|
-| `COMPASS_BASE_URL` | Base URL of the Compass LLM endpoint (same one Hermes profiles point at) |
-| `COMPASS_API_KEY` | API key for Compass |
+| `COMPASS_BASE_URL` | **The FULL completions URL**, ending in `/chat/completions` — see the warning below |
+| `COMPASS_API_KEY` | API key for Compass (the same key Hermes uses as `HERMES_CUSTOM_API_CORE42_AI_API_KEY`) |
 | `COMPASS_MODEL` | Model name Compass classification calls use |
 | `ANTHROPIC_API_KEY` | Powers real conversational agent chat (LangGraph) |
 | `ANTHROPIC_MODEL` | Anthropic model name |
 | `VAULT_PATH` | Absolute path to the Obsidian vault directory (copied over from the old laptop) |
 | `SELF_EMAIL` | The Outlook mailbox address capture runs against |
 | `HERMES_MCP_SHARED_SECRET` | Shared secret gating the `/mcp` write-capable tool endpoint |
+
+> **The two Compass base URLs are deliberately different. Do not
+> reconcile them.**
+>
+> | Consumer | Value | Why |
+> |---|---|---|
+> | **This app** (`.env` `COMPASS_BASE_URL`) | `https://api.core42.ai/v1/chat/completions` | `app/data_access/compass_client.py` POSTs to it verbatim, appending nothing |
+> | **Hermes** (`config.yaml` `custom_providers[].base_url`) | `https://api.core42.ai/v1` | Hermes appends `/chat/completions` itself |
+>
+> Copying either into the other produces a real 404 — from a doubled path
+> one way, a missing one the other. This has been paid for once already;
+> see `Hermes-Provisioning/config/custom_providers.yaml`'s own header.
+
+> **`.env` does not support inline comments — the comment becomes the
+> value.** Hit for real on 2026-09-03. Writing
+> `HERMES_BASE_URL=            # default http://127.0.0.1:9119`
+> does not leave the setting unset; it sets it to the literal string
+> `"# default http://127.0.0.1:9119"`. Confirmed live: `hermes_home_path`
+> became `# default ~/AppData/Local/hermes` (so `.exists()` was `False`),
+> and `cors_allowed_origins` became a single bogus origin, which silently
+> breaks every frontend call with a CORS rejection rather than a clear
+> error. **Leave an optional line fully commented out to get its default**
+> — only uncomment when supplying a real value, and put explanatory text
+> on its own line above.
+
+`app/config.py` also has several settings that **do** have working
+defaults, so they can be omitted: `HERMES_BASE_URL`
+(`http://127.0.0.1:9119`, `hermes serve`'s real default port),
+`HERMES_HOME_PATH` (`~/AppData/Local/hermes` — already correct on this
+machine), `SECOND_BRAIN_DATA_PATH` (defaults to
+`<VAULT_PATH>/.second-brain`), and `CORS_ALLOWED_ORIGINS` (the 5173/5174
+Vite dev ports).
+
+One oddity worth not re-investigating: `SELF_EMAIL` is **required** by
+`app/config.py` but has zero real callers left in the app — capture moved
+to Hermes. It still has to be set or the backend refuses to start.
+`REQ-SB-84` tracks removing it.
 
 `.env` is gitignored — never commit it.
 
@@ -507,6 +1012,46 @@ reported PID (which can be a dead parent):
 ```powershell
 Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*uvicorn*" }
 ```
+
+**Refined 2026-09-03 — that filter is not enough, confirmed live.** The
+orphan was reproduced deliberately while verifying the launchers, and the
+real shape is worse than the note above implies:
+
+- The socket on 8001 was owned by **PID 30256, which had no process row
+  at all** — `Get-Process` reported it dead while `Invoke-WebRequest
+  http://127.0.0.1:8001/health` still returned `200`.
+- The process actually serving was a `--reload` **multiprocessing fork
+  child**, whose command line is:
+
+  ```
+  python.exe -c "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=30256, pipe_handle=340)" --multiprocessing-fork
+  ```
+
+  It contains neither `uvicorn` nor `app.main`, so **the `*uvicorn*`
+  filter above misses it**, as does any filter on the app name.
+
+Ask the port who owns it, then kill the live child by walking parentage —
+and never trust "is the PID alive", because the dead parent keeps the
+socket:
+
+```powershell
+$owner = (Get-NetTCPConnection -LocalPort 8001 -State Listen).OwningProcess
+Get-CimInstance Win32_Process |
+  Where-Object { $_.ProcessId -ne $PID -and
+                 ($_.ProcessId -eq $owner -or $_.ParentProcessId -eq $owner) } |
+  Select-Object ProcessId, ParentProcessId, CommandLine
+```
+
+The single most reliable check is not process listing at all — try to
+bind the port. If `[System.Net.Sockets.TcpListener]` can `.Start()` on
+8001, it is genuinely free regardless of what any listing claims.
+
+**Two traps when writing these filters** (both hit during that session):
+exclude `$PID`, or the PowerShell process running your own query matches
+its own command-line text and you kill your own shell; and scope by
+`hermes-agent` path before killing any `python.exe`, since the **Hermes
+gateway is also a Python process** and taking it down silently stops
+every cron job.
 
 **Cron jobs registered but nothing happens.** Check `hermes gateway
 status` first — the Startup-folder gateway workaround (Section 1) does
