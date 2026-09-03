@@ -1002,6 +1002,45 @@ Do these in order — each one assumes the previous is real and working:
 
 ### Troubleshooting
 
+**Backup & Restore refuses: "the `hermes` CLI isn't on PATH".** Hit live
+2026-09-03. The message is accurate and the refusal is correct — but the
+CLI is almost certainly installed fine, and the real fault is the
+**backend process's inherited environment**, not the archive or the
+install.
+
+`hermes_restore.py`'s `_validate` does `shutil.which("hermes")` and
+refuses if it comes back `None`, because it needs the CLI to create any
+profile the archive carries that the target doesn't already have. The
+installer puts `%LOCALAPPDATA%\hermes\bin` on the **User** `PATH`, and a
+process **never** picks up a `PATH` change made after it started — nor do
+any children it spawns. So a backend launched from a terminal that was
+already open before Hermes was installed inherits a `PATH` without the
+Hermes bin dir, and the restore refuses even though `hermes --version`
+works perfectly in a *new* shell.
+
+Proved side by side, same interpreter, same machine, minutes apart:
+
+```
+stale PATH     : shutil.which('hermes') -> None
+refreshed PATH : shutil.which('hermes') -> ...\hermes\bin\hermes.EXE
+```
+
+**Fix: restart the backend from a shell that can see it.** Either open a
+new terminal, or refresh the current one first and relaunch:
+
+```powershell
+$env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' +
+            [Environment]::GetEnvironmentVariable('Path','User')
+tools\run-backend.cmd
+```
+
+Double-clicking `start.bat` from Explorer does **not** hit this — Explorer
+already carries the current User `PATH`. It is specific to launching from
+a long-lived shell (or any tool/agent session) that predates the Hermes
+install. The same trap applies to anything else the backend shells out
+to, so if a Hermes-dependent feature fails only when launched one
+particular way, check this before suspecting the feature.
+
 **Port already in use / backend won't start on 8001.** A previous
 uvicorn `--reload` process can leave an orphaned worker holding the port.
 Find the real live child process rather than trusting `netstat`'s

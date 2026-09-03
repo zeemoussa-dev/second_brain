@@ -18,6 +18,19 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- docs: `Deployment.md` — added the Backup & Restore "`hermes` CLI isn't on
+  PATH" refusal to §4 troubleshooting. Hit live 2026-09-03 during a real
+  restore. The refusal is correct (`hermes_restore.py::_validate` does
+  `shutil.which("hermes")`, needed to create profiles the target lacks), but
+  the fault is the backend's inherited environment, not the install: the
+  installer writes the **User** `PATH`, and a process never picks up a `PATH`
+  change made after it started, nor do its children. A backend launched from a
+  terminal that predates the Hermes install therefore refuses, while
+  `hermes --version` works fine in a new shell. Documented the side-by-side
+  proof, the fix (refresh `PATH` and relaunch), and that `start.bat` from
+  Explorer does not hit this — it is specific to long-lived shells and agent
+  sessions.
+
 - fix(config): `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` and
   `HERMES_MCP_SHARED_SECRET` now default to `""` in `app/config.py` instead of
   being required. They had no defaults, so omitting them failed startup with a
