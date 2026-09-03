@@ -23,13 +23,19 @@ Real, disclosed behaviour, not silent:
     cron job prompts, SOUL.md, anywhere) is rewritten to the new
     `--vault-path` -- both the raw and JSON-double-backslash-escaped
     forms.
-  - cron/jobs.json is MERGED by real job `id`, never overwritten wholesale
-    -- a job id that already exists on the target is left alone and
-    reported, never silently replaced.
-  - The Second Brain app's own data (`.second-brain/data/`,
-    `.second-brain/pipelines/`) is only written if the target vault's own
-    copy doesn't already have real content there -- same "refuse to
-    overwrite already-curated data" discipline as
+  - cron/jobs.json (top-level AND every real per-profile
+    `profiles/<id>/cron/jobs.json`, e.g. `meeting-prep-agent`) is MERGED
+    by real job `id`, never overwritten wholesale -- a job id that
+    already exists on the target is left alone and reported, never
+    silently replaced.
+  - The Second Brain app's own data (Registry `data/`, `pipelines/`) is
+    written to the TARGET's own real, configured location -- read from
+    ITS OWN `src/backend/.env`'s `SECOND_BRAIN_DATA_PATH` if set (the new
+    machine may relocate this off the vault entirely; never assumed
+    vault-relative), falling back to `<vault-path>/.second-brain` only if
+    unset, same resolution `hermes_backup.py` itself uses. Only written
+    if that location doesn't already have real content there -- same
+    "refuse to overwrite already-curated data" discipline as
     `build_entities_report.py`'s own guard. `--force` overrides.
 
 Usage:
@@ -197,8 +203,29 @@ def _validate(scratch: Path, manifest: dict, hermes_home: Path, vault_path: Path
         raise RestoreValidationError(problems)
 
 
-def _merge_cron_jobs(hermes_home: Path, backed_up_jobs_path: Path) -> dict:
-    target_path = hermes_home / "cron" / "jobs.json"
+def _resolve_second_brain_data_path(vault_path: Path, repo_root: Path, override: str | None) -> Path:
+    """Same resolution as hermes_backup.py's own identically-named
+    function (duplicated deliberately, not imported -- each of this
+    tool-pair's two scripts owns its own copy, matching this project's
+    own established "no shared import across this kind of boundary"
+    convention): real `SECOND_BRAIN_DATA_PATH` from THIS machine's own
+    `src/backend/.env` if set, else the same vault-relative default the
+    backend itself falls back to. `override` (the CLI flag) wins over
+    both."""
+    if override:
+        return Path(override)
+    env_path = repo_root / "src" / "backend" / ".env"
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("SECOND_BRAIN_DATA_PATH="):
+                value = stripped.split("=", 1)[1].strip().strip('"').strip("'")
+                if value:
+                    return Path(value)
+    return vault_path / ".second-brain"
+
+
+def _merge_cron_jobs(target_path: Path, backed_up_jobs_path: Path) -> dict:
     if not backed_up_jobs_path.exists():
         return {"added": [], "skipped_existing": []}
     backed_up = json.loads(backed_up_jobs_path.read_text(encoding="utf-8"))
@@ -219,7 +246,10 @@ def _merge_cron_jobs(hermes_home: Path, backed_up_jobs_path: Path) -> dict:
     return {"added": added, "skipped_existing": skipped}
 
 
-def restore(archive_path: Path, hermes_home: Path, vault_path: Path, force: bool) -> dict:
+def restore(
+    archive_path: Path, hermes_home: Path, vault_path: Path, force: bool,
+    second_brain_data_path_override: str | None = None,
+) -> dict:
     scratch = Path(tempfile.mkdtemp(prefix="second-brain-restore-"))
     try:
         with zipfile.ZipFile(archive_path) as zf:
@@ -268,12 +298,29 @@ def restore(archive_path: Path, hermes_home: Path, vault_path: Path, force: bool
         # Top-level "cron/jobs.json" archive member, deliberately separate
         # from "hermes/<profile>/" -- see hermes_backup.py's own comment.
         # This is the ONLY code path that ever touches the target's own
-        # cron/jobs.json; the profile-overlay loop above never includes it.
-        cron_result = _merge_cron_jobs(hermes_home, scratch / "cron" / "jobs.json")
+        # top-level cron/jobs.json; the profile-overlay loop above never
+        # includes it.
+        cron_result = {"default": _merge_cron_jobs(hermes_home / "cron" / "jobs.json", scratch / "cron" / "jobs.json")}
 
+        # Same for every real per-profile cron/jobs.json this backup
+        # carries -- also its own dedicated archive member (see
+        # hermes_backup.py's own comment for why), also the ONLY code
+        # path that ever touches that profile's own cron/jobs.json.
+        profiles_cron_dir = scratch / "cron" / "profiles"
+        if profiles_cron_dir.exists():
+            for profile_cron_dir in sorted(profiles_cron_dir.iterdir()):
+                if not profile_cron_dir.is_dir():
+                    continue
+                profile_id = profile_cron_dir.name
+                target_cron_path = _profile_root(hermes_home, profile_id) / "cron" / "jobs.json"
+                cron_result[profile_id] = _merge_cron_jobs(target_cron_path, profile_cron_dir / "jobs.json")
+
+        second_brain_data_path = _resolve_second_brain_data_path(
+            vault_path, Path(__file__).resolve().parent.parent, second_brain_data_path_override,
+        )
         app_data_result = {}
         for kind, sub in (("data", "second-brain-data"), ("pipelines", "second-brain-pipelines")):
-            target = vault_path / ".second-brain" / kind
+            target = second_brain_data_path / kind
             existing_count = sum(1 for _ in target.rglob("*") if _.is_file()) if target.exists() else 0
             if existing_count and not force:
                 app_data_result[kind] = {"status": "refused", "reason": "already has real content", "existing_files": existing_count}
@@ -284,6 +331,7 @@ def restore(archive_path: Path, hermes_home: Path, vault_path: Path, force: bool
         return {
             "profiles": profile_results,
             "cron": cron_result,
+            "second_brain_data_path": str(second_brain_data_path),
             "second_brain_data": app_data_result,
             "path_rewrite": {
                 "vault": {"from": old_vault, "to": new_vault},
@@ -307,6 +355,13 @@ def main() -> int:
     parser.add_argument("--vault-path", required=True)
     parser.add_argument("--hermes-home", default=None, help="Defaults to the real, current machine's own Hermes home (%%LOCALAPPDATA%%\\hermes).")
     parser.add_argument("--force", action="store_true", help="Overwrite already-present Second Brain app data instead of refusing.")
+    parser.add_argument(
+        "--second-brain-data-path",
+        default=None,
+        help="Defaults to reading SECOND_BRAIN_DATA_PATH from THIS machine's own src/backend/.env, "
+             "falling back to <vault-path>/.second-brain only if that's unset -- same resolution "
+             "the backend itself uses. Override explicitly if needed.",
+    )
     args = parser.parse_args()
 
     import os
@@ -320,7 +375,10 @@ def main() -> int:
     # just as cleanly, but real partial state on the target is possible
     # in that case and is named explicitly, not papered over.
     try:
-        result = restore(Path(args.archive), hermes_home, Path(args.vault_path), args.force)
+        result = restore(
+            Path(args.archive), hermes_home, Path(args.vault_path), args.force,
+            second_brain_data_path_override=args.second_brain_data_path,
+        )
     except RestoreValidationError as exc:
         print(json.dumps({"status": "refused", "problems": exc.problems}, indent=2, ensure_ascii=False))
         return 1

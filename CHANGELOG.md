@@ -4834,3 +4834,20 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   `SOUL.md` was saved (md5-verified) before this live test and restored
   byte-for-byte afterward; the disposable test profile was deleted. See
   `MEMORY.md` for the curl multipart syntax gotcha hit along the way.
+
+- fix: `hermes_backup.py`/`hermes_restore.py` no longer assume the Second
+  Brain app's own data lives at `<vault>/.second-brain` — read the real,
+  independently-configurable `SECOND_BRAIN_DATA_PATH` from settings
+  instead (same default `app/config.py` itself falls back to when unset).
+  Root-caused two symptoms at once: the entire Registry (Agent Section
+  placement — Agents Map positioning) going missing on a machine where
+  this is relocated, and real per-profile `cron/jobs.json` files
+  (confirmed on `meeting-prep-agent`/`azure-expert`/`compass-expert`)
+  never being captured at all — both now fixed, the latter via its own
+  dedicated archive member and merge-by-id restore path, same
+  clobber-avoidance discipline as the existing top-level cron handling.
+  Verified: resolution-helper unit checks, a full scratch round trip with
+  a relocated path, then a real backup against the actual machine
+  confirming all 4 real cron members and all 160 real Registry files
+  now bundle correctly. The existing Settings-page UI/API layer needed
+  no changes. See `MEMORY.md`.
