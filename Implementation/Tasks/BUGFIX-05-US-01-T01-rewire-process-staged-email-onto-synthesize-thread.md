@@ -547,7 +547,7 @@ wording updated to "N thread(s) updated."
 
 **No locked AC in this task** (AC-02 is verified live in T02). All 4
 manual smoke/regression steps run against the real, live configured vault
-(`VAULT_PATH = C:\myWorx\Moussa MD\Moussa Brain`), `.venv\Scripts\python.exe`,
+(`VAULT_PATH = <OPERATOR_VAULT_OLD>`), `.venv\Scripts\python.exe`,
 cwd `src/backend`:
 
 1. `python -c "import app.business.pipelines.raw_message_capture; import

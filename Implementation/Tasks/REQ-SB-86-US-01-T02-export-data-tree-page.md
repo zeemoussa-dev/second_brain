@@ -235,7 +235,7 @@ Pattern in `MEMORY.md` so `T03` reads the selection state correctly.
 **Verification — all 5 locked ACs, live, against the real running app
 (`localhost:5173`) and the real running backend (`localhost:8001`, serving
 `T01`'s live endpoint against the real, currently-configured vault
-`C:\myWorx\Moussa MD\Moussa Brain`), via a minimal native
+`<OPERATOR_VAULT_OLD>`), via a minimal native
 `fetch`+`WebSocket` CDP driver against a real headless Edge instance
 (`msedge.exe --headless=new --remote-debugging-port=9333`, killed by its
 own specific PID tree afterward — no `/IM` mass-kill):**

@@ -323,7 +323,7 @@ Modify`:
 **Verification — manual mode, direct Python-shell calls against the real
 `app.data_access.vault_writer` functions, run via the backend's own `.venv`
 (`src/backend/.venv/Scripts/python.exe`) against the real, configured
-`VAULT_PATH` (`C:\myWorx\Moussa MD\Moussa Brain`), using a throwaway
+`VAULT_PATH` (`<OPERATOR_VAULT_OLD>`), using a throwaway
 `ZZ-Verify-BUGFIX-07-Throwaway-Customer`/`...-Project` pair under `Work/
 Customers/`, created and removed by the verification script itself:**
 

@@ -62,7 +62,32 @@ trusted.
 - **Never force-push to main/master.** Warn the user if they request it.
 - **Never stage sensitive files** (`.env`, credentials). Warn if asked to commit them.
 
-## `MEMORY.md` Protocol
+## Memory Protocol
+
+**Framework memory vs instance memory — decide this FIRST, before writing
+anything down.**
+
+| Memory | Where | Scope |
+|---|---|---|
+| **Framework** | repo `MEMORY.md` | true on every install; ships with the product |
+| **Instance** | `<SECOND_BRAIN_DATA_PATH>/AGENT-MEMORY.md` | one machine's paths, vault, mailbox, model, keys, live state |
+| **Another operator's instance** | their machine | never read or written from here |
+
+**The test:** would this still be true on a fresh install with a different vault
+and mailbox? **Yes → framework `MEMORY.md`. No → that machine's
+`AGENT-MEMORY.md`.**
+
+- "The backend serves port 8001" → framework.
+- "The vault is at `C:\The-Vault\CBO-Vault`" → instance.
+- **Fix something in the framework → record it in framework memory**, in the same
+  change as the fix.
+
+Never put a real vault path, mailbox, key or machine name in a repo file. Use
+`<OPERATOR_VAULT>` / `<operator>` placeholders — mixing instance detail into
+shared docs is what caused one install to act on another install's assumptions
+(2026-09-04).
+
+### Within framework `MEMORY.md`
 
 - **Decisions** → `MEMORY.md` under `## Decisions` — format: `[date] Decision – Reason`
 - **Patterns** → `MEMORY.md` under `## Patterns` — format: `Pattern name – description`

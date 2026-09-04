@@ -220,7 +220,7 @@ task's own dedup-gate reset.
 ## Implementation Log
 
 **2026-08-18 — Built and verified against the real, live vault
-(`C:\myWorx\Moussa MD\Moussa Brain`).**
+(`<OPERATOR_VAULT_OLD>`).**
 
 Created `app/business/vault_migration.py` (new module) with
 `wipe_legacy_email_notes() -> dict`, returning

@@ -217,8 +217,8 @@ flagged per this session's own protocol):**
    private helpers (`_link_to_thread_by_conversation_id`,
    `_link_to_thread_by_fallback_heuristic`).
 
-**Manual verification (real vault, `VAULT_PATH` = `C:\myWorx\Moussa MD\
-Moussa Brain`; real, pre-existing Customer `Core42`; a disposable
+**Manual verification (real vault, `VAULT_PATH` = `C:\myWorx\<operator vault>\
+<operator vault>`; real, pre-existing Customer `Core42`; a disposable
 Project `"REQ-SB-57-T03 Verification Project"`, one disposable Thread,
 and two disposable Meeting notes — all fully removed afterward; see
 "Concurrent-session finding" below for one real, disclosed side effect

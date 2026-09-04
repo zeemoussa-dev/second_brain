@@ -245,7 +245,7 @@ reverted immediately after. Zero permanent state changes; zero disposable
 real Hermes profiles created.
 
 **Verification (manual mode, all against the real, live-configured
-vault/Hermes install — `VAULT_PATH=C:\myWorx\Moussa MD\Moussa Brain`):**
+vault/Hermes install — `VAULT_PATH=<OPERATOR_VAULT_OLD>`):**
 
 - `[REQ-SB-85-US-02-AC-01]` (Test 1, Pipeline recursion) — PASS. Real
   `Pipeline`/`PipelineStep` dataclass substituted in-process for one call

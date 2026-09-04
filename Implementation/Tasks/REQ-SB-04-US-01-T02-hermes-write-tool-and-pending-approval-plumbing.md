@@ -295,7 +295,7 @@ in this task's own code):**
    `---\nkind: "Note"\n---\n\nTest body.` (the exact supplied
    frontmatter/body); `GET /agents/vault-qa/history` shows a new
    `run_event` entry, `"Approved — filed at
-   C:\myWorx\Moussa MD\Moussa Brain\Notes\test-hermes-write.md."`.
+   <OPERATOR_VAULT_OLD>\Notes\test-hermes-write.md."`.
    **PASS — fully verified.**
 4. **`[REQ-SB-04-US-01-AC-04]`** — seeded a second `"hermes"` pending
    record (`test-hermes-write-2`). `POST /pending-approvals/{id}/decline`

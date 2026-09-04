@@ -191,7 +191,7 @@ Cockpit thread (`/inbox-cockpit/2026-07-29--F0FA0000`):**
   - **Confirm path:** clicking Confirm fired the real `POST
     .../person-note-proposals/{id}/confirm` call; the region cleared after
     reload; the real target Person note (`Work/People/
-    mahmoud.m.moussa@live.com.md`) was independently confirmed (direct
+    <operator-email>.md`) was independently confirmed (direct
     file read) to now contain the real proposed line.
   - **Discard path:** a fresh proposal was produced the same way; clicking
     Discard fired the real `POST .../person-note-proposals/{id}/discard`
@@ -201,7 +201,7 @@ Cockpit thread (`/inbox-cockpit/2026-07-29--F0FA0000`):**
   "Awaiting your decision" quick-research card is untouched by this
   task's own additive region (same component, same classes, unmodified
   code path).
-- Clean-up: both real test edits to `Work/People/mahmoud.m.moussa@live.com.md`
+- Clean-up: both real test edits to `Work/People/<operator-email>.md`
   were reverted (confirm-path write stripped; discard-path never wrote
   anything), confirmed byte-for-byte back to the pre-test body; working
   mode restored to autonomous afterward.

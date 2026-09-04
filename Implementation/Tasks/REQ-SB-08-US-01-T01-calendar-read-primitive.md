@@ -285,7 +285,7 @@ designed once T03 was built (see that task's log).
 during this task's own live-COM work):** rather than guess or default,
 queried Outlook's `Namespace.CurrentUser` (read-only, no side effects) to
 determine the vault owner's real SMTP address —
-`mahmoud.moussa@core42.ai` — which was then set as `SELF_EMAIL` in the local
+`<operator>@core42.ai` — which was then set as `SELF_EMAIL` in the local
 `.env` (gitignored, not committed) for T03's `Settings.self_email`. This is
 an empirical determination, not a hardcoded guess, and does not contradict
 ADR-008 (which rejected a *dynamic runtime* COM lookup as the source, not a

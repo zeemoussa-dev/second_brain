@@ -186,7 +186,7 @@ frontmatter block (a fresh `id` is expected on first migrated touch).
 
 **Deployment + Template.json confirmation:** copied the fully-migrated
 `apply_file_review.py` and `vault_manager.py` from the repo to the real,
-active Hermes profile location (`C:\Users\mahmoud.moussa\AppData\Local\
+active Hermes profile location (`C:\Users\<operator>\AppData\Local\
 hermes\profiles\files-manager\skills\company-review\summarize-and-tag-
 files\scripts\`), which previously held only the pre-migration script and
 no `vault_manager.py` copy at all (confirmed via `Compare-Object` before

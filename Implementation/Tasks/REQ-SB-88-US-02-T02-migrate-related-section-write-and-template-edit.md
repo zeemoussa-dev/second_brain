@@ -90,7 +90,7 @@ retire the now-fully-superseded local write primitives/guard.
 ## Files to Modify
 
 - `Hermes-Provisioning/skills/company-review/track-opportunities/scripts/link_opportunity.py`
-- `C:/myWorx/Moussa MD/Moussa Brain/.second-brain/data/Templates/thread/Template.json` (real, live deployed template — add `link_opportunity` to `## Related`'s `allowed_callers`)
+- `C:/myWorx/<operator vault>/<operator vault>/.second-brain/data/Templates/thread/Template.json` (real, live deployed template — add `link_opportunity` to `## Related`'s `allowed_callers`)
 
 ---
 

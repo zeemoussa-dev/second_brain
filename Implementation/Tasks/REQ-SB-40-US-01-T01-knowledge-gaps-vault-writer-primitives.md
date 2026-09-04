@@ -147,7 +147,7 @@ directly, not a locked AC. -->
 
 Implemented exactly as spec'd: added `_AGENT_KNOWLEDGE_GAPS_FILE`, `_knowledge_gaps_state_path()`, `load_knowledge_gaps_state()`, `save_knowledge_gaps_state()` to `vault_writer.py`, placed after `save_pending_approvals_state` — confirmed that was still the real, current last per-agent-state pair before landing the diff (matched the task's own sample verbatim). No other function/constant touched.
 
-**Verification (non-AC plumbing check, per this task's own Tests block):** ran live against the real configured `vault_path` (`C:\myWorx\Moussa MD\Moussa Brain`). `load_knowledge_gaps_state()` returned `None` (no file yet). `save_knowledge_gaps_state(...)` with a sample gap record created `.second-brain/agent_knowledge_gaps.json` with the exact `json.dumps(state, indent=2)` shape. `load_knowledge_gaps_state()` re-read returned the identical dict (real round-trip, confirmed via file read). Cleaned up with `save_knowledge_gaps_state({"gaps": []})` before T02 began.
+**Verification (non-AC plumbing check, per this task's own Tests block):** ran live against the real configured `vault_path` (`<OPERATOR_VAULT_OLD>`). `load_knowledge_gaps_state()` returned `None` (no file yet). `save_knowledge_gaps_state(...)` with a sample gap record created `.second-brain/agent_knowledge_gaps.json` with the exact `json.dumps(state, indent=2)` shape. `load_knowledge_gaps_state()` re-read returned the identical dict (real round-trip, confirmed via file read). Cleaned up with `save_knowledge_gaps_state({"gaps": []})` before T02 began.
 
 gate: flagged (carried unchanged from parent story — trigger-3, ADR-032). No new decomposer/coder-owned trigger fired on this task itself.
 

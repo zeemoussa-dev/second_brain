@@ -164,7 +164,7 @@ from the main checkout (same trusted local machine) and built a fresh
 `.venv` via `pip install -r requirements.txt` (clean install, no
 build-toolchain issues) rather than reusing the main tree's venv. All
 verification below ran against the real `.env` (real vault at
-`C:\myWorx\Moussa MD\Moussa Brain`), same as the main checkout would use.
+`<OPERATOR_VAULT_OLD>`), same as the main checkout would use.
 Also found several tracked files (`ADR.md`, `architecture.md`, `MEMORY.md`,
 `CHANGELOG.md`, `BACKLOG.md`, `REVIEW-QUEUE.md`, `ESCALATIONS.md`) and all
 of `Implementation/Sprints/SPRINT-030...`, `Implementation/Tasks/REQ-SB-39-

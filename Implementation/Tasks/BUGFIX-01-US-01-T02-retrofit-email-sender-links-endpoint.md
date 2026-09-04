@@ -251,7 +251,7 @@ Modify`, no deviations:
   verbatim per spec.
 
 **Live verification session, 2026-08-11** (`VAULT_PATH` =
-`C:\myWorx\Moussa MD\Moussa Brain`, real configured vault, no fixture):
+`<OPERATOR_VAULT_OLD>`, real configured vault, no fixture):
 
 1. Confirmed port 8000 was occupied (`Get-NetTCPConnection -LocalPort 8000`
    showed an existing listener — the known `agentic-map` conflict per

@@ -124,7 +124,7 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   environment variable. Re-running the setup wizard is the fix.
 
 - fix(skills): every `SKILL.md` pointed `--vault-path` at
-  `C:\myWorx\Moussa MD\Moussa Brain` -- a folder deleted in the 2026-09-03
+  `<OPERATOR_VAULT_OLD>` -- a folder deleted in the 2026-09-03
   move. 19 references across 15 files, none of them the current vault. Capture
   only worked because the cron PROMPT passed the right path, overriding the
   Skill. Any agent following a Skill literally used a dead path.
@@ -194,7 +194,7 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   scripts and shipped through Artifacts bundles.
 - fix(skills): `run_delta_capture.py`, `run_full_capture.py` and
   `run_full_meeting_capture.py` no longer default `SECOND_BRAIN_VAULT_PATH`
-  to `C:\myWorx\Moussa MD\Moussa Brain` -- a path deleted when the vault
+  to `<OPERATOR_VAULT_OLD>` -- a path deleted when the vault
   moved, so an unset variable meant silently operating on a folder that no
   longer existed. They now fail loudly with the fix.
 
@@ -362,7 +362,7 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   new machine and restarted the gateway to pick it up. Verified Node now
   validates the intercepted chain (`web.whatsapp.com` → HTTP 200).
 - chore(deploy): located the real vault on the new machine
-  (`~\OneDrive - G42\myData\Moussa Brain\second-brain`) and set
+  (`<OPERATOR_VAULT>`) and set
   `VAULT_PATH`; verified `app/config.py` resolves it and derives
   `second_brain_data_path` correctly. Recorded in `Deployment.md` that it
   was still mid-OneDrive-sync when set (skeleton complete, most folders
@@ -550,7 +550,7 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   scripts\`) plus all 26 real, active per-profile copies of this Skill
   (27 locations total, SHA-256-confirmed byte-identical to the migrated
   repo source). Real retrofit-safety confirmed against the LIVE vault
-  (`C:\myWorx\Moussa MD\Moussa Brain`): two known real Threads re-ingested
+  (`<OPERATOR_VAULT_OLD>`): two known real Threads re-ingested
   idempotently (only the additive `id` backfill changed on disk, confirmed
   via diff); a real ~100-message sample (last 100 Inbox+Sent, pulled via
   the deployed `list_recent_emails.py`) retrofitted — 94 already-existing
@@ -5164,7 +5164,7 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   freshness check on its own, unlike a Thread. Proven against a scratch
   vault (refuse-on-non-empty, normal-write-on-empty, `--force` override,
   `--append` path unaffected — all 4 cases pass) and live against the
-  real vault (`C:\myWorx\Moussa MD\Moussa Brain`): a poisoned second call
+  real vault (`<OPERATOR_VAULT_OLD>`): a poisoned second call
   against an already-summarized real File was refused, real file content
   and mtime byte-for-byte unchanged afterward. Deployed to both real,
   live locations this script normally resyncs to: the primary/default

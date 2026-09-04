@@ -118,7 +118,7 @@ needed):** read `agents_map_adapter.py`, `vault_indexing.py`,
 `customer_hub_linking.py`/`vault_writer.py` (`list_known_customers`,
 `build_meeting_tags`, `tag_slug`) to find the REAL, current customer/tag
 conventions, then inspected real notes directly under the configured
-`VAULT_PATH` (`C:\myWorx\Moussa MD\Moussa Brain`) and the real installed
+`VAULT_PATH` (`<OPERATOR_VAULT_OLD>`) and the real installed
 Hermes profiles (`profile.yaml` descriptions for
 `azure-expert`/`macc-expert`/`masdar-expert`/`adnoc-expert`/`taqa-expert`/
 `compass-*`/`research-agent`) to ground the implementation and the

@@ -262,7 +262,7 @@ scenario except one:
   company ("Microsoft") with no matching known customer → AC-04
   (tag-only) candidate, reused for AC-06 (manual-content preservation) and
   AC-08 (company later becomes known) since it needs no second sender.
-- `mahmoud.m.moussa@live.com` — `live.com` is in `people_extraction.py`'s
+- `<operator-email>` — `live.com` is in `people_extraction.py`'s
   `_PERSONAL_EMAIL_DOMAINS` set → AC-05 (no company) candidate.
 - No naturally-occurring blank-`sender_email` Email note existed (the
   task's own Context/Notes correctly anticipated this as the most likely
@@ -275,7 +275,7 @@ scenario except one:
 `POST /poc/retrofit-people-from-emails` call):**
 
 Confirmed pre-call: no Person note existed yet for `mohamed.eltanany@core42.ai`,
-`karimlouis@microsoft.com`, or `mahmoud.m.moussa@live.com`; no
+`karimlouis@microsoft.com`, or `<operator-email>`; no
 `Work/Customers/Microsoft.md`.
 
 Called the endpoint → `{"notes_checked": 57, "created": 18, "linked": 11,
@@ -307,10 +307,10 @@ notes and any note with no `sender_email` are cleanly skipped
   body (no wikilink). Confirmed `Work/Customers/Microsoft.md` does not
   exist (`Test-Path` → `False`); `Work/Customers/` still lists exactly the
   same 9 pre-existing hub notes. **PASS.**
-- **AC-05:** `mahmoud.m.moussa@live.com`'s Email note got `"status":
+- **AC-05:** `<operator-email>`'s Email note got `"status":
   "created", "company": null, "customer_matched": null, "linked": false`.
   Read the created note: `name: "Mahmoud Moussa"`,
-  `email: "mahmoud.m.moussa@live.com"`, `tags: ["kind/person"]` only,
+  `email: "<operator-email>"`, `tags: ["kind/person"]` only,
   empty body. **PASS.**
 - **AC-09:** The throwaway blank-`sender_email` note's result entry:
   `{"status": "skipped_no_sender_email"}`; the run completed and returned
@@ -389,7 +389,7 @@ created 18 real Person notes for every distinct real sender/notification
 address already present in the vault — `mohamed.eltanany@core42.ai`,
 `naima.bikbi@core42.ai`, `hanish.arora@core42.ai`,
 `adithya.srinivasan1@g42.ai`, `emma.cloney@core42.ai`,
-`mohammed.retmi@core42.ai`, `mahmoud.m.moussa@live.com`,
+`mohammed.retmi@core42.ai`, `<operator-email>`,
 `maik.kurz@core42.ai`, `gurpreet.singh@simplai.ai`,
 `sandeep.penumadu@core42.ai`, `imtiaz.ahmed@core42.ai`,
 `parvaze.suleman@dge.gov.ae`, `karimlouis@microsoft.com`,

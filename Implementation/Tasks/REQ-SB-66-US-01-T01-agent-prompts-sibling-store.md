@@ -245,7 +245,7 @@ Job id share one namespace uniformly" requirement).
 
 Verification was run directly against the real, configured backend venv
 (`src/backend/.venv`) and the real, configured vault
-(`VAULT_PATH=C:\myWorx\Moussa MD\Moussa Brain`) — `python -c` one-off
+(`VAULT_PATH=<OPERATOR_VAULT_OLD>`) — `python -c` one-off
 scripts, not a persisted pytest file (repo has no test suite for this
 module yet, per this task's own "Automated tests: n/a — test tooling
 pending"). `.second-brain/agent_prompts.json` is a new internal state file

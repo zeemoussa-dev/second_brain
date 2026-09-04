@@ -289,7 +289,7 @@ flagged per this session's own protocol):**
    `T01` itself already logged for its own docstring updates.
 
 **Manual verification (real vault, `VAULT_PATH` =
-`C:\myWorx\Moussa MD\Moussa Brain`; real, pre-existing Customer `Core42`;
+`<OPERATOR_VAULT_OLD>`; real, pre-existing Customer `Core42`;
 disposable Projects `"SB57T02 Verify Alpha"`/`"Beta"`/`"Gamma"`/
 `"NewRoutedProject"` and one disposable Thread, all fully removed
 afterward — script: see verification technique note below):**

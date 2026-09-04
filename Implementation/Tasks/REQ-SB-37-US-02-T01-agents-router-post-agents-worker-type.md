@@ -304,7 +304,7 @@ both files to a clean slate before running this task's own Tests (per the
 Tests block's own "delete any leftover state files first" instruction,
 which I'd initially checked at the wrong path — `src/backend/.second-brain`
 does not exist; the real state lives at the configured `VAULT_PATH`,
-`C:\myWorx\Moussa MD\Moussa Brain\.second-brain`). Also hit the
+`<OPERATOR_VAULT_OLD>\.second-brain`). Also hit the
 project's own documented `--reload` orphaned-multiprocessing-fork-child
 antipattern once during this cleanup (parent PID gone, child PID still
 holding the socket) — resolved via the established `Get-CimInstance

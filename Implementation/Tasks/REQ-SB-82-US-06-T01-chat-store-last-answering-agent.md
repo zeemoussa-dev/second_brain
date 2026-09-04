@@ -188,7 +188,7 @@ behavioral benefit. Not treated as a locked-AC ambiguity, just flagging
 the reasoning for spot-check.
 
 **Verification (manual mode, real store, real `.env`-configured vault at
-`C:\myWorx\Moussa MD\Moussa Brain\.second-brain\cockpit_chat.json`, via
+`<OPERATOR_VAULT_OLD>\.second-brain\cockpit_chat.json`, via
 `.venv/Scripts/python.exe` one-off scripts, cleaned up afterward):**
 
 - **Test step 1 (no AC tag, supporting groundwork):** called

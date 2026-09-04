@@ -270,7 +270,7 @@ hard rule 5, not MUST-FLAG triggers):**
 **`REQ-SB-69-US-01-AC-04` — verified live, PASS (all 16 checks passed, 0
 failed).** Real verification against the real, configured backend venv
 (`src/backend/.venv`) and the real, configured vault
-(`VAULT_PATH=C:\myWorx\Moussa MD\Moussa Brain`), per this task's own
+(`VAULT_PATH=<OPERATOR_VAULT_OLD>`), per this task's own
 `## Tests` steps 1-2, run directly via a one-off Python script (no live
 `T02` Pull needed — three synthetic, clearly-namespaced staged emails
 were created directly via `email_staging.stage_email`, per this task's

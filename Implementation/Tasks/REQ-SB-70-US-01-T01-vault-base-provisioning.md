@@ -190,7 +190,7 @@ Customers,Resources}/`, returning `{"created": [...],
 from the plan.
 
 **Verification environment:** the REAL operator vault
-(`VAULT_PATH=C:\myWorx\Moussa MD\Moussa Brain`, from `src/backend/.env`),
+(`VAULT_PATH=<OPERATOR_VAULT_OLD>`, from `src/backend/.env`),
 via the REAL running app (`uvicorn app.main:app`, port 8000) — every call
 below went through the real HTTP endpoint, never a raw internal-function
 script call, per this task's own Constraint. `Work/` was confirmed

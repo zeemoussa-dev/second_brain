@@ -137,7 +137,7 @@ verification-mode default — no automated test tooling exists yet beyond
 - **[REQ-SB-82-US-05-AC-02]** Created a real scratch Person note
   (`Work/People/zz-scratch-person-lookup-t01@example.com.md`) with only
   frontmatter, no body, in the real, configured vault
-  (`C:\myWorx\Moussa MD\Moussa Brain`). Ran `check_person_note_empty.py
+  (`<OPERATOR_VAULT_OLD>`). Ran `check_person_note_empty.py
   --note-path <that note>` via the backend's own `.venv` Python (no
   system-wide `python` resolvable on this host/session — same class of
   environment gap as prior sprints' `npx`/`node` findings, worked around

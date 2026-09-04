@@ -120,7 +120,7 @@ to `vault_writer.py`'s file-constant block, plus `_cockpit_threads_state_path`/
 existing function touched.
 
 **Manual verification (real `.venv`, real configured vault
-`C:\myWorx\Moussa MD\Moussa Brain`), all steps observed as expected:**
+`<OPERATOR_VAULT_OLD>`), all steps observed as expected:**
 1. `load_cockpit_threads_state()` → `None` (file absent). Confirmed.
 2. `save_cockpit_threads_state({...})` → real file written at
    `.second-brain/cockpit_threads.json`, indent=2, exact content. Confirmed.

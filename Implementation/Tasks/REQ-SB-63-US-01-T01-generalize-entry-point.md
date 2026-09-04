@@ -166,7 +166,7 @@ than hoped for from a real completion. `vault_writer` /
 `customer_hub_linking` / `partner_hub_linking` / `pending_approval_
 registry` were all REAL and unmocked throughout — only the model call
 itself was stubbed. Run against the real, configured vault
-(`C:\myWorx\Moussa MD\Moussa Brain`), mirroring `REQ-SB-35-US-01-T02`'s
+(`<OPERATOR_VAULT_OLD>`), mirroring `REQ-SB-35-US-01-T02`'s
 own established precedent for this exact module. A real, already-filed
 scratch "Thread" note was created first at
 `Work/Threads/test-librarian-t01-scratch-thread.md` (mirrors `REQ-SB-55`'s

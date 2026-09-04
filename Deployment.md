@@ -19,100 +19,29 @@ Pipelines assume Hermes cron jobs already exist.
 
 ---
 
-## Where this deployment actually stands (2026-09-03, second machine)
+## Per-install state lives with the install, not here
 
-Live status of the fresh corporate laptop, so the next session doesn't
-have to rediscover it. Update this block as it moves.
+This guide is the **framework's** deployment procedure — the steps that are true
+on any machine. It deliberately carries **no** live status for any particular
+deployment.
 
-**Done — Hermes is installed and healthy:**
+Each install records its own paths, vault, mailbox, model, keys and current state
+in its own instance memory:
 
-- Hermes Agent **v0.21.0** at `%LOCALAPPDATA%\hermes`, Python 3.11.16,
-  portable Node 22.23.2, uv 0.12.9, ripgrep, ffmpeg. `hermes --version`
-  and `hermes doctor` both pass.
-- `UV_SYSTEM_CERTS=1` persisted at **User** scope — the corporate-TLS fix
-  without which nothing installs. Leave it set.
-- Config migrated v0 → v40 (`hermes doctor --fix`).
-- **Compass provider applied** to `config.yaml` (`model:` switched off the
-  stock OpenRouter default to `compass`/`gpt-5`). Confirmed reaching
-  Compass for real: Hermes has since discovered and written back the full
-  Compass model catalogue (`models_discovered: true`), which only happens
-  on a successful authenticated call. Note Hermes rewrites this file
-  programmatically, so hand-written comments in it do not survive.
-- **Gateway installed and running** via
-  `hermes gateway install --start-on-login --start-now` — Startup-folder
-  login item (UAC declined), gateway process up, log healthy.
-- **Backend and frontend both build and run** (§3). Backend venv on
-  Python 3.11.16 with all deps installed; started through the fixed
-  `tools\run-backend.cmd` and `GET /health` returned
-  `{"status":"ok"}`. Frontend: `tools\node` populated (Node 22.23.2 /
-  npm 10.9.8), 134 packages installed, dev server served HTTP 200 on
-  5173 via `tools\run-frontend.cmd`. Both were stopped again afterwards —
-  nothing is left running.
-- **`tools\*.cmd` launchers repaired** — they all hardcoded the first
-  machine's path and could never have worked here (§3).
-- **`requirements.txt` pinned `mcp<2`** — an unpinned `mcp` broke the
-  backend outright on a fresh resolve (§3).
+    <SECOND_BRAIN_DATA_PATH>/AGENT-MEMORY.md
 
-**Not done — each needs the operator personally, and each blocks what
-follows it:**
+**The test for where something goes:** would it still be true on a fresh install
+with a different vault and mailbox? **Yes → this guide. No → that machine's
+instance memory.**
 
-1. **WhatsApp pairing** (`hermes whatsapp`) — needs a QR scan from the
-   phone, and must be run from a real interactive terminal. Blocked on
-   2026-09-03 by `Connection closed (reason: 500)`; the cause and fix are
-   the corporate TLS interception (§1) — `NODE_OPTIONS=--use-system-ca`
-   is now set both as a User variable and in `%LOCALAPPDATA%\hermes\.env`,
-   and the gateway restarted. **Still to be confirmed from the operator's
-   own shell** — see the shell-asymmetry warning in `MEMORY.md`: verifying
-   this from a tool shell that is not behind the interception produces a
-   confident false pass.
-   Not a blocker for capture — the gateway runs cron jobs with no
-   messaging platform enabled. Do **not** enable WhatsApp before pairing
-   succeeds: enabled-but-unpaired takes the whole gateway down (§2).
-2. **Let the vault finish syncing** before any capture or cron job runs.
-3. Specialist profiles, Skill deployment, cron jobs — §2, in that order.
+This block previously held one specific laptop's live status — its vault path,
+which steps were done, which were pending. That is precisely the content that
+made a *later* install act on an *earlier* install's assumptions, so it moved out
+rather than being updated in place. The history of it remains in git.
 
-**Second Brain's own `.env` is complete.** Backend verified booting
-against it — `GET /health` → `{"status":"ok"}`. `COMPASS_BASE_URL` carries
-the full-completions form, `COMPASS_API_KEY` and `SELF_EMAIL` are set,
-`VAULT_PATH` resolves, and `SECOND_BRAIN_DATA_PATH` deliberately points
-outside the synced vault.
+Personal paths and identities elsewhere in this repo were replaced with
+`<OPERATOR_VAULT>` / `<operator>` placeholders on 2026-09-04 for the same reason.
 
-`ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` and `HERMES_MCP_SHARED_SECRET` are
-intentionally left unset — they became optional on 2026-09-03 because
-nothing uses them (§4 records the verification and the one security
-caveat on the empty MCP secret).
-
-**Vault located, but it was still syncing when set.**
-`C:\Users\mahmoud.moussa\OneDrive - G42\myData\Moussa Brain\second-brain`
-— confirmed resolving, and `.second-brain` state will default inside it.
-When first pointed at, the OKF skeleton was complete but nearly empty
-(People 96, Research 3, Threads 2, everything else 0, 112 files / 0.1 MB
-total, and **zero** OneDrive online-only placeholders, so it was genuine
-absence rather than unfetched stubs). **Let the sync finish before running
-any capture or cron job** — dedup only protects against duplicates it can
-structurally see, so a half-synced vault will get duplicate notes for
-everything that had not yet arrived.
-
-**Watch the 260-char `MAX_PATH` trap here.** This vault root is already
-**71 characters**, leaving ~189 for everything beneath it. Real note
-paths nest deep (`Work\Threads\<thread title>\messages\<date> <HH:MM>
-<sender>.md`), and on this host `Path.exists()`/`is_file()`/`is_dir()`
-silently return `False` past that limit rather than raising — so an
-over-long note reads as "missing" with no error anywhere. Worth
-re-checking if notes start mysteriously not being found.
-
-**Known-broken, left alone deliberately:** `npm run build` fails on 8
-pre-existing TypeScript errors (§3). `npm run dev` is unaffected, which
-is what the launchers and the actual workflow use.
-
-**Machine baseline found before installing** (useful for judging whether
-a future machine is comparable): Git for Windows already present
-user-scope; Outlook desktop installed but not running; **no** real
-Python, **no** `py` launcher, **no** Node, **no** `uv`; execution policy
-`Undefined` at every persistent scope; network reachable to github.com,
-nousresearch, astral.sh.
-
----
 
 ## 1. Hermes Deployment
 

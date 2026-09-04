@@ -349,7 +349,7 @@ No changes to `people_extraction.py`, `customer_hub_linking.py`,
 
 **`self_email` value:** determined via a one-time, read-only Outlook COM
 probe (`Namespace.CurrentUser` → `GetExchangeUser().PrimarySmtpAddress`) —
-not guessed, not defaulted — yielding `mahmoud.moussa@core42.ai`, set in the
+not guessed, not defaulted — yielding `<operator>@core42.ai`, set in the
 local `.env` (gitignored). This does not deviate from ADR-008 (which
 rejected a *dynamic runtime* lookup as the config's source, not a one-time
 COM-assisted determination of the static value to put in `.env`).
@@ -370,7 +370,7 @@ COM-assisted determination of the static value to put in `.env`).
 
 **Scenario 11 confirmed live in this same run:** `HPC kickoff meeting`'s raw
 attendee list (fetched separately via `list_calendar_events`) includes
-`mahmoud.moussa@core42.ai`; the written note's `**Attendees:**` line does
+`<operator>@core42.ai`; the written note's `**Attendees:**` line does
 **not** include it — confirmed the self-exclusion filter works end-to-end,
 not just at the unit level.
 

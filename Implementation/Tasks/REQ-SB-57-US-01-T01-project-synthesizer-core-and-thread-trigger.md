@@ -374,7 +374,7 @@ flagged per this session's own protocol):**
    `_fallback_attachment_entry`).
 
 **Manual verification (real vault, `VAULT_PATH` =
-`C:\myWorx\Moussa MD\Moussa Brain`; real, pre-existing Customer
+`<OPERATOR_VAULT_OLD>`; real, pre-existing Customer
 `Core42`; disposable Project `"REQ-SB-57-T01 Verification Project"` and
 two disposable Threads, both fully removed afterward — confirmed the
 real, pre-existing `Core42` OKF files and all 6 real pre-existing

@@ -91,7 +91,7 @@ array.
 ## Files to Modify
 
 - `Hermes-Provisioning/skills/company-review/summarize-and-tag-files/scripts/apply_file_review.py`
-- `C:/myWorx/Moussa MD/Moussa Brain/.second-brain/data/Templates/thread/Template.json` (real, live deployed template — add `apply_file_review` to `## Files`' `allowed_callers`)
+- `C:/myWorx/<operator vault>/<operator vault>/.second-brain/data/Templates/thread/Template.json` (real, live deployed template — add `apply_file_review` to `## Files`' `allowed_callers`)
 
 ---
 

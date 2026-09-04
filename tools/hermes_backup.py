@@ -86,7 +86,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 _FORMAT_VERSION = 1
 
 # Placeholder tokens, not literal old-path string rewriting -- operator,
-# 2026-09-03: "C:\myWorx\Moussa MD\Moussa Brain should be a place holder
+# 2026-09-03: "<OPERATOR_VAULT_OLD> should be a place holder
 # and pass it on Restore and same for the other Path". A real, live bug
 # was found testing the previous "rewrite old absolute path -> new
 # absolute path" design (hermes_restore.py's own _rewrite_path_refs):

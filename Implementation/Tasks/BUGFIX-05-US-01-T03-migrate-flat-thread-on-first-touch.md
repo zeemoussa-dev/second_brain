@@ -329,7 +329,7 @@ function added). No new import needed — `Path`/`settings`/`read_note`/
 **No locked AC in this task** (AC-01 is verified live in T04) — the
 5 manual smoke/regression steps below are this task's own non-AC-tagged
 checks, all run against the real, live configured vault
-(`VAULT_PATH = C:\myWorx\Moussa MD\Moussa Brain`), `.venv\Scripts\python.exe`,
+(`VAULT_PATH = <OPERATOR_VAULT_OLD>`), `.venv\Scripts\python.exe`,
 cwd `src/backend`:
 
 1. `python -c "import app.data_access.vault_writer"` — clean import, no

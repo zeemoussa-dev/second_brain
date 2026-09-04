@@ -1,6 +1,6 @@
 # Reference: *Beyond the Second Brain* (Mo Elkholy)
 
-**Source:** `C:\Users\mahmoud.moussa\OneDrive - G42\Documents\Beyond-the-Second-Brain-Print.pdf`
+**Source:** `C:\Users\<operator>\OneDrive - G42\Documents\Beyond-the-Second-Brain-Print.pdf`
 (274 pages). Added to this project 2026-08-10 as a standing architecture
 reference — read before making vault-structure or AI-integration decisions.
 This file is a condensed summary of Part 2 ("The Architecture," Chapters 4–9)

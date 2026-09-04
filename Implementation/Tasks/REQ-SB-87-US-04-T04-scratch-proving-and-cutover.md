@@ -147,7 +147,7 @@ copied the fully-migrated repo copies —
 `Hermes-Provisioning/skills/company-review/summarize-and-tag-threads/
 scripts/apply_thread_review.py` and `.../scripts/vault_manager.py` — to
 the real, active Hermes profile location this Skill actually runs from:
-`C:\Users\mahmoud.moussa\AppData\Local\hermes\skills\company-review\
+`C:\Users\<operator>\AppData\Local\hermes\skills\company-review\
 summarize-and-tag-threads\scripts\` (per the standing manual-deploy
 convention). That location previously held only the OLD,
 pre-`REQ-SB-87-US-04` `apply_thread_review.py` (last written 2026-08-21,
@@ -158,7 +158,7 @@ both deployed files — clean exit.
 
 **Real-vault retrofit-safety verification (`[REQ-SB-87-US-04-AC-07]`),
 read-then-compare, against the REAL, live vault
-(`C:\myWorx\Moussa MD\Moussa Brain`):**
+(`<OPERATOR_VAULT_OLD>`):**
 
 Picked two real, already-`job4`-processed Threads named directly in the
 parent story's own Context (both carry a real `last_summarized_at` and a
@@ -176,7 +176,7 @@ Scenario 7 / `AC-07` names. Ran the newly-DEPLOYED, migrated
 `apply_thread_review.py` directly against the real vault path for each:
 
 - **"Masdar Open Items"** — `python apply_thread_review.py --vault-path
-  "C:\myWorx\Moussa MD\Moussa Brain" --input-file <payload>` → exit 0,
+  "<OPERATOR_VAULT_OLD>" --input-file <payload>` → exit 0,
   `{"tags_applied": ["customer/masdar", "partner/core42"],
   "companies_unresolved": [], "messages_tagged": 0, "log_entries_added":
   ["Masdar", "Core42"], "last_message_at": "2026-08-31
@@ -236,10 +236,10 @@ scoped entirely to *already-existing* Threads, not never-processed ones).
 
 **Cutover (`--vault-path` / live deployment):**
 
-- Read the real cron job definition directly: `C:\Users\mahmoud.moussa\
+- Read the real cron job definition directly: `C:\Users\<operator>\
   AppData\Local\hermes\cron\jobs.json`, job `dd61ce1c8065`
   (`name: "job4-summarize-tag-threads"`). Its own `prompt` field already
-  reads *"...against the vault at C:\myWorx\Moussa MD\Moussa Brain..."*
+  reads *"...against the vault at <OPERATOR_VAULT_OLD>..."*
   — **the real vault path, not a scratch path** — this was already true
   before this task started (confirmed: `SKILL.md`'s own Prerequisites
   section has stated the same real path since 2026-08-21). There is no
