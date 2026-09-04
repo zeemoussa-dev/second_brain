@@ -81,3 +81,32 @@ dashboard UI's own Sessions view.
 
 **Run 2026-08-21:** job `c5e20c740835`, scheduled successfully, first run
 2026-08-21T15:07:23+04:00.
+
+## Applied 2026-09-04 — the data-root fix, deployed
+
+Deployed after the email-capture outage (see `MEMORY.md`: templates, the noise
+definition and the person ignore list were all resolved at a hardcoded
+`<vault>/.second-brain`, which stopped existing when config was split out of
+the vault on 2026-09-03; 54 emails were consumed and never written).
+
+- **560 script files** copied to all 41 profiles — every changed file under
+  `skills/*/*/scripts/`, written only where the target already existed (never
+  creating a skill a profile did not already have), then content-verified
+  byte-identical to this repo.
+- **Four env vars** written to all 41 `.env` files (`<hermes_home>/.env` plus
+  every profile's own), via the app's own
+  `setup_wizard.sync_settings_to_hermes()` rather than a one-off script:
+  `OBSIDIAN_VAULT_PATH` (Hermes' own bundled `note-taking/obsidian` Skill),
+  `SECOND_BRAIN_VAULT_PATH`, `SECOND_BRAIN_DATA_PATH` and
+  `SECOND_BRAIN_SELF_EMAIL` (what this repo's own Skill scripts read).
+- **Gateway restarted** — it does not re-read `.env` while running.
+- **`email-delta-capture` resumed**, with its watermark rewound to
+  `2026-09-01 17:36:51` to re-pull the lost mail.
+
+**Order matters:** scripts, then env, then gateway restart, then cron resume.
+Resuming first just re-drops the same mail.
+
+**Trap:** `hermes cron run <name>` BLOCKS. Killing the CLI mid-run cuts the
+capture short (observed live: 3 Threads written without their Message notes).
+Harmless now only because the watermark no longer advances past a failed or
+interrupted run — it did before, which is exactly how the 54 were lost.
