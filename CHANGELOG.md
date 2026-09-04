@@ -18,6 +18,23 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- chore(memory): curated `MEMORY.md` -- 469 KB/250 entries down to 329 KB/191
+  (operator, 2026-09-04: "Visit every memory (you are allowed to remove stuff)
+  Avoid confusing you"). Removed 62 entries that were record-of-getting-there
+  rather than standing truth: superseded architecture-pass narratives (the end
+  state lives in `ADR.md`/`architecture.md`), one-off UI/CSS fixes, and
+  correction-trails where only the final answer still matters. Every standing
+  constraint was kept -- spot-verified that the TLS middlebox, `MAX_PATH`,
+  `COMPASS_BASE_URL`, capture-watermark, Hermes env-chaining and Store-stub
+  Python entries all survived. Two entries were corrected in place rather than
+  deleted because their symptom is still worth knowing: the port-8001 empty-UI
+  failure, and the `_FALLBACK_SECTION_NAME` fallback (which also correctly
+  flagged that `pipeline_manager` still creates a Section). Added a "Read this
+  first" header stating the actual mechanism -- vault_manager is
+  template-driven, a new note type is a `Template.json` and never new code --
+  because the file's volume had made that findable-but-unfound. Nothing was
+  rewritten to look better than it was; removed entries remain in git history.
+
 - docs(deployment): §2 records the auxiliary temperature warning that a real
   `hermes chat` surfaces on Compass/gpt-5, and why it went unseen for two
   deployments -- machines 1 and 2 verified Compass by model discovery only,
