@@ -139,7 +139,7 @@ def test_vault_path_is_written_into_hermes_env(monkeypatch, tmp_path: Path) -> N
     home = _fake_hermes_home(tmp_path, vault=r"C:\old\vault")
     monkeypatch.setattr(settings, "hermes_home_path", home)
 
-    result = setup_wizard.sync_vault_path_to_hermes(r"C:\new\vault")
+    result = setup_wizard.sync_paths_to_hermes(r"C:\new\vault")
 
     assert result["ok"] is True
     assert result["restart_required"] is True
@@ -156,7 +156,7 @@ def test_a_fresh_install_syncs_exactly_one_file(monkeypatch, tmp_path: Path) -> 
     home = _fake_hermes_home(tmp_path, vault=None)
     monkeypatch.setattr(settings, "hermes_home_path", home)
 
-    result = setup_wizard.sync_vault_path_to_hermes(r"C:\new\vault")
+    result = setup_wizard.sync_paths_to_hermes(r"C:\new\vault")
 
     assert result["files_written"] == 1
     assert r"OBSIDIAN_VAULT_PATH=C:\new\vault" in (home / ".env").read_text(encoding="utf-8")
@@ -168,7 +168,7 @@ def test_existing_profiles_are_not_left_pinned_to_the_old_vault(monkeypatch, tmp
     )
     monkeypatch.setattr(settings, "hermes_home_path", home)
 
-    result = setup_wizard.sync_vault_path_to_hermes(r"C:\new\vault")
+    result = setup_wizard.sync_paths_to_hermes(r"C:\new\vault")
 
     assert result["files_written"] == 3
     for name in ("opp-manager", "research-agent"):
@@ -180,7 +180,7 @@ def test_existing_profiles_are_not_left_pinned_to_the_old_vault(monkeypatch, tmp
 def test_sync_reports_rather_than_raises_when_hermes_is_absent(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(settings, "hermes_home_path", tmp_path / "no-hermes-here")
 
-    result = setup_wizard.sync_vault_path_to_hermes(r"C:\new\vault")
+    result = setup_wizard.sync_paths_to_hermes(r"C:\new\vault")
 
     assert result["ok"] is False
     assert result["files_written"] == 0
@@ -207,3 +207,28 @@ def test_drift_is_reported_on_the_hermes_step(monkeypatch, tmp_path: Path) -> No
 
     assert agrees["ok"] is False
     assert "somewhere" in agrees["detail"]
+
+
+def test_data_path_is_synced_alongside_the_vault_path(monkeypatch, tmp_path: Path) -> None:
+    """The Hermes-side Skill scripts resolve templates and their own state
+    under SECOND_BRAIN_DATA_PATH. Before it was synced they fell back to the
+    historical <vault>/.second-brain and silently dropped every email once
+    the operator split config out of the vault."""
+    home = _fake_hermes_home(tmp_path, vault=r"C:\old\vault")
+    monkeypatch.setattr(settings, "hermes_home_path", home)
+
+    setup_wizard.sync_paths_to_hermes(r"C:\new\vault", r"C:\somewhere\config")
+
+    written = (home / ".env").read_text(encoding="utf-8")
+    assert r"OBSIDIAN_VAULT_PATH=C:\new\vault" in written
+    assert r"SECOND_BRAIN_DATA_PATH=C:\somewhere\config" in written
+
+
+def test_data_path_falls_back_to_the_configured_setting(monkeypatch, tmp_path: Path) -> None:
+    home = _fake_hermes_home(tmp_path, vault=r"C:\old\vault")
+    monkeypatch.setattr(settings, "hermes_home_path", home)
+    monkeypatch.setattr(settings, "second_brain_data_path", Path(r"C:\configured\data"))
+
+    setup_wizard.sync_paths_to_hermes(r"C:\new\vault")
+
+    assert r"SECOND_BRAIN_DATA_PATH=C:\configured\data" in (home / ".env").read_text(encoding="utf-8")

@@ -40,7 +40,6 @@ _THREADS_SUBFOLDER = f"{_WORK_ROOT}/Threads"
 _PEOPLE_SUBFOLDER = f"{_WORK_ROOT}/People"
 _CUSTOMERS_SUBFOLDER = f"{_WORK_ROOT}/Customers"
 
-_STATE_DIR = ".second-brain"
 _PERSON_IGNORE_LIST_FILE = "person_ignore_list.json"
 
 
@@ -55,7 +54,14 @@ def _load_person_ignore_list(vault_path: Path) -> set[str]:
     rule applied elsewhere), so the operator can add more later without
     another code change. Missing file -> empty set, not an error (a
     freshly-cloned Skill install with no ignore list yet is valid)."""
-    path = vault_path / _STATE_DIR / _PERSON_IGNORE_LIST_FILE
+    # Resolved through vault_manager.data_root() rather than a hardcoded
+    # <vault>/.second-brain: after the 2026-09-03 config/vault split this
+    # file moved with the rest of the App Database Folder, and reading the
+    # old location silently returned an EMPTY ignore list -- so every
+    # address the operator had deliberately ignored started getting a
+    # Person note again, with nothing reporting it.
+    import vault_manager
+    path = vault_manager.data_root(vault_path) / _PERSON_IGNORE_LIST_FILE
     if not path.exists():
         return set()
     data = json.loads(path.read_text(encoding="utf-8"))

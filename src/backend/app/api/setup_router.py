@@ -66,9 +66,9 @@ def save(body: SaveSetupBody) -> dict:
     them to take effect -- pydantic Settings loads once per process -- so the
     response says so and the UI offers `/setup/restart` next.
 
-    Also mirrors the vault path into Hermes' own `.env` as
-    `OBSIDIAN_VAULT_PATH` (operator-directed, 2026-09-04), so the agents and
-    the app agree on where the vault is. Reported back as its own result
+    Also mirrors the vault path and the App Database Folder into Hermes' own
+    `.env` (`OBSIDIAN_VAULT_PATH` / `SECOND_BRAIN_DATA_PATH`, operator-
+    directed 2026-09-04), so the agents and the app agree on where both live. Reported back as its own result
     rather than folded into `ok`: the app's own settings ARE saved even if
     Hermes isn't installed, and the UI should say exactly that instead of
     presenting the whole save as failed."""
@@ -79,7 +79,7 @@ def save(body: SaveSetupBody) -> dict:
 
     vault_path = body.values.get("vault_path", "")
     result["hermes_vault_sync"] = (
-        setup_wizard.sync_vault_path_to_hermes(vault_path)
+        setup_wizard.sync_paths_to_hermes(vault_path, body.values.get('second_brain_data_path', ''))
         if vault_path
         else {"ok": False, "detail": "No vault path in this save — Hermes left untouched", "files_written": 0}
     )

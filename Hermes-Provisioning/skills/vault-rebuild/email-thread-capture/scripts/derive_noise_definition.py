@@ -57,6 +57,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+import vault_manager
+
 # A real sample/derivation response can carry a Unicode character (the
 # CRM Enhancements seed subject itself has an emoji) -- same fix as
 # list_recent_emails.py's own 2026-08-24 finding: Windows' default
@@ -66,7 +68,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 _HERMES_EXE = "hermes"  # resolvable on PATH, matching this Skill's own `python` convention (SKILL.md)
 _DEFAULT_TIMEOUT_SECONDS = 420  # a real relay call's own latency is genuinely variable -- tens of seconds to several minutes (Learnings.md) -- never assume a hang from wall-clock alone
 
-_ARTIFACT_RELATIVE_PATH = Path(".second-brain") / "data" / "EmailCapture" / "noise_definition.json"
+_ARTIFACT_RELATIVE_PATH = Path("data") / "EmailCapture" / "noise_definition.json"
 
 # Real, live, operator-confirmed noise-shaped seed content (2026-09-02,
 # REQ-SB-87-US-03 Constraints/Scenario 10) -- copied directly from the
@@ -248,7 +250,7 @@ def derive(vault_path: str, sample: list[dict], profile: str | None, timeout: in
         "definition": definition,
     }
 
-    artifact_path = Path(vault_path) / _ARTIFACT_RELATIVE_PATH
+    artifact_path = vault_manager.data_root(Path(vault_path)) / _ARTIFACT_RELATIVE_PATH
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     artifact_path.write_text(
         json.dumps(artifact, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -284,7 +286,7 @@ def main() -> int:
 
     print(json.dumps({
         "status": "derived",
-        "artifact_path": str(Path(args.vault_path) / _ARTIFACT_RELATIVE_PATH),
+        "artifact_path": str(vault_manager.data_root(Path(args.vault_path)) / _ARTIFACT_RELATIVE_PATH),
         "sample_size": artifact["sample_size"],
         "category": artifact["definition"].get("category"),
     }, ensure_ascii=False))

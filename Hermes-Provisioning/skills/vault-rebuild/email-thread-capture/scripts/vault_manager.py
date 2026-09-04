@@ -22,8 +22,9 @@ by adding a Template.json, never by writing a new script ("we don't need
 to edit 2000 places, max is 2" -- operator, 2026-08-25).
 
 Templates live in the SAME data/ tree the RegistryLoader already reads
-(REQ-SB-80): <vault>/.second-brain/data/Templates/<template_id>/
-Template.json -- so a NEW Section/note-type is a new Template.json, never
+(REQ-SB-80): <App Database Folder>/data/Templates/<template_id>/
+Template.json -- see data_root() for how that folder is located, which is
+NOT necessarily inside the vault any more -- so a NEW Section/note-type is a new Template.json, never
 new code. Template.json v2 (2026-08-30-vault-manager-template-trees.md)
 splits a template into two layers -- a real, deliberate reframe: "Template
 is not just a file, Sometimes actually most of the time it should be the
@@ -195,6 +196,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import uuid
 from datetime import datetime
@@ -212,7 +214,35 @@ _BODY_SECTION_HEADER_PATTERN = re.compile(r"^## .+$", re.MULTILINE)
 # -- "Notes" as the TOP-LEVEL root was this module's own assumption from
 # an illustrative example, not the vault's actual structure.
 _NOTES_ROOT = "Work"
-_TEMPLATES_SUBPATH = (".second-brain", "data", "Templates")
+
+# The App Database Folder used to live INSIDE the vault, at
+# <vault>/.second-brain/. Second Brain can relocate it (System settings /
+# the first-run setup wizard), and on 2026-09-03 the operator did exactly
+# that -- splitting config out of the vault entirely. This module kept
+# resolving templates at the old in-vault location, so load_template() below
+# raised for EVERY note, which silently broke the whole email capture
+# pipeline: run_delta_capture.py swallowed the non-zero exit, counted the
+# email as processed, and advanced its watermark past it. 54 real emails were
+# consumed and never written before it was noticed.
+#
+# Resolution order, most explicit first:
+#   1. SECOND_BRAIN_DATA_PATH  -- the same variable the app's own .env uses,
+#      set in Hermes' .env so every Skill script inherits it.
+#   2. <vault>/.second-brain   -- the historical default, so an install that
+#      never split its config keeps working with no change at all.
+_LEGACY_DATA_DIRNAME = ".second-brain"
+_TEMPLATES_RELATIVE = ("data", "Templates")
+
+
+def data_root(vault_path: Path) -> Path:
+    """Where the App Database Folder actually is for this install.
+
+    Deliberately re-read from the environment on every call rather than
+    resolved once at import: these scripts are one-shot subprocesses, and a
+    module-level constant would just be a second place for the same path to
+    go stale."""
+    configured = os.environ.get("SECOND_BRAIN_DATA_PATH", "").strip()
+    return Path(configured) if configured else vault_path / _LEGACY_DATA_DIRNAME
 
 
 class VaultManagerError(Exception):
@@ -512,9 +542,13 @@ def load_template(vault_path: Path, template_id: str) -> dict:
     -- fixed/dynamic `children` (OKF, Thread's messages/) are a real,
     later addition to this same shape, not built here (nothing today
     needs them)."""
-    template_path = vault_path.joinpath(*_TEMPLATES_SUBPATH, template_id, "Template.json")
+    template_path = data_root(vault_path).joinpath(*_TEMPLATES_RELATIVE, template_id, "Template.json")
     if not template_path.is_file():
-        raise VaultManagerError(f"unknown template: {template_id!r} ({template_path} not found)")
+        raise VaultManagerError(
+            f"unknown template: {template_id!r} ({template_path} not found). "
+            "If the App Database Folder was moved out of the vault, set "
+            "SECOND_BRAIN_DATA_PATH in Hermes' own .env to point at it."
+        )
     template = json.loads(template_path.read_text(encoding="utf-8"))
     identity = template.setdefault("identity", {})
     identity.setdefault("strategy", "id")
@@ -602,12 +636,11 @@ def _load_scoped_index_notes(vault_path: Path, root: Path) -> list[dict] | None:
     when it actually does, which would let a capture pipeline create a
     real duplicate note).
 
-    Assumes the index lives at <vault_path>/.second-brain/index/ (the
-    App Database Folder's own default location) -- a disclosed
-    limitation shared with every other Hermes-side .second-brain
-    consumer: if the operator relocates the App Database Folder from
-    Second Brain's own System settings page, this stays looking at the
-    old default until this literal path is updated to match."""
+    Resolves the index under data_root() above, so a relocated App Database
+    Folder is followed rather than silently missed. A miss here is harmless
+    either way (callers fall through to a real scan), unlike load_template's
+    own hard failure -- but a silently-never-hit index is still just dead
+    weight, so it honours the same resolution."""
     try:
         relative_to_work = root.relative_to(vault_path / _NOTES_ROOT)
     except ValueError:
@@ -615,7 +648,7 @@ def _load_scoped_index_notes(vault_path: Path, root: Path) -> list[dict] | None:
     parts = relative_to_work.parts
     if not parts:
         return None  # root IS Work/ itself -- no single per-folder index covers the whole vault
-    index_path = vault_path / ".second-brain" / "index" / "folders" / f"{parts[0]}.json"
+    index_path = data_root(vault_path) / "index" / "folders" / f"{parts[0]}.json"
     if not index_path.is_file():
         return None
     try:

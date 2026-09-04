@@ -141,7 +141,7 @@ _CLASSIFIER_TIMEOUT_SECONDS = 420
 # T01's own persisted artifact -- a real, structured file under the
 # VAULT's own `.second-brain/data/` tree (ADR-018), never baked into the
 # classifier profile's own static prompt, read fresh on every relay call.
-_NOISE_DEFINITION_RELATIVE_PATH = Path(".second-brain") / "data" / "EmailCapture" / "noise_definition.json"
+_NOISE_DEFINITION_RELATIVE_PATH = Path("data") / "EmailCapture" / "noise_definition.json"
 # T02's own locked lowercase verdict values (its Implementation Log,
 # assumption 2) -- the only classification values ever written to a
 # Thread's frontmatter.
@@ -149,7 +149,7 @@ _VALID_CLASSIFICATIONS = {"internal", "partner", "customer"}
 
 
 def _read_noise_definition(vault_path: Path) -> dict:
-    definition_path = vault_path / _NOISE_DEFINITION_RELATIVE_PATH
+    definition_path = vault_manager.data_root(vault_path) / _NOISE_DEFINITION_RELATIVE_PATH
     return json.loads(definition_path.read_text(encoding="utf-8"))
 
 
