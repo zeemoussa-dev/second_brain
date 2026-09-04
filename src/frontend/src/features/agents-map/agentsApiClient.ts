@@ -222,7 +222,7 @@ export interface ChatAttachmentResponse {
 // this call intentionally uses a raw fetch instead, duplicating
 // client.ts's own BASE_URL fallback (client.ts is out of this task's
 // Files to Modify; BASE_URL is not exported from it).
-const ATTACHMENT_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
+const ATTACHMENT_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8001';
 
 export async function sendChatMessageWithAttachment(
   agentId: string,

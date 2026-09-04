@@ -7,7 +7,7 @@ import { ApiError } from '../../api/client';
 // always resolves via response.json(), so a binary download bypasses it
 // and re-implements the same ApiError(status, text) mapping directly).
 
-const BACKUP_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
+const BACKUP_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8001';
 
 export interface RestoreResult {
   status: string;
