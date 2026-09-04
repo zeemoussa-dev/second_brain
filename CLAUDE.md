@@ -124,11 +124,13 @@ status.
   `src/backend` (Python + FastAPI — vault parsing/indexing, KB API, Hermes MCP
   integration), `src/frontend` (TypeScript + React + Vite — notes browser/search
   UI).
-- **`Documentation/Framework/`** — **how to build with this framework.** Read
-  `Templates.md` before adding a new note type (a new note type is a new
-  `Template.json`, never new code), `Artifacts.md` for Agent/Skill/Pipeline
-  shapes and the `.sbf`/`.sbb`/`.sbd` formats, and `Hermes-Provisioning.md` for
-  what depends on the folder held outside the working tree.
+- **`Documentation/Framework/`** — **How to Use the Framework.** The shared
+  reference for the operator and for you: same document, no separate versions.
+  Start at `README.md` (concepts and task recipes), then `Templates.md` before
+  adding a new note type (a new note type is a new `Template.json`, never new
+  code), `Artifacts.md` for Agent/Skill/Pipeline shapes and the
+  `.sbf`/`.sbb`/`.sbd` formats, and `Hermes-Provisioning.md` for what depends on
+  the folder held outside the working tree.
 - **`Documentation/PRD.md`** — full product requirements document. Read
   before implementing any feature.
 - **`html-prototype/`** — clickable HTML/CSS/JS prototype. No build step; open
