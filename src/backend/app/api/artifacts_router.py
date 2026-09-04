@@ -94,13 +94,33 @@ async def commit_import(
     file: UploadFile = File(...),
     decisions: str = Form("{}"),
     skill_target_profiles: str = Form("{}"),
+    agent_section_decisions: str = Form("{}"),
 ) -> list[dict]:
     scratch_path = await _scratch_sbf_from_upload(file)
     try:
         return artifact_import.commit_import(
             scratch_path, json.loads(decisions), json.loads(skill_target_profiles),
+            json.loads(agent_section_decisions),
         )
     except MalformedBundleError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     finally:
         os.remove(scratch_path)
+
+
+class ApplyPrimaryRoutingBody(BaseModel):
+    agent_id: str
+    snippet: str
+
+
+@router.post("/import/apply-primary-routing")
+def apply_primary_routing(body: ApplyPrimaryRoutingBody) -> dict:
+    """Explicit, separate, operator-triggered step (never run as part of
+    /import/commit) -- appends an imported agent's own suggested routing
+    text to THIS machine's real Primary SOUL.md. See artifact_import.
+    apply_primary_routing_snippet's own docstring for the idempotency/
+    never-silent contract."""
+    try:
+        return artifact_import.apply_primary_routing_snippet(body.agent_id, body.snippet)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))

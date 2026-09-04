@@ -139,6 +139,10 @@ class AgentUpdateBody(BaseModel):
     # dropped-field bug class as the scope/guardrails fix above).
     depends_on: list[str] | None = None
     preferred_index_ids: list[str] | None = None
+    # 2026-09-03: how a Primary/delegating agent should route to this one
+    # -- surfaced as a suggestion on Artifacts import, never auto-applied
+    # to any SOUL.md (AgentManager.update's own docstring / artifact_import.py).
+    primary_routing_snippet: str | None = None
 
 
 class AgentCreateBody(BaseModel):
@@ -160,6 +164,7 @@ class AgentCreateBody(BaseModel):
     scope: list[str] | None = None
     preferred_index_ids: list[str] | None = None
     tools: list[str] | None = None
+    primary_routing_snippet: str | None = None
     clone_from: str = "default"
 
 
@@ -189,7 +194,7 @@ def create_agent(body: AgentCreateBody) -> dict:
         is_background_agent=body.is_background_agent, depends_on=body.depends_on,
         description=body.description, prompt=body.prompt, guardrails=body.guardrails,
         scope=scope, preferred_index_ids=body.preferred_index_ids, tools=body.tools,
-        clone_from=body.clone_from,
+        primary_routing_snippet=body.primary_routing_snippet, clone_from=body.clone_from,
     )
     return to_detail_dict(agent)
 
@@ -231,6 +236,7 @@ def update_agent(agent_id: str, body: AgentUpdateBody) -> dict:
         is_background_agent=body.is_background_agent, prompt=body.prompt,
         guardrails=body.guardrails, scope=scope, tools=body.tools,
         depends_on=body.depends_on, preferred_index_ids=body.preferred_index_ids,
+        primary_routing_snippet=body.primary_routing_snippet,
     )
     if agent is not None:
         return to_detail_dict(agent)

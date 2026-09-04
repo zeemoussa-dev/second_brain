@@ -49,3 +49,9 @@ class Agent:
     # always [] on a list-composed Agent, never a false "no tools" signal
     # to trust for that case.
     tools: list[str] = field(default_factory=list)
+    # Free-text: how a Primary/delegating agent should route to THIS
+    # agent (2026-09-03). Second-Brain-owned Registry metadata; never
+    # applied to any SOUL.md automatically -- see AgentManager's own
+    # docstring on _write_registry_agent and artifact_import.py's
+    # apply_primary_routing_snippet.
+    primary_routing_snippet: str | None = None

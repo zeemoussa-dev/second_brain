@@ -16,10 +16,60 @@ from pathlib import Path
 
 from app.business.hermes.client import get_client
 from app.business.logic import artifact_dependency_resolver, artifact_secret_scan, sbf_archive
+from app.config import settings
 from app.data_access import pipelines as pipelines_data
 from app.data_access import skills as skills_data
 from app.data_access import templates as templates_data
 from app.data_access.registry import loader as registry_loader
+
+# Portability placeholders -- the exact same mechanism `tools/
+# hermes_backup.py` uses (MEMORY.md, 2026-09-03), applied here to
+# Skill/Template/Agent-registry/Pipeline TEXT content instead of a whole
+# filesystem tree. A Skill's own SKILL.md/scripts can genuinely reference
+# THIS machine's real vault/data/hermes-home path (a hardcoded example
+# command, a script's own hardcoded fallback default) -- confirmed live,
+# 2026-09-03: 16 of ~17 real canonical Skills' own SKILL.md bake this
+# machine's literal path into the exact `terminal(command=...)` block the
+# agent is instructed to run, and 3 real scripts (email-thread-capture/
+# meeting-capture) fall back to a hardcoded literal because the env var
+# they check is never actually set anywhere. Those literal values are
+# simply wrong the moment the artifact is imported onto a different
+# deployment (operator, 2026-09-03: "that is what we did in backup and
+# restore" -- apply the same fix here). Duplicated (not imported) from
+# hermes_backup.py, matching this codebase's own established "each module
+# owns its own business interpretation" convention (see artifact_import.
+# py's own identical duplication note for its _SEED_DATA_ALLOWLIST).
+_PLACEHOLDER_VAULT_PATH = "@@SECOND_BRAIN_VAULT_PATH@@"
+_PLACEHOLDER_HERMES_HOME = "@@SECOND_BRAIN_HERMES_HOME@@"
+_PLACEHOLDER_DATA_PATH = "@@SECOND_BRAIN_DATA_PATH@@"
+
+
+def _substitute_both_forms(text: str, real_value: str, placeholder: str) -> str:
+    """Replaces every real occurrence of real_value with placeholder, in
+    both its raw form and its JSON-double-backslash-escaped form (a
+    Windows path embedded in a JSON string value always carries doubled
+    backslashes) -- mirrors hermes_backup.py's own helper exactly."""
+    text = text.replace(real_value, placeholder)
+    text = text.replace(real_value.replace("\\", "\\\\"), placeholder)
+    return text
+
+
+def _substitute_placeholders(text: str) -> str:
+    """Order matters, same reason as hermes_backup.py's own identically-
+    shaped function: second_brain_data_path is either unrelated to the
+    vault path, or (the common case) vault-relative -- a real string that
+    literally CONTAINS the vault path as its own prefix. Substituting the
+    vault path first would consume that shared prefix and leave nothing
+    for the data-path substitution to match."""
+    data_str, vault_str, hermes_str = (
+        str(settings.second_brain_data_path), str(settings.vault_path), str(settings.hermes_home_path),
+    )
+    if data_str != vault_str:
+        text = _substitute_both_forms(text, data_str, _PLACEHOLDER_DATA_PATH)
+    text = _substitute_both_forms(text, vault_str, _PLACEHOLDER_VAULT_PATH)
+    text = _substitute_both_forms(text, hermes_str, _PLACEHOLDER_HERMES_HOME)
+    return text
+
 
 # v1 disclosed allowlist (this task's own scope-internal judgement call,
 # logged in the Implementation Log -- the PRD names one real example, not
@@ -172,13 +222,14 @@ def commit_export(selection: list[dict], secret_decisions: dict[str, str]) -> st
                 pipeline_json = pipelines_data.read_pipeline_json(artifact_id)
             except (FileNotFoundError, ValueError):
                 continue
-            payload[f"pipelines/{artifact_id}.json"] = json.dumps(pipeline_json, indent=2).encode("utf-8")
+            pipeline_text = _substitute_placeholders(json.dumps(pipeline_json, indent=2))
+            payload[f"pipelines/{artifact_id}.json"] = pipeline_text.encode("utf-8")
             continue
 
         prefix = f"{kind}s/{artifact_id}/"
         for file_path, text in redacted_content.items():
             if file_path.startswith(prefix):
-                payload[file_path] = text.encode("utf-8")
+                payload[file_path] = _substitute_placeholders(text).encode("utf-8")
 
         if kind == "agent":
             payload[f"agents/{artifact_id}/profile.tar.gz"] = _export_agent_profile_tarball(artifact_id)

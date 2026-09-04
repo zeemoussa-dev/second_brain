@@ -50,4 +50,5 @@ def to_detail_dict(agent: Agent) -> dict:
         "tools": agent.tools,
         "depends_on": agent.depends_on,
         "preferred_index_ids": agent.preferred_index_ids,
+        "primary_routing_snippet": agent.primary_routing_snippet,
     }

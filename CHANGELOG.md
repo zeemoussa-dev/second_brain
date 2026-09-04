@@ -139,27 +139,6 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   processes while Hermes re-reads `.env` via `load_dotenv` on every process
   start; restarted the gateway to pick it up.
 
-- docs: `Deployment.md` — replaced the "If network/proxy blocks downloads"
-  placeholder (which explicitly deferred to a live troubleshooting session)
-  with the **verified** corporate-TLS-interception fix, solved live
-  2026-08-20: outbound HTTPS is re-signed by a G42 middlebox
-  (`*.host → G42Decrypt (t) → G42Decrypt → AD-EC-CA-01-CA`), Windows trusts
-  that root but Node ignores the Windows store, so every Node-based
-  integration fails with a misleading error. Fix is
-  `NODE_OPTIONS=--use-system-ca` (Node ≥ 22.15) set as a User env var *and*
-  in Hermes' `.env`, with a `NODE_EXTRA_CA_CERTS` PEM-export fallback, a
-  chain-inspection one-liner, and an explicit warning against
-  `NODE_TLS_REJECT_UNAUTHORIZED=0`.
-- docs: `Deployment.md` — expanded "WhatsApp (QR-code pairing)" from three
-  lines into a real runbook: the TLS prerequisite, the two independent
-  enable gates (`.env` `WHATSAPP_ENABLED` + `config.yaml`
-  `platforms.whatsapp.enabled`) and the dashboard endpoint that sets both,
-  the enabled-but-unpaired failure that takes the **entire gateway** down
-  (exit 78, all channels and cron with it), the CLI/adapter session-path
-  split, and four real troubleshooting entries — chiefly that
-  `Connection closed (reason: 500)` is TLS, not `badSession`, because
-  `bridge.js` hardcodes `pino({level:'warn'})` and discards the real
-  `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`.
 - docs: `Deployment.md` — added the WhatsApp pairing failure the guide had
   no entry for at all ("Connection is closed, reason 500"). Root cause is
   the §1 corporate TLS interception reaching a third runtime: Node, after
@@ -279,6 +258,63 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   `py` launcher on a fresh machine), the real Compass `custom_providers`
   procedure with its two paid-for traps, and a dated status block
   recording exactly what is done and what still needs the operator.
+
+## 0.2.0 -- 2026-09-03
+
+- feat: Frontend UI for the two Artifacts-import features that were
+  backend/API-only until now:
+  - **Section picker** (`ArtifactImportModal.tsx`) -- each bundled
+    Agent in the import preview gets a real Section dropdown (every
+    existing target section, plus "+ Create new section..." with a
+    name field), replacing the silent Data Gatherer fallback with an
+    actual choice. Left unset, behavior is unchanged (falls back to
+    Data Gatherer).
+  - **Primary-routing suggestion** -- a successfully deployed Agent that
+    carries a `primary_routing_snippet` now shows it after import with
+    an explicit "Add to Primary's SOUL.md" button (POST
+    `/artifacts/import/apply-primary-routing`), never applied
+    automatically.
+  Verified live end-to-end (real upload, real section-picker dropdown
+  populated with this machine's actual 6 sections, real "create new"
+  flow, real commit against the notes-manager/files-manager bundle --
+  9 of 11 artifacts deployed correctly under "keep both", with real
+  cleanup afterward). Found live, unrelated to this UI work: `hermes
+  profile import` failed for both real Agent entries with a Windows
+  `PermissionError` during Hermes' own CLI rename step -- a real issue
+  in Hermes' own external code/environment, not something this project
+  builds (per this repo's own standing rule); worth knowing about before
+  the CBO handoff, since the same failure could recur there. See
+  `MEMORY.md`.
+
+- fix: confirmed the `hermes profile import` PermissionError noted above
+  is transient, not structural -- retried both `notes-manager` and
+  `files-manager` (the larger one included) directly against the real
+  Hermes CLI with no code changes; both succeeded cleanly. See
+  `MEMORY.md`.
+
+## 0.1.0 -- 2026-09-03 (first real version)
+
+- docs: `Deployment.md` — replaced the "If network/proxy blocks downloads"
+  placeholder (which explicitly deferred to a live troubleshooting session)
+  with the **verified** corporate-TLS-interception fix, solved live
+  2026-08-20: outbound HTTPS is re-signed by a G42 middlebox
+  (`*.host → G42Decrypt (t) → G42Decrypt → AD-EC-CA-01-CA`), Windows trusts
+  that root but Node ignores the Windows store, so every Node-based
+  integration fails with a misleading error. Fix is
+  `NODE_OPTIONS=--use-system-ca` (Node ≥ 22.15) set as a User env var *and*
+  in Hermes' `.env`, with a `NODE_EXTRA_CA_CERTS` PEM-export fallback, a
+  chain-inspection one-liner, and an explicit warning against
+  `NODE_TLS_REJECT_UNAUTHORIZED=0`.
+- docs: `Deployment.md` — expanded "WhatsApp (QR-code pairing)" from three
+  lines into a real runbook: the TLS prerequisite, the two independent
+  enable gates (`.env` `WHATSAPP_ENABLED` + `config.yaml`
+  `platforms.whatsapp.enabled`) and the dashboard endpoint that sets both,
+  the enabled-but-unpaired failure that takes the **entire gateway** down
+  (exit 78, all channels and cron with it), the CLI/adapter session-path
+  split, and four real troubleshooting entries — chiefly that
+  `Connection closed (reason: 500)` is TLS, not `badSession`, because
+  `bridge.js` hardcodes `pino({level:'warn'})` and discards the real
+  `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`.
 - fix: `REQ-SB-87-US-02-T05` — closed the last disclosed pre-cutover gap:
   `run_full_capture.py`/`run_delta_capture.py`'s own `ingest_payload` dict
   construction now forwards the real `direction` field (`e.get("direction")
@@ -5137,3 +5173,75 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   `email_staging` members bundled, file count dropped by the expected 10
   (1556 -> 1546), no regression in `Settings/`/`.curator_backups`/loose
   root files. See `MEMORY.md`.
+
+- fix: `hermes_restore.py` -- CRITICAL fix to the placeholder-restore
+  mechanism itself. `_substitute_both_forms` tried both the raw and
+  JSON-escaped form of a real value in sequence against the same
+  placeholder token; the first replace consumed every occurrence, so the
+  second (the one a `.json` file needed) always found nothing left,
+  silently producing invalid JSON (unescaped backslashes inside a JSON
+  string) on restore. Latent in the already-shipped placeholder mechanism
+  (commits `ee5d1ff`/`e83fdfe`/`375be20`) the whole time -- no prior
+  round trip this session happened to carry a placeholder inside a
+  `.json` file. Fixed by threading a `json_escaped` flag through
+  `_substitute_placeholder(s)`, set per-file by `_rewrite_tree` from the
+  real file suffix, instead of guessing by trying both output forms.
+  Verified via a scratch round trip covering both a `.json` file (3
+  placeholders) and a `.py` file (1 placeholder). See `MEMORY.md`.
+
+- feat: Artifacts export/import (`.sbf` bundles) gained the same
+  placeholder-substitution portability mechanism as
+  `hermes_backup.py`/`hermes_restore.py` -- a Skill's `SKILL.md`/
+  `scripts/**`, a Template's `Template.json`, an Agent's registry-side
+  `Agent.json`/`soul.md`, and a Pipeline's `pipelines/<id>.json` are now
+  substituted real-path -> placeholder on export and placeholder ->
+  real-path on import, keyed off this machine's own `settings.vault_path`/
+  `.second_brain_data_path`/`.hermes_home_path`. Found live auditing this
+  subsystem with the same lens as the backup fixes: 16 of ~17 real
+  canonical Skills' own `SKILL.md` bake this machine's literal vault path
+  into the exact example command the agent is told to run, and 3 real
+  capture scripts fall back to a hardcoded literal because the env var
+  they check is never actually set. The nested Hermes profile
+  `.tar.gz` is deliberately untouched (stays opaque, `ADR-014`'s
+  boundary). Verified with a real export/import round trip against the
+  live `track-opportunities` Skill: placeholder present in the exported
+  archive, real path correctly restored (no leftover placeholder) after
+  import under an alternate id.
+- fix: `artifact_import.py`'s seed/blank-data writer (`Settings/
+  Entities.md`) unconditionally overwrote the target's real content with
+  an empty string on every import of the owning Skill, even when the
+  target already had real data. Now only writes the blank placeholder
+  when the target file doesn't already exist.
+
+- feat: Agents gained a new field `primary_routing_snippet` (Registry-side
+  metadata alongside icon/color) -- structured storage for "how a Primary/
+  delegating agent should route to this agent", settable via `POST /agents`/
+  `PATCH /agents/{id}`, automatically carried through `.sbf` export/import.
+  New endpoint `POST /artifacts/import/apply-primary-routing` explicitly
+  appends a deployed agent's own snippet to the target machine's real
+  Primary SOUL.md, wrapped in an idempotent per-agent marker pair --
+  never applied automatically. Populated for real on `notes-manager`/
+  `files-manager` for the CBO handoff. Frontend not yet built. See
+  `MEMORY.md`.
+- fix: documented (not a code bug) -- exporting an Agent via a raw script
+  instead of the running server silently drops that Agent's own
+  `Agent.json`/`soul.md` (Registry never booted -> `agent_data_dir()`
+  returns None -> the export's own "never fabricate" rule skips it
+  silently). Regenerated the CBO handoff `.sbf` correctly. See `MEMORY.md`.
+
+- feat: Artifacts import gained a real, explicit section-placement choice
+  for Agents (`available_sections` in the preview response,
+  `agent_section_decisions` on commit -- pick an existing target section
+  or create a new one), replacing the always-silent "Data Gatherer"
+  fallback. Omitting a decision keeps the prior fallback behavior
+  unchanged. Frontend not yet built.
+
+- feat: Second Brain has a real version number for the first time
+  (repo-root `VERSION` file, semver). Read via `GET /health`'s own
+  `version` field (`app/version.py`), shown in the sidebar UI (always
+  visible, not buried in a Settings sub-page). Convention going forward:
+  MAJOR = breaking (read CHANGELOG before assuming a pull just works),
+  MINOR = feature, PATCH = fix -- bumped by hand alongside a real
+  CHANGELOG entry on every push, per operator instruction, 2026-09-03.
+  Everything above this line, accumulated before a version number
+  existed, is retroactively version 0.1.0.

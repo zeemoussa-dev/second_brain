@@ -86,26 +86,32 @@ _PLACEHOLDER_HERMES_HOME = "@@SECOND_BRAIN_HERMES_HOME@@"
 _PLACEHOLDER_DATA_PATH = "@@SECOND_BRAIN_DATA_PATH@@"
 
 
-def _substitute_one(text: str, placeholder: str, real_value: str, *, json_escaped: bool) -> str:
-    """Replaces every real occurrence of placeholder with real_value, in
-    the ONE form correct for the file being written: doubled backslashes
-    inside a .json file (where a Windows path is a JSON string value and
-    a lone backslash is an invalid escape), raw everywhere else.
+def _substitute_placeholder(text: str, placeholder: str, real_value: str, *, json_escaped: bool) -> str:
+    """Replaces every occurrence of placeholder with real_value -- the
+    JSON-double-backslash-escaped form when the containing file is JSON
+    (a Windows path in a JSON string always carries doubled backslashes),
+    the raw form otherwise.
 
-    The direction matters, and is why this is not symmetric with
-    hermes_backup.py's own `_substitute_both_forms`. Backup collapses TWO
-    distinct real forms (`C:\\Users\\...` and `C:\\\\Users\\\\...`) into ONE
-    token -- many-to-one, so replacing both needles in sequence is
-    correct there, since they are genuinely different strings. Restore
-    has to go one-to-many: the single token must expand back into the
-    form that particular file needs, and a plain text replace cannot
-    infer which. The previous version tried to do both forms here the
-    same way backup does, but with an IDENTICAL needle both times -- so
-    the first replace consumed every occurrence with the raw value and
-    the second line was dead code. Found live, 2026-09-03: a real restore
-    failed mid-run with `Invalid \\escape: line 6 column 84` because every
-    Windows path written back into a JSON file carried single backslashes
-    (`"C:\\Users\\..."` -> `\\U`, `\\m` are not valid JSON escapes).
+    BUG FIX (2026-09-03, found live testing the Artifacts export/import
+    path that reuses this exact mechanism): the original version of this
+    function tried BOTH forms unconditionally, in sequence --
+    `text.replace(placeholder, real_value)` followed by
+    `text.replace(placeholder, escaped_value)`. That is safe on the
+    EXPORT side (hermes_backup.py's own identically-shaped helper), which
+    searches for two DIFFERENT candidate real-value spellings and
+    replaces both with the SAME placeholder -- no conflict. It is wrong
+    here: the first `.replace()` call consumes every real placeholder
+    occurrence in the text, so the second call (the one a `.json` file
+    actually needs) always finds nothing left to replace -- silently
+    leaving raw, unescaped backslashes inside a JSON string, which is
+    invalid JSON. Confirmed live: a bundled `.json` file referencing
+    `@@SECOND_BRAIN_VAULT_PATH@@` came back holding a raw, single-
+    backslash path where a JSON string needs doubled backslashes -- an
+    unparsable string. Since the placeholder token itself carries no backslashes, it
+    looks identical whether it originated in a `.json` file or a
+    `.py`/`.md`/`.txt` one -- there is no way to recover which form is
+    needed from the token alone, so the caller must say so via
+    `json_escaped` instead of this function blindly trying both.
 
     Known limitation of deciding by file suffix: a .md/.yaml file that
     embeds a JSON snippet containing one of these paths gets the raw
@@ -113,28 +119,22 @@ def _substitute_one(text: str, placeholder: str, real_value: str, *, json_escape
     in this tool-pair today (cron jobs.json and the Registry are the only
     JSON carriers). A fully faithful round trip would need backup to emit
     two distinct tokens (raw vs JSON-escaped) rather than collapsing both
-    into one -- a format-version change, deliberately not done here.
-    """
+    into one -- a format-version change, deliberately not done here."""
     value = real_value.replace("\\", "\\\\") if json_escaped else real_value
     return text.replace(placeholder, value)
 
 
 def _substitute_placeholders(
-    text: str,
-    vault_path: str,
-    hermes_home: str,
-    second_brain_data_path: str,
-    *,
-    json_escaped: bool,
+    text: str, vault_path: str, hermes_home: str, second_brain_data_path: str, *, json_escaped: bool,
 ) -> str:
     """No ordering concern here (unlike the old rewrite-based design) --
     each placeholder is a unique, non-overlapping token, so substitution
     order genuinely doesn't matter; kept in the same vault/hermes_home/
     data_path order as hermes_backup.py's own substitution purely for
     readability."""
-    text = _substitute_one(text, _PLACEHOLDER_VAULT_PATH, vault_path, json_escaped=json_escaped)
-    text = _substitute_one(text, _PLACEHOLDER_HERMES_HOME, hermes_home, json_escaped=json_escaped)
-    text = _substitute_one(text, _PLACEHOLDER_DATA_PATH, second_brain_data_path, json_escaped=json_escaped)
+    text = _substitute_placeholder(text, _PLACEHOLDER_VAULT_PATH, vault_path, json_escaped=json_escaped)
+    text = _substitute_placeholder(text, _PLACEHOLDER_HERMES_HOME, hermes_home, json_escaped=json_escaped)
+    text = _substitute_placeholder(text, _PLACEHOLDER_DATA_PATH, second_brain_data_path, json_escaped=json_escaped)
     return text
 
 
@@ -148,11 +148,7 @@ def _rewrite_tree(root: Path, vault_path: str, hermes_home: str, second_brain_da
         except (UnicodeDecodeError, OSError):
             continue
         new_text = _substitute_placeholders(
-            text,
-            vault_path,
-            hermes_home,
-            second_brain_data_path,
-            json_escaped=path.suffix.lower() == ".json",
+            text, vault_path, hermes_home, second_brain_data_path, json_escaped=path.suffix.lower() == ".json",
         )
         if new_text != text:
             path.write_text(new_text, encoding="utf-8")

@@ -33,6 +33,16 @@ class AgentConfig:
     # Real Index ids (business/core/index/) this agent should consult
     # first when looking for data in the vault (2026-08-28).
     preferred_index_ids: list[str] = field(default_factory=list)
+    # Free-text snippet describing how a Primary/delegating agent should
+    # route to THIS agent -- e.g. "route quick, no-decision-needed capture
+    # here; relay verbatim: `hermes -p <id> chat -q \"<content>\" -Q`"
+    # (2026-09-03, operator: "link the Agent to primary with what you will
+    # append"). Second-Brain-owned Registry metadata, same category as
+    # icon/color -- never written to Hermes' own SOUL.md automatically;
+    # surfaced as a suggestion on Artifacts import (artifact_import.py)
+    # for the operator to explicitly apply to the TARGET's own Primary
+    # SOUL.md, never silently.
+    primary_routing_snippet: str | None = None
 
 
 @dataclass
