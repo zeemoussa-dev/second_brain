@@ -31,7 +31,7 @@ from app.business.core.sections.section_manager import SectionManager
 from app.business.core.skills.skill_manager import SkillManager
 from app.business.core.templates.template_manager import TemplateManager
 from app.business.hermes.client import get_client
-from app.business.logic import artifact_import_conflicts, sbf_archive
+from app.business.logic import artifact_import_compat, artifact_import_conflicts, sbf_archive
 from app.config import settings
 from app.data_access import entities as entities_data
 from app.data_access.registry import loader as registry_loader
@@ -108,8 +108,15 @@ def preview_import(archive_path: str) -> dict:
     bundled Agent's own `Agent.json` never carries a `section_id` at all
     (confirmed by direct reading), so this decision is relevant for
     EVERY agent import, not just a conflict case."""
-    manifest, _payload = sbf_archive.read_archive(archive_path)
+    manifest, payload = sbf_archive.read_archive(archive_path)
     artifacts = artifact_import_conflicts.detect_conflicts(manifest["artifacts"])
+    # Screened here, in the preview, precisely because it is the last point
+    # where the operator can still skip the artifact. A bundle predating the
+    # 2026-09-04 data_root() fix carries scripts that would silently
+    # reintroduce the email-capture outage -- and the placeholder machinery
+    # cannot see it, since `.second-brain` is a relative literal, not one of
+    # the absolute paths it substitutes.
+    artifacts = artifact_import_compat.flag_stale_data_paths(artifacts, payload)
     available_profiles = [profile.id for profile in get_client().profiles.get_all()]
     available_sections = [{"id": s.id, "name": s.name} for s in SectionManager().get_all()]
     return {

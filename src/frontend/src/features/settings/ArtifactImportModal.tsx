@@ -203,6 +203,25 @@ export function ArtifactImportModal({ onClose }: ArtifactImportModalProps) {
                       {' · '}
                       {artifact.conflicts ? 'conflicts with an existing artifact' : 'no conflict'}
                     </span>
+                    {artifact.stale_data_path && (
+                      <span
+                        className="item-row-meta"
+                        data-testid={`stale-data-path-${artifact.id}`}
+                        style={{ color: 'var(--color-warning)' }}
+                      >
+                        <span
+                          className="material-symbols-outlined"
+                          aria-hidden="true"
+                          style={{ fontSize: '14px', verticalAlign: 'middle', marginRight: '4px' }}
+                        >
+                          warning
+                        </span>
+                        {artifact.stale_data_path_detail?.message}
+                        {artifact.stale_data_path_detail?.files?.length
+                          ? ` (${artifact.stale_data_path_detail.files.join(', ')})`
+                          : ''}
+                      </span>
+                    )}
                     {artifact.kind === 'skill' && (
                       <span className="item-row-meta">
                         Deploy to:

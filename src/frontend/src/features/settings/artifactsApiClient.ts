@@ -86,6 +86,12 @@ export interface ImportArtifactPreview {
   id: string;
   conflicts: boolean;
   category: string | null;
+  /** True when a bundled Skill script still resolves the App Database Folder
+   *  at the old <vault>/.second-brain location. Importing it would overwrite
+   *  the corrected version and can silently stop email capture from writing
+   *  anything -- the exact regression that cost 54 emails on 2026-09-04. */
+  stale_data_path?: boolean;
+  stale_data_path_detail?: { message: string; files: string[] };
 }
 
 export interface AvailableSection {

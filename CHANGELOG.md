@@ -18,6 +18,25 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix(skills): Hermes-side Skill scripts now resolve the App Database Folder
+  through `vault_manager.data_root()` (honouring `SECOND_BRAIN_DATA_PATH`,
+  falling back to `<vault>/.second-brain`) instead of hardcoding the in-vault
+  location. The 2026-09-03 config/vault split had silently broken email
+  capture: 54 emails consumed across three runs, 0 written, watermark
+  advanced past all of them. Also fixed the person ignore list, which had
+  been silently returning empty.
+- fix(email-capture): a failed `ingest_email.py` is recorded instead of
+  swallowed, the run reports `complete_with_errors`, and the watermark stops
+  below the oldest failure so nothing is ever skipped permanently.
+  `next_watermark()` extracted and unit-tested.
+- feat(artifacts): the import preview screens bundled Skill scripts for the
+  old hardcoded data path and warns before deploying. The placeholder
+  mechanism can't catch it -- it substitutes absolute paths, and this is a
+  relative literal -- so a pre-fix bundle would otherwise silently overwrite
+  the corrected script and reintroduce the outage.
+- feat(setup): the wizard also writes `SECOND_BRAIN_DATA_PATH` into Hermes'
+  `.env`, so the resolver above has a value to resolve.
+
 - feat(setup): first-run setup wizard (`REQ-SB-89`) -- a fresh install is now
   configured through the UI instead of by hand-editing `.env`. Four steps
   (vault + identity, Compass, Hermes, storage/access), each field checked
