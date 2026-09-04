@@ -80,6 +80,75 @@ instructions.
 
 ---
 
+## Framework reference
+
+Verified against the code 2026-09-04. **This section exists so a session does not
+have to grep the engine to learn what it can do.** If you find yourself reading
+`vault_manager.py` to answer "what keys does a Template take" or "what can the
+engine do", that is a bug in this section — fix it here.
+
+### The vault engine — `src/backend/app/vault/vault_manager.py`
+
+| Call | What it does |
+|---|---|
+| `create(vault_path, template, note_name, title, note_id=None, frontmatter=None, sections=None, folder_date=None)` | New note. `folder_date` overrides the folder's dated stem (only with `note_own_folder`). |
+| `modify_section(vault_path, template, note_id, section, content, mode, note_name=None, title=None, frontmatter=None)` | **"Create if not exist, else update section" in ONE call.** `mode`: `"replace"` or `"append"`. Omit `note_name`/`title` to force "must already exist". |
+| `update(vault_path, note_path, title=None, frontmatter=None)` | Rename/retitle in place — nothing moves, no backlink breaks. |
+| `find(vault_path, by, value, note_name=None)` | `by`: `id` \| `filename` \| `folder`. Also `find_by_id`, `find_by_filename`, `find_in_folder`. |
+| `bump_folder_date(vault_path, note_path, new_date_str)` | Move a container note's folder sort-date forward. |
+| `load_template(vault_path, template_id)`, `read_note`, `write_note`, `get_section_content` | Primitives. |
+
+**Paths.** Notes root is **`Work/`** (`_NOTES_ROOT`), not `Notes/`. A note lands at
+`Work/<note_name>/<YYYY-MM-DD>-<Title>.md`, or with `note_own_folder: true` at
+`Work/<note_name>/<YYYY-MM-DD>-<Title>/<YYYY-MM-DD>-<Title>.md` so attachments can
+sit beside it. Templates resolve to `<second_brain_data_path>/data/Templates/<id>/Template.json`
+in the backend copy, and `<vault>/.second-brain/data/Templates/...` in the Hermes-Skill copies.
+
+**Identity.** Frontmatter `id` is the stable key — caller-supplied external id, or
+uuid4. The engine also stamps `title` and `created`. Keying on a real external id
+is what makes a re-run idempotent instead of duplicating.
+
+### `Template.json` — the ONLY keys the engine reads
+
+| Key | Meaning |
+|---|---|
+| `id` | template id (= its folder name) |
+| `note_name` | subfolder under `Work/` |
+| `on_missing` | `create` (default) or `error` — `error` means never silently create |
+| `on_existing_title` | `update_section` (default) = same title updates in place; otherwise always a new file |
+| `note_own_folder` | bool — give each note its own folder |
+| `note_filename_plain` | bool — drop the date prefix from the filename |
+| `sections` | `[{ "name": str, "access": str }]` |
+| `frontmatter_defaults` | dict merged into every note's frontmatter |
+
+**Section access vocabulary: `machine_write` \| `human_only` \| `public`.** An
+**undeclared** section defaults to `machine_write` (open), so a section you want
+protected must be declared. `human_only` is enforced by the engine —
+`_require_machine_write` raises, so it is structural, not a prompt instruction.
+Vault convention: `## Actions` and `## Personal Notes` are the human-owned ones.
+
+**A new note type is a new `Template.json`, never new code.**
+
+### Artifacts — what moves between installs
+
+Four kinds: **skill**, **template**, **agent**, **pipeline**. Three archive
+formats, easily confused:
+
+| Format | Carries | Modules |
+|---|---|---|
+| `.sbf` | the four artifact kinds (`ADR-013`) | `artifact_export.py`, `artifact_import.py`, `sbf_archive.py` |
+| `.sbb` | Hermes structural backup — profiles, cron, skills | `tools/hermes_backup.py`, `hermes_restore.py` |
+| `.sbd` | real vault **data** export | `sbd_archive.py` |
+
+Supporting: `artifact_dependency_resolver.py` (export closure),
+`artifact_secret_scan.py`, `artifact_import_conflicts.py` (import gates on an
+explicit per-artifact decision when `conflicts: true`, never defaults silently),
+`artifacts_inventory.py`. Placeholder substitution keeps machine-specific
+absolute paths out of travelling content — but **cannot catch a hardcoded
+RELATIVE path**, and a restore recreates **no `.env` anywhere**.
+
+---
+
 ## Decisions
 
 
@@ -241,6 +310,8 @@ instructions.
 
 ## Patterns
 
+- **Email/threaded-source template shape (`email-thread`, 2026-09-04):** a threaded source is ONE note per thread, not one per message, keyed on the provider's own conversation id as frontmatter `id`. `modify_section(note_id=<conversation id>, section="Messages", mode="append")` is "create if not exist, else append" in a single call, so a re-run of the same message set appends to the same file instead of duplicating -- verified live (2nd call on the same id returned `created: False, updated: True` on the same path). `note_own_folder: true` gives the thread its own folder so attachments sit beside the note. Sections split by real ownership using the vault's established access vocabulary (`machine_write` / `human_only` / `public`): `Summary` + `Messages` machine-written, `Actions` + `Personal Notes` `human_only` -- the engine REFUSES an automated write to those (`_require_machine_write` raises), so human ownership is structural, not a prompt instruction anyone can drift from. Confirmed live. The same shape fits any threaded source (chat, tickets), not just email.
+
 - **Embedded-attachment dual-syntax resolver shape (`ADR-016`, `REQ-SB-86-US-02-T01`):** given a plain `list[str]` of vault-relative `.md` paths (no runtime dependency on however the selection was built), read each note's real body via `app/obsidian/frontmatter.py::read_note`, scan it with two separate regexes (a wikilink-embed `!\[\[([^\]|#]+)(?:[#|][^\]]*)?\]\]` and a markdown-image-link `!\[[^\]]*\]\(([^)\s]+)\)`), and resolve each captured target in a fixed fallback order: (1) relative to the referencing note's own containing folder — the real, dominant convention this vault's own notes actually use; (2) every ancestor folder from the note's own folder up to the vault root, recursively searched for the target's own bare filename under an `attachments/`/`files/` subfolder (the real `write_attachments()`/`write_file_companion()` convention) — searching by filename rather than replicating the exact note-slug/message-slug nesting keeps this resolver decoupled from that convention's own internal shape; (3) as a plain vault-root-relative path. A target resolving nowhere is silently skipped, never fabricated, never a hard failure. **Always call `.resolve()` on both the matched path and the vault root before computing the final vault-relative string** — a match reached via a `../` relative traversal from the note's own folder (e.g. a markdown-image-link target) produces a non-normalized path that otherwise fails to dedup against the SAME physical file reached directly by a sibling note; found live via a real two-note dedup check, not by inspection. A target that itself resolves to a real `.md` file is excluded (Obsidian's `![[Note]]` embed syntax is transclusion, not an attachment — including it would silently expand an export beyond the operator's own selection). First concrete instance: `vault_attachment_resolver.py::resolve_embedded_attachments`. Apply the same shape to any future "detect a real on-disk reference inside a note's own body" resolver.
 
 - **Genuinely-unfiltered filesystem-tree read shape (`REQ-SB-86-US-01-T01`):** a real, uncached recursive walk built directly on `Path.iterdir()`/`Path.relative_to()` over `settings.vault_path` (never `vault_writer.list_all_note_paths()`/the in-memory note index, which deliberately excludes OKF-reserved files and `_`-prefixed folders) — sort folders-before-files by computing `child.is_dir()` ONCE per entry and reusing that single boolean for both the sort key and the type decision (see the Constraint below for why calling `is_file()`/`is_dir()` independently is unsafe). First concrete instance: `VaultManager.get_export_tree()` / `GET /vault/export-data/tree`. Verified live: a 4081-entry independent `Path.rglob("*")` cross-check against the real vault matched the endpoint's own flattened output byte-for-byte (0 missing, 0 extra).
@@ -271,6 +342,8 @@ instructions.
 - **`hermes cron create SCHEDULE ...` schedule-string syntax is a real, silent trap: a bare duration (`"20m"`) creates a ONE-TIME job (`schedule.kind: "once"`, fires once then is done regardless of `--repeat`); only the `"every "`-prefixed form (`"every 20m"`) creates the real, recurring `schedule.kind: "interval"` job.** Found live, `REQ-SB-88-US-01-T04` — a first attempt with `"20m"` alone silently produced a one-shot job (caught by reading the created job's own JSON entry before triggering it, not assumed from the CLI's own success output, which looks identical either way: `"Schedule: once in 20m"` vs `"Schedule: every 20m"` — read the `Schedule:` line in the CLI's own confirmation output, or the raw `cron/jobs.json` entry, before trusting any newly-created recurring job actually IS recurring).
 
 ## Constraints
+
+- **`src/backend/app/vault/vault_manager.py` is an OLDER engine than the memory around it describes: it has NO `create_dynamic_child()` and NO per-caller section access.** Those (`ADR-017`, `REQ-SB-87-US-01-T01/T02`) lived only in the canonical `Hermes-Provisioning/shared/vault_manager.py`, which was deleted from the repo on 2026-09-04. The backend copy reads exactly six Template keys -- `sections`, `on_missing`, `on_existing_title`, `note_own_folder`, `note_filename_plain`, `frontmatter_defaults` -- and its access check is a flat `sections[].access`, where an UNDECLARED section defaults to `machine_write` (open), so a section you want protected must be declared explicitly. Practical consequence: a "container note with one child note per item" shape is NOT available in the current code; use one note plus an appended section instead. Also note this copy deliberately drops the `.second-brain` prefix when resolving Templates (it is passed `second_brain_data_path` directly, not `vault_path`) -- a comment in the file says to RE-APPLY that line if the engine is ever re-copied from a canonical source.
 
 - **This corporate network re-signs all outbound HTTPS through a G42 middlebox (`*.<host>` → `G42Decrypt (t)` → `G42Decrypt` → `AD-EC-CA-01-CA`, sha1 `1BE89EE7E18FDB1264739C0AC1C221F93C030F18`), and Node ignores the Windows trust store — so ANY Node-based integration fails TLS on this machine until `NODE_OPTIONS=--use-system-ca` is set (Node ≥ 22.15).** Solved live 2026-08-20 while linking Hermes to WhatsApp. The cost of not knowing this is high because **every layer reports a different, plausible, wrong cause**: Baileys wraps the WebSocket error in a Boom with a generic `statusCode: 500`, which collides with `DisconnectReason.badSession` (500); `bridge.js` hardcodes `pino({ level: 'warn' })` and therefore discards the real `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` before it can print; the gateway then reports only "WhatsApp enabled but not paired". Four hours went into chasing corrupt sessions, rate limiting, and stale processes — none of which existed. **Whenever a Node-based integration on this host fails in a way that mentions a session, a handshake, a 500, or a bare "connection closed", check the TLS chain FIRST** (`node -e` + `tls.connect({rejectUnauthorized:false})` and walk `getPeerCertificate(true)`) before believing any error message the library produces. The same class of problem is already solved for Python by `pip_system_certs` in the Hermes venv — that package's presence on a machine is itself a signal that interception is active. Never "fix" it with `NODE_TLS_REJECT_UNAUTHORIZED=0` (disables verification outright); prefer `--use-system-ca` over a `NODE_EXTRA_CA_CERTS` PEM snapshot, since the latter breaks silently on CA rotation. Full runbook in `Deployment.md` §1.
 
