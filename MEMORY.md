@@ -75,15 +75,17 @@ answer still matters. Nothing was rewritten to look cleverer than it was; the
 removed entries remain in git history. Two entries were corrected in place
 rather than deleted because their *symptom* is still worth knowing (the port-8001
 empty-UI failure, and the Data Gatherer fallback). `Hermes-Provisioning/` was
-deleted from the repo on 2026-09-04 — entries referencing it are history, not
-instructions.
+held outside the working tree from 2026-09-04 (deliberately, so it is not read as
+a standing part of the project — it still exists and comes back when needed).
+Entries referencing its contents describe something real but currently absent.
 
 ---
 
 ## Framework reference
 
 Verified against the code 2026-09-04. **This section exists so a session does not
-have to grep the engine to learn what it can do.** If you find yourself reading
+have to grep the engine to learn what it can do.** The full authoring guides live
+in `Documentation/Framework/` — this is the condensed reference. If you find yourself reading
 `vault_manager.py` to answer "what keys does a Template take" or "what can the
 engine do", that is a bug in this section — fix it here.
 
@@ -343,7 +345,7 @@ RELATIVE path**, and a restore recreates **no `.env` anywhere**.
 
 ## Constraints
 
-- **`src/backend/app/vault/vault_manager.py` is an OLDER engine than the memory around it describes: it has NO `create_dynamic_child()` and NO per-caller section access.** Those (`ADR-017`, `REQ-SB-87-US-01-T01/T02`) lived only in the canonical `Hermes-Provisioning/shared/vault_manager.py`, which was deleted from the repo on 2026-09-04. The backend copy reads exactly six Template keys -- `sections`, `on_missing`, `on_existing_title`, `note_own_folder`, `note_filename_plain`, `frontmatter_defaults` -- and its access check is a flat `sections[].access`, where an UNDECLARED section defaults to `machine_write` (open), so a section you want protected must be declared explicitly. Practical consequence: a "container note with one child note per item" shape is NOT available in the current code; use one note plus an appended section instead. Also note this copy deliberately drops the `.second-brain` prefix when resolving Templates (it is passed `second_brain_data_path` directly, not `vault_path`) -- a comment in the file says to RE-APPLY that line if the engine is ever re-copied from a canonical source.
+- **`src/backend/app/vault/vault_manager.py` is an OLDER engine than the memory around it describes: it has NO `create_dynamic_child()` and NO per-caller section access.** Those (`ADR-017`, `REQ-SB-87-US-01-T01/T02`) live only in the canonical `Hermes-Provisioning/shared/vault_manager.py`, which is held outside the working tree by default and brought back when needed. The backend copy reads exactly six Template keys -- `sections`, `on_missing`, `on_existing_title`, `note_own_folder`, `note_filename_plain`, `frontmatter_defaults` -- and its access check is a flat `sections[].access`, where an UNDECLARED section defaults to `machine_write` (open), so a section you want protected must be declared explicitly. Practical consequence: a "container note with one child note per item" shape is NOT available in the current code; use one note plus an appended section instead. Also note this copy deliberately drops the `.second-brain` prefix when resolving Templates (it is passed `second_brain_data_path` directly, not `vault_path`) -- a comment in the file says to RE-APPLY that line if the engine is ever re-copied from a canonical source.
 
 - **This corporate network re-signs all outbound HTTPS through a G42 middlebox (`*.<host>` → `G42Decrypt (t)` → `G42Decrypt` → `AD-EC-CA-01-CA`, sha1 `1BE89EE7E18FDB1264739C0AC1C221F93C030F18`), and Node ignores the Windows trust store — so ANY Node-based integration fails TLS on this machine until `NODE_OPTIONS=--use-system-ca` is set (Node ≥ 22.15).** Solved live 2026-08-20 while linking Hermes to WhatsApp. The cost of not knowing this is high because **every layer reports a different, plausible, wrong cause**: Baileys wraps the WebSocket error in a Boom with a generic `statusCode: 500`, which collides with `DisconnectReason.badSession` (500); `bridge.js` hardcodes `pino({ level: 'warn' })` and therefore discards the real `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` before it can print; the gateway then reports only "WhatsApp enabled but not paired". Four hours went into chasing corrupt sessions, rate limiting, and stale processes — none of which existed. **Whenever a Node-based integration on this host fails in a way that mentions a session, a handshake, a 500, or a bare "connection closed", check the TLS chain FIRST** (`node -e` + `tls.connect({rejectUnauthorized:false})` and walk `getPeerCertificate(true)`) before believing any error message the library produces. The same class of problem is already solved for Python by `pip_system_certs` in the Hermes venv — that package's presence on a machine is itself a signal that interception is active. Never "fix" it with `NODE_TLS_REJECT_UNAUTHORIZED=0` (disables verification outright); prefer `--use-system-ca` over a `NODE_EXTRA_CA_CERTS` PEM snapshot, since the latter breaks silently on CA rotation. Full runbook in `Deployment.md` §1.
 
