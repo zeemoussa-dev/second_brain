@@ -4957,3 +4957,115 @@ re-verify directly against the real, current code rather than trusting
 this PRD summary alone, per this project's own standing convention. -->
 
 **Acceptance:** To be drafted as Gherkin at `/spec`.
+
+---
+
+### REQ-SB-89: First-Run Setup Wizard — Configure a Fresh Install Through the UI Instead of Hand-Editing `.env`
+
+Raised 2026-09-04, directly out of the operator's own second-machine
+deployment the day before: the whole 2026-09-03 install was carried out by
+hand-editing `.env`, hand-checking paths, and reading `Deployment.md` step
+by step. The operator's own framing: *"I want to have a Screen in the
+begining may be a multi step wizard to help with the deployement config
+needed instead of editing .env and stuff it should happen throw UI if the
+System is fresh install."*
+
+**Finding 1 — a fresh install cannot boot far enough to serve any wizard
+at all.** Confirmed live 2026-09-04 by importing `app.config` with the
+five real required settings absent: `settings = Settings()` at
+`src/backend/app/config.py`'s own module scope raises a pydantic
+`ValidationError` ("5 validation errors for Settings" —
+`compass_base_url`, `compass_api_key`, `compass_model`, `vault_path`,
+`self_email`, each `Field required`). This happens at **module import**,
+so FastAPI never starts, no route is ever mounted, and the frontend's own
+`BootGate` sees only an unreachable backend. Any wizard is unreachable
+until this is resolved. Note the real precedent already set in this same
+file on 2026-09-03 (`fix(config): stop requiring three settings nothing
+uses`): `anthropic_api_key`, `anthropic_model`, and
+`hermes_mcp_shared_secret` were made optional with empty defaults for
+exactly this reason — the commit's own message records that requiring
+them "only stopped a fresh install from booting."
+
+**Finding 2 — most of the real machinery already exists and should be
+composed, not rebuilt.** Confirmed live against the current code:
+
+- `app/business/system_settings.py` already owns the real `.env` write
+  path (`_read_env_lines`/`_write_env_updates`), real per-field
+  validation (`_check_folder` with a writability check,
+  `_check_hermes_reachable`, `_check_cors_origins`), the real
+  data-folder move (`_move_second_brain_folder`), and a real restart
+  (`request_shutdown`).
+- `app/api/settings_system_router.py` already exposes
+  `GET /settings/system`, `PUT /settings/system`, a genuinely per-field
+  `POST /settings/system/test/{field}`, and `POST /settings/system/shutdown`.
+- `src/frontend/src/features/boot/BootGate.tsx` already gates the whole
+  UI on real boot status with staged progress, an error panel, and a
+  retry that re-runs boot without a backend restart — its existing
+  "Fix the file, then retry" state is precisely the seam a wizard
+  should occupy.
+
+**Finding 3 — the existing surface covers only five of the real
+settings.** `UpdateSystemSettingsBody` accepts `hermes_base_url`,
+`hermes_home_path`, `second_brain_data_path`, `vault_path`, and
+`cors_allowed_origins`. The four remaining real fields a fresh install
+must supply — `compass_base_url`, `compass_api_key`, `compass_model`,
+`self_email` — have no write path anywhere in the UI today, and are
+exactly the ones that block boot.
+
+**Real scope:**
+
+1. **Never crash on missing config — boot into setup instead.** The
+   operator's own words, verbatim: *"If Settings Fail Take me to a Setup
+   Wizard instead of Crashing."* Give the five remaining required fields
+   safe defaults so import always succeeds, and have the app boot into a
+   real setup mode that serves the wizard until configuration is
+   genuinely valid. Follows the same precedent the 2026-09-03 config
+   commit already set. Whether setup mode gates routes wholesale or
+   per-route is left open, to be resolved at `/plan-tasks`.
+2. **A real multi-step wizard**, covering every field a fresh install
+   needs: the four Compass/identity fields above plus the five
+   `system_settings.py` already handles. Each step should reuse the real,
+   existing per-field test endpoint so the operator gets a genuine
+   pass/fail against the real filesystem and the real Compass endpoint
+   before committing, rather than discovering a bad path at first use.
+3. **Read-only Hermes health checks as a wizard step.** The operator
+   chose "App .env + Hermes health checks" over both a narrower
+   .env-only scope and a wider one that would trigger a restore: the
+   wizard reports whether Hermes is installed, whether the gateway is
+   running, how many profiles exist, and whether this repo's own Skills
+   are deployed — and changes nothing on the Hermes side. Provisioning
+   stays the operator's own manual action, matching
+   `Hermes-Provisioning/README.md`'s own standing "applying config is
+   still the operator's own action" discipline.
+4. **Trigger and re-entry.** The wizard launches automatically when
+   configuration is absent or fails validation, and is *also* reachable
+   on demand from Settings, so it can be re-run deliberately without
+   deleting `.env` first — the operator's own choice over a
+   purely-automatic trigger and over a separate setup-complete sentinel
+   file.
+
+<!-- Raised 2026-09-04, operator, verbatim, in order:
+1. "I want to have a Screen in the begining may be a multi step wizard to
+   help with the deployement config needed instead of editing .env and
+   stuff it should happen throw UI if the System is fresh install" — the
+   original request, immediately after completing the 2026-09-03 second-
+   machine deployment entirely by hand.
+2. "If Settings Fail Take me to a Setup Wizard instead of Crashing" — given
+   in response to being offered three real mechanisms for the boot problem
+   (optional-fields-plus-setup-mode, a separate lightweight setup server,
+   or lazy Settings construction). The operator specified the BEHAVIOUR
+   rather than picking a mechanism; the optional-fields route was selected
+   as the one that delivers exactly that, and because it matches the
+   precedent already set in `config.py` on 2026-09-03.
+3. Chose "App .env + Hermes health checks" for scope, explicitly over a
+   variant that would let the wizard trigger a backup/restore to provision
+   Hermes profiles — keeping the wizard read-only on the Hermes side.
+4. Chose "No .env, plus a manual re-run entry point" for the trigger.
+Findings 1-3 were verified live against the real, current code the same
+session (a real failing import for Finding 1, direct reads of
+`system_settings.py`/`settings_system_router.py`/`BootGate.tsx` for
+Findings 2-3); `/spec` should re-verify directly against the real code
+rather than trusting this PRD summary alone, per this project's own
+standing convention. -->
+
+**Acceptance:** To be drafted as Gherkin at `/spec`.

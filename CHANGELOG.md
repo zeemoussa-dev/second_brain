@@ -18,6 +18,41 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat(setup): first-run setup wizard (`REQ-SB-89`) -- a fresh install is now
+  configured through the UI instead of by hand-editing `.env`. Four steps
+  (vault + identity, Compass, Hermes, storage/access), each field checked
+  against the real machine as you go, plus a real end-to-end Compass
+  connection test. Reachable automatically when config is missing, and on
+  demand at `/setup` from Settings > System.
+- fix(config): a missing or invalid `.env` no longer crashes the backend at
+  import. `settings = Settings()` raised a pydantic `ValidationError` on five
+  required fields at MODULE scope, so FastAPI never started and no UI could
+  ever fix the config that broke it. Those five are optional now, with
+  `settings.setup_required`/`missing_required_settings` reporting the state
+  explicitly, and the app boots into a setup mode that serves the wizard and
+  refuses every other route with a 503.
+- fix(settings): writing an empty value to `.env` no longer produces a bare
+  `KEY=`. pydantic parses `""` into `Path(".")`, not `None`, so an empty
+  `SECOND_BRAIN_DATA_PATH` silently made the app's data folder whatever
+  directory the backend was started from. An empty value now removes its line.
+- fix(settings): `compass_api_key` is masked on read and a submitted mask is
+  dropped rather than written, so a form round-trip can no longer overwrite a
+  working credential with bullet characters. The System page's secret inputs
+  are `type=password`.
+- feat(setup): saving the wizard mirrors the vault path into Hermes' own
+  `.env` as `OBSIDIAN_VAULT_PATH` (operator-directed) -- one file on a fresh
+  install, plus any existing profile that already carries its own copy, so a
+  re-run can't leave profiles pinned to the old vault. Reported explicitly in
+  the UI, alongside the reminder that Hermes needs its own restart. This is
+  the ONLY thing the wizard writes outside its own `.env`; profiles, skills,
+  and cron jobs stay read-only.
+- fix(setup): the Compass connection test retries once on a connect-level
+  failure. On this corporate network the first request over a cold connection
+  is reliably killed by the TLS-inspecting middlebox while an immediate retry
+  succeeds -- without the retry the wizard showed a red "could not reach
+  Compass" for perfectly correct settings. HTTP-level failures (400/401/404)
+  are never retried; they are real answers.
+
 - fix(restore): placeholder expansion now picks the backslash form by target
   file type, fixing an `Invalid \escape` failure mid-restore.
   `_substitute_both_forms` claimed to substitute both the raw and the
