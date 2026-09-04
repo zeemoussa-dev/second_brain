@@ -108,9 +108,13 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   `skills/` empty. (c) `hermes doctor --fix` starts a dashboard and a
   gateway and does not return — those processes then hold
   `%LOCALAPPDATA%\hermes` open against a reinstall; and plain `doctor`
-  slows from seconds to minutes once Node is on `PATH` because it begins
-  running `npm audit`, which piping through `Select-Object -First N`
-  hides by killing the process early.
+  can hang outright once Node is on `PATH` (59.8 minutes without
+  completing, stuck in `npm audit --json --workspace web`, killed) —
+  piping through `Select-Object -First N` hides this by closing the pipe
+  and killing the process early. `npm audit` runs under whatever Node is
+  first on `PATH`, so keeping Hermes on its own bundled Node
+  (`%LOCALAPPDATA%\hermes\node`) rather than another project's portable
+  toolchain avoids it.
 
 - feat(setup): the wizard now pushes the whole `SECOND_BRAIN_*` set into
   Hermes' own `.env` -- `SECOND_BRAIN_VAULT_PATH`, `SECOND_BRAIN_DATA_PATH`

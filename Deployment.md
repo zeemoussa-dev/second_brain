@@ -377,14 +377,26 @@ leave `hermes.exe dashboard` and two `gateway run` processes live, which
 then held `%LOCALAPPDATA%\hermes` open and blocked a later reinstall
 until they were stopped (`hermes gateway stop`, then kill the survivors).
 
-**Plain `hermes doctor` also gets much slower once Node is on `PATH`.**
-It runs `npm audit` across the `agent-browser`/`web` workspaces, so a
-machine with no Node finishes in seconds and the *same* machine finishes
-in minutes after Node appears — the check did not break, it simply
-started doing more. Beware of measuring this through a pipe: `hermes
-doctor | Select-Object -First 50` closes the pipe early and kills the
-process, so it *looks* fast while never actually completing. Redirect to
-a file if you want the real runtime and the real full output.
+**Plain `hermes doctor` can hang outright once Node is on `PATH`.** It
+runs `npm audit` across the `agent-browser`/`web` workspaces, so the
+*same* machine that finished in seconds with no Node installed ran for
+**59.8 minutes without completing** once Node appeared, sitting in
+`npm audit --json --workspace web` the whole time. It had to be killed.
+Treat this as a hang, not slowness.
+
+Two traps around diagnosing it:
+
+- **Measuring through a pipe hides it.** `hermes doctor | Select-Object
+  -First 50` closes the pipe early and kills the process, so it *looks*
+  fast while never actually completing. Redirect to a file for the real
+  runtime and the real output.
+- **Check *which* Node it found.** `npm audit` runs under whatever Node is
+  first on `PATH`. If that is another project's portable toolchain,
+  `doctor` is auditing that project's dependency tree, not Hermes' —
+  confirm with `Get-CimInstance Win32_Process` and read the full
+  `CommandLine`. Keeping Hermes on its own bundled Node
+  (`%LOCALAPPDATA%\hermes\node`, installed by the official installer
+  unless something else already occupies `PATH`) avoids this entirely.
 
 #### Installing non-interactively? Two real gotchas
 
