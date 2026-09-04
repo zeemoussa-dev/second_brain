@@ -31,6 +31,5 @@ def get_client() -> HermesClient:
             base_url=settings.hermes_base_url,
             home_path=settings.hermes_home_path,
             api_key=settings.hermes_api_key,
-            inbound_shared_secret=settings.hermes_mcp_shared_secret,
         )
     return _client

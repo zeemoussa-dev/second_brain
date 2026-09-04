@@ -56,10 +56,12 @@ are always **"the Hermes toolset"**, never "Tools". An Agent's `tools` field
 refers to that Hermes toolset; a **Tool** in this framework groups Skills.
 
 **One historical trap.** An earlier attempt exposed `Tool → Category → Action`
-over MCP and was abandoned. The *taxonomy* was right and survives — that is why
-dead MCP code can look like the live model. The MCP delivery mechanism is what
-failed, and Skills became Hermes-native scripts instead. If you find MCP mounting
-code, it is a remnant, not the design.
+over MCP and was abandoned. The *taxonomy* was right and survives as the Tool
+above — the MCP **delivery mechanism** is what failed, and Skills became
+Hermes-native scripts instead (`ADR-002`). That mounting layer was deleted on
+2026-09-04, so nothing in the codebase should reference it any more; if a
+document still describes Second Brain exposing Tools to Hermes over MCP, that
+document is out of date.
 
 ### Two more ideas people mix up
 
