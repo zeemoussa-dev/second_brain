@@ -105,6 +105,33 @@ def save_watermark(value: str) -> None:
     path.write_text(json.dumps({"last_captured_at": value}, indent=2), encoding="utf-8")
 
 
+def next_watermark(
+    watermark: str,
+    newest_seen: str,
+    failures: list[dict],
+    succeeded_receipts: list[str],
+) -> str:
+    """How far the watermark may safely advance.
+
+    The watermark may only pass emails that were genuinely written. Advancing
+    past a failure is what turns a transient or systemic ingest error into
+    permanent data loss: the next run treats those emails as already captured
+    and never looks at them again. That is exactly what happened between
+    2026-09-03 and 2026-09-04 -- 54 emails consumed, none written, watermark
+    advanced past all of them.
+
+    So when anything failed, this stops just below the OLDEST failure, and
+    every email from there on is retried next run. Re-ingesting an
+    already-written email is idempotent (ingest_email.py keys off
+    conversation/message id); skipping one is not recoverable without a
+    manual rewind."""
+    if failures:
+        oldest_failure = min(f.get("received") or "" for f in failures)
+        safe = [ts for ts in succeeded_receipts if ts and ts < oldest_failure]
+        return max(safe) if safe else watermark
+    return newest_seen if (newest_seen and newest_seen > watermark) else watermark
+
+
 def main() -> int:
     ok, msg = ensure_pywin32()
     if not ok:
@@ -114,6 +141,9 @@ def main() -> int:
     watermark = load_watermark()
 
     total_emails = 0
+    # Populated per-email below; both drive the watermark decision at the end.
+    failures: list[dict] = []
+    succeeded_receipts: list[str] = []
     total_threads_created = 0
     total_messages_created = 0
     total_attachments_captured = 0
@@ -210,7 +240,21 @@ def main() -> int:
                     json.dump(ingest_payload, f, ensure_ascii=False)
                 code, out, err = run_script(["ingest_email.py", "--vault-path", VAULT_PATH, "--input-file", ingest_path])
                 message_path = None
-                if code == 0:
+                # A failed ingest MUST be recorded, not swallowed. Until
+                # 2026-09-04 a non-zero exit here fell through an `if code == 0`
+                # with no else: the email was counted as processed, the run
+                # reported "complete", and the watermark moved past it. That is
+                # how 54 real emails were consumed and permanently skipped
+                # without a single error surfacing anywhere.
+                if code != 0:
+                    detail = (err or out or "").strip().splitlines()
+                    failures.append({
+                        "message_id": message_id,
+                        "received": received,
+                        "subject": subject,
+                        "error": detail[-1][:300] if detail else f"ingest_email.py exited {code}",
+                    })
+                else:
                     try:
                         result = json.loads(out.strip() or "{}")
                         if result.get("thread_created"):
@@ -220,8 +264,16 @@ def main() -> int:
                         if result.get("skipped_as_noise"):
                             page_skipped_as_noise += 1
                         message_path = result.get("message_path")
-                    except Exception:
-                        pass
+                        succeeded_receipts.append(received or "")
+                    except Exception as parse_error:
+                        # An unparsable reply means we cannot tell what was
+                        # written -- treat it as a failure, never as a success.
+                        failures.append({
+                            "message_id": message_id,
+                            "received": received,
+                            "subject": subject,
+                            "error": f"unparsable ingest_email.py output: {parse_error}",
+                        })
 
                 if sender_email:
                     _ = run_script([
@@ -258,6 +310,12 @@ def main() -> int:
                 total_emails += 1
             except Exception as ex:
                 print(f"PAGE {page_num}: email {e.get('id')!r} failed: {ex}")
+                failures.append({
+                    "message_id": e.get("id"),
+                    "received": e.get("received"),
+                    "subject": e.get("subject"),
+                    "error": str(ex)[:300],
+                })
                 page_processed += 1
                 total_emails += 1
                 continue
@@ -285,14 +343,30 @@ def main() -> int:
             break
         before_ts = page_oldest
 
-    if newest_seen and newest_seen > watermark:
-        save_watermark(newest_seen)
+    # The watermark may only pass emails that were genuinely written. Advancing
+    # past a failure is what makes a transient or systemic ingest error
+    # permanent data loss: the next run treats those emails as already
+    # captured and never looks at them again. So when anything failed, the
+    # watermark stops just below the OLDEST failure, and every email from
+    # there on is retried next run -- re-ingesting an already-written email is
+    # idempotent (ingest_email.py keys off conversation/message id), whereas
+    # skipping one is not recoverable without a manual rewind.
+    new_watermark = next_watermark(watermark, newest_seen, failures, succeeded_receipts)
+
+    if new_watermark > watermark:
+        save_watermark(new_watermark)
 
     final = {
-        "status": "complete",
+        # A distinct status so a run that dropped mail can never again read as
+        # a clean "complete" in the cron report.
+        "status": "complete" if not failures else "complete_with_errors",
         "pages": page_num,
         "watermark_before": watermark,
-        "watermark_after": newest_seen if (newest_seen and newest_seen > watermark) else watermark,
+        "watermark_after": new_watermark,
+        "failed_emails": len(failures),
+        # Capped: the point is to make the failure visible and diagnosable in
+        # the cron output, not to dump a thousand identical tracebacks.
+        "failures": failures[:10],
         "total_new_emails": total_emails,
         "threads_created": total_threads_created,
         "messages_created": total_messages_created,
