@@ -30,13 +30,13 @@ from app.data_access.registry import loader as registry_loader
 from app.data_access.registry import writer as registry_writer
 from app.obsidian.tags import tag_slug
 
-# 2026-08-22 (operator's own real taxonomy, verbatim): "Our Sections will
-# be (Customer, Liberian, Industry, Technology, Data Gatherer, Sales)" --
-# replaces the earlier placeholder starting-5 set. "Data Gatherer" is
-# where the real Hermes-mirrored agents (ADR-003) are shown on the map;
-# the rest start empty, real groupings for agents not built yet, not
-# placeholders to be renamed later.
-_STARTING_SECTION_NAMES = ["Customer", "Librarian", "Industry", "Technology", "Data Gatherer", "Sales"]
+# A fresh install starts with NO Sections (operator, 2026-09-04: "Delete all
+# Sections now and Remove anything that Generates them, This is a Clean
+# Build"). The previous starting six (Customer, Librarian, Industry,
+# Technology, Data Gatherer, Sales) were seeded here on first read, which
+# meant a clean machine came up already populated with groupings nobody on
+# that machine had chosen. Sections are now created only by an explicit
+# human action.
 
 
 def _write_registry_section_json(section: dict) -> None:
@@ -75,24 +75,21 @@ def _write_registry_section_json(section: dict) -> None:
 
 
 def _seed_state() -> dict:
-    sections = [
-        {
-            "id": tag_slug(name), "name": name,
-            "icon": None, "color": None, "subtitle": None, "description": None,
-            "folders": [], "fallback_agent_id": None,
-        }
-        for name in _STARTING_SECTION_NAMES
-    ]
-    state = {"sections": sections}
+    """Persists an EMPTY Section store on first read.
+
+    Still writes the file rather than returning a transient empty dict, so
+    "no Sections yet" is a real persisted state and every later read takes
+    the normal load path instead of re-entering this one.
+    """
+    state: dict = {"sections": []}
     sections_data.save_state(state)
-    for section in sections:
-        _write_registry_section_json(section)
     return state
 
 
 def _load_state() -> dict:
-    """Seeds the starting 6 sections on first read (persisting
-    immediately)."""
+    """Creates an empty Section store on first read (persisting
+    immediately). Sections only ever come from an explicit human
+    action."""
     state = sections_data.load_state()
     return state if state is not None else _seed_state()
 

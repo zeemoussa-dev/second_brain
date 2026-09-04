@@ -18,6 +18,27 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix(sections): a clean install now starts with NO Sections. Two separate
+  things generated them, and removing either alone was not enough.
+  (a) `section_manager._seed_state()` wrote a starting six (Customer,
+  Librarian, Industry, Technology, Data Gatherer, Sales) on first read, so
+  a fresh machine came up already populated with groupings nobody on it had
+  chosen. It now persists an empty store instead -- still written to disk,
+  so "no Sections yet" is a real state rather than a repeated first-read.
+  (b) `agent_manager._section_id()` resolved an unplaced agent to a
+  "Data Gatherer" Section and CREATED it when absent. Because Primary is
+  mirrored from Hermes on every `GET /agents`, that made deleting every
+  Section silently undo itself on the very next read. It returns `None`
+  now -- `Agent.section_id` was already `str | None`, so an unplaced agent
+  is simply unplaced. Sections only ever come from an explicit human
+  action. Verified live: 0 sections before and after `GET /agents`,
+  Primary `section_id: null`, `{"sections": []}` on disk with no
+  `data/Sections` tree, and the Agents Map renders its real empty state.
+  Not changed: `pipeline_manager._section_id_by_name()` still creates a
+  Section named by a Pipeline's own data, which cannot fire on a clean
+  build (no Pipelines) and would need `Pipeline.section_id` to become
+  optional -- flagged rather than widened.
+
 - fix(setup): the App Database Folder now sits in the wizard's first step,
   beside the vault it relates to, instead of last under "already have
   working defaults -- change them only if you need to". Left blank it
