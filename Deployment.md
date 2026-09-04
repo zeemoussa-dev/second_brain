@@ -692,6 +692,73 @@ hermes model                       # should show compass / gpt-5
 hermes chat -q "reply with OK"     # a real round-trip through Compass
 ```
 
+**Actually run the chat.** Machines 1 and 2 verified Compass by model
+discovery alone (`models_discovered: true`), which is a real authenticated
+call but not a *chat* — so neither ever exercised the auxiliary path, and
+the warning below went unseen for two deployments. It is not new, and it is
+not caused by anything you configured; it simply cannot appear until
+something starts a chat session.
+
+#### Expected on gpt-5: the auxiliary temperature warning
+
+A successful round-trip on gpt-5 still prints:
+
+```
+⚠ Auxiliary title generation failed: HTTP 400:
+  Invalid 'temperature': Only the default (1) value is supported.
+```
+
+The main answer arrives normally and the exit code is 0 — only the
+auxiliary task fails. gpt-5 accepts no temperature but its default, while
+Hermes' auxiliary tasks send their own fixed values (`title_generator.py`
+0.3, `context_compressor.py` 0.1).
+
+Hermes *has* a retry that strips `temperature` and tries again
+(`auxiliary_client.py`), and it does not fire here. Its matcher
+(`_is_unsupported_parameter_error`) only recognises negatively phrased
+errors — `not supported`, `unsupported parameter`, `invalid parameter`.
+Compass phrases this one **positively** ("...value *is* supported"), so no
+marker matches and the retry silently declines. Worth knowing before
+concluding the retry is broken: it is working exactly as written.
+
+Three real options, verified live 2026-09-04:
+
+1. **Accept it** — what this deployment does. Titles are cosmetic; the
+   session still gets a fallback title, and chat/tools/cron are unaffected.
+2. **Silence it** — `auxiliary.title_generation.enabled: false`. Supported
+   config, removes the noise, and does nothing for compression.
+3. **Route auxiliary tasks off gpt-5** — the only option that also fixes
+   compression, using documented config rather than patching `hermes-agent`:
+
+   ```yaml
+   auxiliary:
+     title_generation:
+       provider: "main"
+       model: "gpt-4o"
+     compression:
+       provider: "main"
+       model: "gpt-4o"
+   ```
+
+   Confirmed clean: the warning disappears and a real title is generated.
+   Not adopted here only because this deployment standardises on gpt-5.
+
+**Which Compass models this key can actually reach** (probed directly,
+2026-09-04 — the discovered catalogue lists what the *gateway* offers, not
+what your subscription is licensed for, and the difference is real):
+
+| Model | Result |
+|---|---|
+| `gpt-5` | works (rejects any non-default `temperature`) |
+| `gpt-4o` | works, and accepts `temperature` |
+| `gpt-4o-mini`, `gpt-4.1-mini`, `gpt-5-mini`, `gpt-5.2` | `You may not have a quota or access to use this model` |
+
+**The one thing worth watching:** `compression` sends `temperature: 0.1`,
+so on gpt-5 context compaction hits the same 400. That is functional, not
+cosmetic, and long-running cron sessions are exactly what triggers
+compaction. Not yet observed failing in practice — but if a long session
+starts misbehaving, look here first.
+
 Every specialist profile created via `--clone` (see below) inherits
 whatever model/provider the `default` profile has configured — set
 Compass up on `default` first, and confirm Step 3 passes, before cloning

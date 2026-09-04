@@ -18,6 +18,22 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- docs(deployment): §2 records the auxiliary temperature warning that a real
+  `hermes chat` surfaces on Compass/gpt-5, and why it went unseen for two
+  deployments -- machines 1 and 2 verified Compass by model discovery only,
+  never by a chat, so the auxiliary path was never exercised. gpt-5 accepts
+  no `temperature` but its default while Hermes' auxiliary tasks send fixed
+  values (title 0.3, compression 0.1). Hermes' own strip-and-retry does not
+  fire because its matcher only recognises negatively phrased errors and
+  Compass phrases this one positively ("...value *is* supported"). Records
+  the three real options (accept / disable title generation / route
+  auxiliary tasks to `gpt-4o` via documented `auxiliary` config -- verified
+  clean, not adopted only because this deployment standardises on gpt-5),
+  the live-probed list of which Compass models this key can actually reach
+  (the discovered catalogue is not the licensed set), and that `compression`
+  hits the same 400 -- functional rather than cosmetic, and worth checking
+  first if a long cron session misbehaves.
+
 - fix(setup): the App Database Folder now sits in the wizard's first step,
   beside the vault it relates to, instead of last under "already have
   working defaults -- change them only if you need to". Left blank it
