@@ -234,6 +234,45 @@ _LEGACY_DATA_DIRNAME = ".second-brain"
 _TEMPLATES_RELATIVE = ("data", "Templates")
 
 
+_EXTENDED_PREFIX = "\\\\?\\"
+
+
+def long_path(path) -> str:
+    """Long-path-safe string form of `path`, for os.walk/os.scandir/open().
+
+    Windows only; returned unchanged elsewhere. Real bug, found live
+    2026-09-04: the 2026-09-03 vault move lengthened the vault root from 32
+    to 71 characters, which pushed an existing archived folder
+    (`Work/_archive/Meetings/_Archived Duplicates (2026-08-24)/.../
+    raw-id-folders/<80-char raw id>`, 220 chars before the move, 259 after)
+    past Windows' classic 260-character MAX_PATH. os.scandir then raised
+    FileNotFoundError mid-traversal, which killed the whole vault scan --
+    and with it every ingest, AFTER the Thread note had already been
+    written. The result was Thread notes with no messages/ and an empty
+    last_message_at. Mirrors app/obsidian/notes.py's own long_path()."""
+    absolute = os.path.abspath(str(path))
+    if os.name == "nt" and not absolute.startswith(_EXTENDED_PREFIX):
+        return _EXTENDED_PREFIX + absolute
+    return absolute
+
+
+def iter_md_files(root: Path):
+    """Every real .md under `root`, PRUNING `_`-prefixed folders during the
+    walk rather than filtering them out afterwards.
+
+    rglob() walks into a folder before anything can reject it, so an
+    excluded-but-unreadable subtree (an over-MAX_PATH archive) still aborted
+    the entire scan. Pruning here means the archive is never entered at all,
+    which fixes the crash and skips a large amount of pointless IO. Long-path
+    form on the walk root keeps the traversal working even where a real path
+    genuinely does exceed 260 characters."""
+    for current, dirnames, filenames in os.walk(long_path(root)):
+        dirnames[:] = [d for d in dirnames if not d.startswith("_")]
+        for filename in filenames:
+            if filename.endswith(".md"):
+                yield Path(current) / filename
+
+
 def data_root(vault_path: Path) -> Path:
     """Where the App Database Folder actually is for this install.
 
@@ -286,7 +325,7 @@ def _parse_frontmatter_value(raw: str):
 def read_note(path: Path) -> tuple[dict, str]:
     """(frontmatter, body) -- {} / whole-file-as-body if no real
     frontmatter fence is present, never raises on a malformed shape."""
-    text = path.read_text(encoding="utf-8")
+    text = Path(long_path(path)).read_text(encoding="utf-8")
     if not text.startswith("---\n"):
         return {}, text
     end = text.find("\n---\n", 4)
@@ -431,7 +470,7 @@ def _section_header(name: str) -> str:
     return name if name.startswith("## ") else f"## {name}"
 
 def get_section_content(path: Path, section: str) -> str:
-    text = path.read_text(encoding="utf-8")
+    text = Path(long_path(path)).read_text(encoding="utf-8")
     header_pattern = re.compile(r"^" + re.escape(_section_header(section)) + r"$", re.MULTILINE)
     match = header_pattern.search(text)
     if match is None:
@@ -444,14 +483,14 @@ def get_section_content(path: Path, section: str) -> str:
 
 def _set_section_content(path: Path, section: str, content: str, mode: str) -> None:
     header = _section_header(section)
-    text = path.read_text(encoding="utf-8")
+    text = Path(long_path(path)).read_text(encoding="utf-8")
     header_pattern = re.compile(r"^" + re.escape(header) + r"$", re.MULTILINE)
     match = header_pattern.search(text)
 
     if match is None:
         separator = "" if text.endswith("\n") else "\n"
         new_text = text + separator + f"\n{header}\n\n{content.strip()}\n"
-        path.write_text(new_text, encoding="utf-8")
+        Path(long_path(path)).write_text(new_text, encoding="utf-8")
         return
 
     region_start = match.end()
@@ -465,7 +504,7 @@ def _set_section_content(path: Path, section: str, content: str, mode: str) -> N
         merged = content.strip()
 
     new_text = text[:region_start] + "\n\n" + merged + "\n\n" + text[region_end:]
-    path.write_text(new_text, encoding="utf-8")
+    Path(long_path(path)).write_text(new_text, encoding="utf-8")
 
 
 # ── frontmatter-aware primitives -- the SAME real shape at least three
@@ -677,7 +716,7 @@ def _iter_real_md_files(vault_path: Path, root: Path):
     `note_name=None`), but a real landmine for any future one that does.
     Excluding archived folders here also avoids surfacing a stale
     archived duplicate as a real match, not just avoiding the crash."""
-    for md_path in sorted(root.rglob("*.md")):
+    for md_path in sorted(iter_md_files(root)):
         if not md_path.is_file():
             continue
         try:
@@ -761,7 +800,7 @@ def _find_by_title(vault_path: Path, note_name: str, title: str) -> Path | None:
     root = _notes_root(vault_path, note_name)
     if not root.is_dir():
         return None
-    for md_path in root.rglob("*.md"):
+    for md_path in iter_md_files(root):
         frontmatter, _ = read_note(md_path)
         if str(frontmatter.get("title", "")) == title:
             return md_path

@@ -18,6 +18,21 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix(skills): the vault scan no longer dies on a path past Windows'
+  260-character MAX_PATH. The 2026-09-03 vault move lengthened the vault root
+  from 32 to 71 characters, pushing an existing archived folder from 220 to
+  259 characters; `rglob("*.md")` then raised FileNotFoundError mid-traversal
+  and killed the ingest AFTER the Thread note was written -- Thread notes with
+  no `messages/`, empty `last_message_at`, 42 emails failing per run. Adds
+  `long_path()` (mirroring `app/obsidian/notes.py`) and an `os.walk` that
+  PRUNES `_`-prefixed folders during the walk instead of filtering them out
+  of the results afterwards, so an excluded archive is never entered at all.
+  1,815 files in 0.2s on the real vault, where the old scan crashed outright.
+- fix(tests): `test_a_configured_install_is_not_in_setup_mode` no longer
+  depends on the working directory. pydantic resolves `env_file=".env"`
+  relative to the CWD, so it passed from `src/backend` and failed from the
+  repo root.
+
 - fix(skills): the capture watermark, the meeting/thread link config and the
   meeting-capture person ignore list all resolve under the App Database
   Folder now, instead of an in-vault `.second-brain/` island. One location,

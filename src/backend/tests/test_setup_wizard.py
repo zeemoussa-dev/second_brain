@@ -30,10 +30,19 @@ def test_missing_settings_are_reported_not_raised(unconfigured) -> None:
     assert set(unconfigured.missing_required_settings) == set(REQUIRED_FOR_STARTUP)
 
 
-def test_a_configured_install_is_not_in_setup_mode() -> None:
-    # The real .env this repo runs against -- guards against the wizard
-    # hijacking an install that is already working.
+def test_a_configured_install_is_not_in_setup_mode(monkeypatch) -> None:
+    """Guards against the wizard hijacking an install that already works.
+
+    Values are set explicitly rather than read from the ambient .env: pydantic
+    resolves `env_file=".env"` relative to the CWD, so asserting against the
+    real file passed under `pytest` from src/backend and failed from the repo
+    root -- a test that depends on where it is run from is worse than no test.
+    """
+    for field in REQUIRED_FOR_STARTUP:
+        monkeypatch.setattr(settings, field, Path("C:/vault") if field == "vault_path" else "set")
+
     assert settings.setup_required is False
+    assert settings.missing_required_settings == []
 
 
 def test_setup_status_is_served_while_unconfigured(unconfigured) -> None:
