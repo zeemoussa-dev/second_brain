@@ -1,4 +1,8 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
+// 8001 is the port `tools\run-backend.cmd` actually serves on, so this default
+// has to track it. It said 8000 until 2026-09-04, which meant a fresh clone --
+// where the `.env.local` carrying the override is gitignored and therefore
+// absent -- rendered a blank screen with only ERR_CONNECTION_REFUSED to go on.
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8001';
 
 export class ApiError extends Error {
   status: number;

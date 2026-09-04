@@ -22,7 +22,7 @@ const WIKILINK_PATTERN = /\[\[([^\]]+)\]\]/g;
 // convention -- client.ts doesn't export its BASE_URL, so any call site
 // building a raw (non-apiFetch) URL keeps its own copy of this same
 // fallback per this codebase's established pattern.
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8001';
 
 // 2026-08-23 -- operator: "when I click on a node The Next View should
 // be the MD file it self displayed in a nice HTML formatting with links

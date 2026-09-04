@@ -28,6 +28,22 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   stops being a silent decision.
 - fix(setup): the Hermes step said saving writes only `OBSIDIAN_VAULT_PATH`.
   It writes four settings, into the home `.env` and every profile.
+- fix(frontend): the API base URL now defaults to `http://127.0.0.1:8001`,
+  the port `tools\run-backend.cmd` actually serves, instead of `8000`. Six
+  files carried the stale default. The 8001 override lives in
+  `src/frontend/.env.local`, which `src/frontend/.gitignore`'s `*.local`
+  rule excludes from the repo -- so a fresh clone never receives it and
+  falls back to a port nothing listens on. Found on the third machine
+  (2026-09-04): the app rendered a completely black page, with the real
+  cause (`ERR_CONNECTION_REFUSED` on `/setup/status` and `/boot-status`)
+  visible only in devtools. Every earlier machine was immune because the
+  file already existed locally -- `SPRINT-013` describes it as "the
+  frontend's *committed* `.env.local`", which that ignore rule makes
+  impossible. `.env.local` is now a real override rather than a
+  load-bearing, uncommittable prerequisite.
+- docs(deployment): §3 records the above as the third fresh-install defect,
+  including that Vite reads env only at startup, so the dev server must be
+  restarted after changing `.env.local`.
 
 - fix(skills): `SKILL.md` files no longer hardcode this machine's Hermes
   home to locate their own scripts. They use `${HERMES_SKILL_DIR}`, the

@@ -830,7 +830,7 @@ cd ..\..\src\frontend
 ..\..\tools\node\npm.cmd install
 ```
 
-**Two real defects this install surfaced.** Both are repo bugs a fresh
+**Three real defects this install surfaced.** All are repo bugs a fresh
 machine exposes and an existing one hides:
 
 1. **`requirements.txt` had `mcp` unpinned** — a fresh resolve now pulls
@@ -850,6 +850,30 @@ machine exposes and an existing one hides:
    Vite does not typecheck. It means `tsc -b` was already broken before
    this machine existed — the workflow here is `npm run dev`, and nobody
    runs the production build. Real, but app code, not config.
+3. **The frontend pointed at the wrong backend port, so a fresh clone
+   rendered a blank screen** (2026-09-04, third machine). Six files
+   defaulted `VITE_API_BASE_URL` to `http://127.0.0.1:8000` while the
+   backend serves **8001**. The override lives in
+   `src/frontend/.env.local`, which `src/frontend/.gitignore`'s `*.local`
+   rule excludes — so it never arrives with a clone, and the stale default
+   takes over. The symptom gives you almost nothing: a black page, and
+   `ERR_CONNECTION_REFUSED` on `/setup/status` and `/boot-status` only if
+   you open devtools. Earlier machines were immune because the file
+   already existed there; `SPRINT-013` even calls it "the frontend's
+   *committed* `.env.local`", which it cannot be under that ignore rule.
+   **Fixed** by changing the default to 8001 so the code agrees with the
+   port `run-backend.cmd` actually serves. `.env.local` is now a genuine
+   override rather than a load-bearing file. If you do need a different
+   port, that file is still the place:
+
+   ```powershell
+   # only when the backend is NOT on the default 8001
+   'VITE_API_BASE_URL=http://127.0.0.1:<port>' |
+     Set-Content src\frontend\.env.local -Encoding ascii
+   ```
+
+   Vite reads env only at startup — restart the dev server after changing
+   it, or the old value silently persists.
 
 **The `tools\*.cmd` launchers were broken and are now fixed.** Every one
 of them hardcoded `C:\myWorx\Projects\Second Brain\...` — the *first*
