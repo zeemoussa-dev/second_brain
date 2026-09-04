@@ -904,14 +904,16 @@ cd ..\..\src\frontend
 **Three real defects this install surfaced.** All are repo bugs a fresh
 machine exposes and an existing one hides:
 
-1. **`requirements.txt` had `mcp` unpinned** — a fresh resolve now pulls
-   **mcp 2.x**, which renamed `FastMCP` to `MCPServer`. The backend then
-   dies on import at
-   `app/data_access/system/tools/registry.py`'s `from mcp.server.fastmcp
-   import FastMCP`. **Fixed** by pinning `mcp<2` (resolves to 1.29.1,
-   the API the code is written against). Migrating to 2.x is separate,
-   real work. Other unpinned entries (`langchain-openai`, `anthropic`,
-   `pypdf`, `pyyaml`, `python-multipart`, `langchain-mcp-adapters`) are
+1. **`requirements.txt` had `mcp` unpinned** — a fresh resolve pulled
+   **mcp 2.x**, which renamed `FastMCP` to `MCPServer`, and the backend died
+   on import at `app/data_access/system/tools/registry.py`'s
+   `from mcp.server.fastmcp import FastMCP`. First fixed by pinning `mcp<2`.
+   **Fully retired on 2026-09-04:** that file was the package's only importer
+   and the MCP Tool layer was deleted, so `mcp` and `langchain-mcp-adapters`
+   were dropped from `requirements.txt` entirely — the pin and the reason for
+   it are both gone. Verified by uninstalling both from the venv and re-running
+   the suite (41 pass) plus a live `GET /health`. Other unpinned entries
+   (`langchain-openai`, `anthropic`, `pypdf`, `pyyaml`, `python-multipart`) are
    the same class of risk and have not bitten yet.
 2. **`npm run build` fails** — 8 pre-existing TypeScript errors
    (7 × `TS7053` indexing `CSSProperties` with a `string` in the
@@ -1004,7 +1006,7 @@ has no defaults, by design):
 | ~~`ANTHROPIC_MODEL`~~ | **No longer required** (2026-09-03) — see below |
 | `VAULT_PATH` | Absolute path to the Obsidian vault directory (copied over from the old laptop) |
 | `SELF_EMAIL` | The Outlook mailbox address capture runs against |
-| ~~`HERMES_MCP_SHARED_SECRET`~~ | **No longer required** (2026-09-03) — see below |
+| ~~`HERMES_MCP_SHARED_SECRET`~~ | **Removed entirely** (2026-09-04) — see below |
 
 > **Three settings became optional on 2026-09-03.**
 > `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` and `HERMES_MCP_SHARED_SECRET`
@@ -1018,13 +1020,18 @@ has no defaults, by design):
 > `data_access/providers.py`, which seeds a Provider row for display — an
 > empty credential just shows as unconfigured, which is accurate.
 >
-> **Security note on the empty shared secret.** `inbound_auth.py` compares
-> the caller's header against this string, so an **empty** value *disables*
-> the `/mcp/*` gate rather than closing it: a remote caller sending no
-> header matches `""` and is allowed through. That is harmless today only
-> because `data_access/system/tools/registry.json` registers no Tools, so
-> nothing is mounted under `/mcp/*` to reach. **Set a real secret before
-> registering the first Tool.**
+> **`HERMES_MCP_SHARED_SECRET` no longer exists (2026-09-04).** It gated the
+> `/mcp/*` endpoints, and the whole MCP Tool layer has been deleted — Second
+> Brain exposes nothing over MCP. Remove the line from any `.env` you carry
+> forward; it is simply ignored.
+>
+> It was deleted rather than left dormant for a real reason worth recording:
+> an **empty** value *disabled* that gate rather than closing it. `inbound_auth`
+> compared the caller's header against the string, so a remote caller sending
+> no header matched `""` and was let through. That was harmless only for as
+> long as nothing was mounted under `/mcp/*` — the moment anyone registered a
+> Tool, it would have been an open door on a setting nobody would have thought
+> to fill in.
 
 > **The two Compass base URLs are deliberately different. Do not
 > reconcile them.**

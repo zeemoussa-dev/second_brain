@@ -7,14 +7,12 @@ pywin32>=306; sys_platform == "win32"
 apscheduler>=3.10
 langgraph>=1,<2
 langchain-openai
-# Pinned <2 (2026-09-03, found on the first fresh-machine install): mcp 2.x
-# renamed FastMCP to MCPServer and changed other APIs, so an unpinned install
-# now resolves to a version this code cannot import. app/data_access/system/
-# tools/registry.py uses the v1 `from mcp.server.fastmcp import FastMCP` API.
-# Migrating to 2.x is real work, tracked separately -- this pin restores the
-# version the code was actually written against.
-mcp<2
-langchain-mcp-adapters
+# `mcp` and `langchain-mcp-adapters` were dropped on 2026-09-04 with the MCP
+# Tool layer. Their only importer was app/data_access/system/tools/registry.py
+# (`from mcp.server.fastmcp import FastMCP`), which is deleted -- so the
+# `mcp<2` pin that fresh installs needed is retired along with the reason for
+# it. Nothing in src/backend imports either package now; re-add them only if
+# Second Brain ever becomes an MCP server again, which is not the design.
 anthropic
 pypdf
 python-multipart

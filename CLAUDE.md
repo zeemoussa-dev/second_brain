@@ -6,8 +6,8 @@ This file provides guidance to Claude Code when working with this repository.
 
 **Second Brain** — A personal knowledge base service that indexes and serves the
 user's Obsidian vault directly (no staging/promotion gate — it's trusted personal
-data, not agent-written scratch data), integrating with Hermes (an MCP-based
-multi-channel communication tool) as a planned integration point.
+data, not agent-written scratch data), integrating with Hermes (a separate agent runtime that owns all real capture,
+enrichment and scheduling) as its execution layer.
 
 Standalone project for now. Eventual integration with `agentic-map`'s agents (so
 they can query this KB instead of, or alongside, their current Postgres/Qdrant KB)
@@ -107,8 +107,8 @@ shared docs is what caused one install to act on another install's assumptions
 ## Status
 
 **Stack in one line:** Python + FastAPI backend (Obsidian vault indexing, no
-staging/promotion gate) + TypeScript/React/Vite frontend, MCP-integrated
-communication via Hermes.
+staging/promotion gate) + TypeScript/React/Vite frontend, with Hermes as the
+agent runtime that performs capture and runs scheduled jobs.
 
 **Architecture decisions:** `Implementation/Architecture/ADR.md` is the authoritative
 source. Always read it alongside `Implementation/Architecture/architecture.md`
@@ -121,7 +121,7 @@ status.
 **Key artefacts:**
 
 - **`src/`** — the single root for all application code.
-  `src/backend` (Python + FastAPI — vault parsing/indexing, KB API, Hermes MCP
+  `src/backend` (Python + FastAPI — vault parsing/indexing, KB API, Hermes
   integration), `src/frontend` (TypeScript + React + Vite — notes browser/search
   UI).
 - **`Documentation/Framework/`** — **How to Use the Framework.** The shared
@@ -271,7 +271,7 @@ sprint is always single-phase.
 | Phase | Focus |
 |---|---|
 | **MVP** | Obsidian vault indexing + search/browse over personal notes, no staging gate |
-| **P1** | Hermes MCP integration for multi-channel communication |
+| **P1** | Hermes integration for multi-channel communication |
 | **P2** | Integration surface for agentic-map's agents to query this KB (future, cross-project work) |
 
 ## Source Module Layout

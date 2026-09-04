@@ -36,8 +36,9 @@ stage; until then, treat anything written here as provisional.
   `Backend-Backup/backend-2026-08-20/` as the migration source.
 
 See the Plans doc for open questions (the approval/safety gate, the
-capture trigger's home, `core`'s exact definition, the MCP boundary's
-placement) and the Provider schema still being settled.
+capture trigger's home, `core`'s exact definition) and the Provider schema
+still being settled. The MCP boundary is no longer an open question: Second
+Brain exposes nothing over MCP, and that layer was deleted on 2026-09-04.
 
 ---
 
