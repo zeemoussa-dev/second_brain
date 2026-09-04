@@ -177,6 +177,57 @@ def _check_vault_path_agrees(home: Path | None, candidate_vault_path: str = "") 
     return {"ok": False, "detail": "Not set in Hermes — saving will add it"}
 
 
+def _managed_env_values(env_file: Path) -> dict[str, str]:
+    """Just the variables this wizard writes -- a profile is free to carry its
+    own extra keys, and flagging those would be noise, not drift."""
+    managed = {_OBSIDIAN_VAULT_ENV_KEY, _SB_VAULT_ENV_KEY, _DATA_PATH_ENV_KEY, _SELF_EMAIL_ENV_KEY}
+    values: dict[str, str] = {}
+    if not env_file.is_file():
+        return values
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, _, value = stripped.partition("=")
+        if key.strip() in managed:
+            values[key.strip()] = value.strip()
+    return values
+
+
+def _check_profile_env_drift(home: Path | None) -> dict:
+    """Whether every profile agrees with the home `.env` on the paths.
+
+    Hermes gives each profile its OWN home: `hermes_constants` puts
+    HERMES_HOME at `<root>/profiles/<name>` in profile mode, and
+    `env_loader.load_hermes_dotenv` then loads exactly `<that home>/.env`
+    with NO chaining up to the top-level file. So the same values genuinely
+    have to exist in 41 places, and nothing in Hermes notices when one of
+    them falls behind -- a profile silently running against a stale vault
+    path is precisely the failure this whole 2026-09-04 session was made of.
+    Cheap to check, so it is checked."""
+    if home is None or not home.is_dir():
+        return {"ok": False, "detail": "Nowhere to look"}
+    expected = _managed_env_values(home / ".env")
+    if not expected:
+        return {"ok": False, "detail": "Hermes' own .env carries none of these settings yet"}
+    profiles_dir = home / "profiles"
+    if not profiles_dir.is_dir():
+        return {"ok": True, "detail": "No profiles yet -- nothing to drift"}
+
+    stale: list[str] = []
+    for profile in sorted(p for p in profiles_dir.iterdir() if p.is_dir()):
+        if _managed_env_values(profile / ".env") != expected:
+            stale.append(profile.name)
+    if stale:
+        shown = ", ".join(stale[:4])
+        suffix = ", ..." if len(stale) > 4 else ""
+        return {
+            "ok": False,
+            "detail": f"{len(stale)} profile(s) disagree with Hermes' own .env ({shown}{suffix}) -- saving re-syncs them",
+        }
+    return {"ok": True, "detail": f"All {len(list(profiles_dir.iterdir()))} profiles agree"}
+
+
 def get_hermes_health(candidate_vault_path: str = "") -> dict:
     """Everything this wizard can honestly say about the real Hermes install.
 
@@ -189,6 +240,7 @@ def get_hermes_health(candidate_vault_path: str = "") -> dict:
         {"key": "profiles", "label": "Agent profiles", **_check_profiles(home)},
         {"key": "skills", "label": "Skills deployed", **_check_deployed_skills(home)},
         {"key": "cron", "label": "Scheduled jobs", **_check_cron_jobs(home)},
+        {"key": "profile_env", "label": "Profiles agree on the paths", **_check_profile_env_drift(home)},
         {
             "key": "vault_path",
             "label": "Vault path agrees with Hermes",

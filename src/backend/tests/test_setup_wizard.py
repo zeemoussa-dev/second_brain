@@ -125,6 +125,7 @@ def test_hermes_health_reports_a_missing_install_without_raising(monkeypatch, tm
         "profiles",
         "skills",
         "cron",
+        "profile_env",
         "vault_path",
     }
 
@@ -241,3 +242,70 @@ def test_data_path_falls_back_to_the_configured_setting(monkeypatch, tmp_path: P
     setup_wizard.sync_settings_to_hermes(r"C:\new\vault")
 
     assert r"SECOND_BRAIN_DATA_PATH=C:\configured\data" in (home / ".env").read_text(encoding="utf-8")
+
+
+def _hermes_home_with_profiles(tmp_path: Path, home_env: str, profile_envs: dict[str, str]) -> Path:
+    home = tmp_path / "hermes"
+    (home / "bin").mkdir(parents=True)
+    (home / "bin" / "hermes.exe").write_text("", encoding="utf-8")
+    (home / ".env").write_text(home_env, encoding="utf-8")
+    for name, contents in profile_envs.items():
+        profile = home / "profiles" / name
+        profile.mkdir(parents=True)
+        (profile / ".env").write_text(contents, encoding="utf-8")
+    return home
+
+
+_HOME_ENV = (
+    "OBSIDIAN_VAULT_PATH=C:\vault\n"
+    "SECOND_BRAIN_VAULT_PATH=C:\vault\n"
+    "SECOND_BRAIN_DATA_PATH=C:\config\n"
+    "SECOND_BRAIN_SELF_EMAIL=me@example.com\n"
+)
+
+
+def test_profiles_matching_the_home_env_are_not_flagged(monkeypatch, tmp_path: Path) -> None:
+    home = _hermes_home_with_profiles(tmp_path, _HOME_ENV, {"a": _HOME_ENV, "b": _HOME_ENV})
+    monkeypatch.setattr(settings, "hermes_home_path", home)
+
+    assert setup_wizard._check_profile_env_drift(home)["ok"] is True
+
+
+def test_a_profile_left_on_a_stale_path_is_flagged(monkeypatch, tmp_path: Path) -> None:
+    """Hermes gives each profile its own HERMES_HOME and loads only that
+    profile's .env -- no chaining to the top-level file -- so a profile can sit
+    on a stale vault path indefinitely with nothing noticing."""
+    stale = _HOME_ENV.replace("C:\vault", "C:\old-vault")
+    home = _hermes_home_with_profiles(tmp_path, _HOME_ENV, {"current": _HOME_ENV, "behind": stale})
+    monkeypatch.setattr(settings, "hermes_home_path", home)
+
+    result = setup_wizard._check_profile_env_drift(home)
+
+    assert result["ok"] is False
+    assert "behind" in result["detail"]
+    assert "current" not in result["detail"]
+
+
+def test_a_profile_missing_the_settings_entirely_is_flagged(monkeypatch, tmp_path: Path) -> None:
+    """The state a restore leaves behind: backup excludes every .env, so a
+    restored profile has none at all."""
+    home = _hermes_home_with_profiles(tmp_path, _HOME_ENV, {"restored": "OTHER_KEY=x\n"})
+    monkeypatch.setattr(settings, "hermes_home_path", home)
+
+    assert setup_wizard._check_profile_env_drift(home)["ok"] is False
+
+
+def test_extra_profile_keys_are_not_treated_as_drift(monkeypatch, tmp_path: Path) -> None:
+    """Only the variables the wizard manages are compared -- a profile is
+    free to carry its own extras, and flagging those would be noise."""
+    home = _hermes_home_with_profiles(tmp_path, _HOME_ENV, {"a": _HOME_ENV + "PROFILE_ONLY=yes\n"})
+    monkeypatch.setattr(settings, "hermes_home_path", home)
+
+    assert setup_wizard._check_profile_env_drift(home)["ok"] is True
+
+
+def test_no_profiles_yet_is_not_drift(monkeypatch, tmp_path: Path) -> None:
+    home = _hermes_home_with_profiles(tmp_path, _HOME_ENV, {})
+    monkeypatch.setattr(settings, "hermes_home_path", home)
+
+    assert setup_wizard._check_profile_env_drift(home)["ok"] is True

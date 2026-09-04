@@ -18,6 +18,17 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat(setup): the wizard's Hermes step reports whether every profile agrees
+  with Hermes' own `.env` on the managed paths. Hermes gives each profile its
+  own `HERMES_HOME` and loads only that profile's `.env` with no chaining, so
+  a profile can sit on a stale vault path indefinitely with nothing noticing.
+  Compares only the variables the wizard manages, so a profile's own extra
+  keys are not noise.
+- docs(deployment): record that a restore leaves NO `.env` anywhere -- backup
+  excludes every one as a secret and restore never recreates them -- so a
+  restored install has every profile, Skill and cron job and not a single
+  environment variable. Re-running the setup wizard is the fix.
+
 - fix(skills): every `SKILL.md` pointed `--vault-path` at
   `C:\myWorx\Moussa MD\Moussa Brain` -- a folder deleted in the 2026-09-03
   move. 19 references across 15 files, none of them the current vault. Capture

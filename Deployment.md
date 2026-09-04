@@ -1002,6 +1002,34 @@ Do these in order — each one assumes the previous is real and working:
 
 ### Troubleshooting
 
+**A restore leaves you with NO `.env` anywhere — that is by design, and the
+setup wizard is the fix.** Confirmed by reading the tools, 2026-09-04:
+`hermes_backup.py`'s own `_is_excluded` skips any file named `.env` (or
+`.env.*`) wherever it appears, top-level and per-profile alike, because they
+hold real secrets. `hermes_restore.py` never recreates one.
+
+So a freshly restored install has every profile, every Skill and every cron
+job — and not a single environment variable. Nothing resolves: no
+`SECOND_BRAIN_VAULT_PATH`, no `SECOND_BRAIN_DATA_PATH`, no
+`OBSIDIAN_VAULT_PATH`, no provider credentials.
+
+This matters more than it looks, because of how Hermes scopes env files.
+A profile is its OWN home — `hermes_constants` puts `HERMES_HOME` at
+`<root>/profiles/<name>` in profile mode, and `env_loader.load_hermes_dotenv`
+then loads exactly `<that home>/.env` with **no chaining** up to the
+top-level file. There is no inheritance: the same values genuinely have to
+exist in all 41 places (the home dir plus every profile), which is also why
+`hermes profile create --clone` copies `.env` — a new profile would otherwise
+start blind.
+
+**Fix: re-run the setup wizard** (Settings > System > "Run setup wizard", or
+`/setup`). Saving writes all four managed variables into every one of those
+files in one pass, and its Hermes step now reports "Profiles agree on the
+paths" so a profile left behind is visible rather than silently stale.
+Provider credentials still have to be re-entered by hand — the wizard covers
+Compass, but anything else Hermes authenticates against does not come back
+from an archive either.
+
 **Backup & Restore refuses: "the `hermes` CLI isn't on PATH".** Hit live
 2026-09-03. The message is accurate and the refusal is correct — but the
 CLI is almost certainly installed fine, and the real fault is the
