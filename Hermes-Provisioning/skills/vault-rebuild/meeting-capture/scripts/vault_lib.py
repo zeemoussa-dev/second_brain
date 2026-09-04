@@ -46,6 +46,8 @@ import json
 import re
 from pathlib import Path
 
+import vault_manager
+
 _SLUG_INVALID_CHARS = re.compile(r'[\\/:*?"<>|]')
 _FRONTMATTER_LINE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*):\s?(.*)$")
 _LIST_ITEM_PATTERN = re.compile(r'"((?:[^"\\]|\\.)*)"')
@@ -56,7 +58,6 @@ _MEETINGS_SUBFOLDER = f"{_WORK_ROOT}/Meetings"
 _PEOPLE_SUBFOLDER = f"{_WORK_ROOT}/People"
 _CUSTOMERS_SUBFOLDER = f"{_WORK_ROOT}/Customers"
 
-_STATE_DIR = ".second-brain"
 _PERSON_IGNORE_LIST_FILE = "person_ignore_list.json"
 
 
@@ -68,7 +69,7 @@ def _load_person_ignore_list(vault_path: Path) -> set[str]:
     capture's own copy of this function, duplicated per this codebase's
     established per-Skill self-containment convention. Missing file ->
     empty set."""
-    path = vault_path / _STATE_DIR / _PERSON_IGNORE_LIST_FILE
+    path = vault_manager.data_root(vault_path) / _PERSON_IGNORE_LIST_FILE
     if not path.exists():
         return set()
     data = json.loads(path.read_text(encoding="utf-8"))

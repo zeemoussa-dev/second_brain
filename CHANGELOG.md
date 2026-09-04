@@ -18,6 +18,20 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix(skills): the capture watermark, the meeting/thread link config and the
+  meeting-capture person ignore list all resolve under the App Database
+  Folder now, instead of an in-vault `.second-brain/` island. One location,
+  driven by Hermes' own `.env`, so there is no second place for the same
+  state to live and diverge.
+- fix(email-capture): one-time migration of a legacy
+  `<vault>/.second-brain/email_capture_state.json`. The LEGACY file wins any
+  collision, deliberately: the retired native capture left a stale copy of
+  the same filename in the data folder (watermark 2026-09-03, written by code
+  that no longer runs) while the legacy path held what the Skill actually
+  read and wrote (2026-09-01). Preferring the data-folder copy would have
+  silently skipped every email between the two. The displaced copy is kept as
+  `.superseded`, never destroyed.
+
 - feat(setup): the wizard now pushes the whole `SECOND_BRAIN_*` set into
   Hermes' own `.env` -- `SECOND_BRAIN_VAULT_PATH`, `SECOND_BRAIN_DATA_PATH`
   and `SECOND_BRAIN_SELF_EMAIL`, alongside `OBSIDIAN_VAULT_PATH` (which

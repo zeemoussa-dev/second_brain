@@ -12,7 +12,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-_STATE_DIR = ".second-brain"
+import vault_manager
+
 _CONFIG_FILE = "meeting_thread_link_config.json"
 
 _DEFAULT_CONFIG = {
@@ -23,7 +24,7 @@ _DEFAULT_CONFIG = {
 
 
 def _config_path(vault_path: Path) -> Path:
-    return vault_path / _STATE_DIR / _CONFIG_FILE
+    return vault_manager.data_root(vault_path) / _CONFIG_FILE
 
 
 def load_config(vault_path: Path) -> dict:

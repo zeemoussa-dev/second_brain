@@ -35,6 +35,8 @@ import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import vault_manager
+
 VAULT_PATH = os.environ.get("SECOND_BRAIN_VAULT_PATH", "")
 SCRIPTS_DIR = str(Path(__file__).resolve().parent)
 
@@ -58,7 +60,9 @@ SCRATCH_DIR = os.path.join(LOCALAPPDATA, "Temp", "second_brain_capture_cli")
 os.makedirs(SCRATCH_DIR, exist_ok=True)
 SUMMARY_PATH = os.path.join(SCRATCH_DIR, "email_delta_capture_summary.json")
 
-STATE_DIR = ".second-brain"
+# Kept only to find and migrate a pre-2026-09-04 state file; the live
+# location is vault_manager.data_root() (see _state_path below).
+_LEGACY_STATE_DIR = ".second-brain"
 STATE_FILE = "email_capture_state.json"
 BOOTSTRAP_LOOKBACK_DAYS = 2
 
@@ -92,8 +96,35 @@ def run_script(args: list[str]) -> tuple[int, str, str]:
     return proc.returncode, proc.stdout, proc.stderr
 
 
+def _legacy_state_path() -> Path:
+    return Path(VAULT_PATH) / _LEGACY_STATE_DIR / STATE_FILE
+
+
 def _state_path() -> Path:
-    return Path(VAULT_PATH) / STATE_DIR / STATE_FILE
+    """The watermark now lives under the App Database Folder with every other
+    piece of state, instead of in its own island inside the vault.
+
+    Migrates a legacy <vault>/.second-brain/ file on first sight, and the
+    legacy file WINS any collision. That direction is deliberate and matters:
+    the app's own retired native capture left a stale copy of this same
+    filename in the data folder (watermark 2026-09-03, last written by code
+    that no longer runs), while the legacy path holds what THIS skill actually
+    read and wrote. Preferring the data-folder copy would silently skip every
+    email between the two watermarks."""
+    live = vault_manager.data_root(Path(VAULT_PATH)) / STATE_FILE
+    legacy = _legacy_state_path()
+    if legacy.is_file():
+        live.parent.mkdir(parents=True, exist_ok=True)
+        if live.is_file():
+            live.replace(live.with_suffix(live.suffix + ".superseded"))
+        legacy.replace(live)
+        # Leave the folder itself if anything else is in it; an empty legacy
+        # island is just confusing data, so it goes.
+        try:
+            legacy.parent.rmdir()
+        except OSError:
+            pass
+    return live
 
 
 def load_watermark() -> str:
