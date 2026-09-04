@@ -18,6 +18,20 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix(skills): `SKILL.md` files no longer hardcode this machine's Hermes
+  home to locate their own scripts. They use `${HERMES_SKILL_DIR}`, the
+  token Hermes itself substitutes with the skill's real absolute directory
+  at prompt-build time (`agent/skill_preprocessing.py`) -- resolved per
+  profile, so one file is correct on the default profile and on any named
+  one. The model still receives a full absolute path, which is what the
+  never-a-bare-filename / never-depend-on-`cwd` rule actually requires.
+  Separators after the token are single backslashes to match the raw path
+  Hermes injects; leaving them doubled produced a mixed path whose lone
+  `\U` is an invalid escape. Skill content now carries no
+  machine-specific path at all, so the Artifacts placeholder substitution
+  has nothing left to rewrite in a Skill. Verified: 226 token->script
+  references, 226 resolving to a file that exists.
+
 - feat(setup): the wizard's Hermes step reports whether every profile agrees
   with Hermes' own `.env` on the managed paths. Hermes gives each profile its
   own `HERMES_HOME` and loads only that profile's `.env` with no chaining, so
