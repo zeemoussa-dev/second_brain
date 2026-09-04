@@ -35,13 +35,33 @@ answer.
 | **Template** | Defines one *kind* of note: where it goes, what it is called, which sections it has, and who may write each one. |
 | **Section** | A grouping on the Agents Map — Customers, Sales, and so on. Agents live in one. A fresh install has **none**; you create the ones you want. |
 | **Agent** | A specialist. Backed by a real Hermes profile — its own prompt, model and skills. `worker`, `producer`, `expert` or `hub`. |
-| **Skill** | Something an agent can *run* — instructions plus scripts. Inert until deployed to a real Hermes profile. |
-| **Tool** | A grouping of related Skills. |
+| **Action** | One concrete operation — ingest an email, write a note, resolve a person. |
+| **Skill** | A unit that performs Actions: instructions (`SKILL.md`) plus the scripts that carry them out. Inert until deployed to a real Hermes profile. |
+| **Tool** | **A group of Skills managing a set of Actions.** The grouping layer — Tool → Skills → Actions. |
 | **Pipeline** | A multi-step job with a dependency tree, usually on a schedule via a Hermes cron job. |
 | **Index** | A scoped, pre-built view of the vault for agents to search — chosen folders, optional tag filter, depth limit, own refresh schedule. |
 | **Provider** | An LLM endpoint and model. Listings only ever say *whether* a credential is set, never the secret itself. |
 
-### Two ideas people mix up
+### The capability hierarchy — say it this way, every time
+
+> **Tool → Skills → Actions.** A **Tool** is a group of **Skills** managing a set
+> of **Actions**.
+
+That is the settled vocabulary. Use these words in this order and nothing drifts.
+
+**Do not confuse it with Hermes' own "tools".** Hermes has built-in capabilities
+it also calls tools — `terminal`, `file`, `memory`, `browser` — which is a
+*different vocabulary owned by a different system*. In this documentation those
+are always **"the Hermes toolset"**, never "Tools". An Agent's `tools` field
+refers to that Hermes toolset; a **Tool** in this framework groups Skills.
+
+**One historical trap.** An earlier attempt exposed `Tool → Category → Action`
+over MCP and was abandoned. The *taxonomy* was right and survives — that is why
+dead MCP code can look like the live model. The MCP delivery mechanism is what
+failed, and Skills became Hermes-native scripts instead. If you find MCP mounting
+code, it is a remnant, not the design.
+
+### Two more ideas people mix up
 
 - **Section is identity, scope is access.** An agent's Section is where it *lives*
   on the map. Its `scope` (`folders` + `tags`) is what it may *read* in the vault.

@@ -62,9 +62,17 @@ never a second source of truth.
 
 ## Skill
 
-A Skill is a `SKILL.md` plus a `scripts/` folder, invoked through Hermes' own
-`terminal` tool. Its data is deliberately split across two stores: the filesystem
-holds the content, the Registry holds the metadata.
+**Tool → Skills → Actions.** A **Tool** is a group of **Skills** managing a set of
+**Actions**. A **Skill** is the unit that performs Actions: a `SKILL.md` plus a
+`scripts/` folder, invoked through the Hermes toolset's `terminal`.
+
+> **"Tool" here always means the group of Skills.** Hermes' own built-in
+> capabilities — `terminal`, `file`, `memory` — are **the Hermes toolset**, a
+> different vocabulary owned by a different system. An Agent's `tools` field
+> refers to that toolset, not to these Tools.
+
+A Skill's data is deliberately split across two stores: the filesystem holds the
+content, the Registry holds the metadata.
 
 | Field | Meaning |
 |---|---|
