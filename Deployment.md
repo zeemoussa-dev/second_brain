@@ -260,6 +260,32 @@ bash setup-hermes.sh   # creates the uv-managed venv, installs deps,
 hermes --version
 ```
 
+**`setup-hermes.sh` does not finish on Windows, and does not say so**
+(2026-09-04, third machine — this is why the official installer above is
+now the preferred route, not just the tidier one). The script symlinks
+`$SCRIPT_DIR/venv/bin/hermes`, a POSIX layout; on Windows uv creates
+`venv/Scripts/hermes.exe`, so `ln` fails with `No such file or
+directory`. The script runs under `set -e`, so it exits right there —
+**silently skipping the bundled-skills sync that follows it**. Dependency
+installation happens *before* that point, which is exactly why the run
+looks successful: you get a working `hermes.exe` and an empty
+`skills/` folder. There is no Windows branch in the script at all; it
+only distinguishes Termux from "desktop/server", both assumed POSIX.
+
+Two things to do by hand afterwards if you are stuck on this route:
+
+```powershell
+# 1. A .cmd shim beats a symlink here -- no Developer Mode, no elevation.
+#    (Hermes also self-heals its own launchers into %LOCALAPPDATA%\hermes\bin
+#    on first run, so check there before creating one.)
+'@echo off'                                                  | Set-Content "$env:USERPROFILE\.local\bin\hermes.cmd" -Encoding ascii
+"`"$env:LOCALAPPDATA\hermes\hermes-agent\venv\Scripts\hermes.exe`" %*" | Add-Content "$env:USERPROFILE\.local\bin\hermes.cmd" -Encoding ascii
+
+# 2. Run the sync the script never reached (seeds 58 bundled skills).
+cd "$env:LOCALAPPDATA\hermes\hermes-agent"
+.\venv\Scripts\python.exe tools\skills_sync.py
+```
+
 **Known trap:** a bare `python`/`python3` on this machine's `PATH` may
 resolve to the **Microsoft Store execution-alias stub**
 (`AppData\Local\Microsoft\WindowsApps\python.exe`), which prints "Python
@@ -343,13 +369,50 @@ against the current schema:
 hermes doctor --fix    # migrates the config; reports what it couldn't fix
 ```
 
+**Do not run `--fix` unattended, and do not assume it returns.** On
+2026-09-04 it started a **dashboard and a gateway** and simply kept
+running — the migration is not a short, self-terminating command. Left in
+a background shell it looked like a hang; what it had actually done was
+leave `hermes.exe dashboard` and two `gateway run` processes live, which
+then held `%LOCALAPPDATA%\hermes` open and blocked a later reinstall
+until they were stopped (`hermes gateway stop`, then kill the survivors).
+
+**Plain `hermes doctor` also gets much slower once Node is on `PATH`.**
+It runs `npm audit` across the `agent-browser`/`web` workspaces, so a
+machine with no Node finishes in seconds and the *same* machine finishes
+in minutes after Node appears — the check did not break, it simply
+started doing more. Beware of measuring this through a pipe: `hermes
+doctor | Select-Object -First 50` closes the pipe early and kills the
+process, so it *looks* fast while never actually completing. Redirect to
+a file if you want the real runtime and the real full output.
+
 #### Installing non-interactively? Two real gotchas
 
 Only relevant when driving the installer from a script or an automation
 tool rather than typing it into a real terminal:
 
+- **Pass `-SkipComputerUse -SkipSetup` and the two hangs below never
+  happen** (2026-09-04, third machine). The installer takes real
+  parameters, so the `cua-driver` hang described next is avoidable rather
+  than something to detect and kill, and `-SkipSetup` skips the
+  interactive wizard that a non-interactive shell cannot answer anyway.
+  Getting the file so you can pass flags to it also sidesteps a second
+  problem: the canonical `iex (irm ...)` one-liner is blind remote code
+  execution, which agent/automation sandboxes routinely refuse. Download,
+  check, then run:
+
+  ```powershell
+  $dest = "$env:TEMP\hermes-install.ps1"
+  Invoke-WebRequest 'https://hermes-agent.nousresearch.com/install.ps1' -OutFile $dest
+  (Get-FileHash $dest -Algorithm SHA256).Hash   # 245 KB on 2026-09-04
+  & $dest -SkipComputerUse -SkipSetup
+  ```
+
+  This run exited **0** — no hang, no killed child, nothing to diagnose.
+
 - **It can hang forever at `Installing Computer Use driver
-  (cua-driver)`.** That step spawns `powershell.exe -Version 5.1 -s`
+  (cua-driver)`.** Only if you did *not* pass `-SkipComputerUse` above.
+  That step spawns `powershell.exe -Version 5.1 -s`
   (stdin/server mode), which blocks reading standard input that never
   arrives. Symptom: zero output for many minutes, and the child process
   burning ~0 CPU. `cua-driver` is desktop-control tooling that this

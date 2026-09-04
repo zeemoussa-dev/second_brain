@@ -94,6 +94,23 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   read and wrote (2026-09-01). Preferring the data-folder copy would have
   silently skipped every email between the two. The displaced copy is kept as
   `.superseded`, never destroyed.
+- docs(deployment): three corrections to §1 from a third real install
+  (2026-09-04, `cbo-agent01`). (a) The official installer takes
+  `-SkipComputerUse -SkipSetup`, so the `cua-driver` hang is *avoidable*
+  rather than something to detect and kill; documented the
+  download-hash-run form too, since the canonical `iex (irm ...)`
+  one-liner is blind remote code execution that automation sandboxes
+  refuse. That run exited 0. (b) The fallback `setup-hermes.sh` route does
+  not finish on Windows and does not say so — it symlinks the POSIX
+  `venv/bin/hermes` while uv creates `venv/Scripts/hermes.exe`, and under
+  `set -e` it exits there, silently skipping the bundled-skills sync;
+  deps install *before* that point, so it looks successful while leaving
+  `skills/` empty. (c) `hermes doctor --fix` starts a dashboard and a
+  gateway and does not return — those processes then hold
+  `%LOCALAPPDATA%\hermes` open against a reinstall; and plain `doctor`
+  slows from seconds to minutes once Node is on `PATH` because it begins
+  running `npm audit`, which piping through `Select-Object -First N`
+  hides by killing the process early.
 
 - feat(setup): the wizard now pushes the whole `SECOND_BRAIN_*` set into
   Hermes' own `.env` -- `SECOND_BRAIN_VAULT_PATH`, `SECOND_BRAIN_DATA_PATH`
