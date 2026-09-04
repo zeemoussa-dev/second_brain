@@ -79,7 +79,11 @@ def save(body: SaveSetupBody) -> dict:
 
     vault_path = body.values.get("vault_path", "")
     result["hermes_vault_sync"] = (
-        setup_wizard.sync_paths_to_hermes(vault_path, body.values.get('second_brain_data_path', ''))
+        setup_wizard.sync_settings_to_hermes(
+            vault_path,
+            body.values.get('second_brain_data_path', ''),
+            body.values.get('self_email', ''),
+        )
         if vault_path
         else {"ok": False, "detail": "No vault path in this save — Hermes left untouched", "files_written": 0}
     )

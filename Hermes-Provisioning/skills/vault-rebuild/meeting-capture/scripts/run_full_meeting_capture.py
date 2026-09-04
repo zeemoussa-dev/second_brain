@@ -15,9 +15,25 @@ import subprocess
 import sys
 from pathlib import Path
 
-VAULT_PATH = os.environ.get("SECOND_BRAIN_VAULT_PATH", r"C:\myWorx\Moussa MD\Moussa Brain")
+VAULT_PATH = os.environ.get("SECOND_BRAIN_VAULT_PATH", "")
 SELF_EMAIL = os.environ.get("SECOND_BRAIN_SELF_EMAIL", "")
 SCRIPTS_DIR = str(Path(__file__).resolve().parent)
+
+# Fail loudly rather than operate on the wrong folder. This used to default to
+# an absolute path that was deleted when the vault moved (2026-09-03), so an
+# unset variable meant silently reading and writing a folder that no longer
+# existed -- the same class of silent failure that cost 54 emails on
+# 2026-09-04. The setup wizard writes SECOND_BRAIN_VAULT_PATH into Hermes' own
+# .env, so this should never be unset on a properly provisioned install.
+def _require_vault_path() -> str:
+    if not VAULT_PATH.strip():
+        raise SystemExit(
+            "SECOND_BRAIN_VAULT_PATH is not set. Set it in Hermes' own .env "
+            "(the Second Brain setup wizard writes it), or pass the vault "
+            "path explicitly."
+        )
+    return VAULT_PATH
+
 LOCALAPPDATA = os.environ.get("LOCALAPPDATA") or os.path.expanduser(r"~\AppData\Local")
 SCRATCH_DIR = os.path.join(LOCALAPPDATA, "Temp", "second_brain_meeting_capture_cli")
 os.makedirs(SCRATCH_DIR, exist_ok=True)
@@ -45,6 +61,7 @@ def run_script(args: list[str]) -> tuple[int, str, str]:
 
 
 def main() -> int:
+    _require_vault_path()
     days_back = int(os.environ.get("SECOND_BRAIN_MEETING_DAYS_BACK", "7"))
     days_ahead = int(os.environ.get("SECOND_BRAIN_MEETING_DAYS_AHEAD", "14"))
 

@@ -6,8 +6,47 @@ has zero Second Brain awareness, matching app/hermes/'s own "config
 injected, not imported" convention."""
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
+
+# Windows caps an ordinary path at MAX_PATH (260), and a DIRECTORY at
+# MAX_PATH-12 (248) because it reserves room for an 8.3 name inside it.
+# Past that, `os.scandir` (which `Path.rglob` walks with) raises
+# FileNotFoundError [WinError 3] on a path that genuinely exists -- and
+# because rglob is a generator, that exception escapes to the caller and
+# aborts the ENTIRE scan, so one over-long folder yields zero notes
+# rather than one missing note. Found live 2026-09-03: the vault's own
+# `Work/_archive/Meetings/_Archived Duplicates (2026-08-24)/...` reached
+# 259 chars and left the whole index empty.
+#
+# The `\\?\` extended-length prefix opts the path out of that limit
+# entirely, at the Win32 API level, with no registry change and no admin
+# rights -- unlike LongPathsEnabled, which is machine-wide and elevated.
+# It requires a fully-qualified, already-normalised path (no `..`, no
+# forward slashes), which is why long_path() runs abspath first.
+_EXTENDED_PREFIX = "\\\\?\\"
+
+
+def long_path(path) -> str:
+    """Long-path-safe string form of `path`, for handing to os.walk,
+    os.scandir or open(). Windows only -- returned unchanged elsewhere.
+    Public because frontmatter.read_note needs the identical treatment:
+    discovering a long path is useless if opening it still fails."""
+    absolute = os.path.abspath(str(path))
+    if os.name == "nt" and not absolute.startswith(_EXTENDED_PREFIX):
+        return _EXTENDED_PREFIX + absolute
+    return absolute
+
+
+def _plain(path_str: str) -> str:
+    """Inverse of long_path() -- strips the prefix so every path handed
+    back to callers stays the ordinary form they already compare against
+    `vault_path` and call `.relative_to()` on."""
+    if path_str.startswith(_EXTENDED_PREFIX):
+        return path_str[len(_EXTENDED_PREFIX):]
+    return path_str
+
 
 _SLUG_INVALID_CHARS = re.compile(r'[\\/:*?"<>|]')
 WIKILINK_PATTERN = re.compile(r"\[\[([^\]]+)\]\]")
@@ -42,13 +81,22 @@ def list_all_note_paths(vault_path: Path, work_root_name: str = "Work") -> list:
     work_root = Path(vault_path) / work_root_name
     if not work_root.exists():
         return []
-    return sorted(
-        path for path in work_root.rglob("*.md")
-        if path.name not in _OKF_RESERVED_FILENAMES
-        and path.name not in _THREAD_SIDECAR_RESERVED_FILENAMES
-        and path.is_file()
-        and not any(part.startswith("_") for part in path.relative_to(work_root).parent.parts)
-    )
+    # os.walk (not rglob) so `_`-prefixed folders can be pruned IN the
+    # traversal via dirnames[:], instead of filtered out of the results
+    # afterwards. The old post-filter still descended into every archive
+    # folder it was about to discard -- which is exactly where the
+    # over-long path lived, so the scan died inside a folder this
+    # function never wanted in the first place.
+    notes = []
+    for dirpath, dirnames, filenames in os.walk(long_path(work_root)):
+        dirnames[:] = [name for name in dirnames if not name.startswith("_")]
+        for filename in filenames:
+            if not filename.lower().endswith(".md"):
+                continue
+            if filename in _OKF_RESERVED_FILENAMES or filename in _THREAD_SIDECAR_RESERVED_FILENAMES:
+                continue
+            notes.append(Path(_plain(os.path.join(dirpath, filename))))
+    return sorted(notes)
 
 
 def list_notes_in_kind_folder(vault_path: Path, kind: str, work_root_name: str = "Work") -> list:

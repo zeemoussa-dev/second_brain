@@ -18,6 +18,19 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat(setup): the wizard now pushes the whole `SECOND_BRAIN_*` set into
+  Hermes' own `.env` -- `SECOND_BRAIN_VAULT_PATH`, `SECOND_BRAIN_DATA_PATH`
+  and `SECOND_BRAIN_SELF_EMAIL`, alongside `OBSIDIAN_VAULT_PATH` (which
+  Hermes' own bundled obsidian Skill reads, and which is NOT the same
+  variable the repo's Skill scripts read). Making these the single runtime
+  source is what stops machine-specific paths having to be baked into Skill
+  scripts and shipped through Artifacts bundles.
+- fix(skills): `run_delta_capture.py`, `run_full_capture.py` and
+  `run_full_meeting_capture.py` no longer default `SECOND_BRAIN_VAULT_PATH`
+  to `C:\myWorx\Moussa MD\Moussa Brain` -- a path deleted when the vault
+  moved, so an unset variable meant silently operating on a folder that no
+  longer existed. They now fail loudly with the fix.
+
 - fix(skills): Hermes-side Skill scripts now resolve the App Database Folder
   through `vault_manager.data_root()` (honouring `SECOND_BRAIN_DATA_PATH`,
   falling back to `<vault>/.second-brain`) instead of hardcoding the in-vault

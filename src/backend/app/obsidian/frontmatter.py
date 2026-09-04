@@ -8,6 +8,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from app.obsidian.notes import long_path
+
 _FRONTMATTER_LINE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*):\s?(.*)$")
 _LIST_ITEM_PATTERN = re.compile(r'"((?:[^"\\]|\\.)*)"')
 
@@ -39,8 +41,17 @@ def parse_frontmatter_value(raw: str):
 
 
 def read_note(path) -> tuple[dict, str]:
-    """Splits a note into (frontmatter dict, body text)."""
-    text = Path(path).read_text(encoding="utf-8")
+    """Splits a note into (frontmatter dict, body text).
+
+    Opens through notes.long_path(): this vault has real notes whose full
+    path exceeds Windows' 260-char MAX_PATH (an Opportunity's own title
+    appears twice under the OKF folder-per-thing convention -- once as
+    the folder, once as the filename), and a plain open() raises
+    FileNotFoundError on a file that genuinely exists. Discovering those
+    notes in list_all_note_paths() is useless if reading them still
+    fails -- found live 2026-09-03, indexing walked the vault fine and
+    then died on the first 261-char note."""
+    text = Path(long_path(path)).read_text(encoding="utf-8")
     if not text.startswith("---\n"):
         return {}, text
     end = text.find("\n---\n", 4)

@@ -214,6 +214,16 @@ _OBSIDIAN_VAULT_ENV_KEY = "OBSIDIAN_VAULT_PATH"
 # written. Kept in the same .env as the vault path so the two can never
 # disagree about which install they describe.
 _DATA_PATH_ENV_KEY = "SECOND_BRAIN_DATA_PATH"
+# The Skill scripts' own established SECOND_BRAIN_* family. These are the
+# names the scripts actually read -- distinct from OBSIDIAN_VAULT_PATH above,
+# which is what Hermes' own BUNDLED note-taking/obsidian Skill reads. Both are
+# needed; they have different consumers and neither substitutes for the other.
+# Three scripts (run_delta_capture, run_full_capture, run_full_meeting_capture)
+# used to default SECOND_BRAIN_VAULT_PATH to a since-deleted absolute path, so
+# an unset variable meant silently operating on a folder that no longer
+# exists. Pushing these here at setup is what makes that default unreachable.
+_SB_VAULT_ENV_KEY = "SECOND_BRAIN_VAULT_PATH"
+_SELF_EMAIL_ENV_KEY = "SECOND_BRAIN_SELF_EMAIL"
 
 
 def _normalized_vault_path(raw: str) -> str:
@@ -241,12 +251,12 @@ def _hermes_env_files_holding_the_vault_path(home: Path) -> list[Path]:
         for profile in sorted(profiles_dir.iterdir()):
             env_file = profile / ".env"
             contents = env_file.read_text(encoding="utf-8") if env_file.is_file() else ""
-            if _OBSIDIAN_VAULT_ENV_KEY in contents or _DATA_PATH_ENV_KEY in contents:
+            if any(key in contents for key in (_OBSIDIAN_VAULT_ENV_KEY, _SB_VAULT_ENV_KEY, _DATA_PATH_ENV_KEY)):
                 targets.append(env_file)
     return targets
 
 
-def sync_paths_to_hermes(vault_path: str, data_path: str = "") -> dict:
+def sync_settings_to_hermes(vault_path: str, data_path: str = "", self_email: str = "") -> dict:
     """Writes the vault path into Hermes' own `.env` (operator-directed,
     2026-09-04: "When I set the Vault URL it need to reflect in Hermes
     Obsedian COnfig data").
@@ -264,10 +274,13 @@ def sync_paths_to_hermes(vault_path: str, data_path: str = "") -> dict:
     normalized = _normalized_vault_path(vault_path)
     if not normalized:
         return {"ok": False, "detail": "No vault path to sync", "files_written": 0}
-    updates = {_OBSIDIAN_VAULT_ENV_KEY: normalized}
+    updates = {_OBSIDIAN_VAULT_ENV_KEY: normalized, _SB_VAULT_ENV_KEY: normalized}
     normalized_data = _normalized_vault_path(data_path or str(settings.second_brain_data_path or ""))
     if normalized_data:
         updates[_DATA_PATH_ENV_KEY] = normalized_data
+    resolved_email = (self_email or settings.self_email or "").strip()
+    if resolved_email:
+        updates[_SELF_EMAIL_ENV_KEY] = resolved_email
     home = _hermes_home()
     if home is None or not home.is_dir():
         return {
@@ -288,8 +301,7 @@ def sync_paths_to_hermes(vault_path: str, data_path: str = "") -> dict:
                 "files_written": len(written),
             }
     profile_count = len(written) - 1
-    what = "Vault and data paths" if _DATA_PATH_ENV_KEY in updates else "Vault path"
-    detail = f"{what} written to Hermes ({len(written)} file{'s' if len(written) != 1 else ''}"
+    detail = f"{len(updates)} settings written to Hermes ({len(written)} file{'s' if len(written) != 1 else ''}"
     detail += f", including {profile_count} profile{'s' if profile_count != 1 else ''})" if profile_count else ")"
     return {
         "ok": True,
