@@ -80,7 +80,12 @@ _FIELDS: dict[str, dict[str, str]] = {
     "second_brain_data_path": {
         "label": "App Database Folder (.second-brain)",
         "icon": "database",
-        "description": "Where Second Brain keeps its own data — chat history, registry, uploads. Independent of your vault, so it can live anywhere.",
+        "description": (
+            "Where Second Brain keeps its own data — note templates, the search index, "
+            "chat history, uploads. LEAVE BLANK and it goes inside your vault at "
+            "<vault>/.second-brain. Set it to a separate folder to keep the vault as notes "
+            "only, which also lets you sync or move either one without dragging the other along."
+        ),
         "env_key": "SECOND_BRAIN_DATA_PATH",
     },
     "cors_allowed_origins": {

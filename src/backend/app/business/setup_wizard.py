@@ -37,9 +37,16 @@ from app.config import settings
 _STEPS: tuple[dict, ...] = (
     {
         "id": "vault",
-        "title": "Your vault",
-        "blurb": "Point Second Brain at the Obsidian vault it should read, and tell it which email address is yours.",
-        "fields": ("vault_path", "self_email"),
+        "title": "Your vault & data",
+        "blurb": "Where your notes live, where Second Brain keeps its own data, and which email address is yours.",
+        # second_brain_data_path belongs HERE, not buried in a later
+        # "change these only if you need to" step. Left blank it silently
+        # becomes <vault>/.second-brain -- putting the app's own state inside
+        # the vault, which is exactly the layout the operator moved away from
+        # on 2026-09-03 and whose absence then broke every Skill. A default
+        # that quietly picks the shape you deliberately abandoned belongs in
+        # front of the operator, not behind a "usually fine" label.
+        "fields": ("vault_path", "second_brain_data_path", "self_email"),
     },
     {
         "id": "compass",
@@ -55,9 +62,9 @@ _STEPS: tuple[dict, ...] = (
     },
     {
         "id": "storage",
-        "title": "Storage & access",
-        "blurb": "Where the app keeps its own data, and which addresses may call it. Both already have working defaults -- change them only if you need to.",
-        "fields": ("second_brain_data_path", "cors_allowed_origins"),
+        "title": "Access",
+        "blurb": "Which addresses may call this backend. The default matches the ports this repo ships with -- change it only if you run the app from somewhere else.",
+        "fields": ("cors_allowed_origins",),
     },
 )
 

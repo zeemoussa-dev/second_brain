@@ -94,9 +94,13 @@ function HermesHealthPanel({ health, loading }: { health: HermesHealth | null; l
       {/* Precise about the one thing that IS written, so nothing about the
           Hermes side comes as a surprise after saving. */}
       <p className="setup-hermes-note">
-        Saving writes your vault path into Hermes as <code>OBSIDIAN_VAULT_PATH</code> — that's the
-        only change the wizard makes here. Everything else above is read-only: profiles, skills,
-        and scheduled jobs stay yours to manage with the Hermes CLI.
+        Saving writes four settings into Hermes' own <code>.env</code> — your vault path (as both{' '}
+        <code>OBSIDIAN_VAULT_PATH</code> and <code>SECOND_BRAIN_VAULT_PATH</code>),{' '}
+        <code>SECOND_BRAIN_DATA_PATH</code> and <code>SECOND_BRAIN_SELF_EMAIL</code> — into the home
+        file and every profile, because Hermes gives each profile its own environment and never
+        falls back to the top-level one. That's the only change the wizard makes here. Everything
+        else above is read-only: profiles, skills, and scheduled jobs stay yours to manage with the
+        Hermes CLI.
       </p>
     </div>
   );

@@ -18,6 +18,17 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix(setup): the App Database Folder now sits in the wizard's first step,
+  beside the vault it relates to, instead of last under "already have
+  working defaults -- change them only if you need to". Left blank it
+  silently becomes `<vault>/.second-brain`, putting the app's own state
+  back INSIDE the vault -- the exact layout the 2026-09-03 split moved away
+  from, and whose absence then broke every Hermes-side Skill. Its
+  description now says outright what leaving it blank does, so an empty box
+  stops being a silent decision.
+- fix(setup): the Hermes step said saving writes only `OBSIDIAN_VAULT_PATH`.
+  It writes four settings, into the home `.env` and every profile.
+
 - fix(skills): `SKILL.md` files no longer hardcode this machine's Hermes
   home to locate their own scripts. They use `${HERMES_SKILL_DIR}`, the
   token Hermes itself substitutes with the skill's real absolute directory

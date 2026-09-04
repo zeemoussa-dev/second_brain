@@ -309,3 +309,30 @@ def test_no_profiles_yet_is_not_drift(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(settings, "hermes_home_path", home)
 
     assert setup_wizard._check_profile_env_drift(home)["ok"] is True
+
+
+def test_the_data_folder_is_offered_beside_the_vault(unconfigured) -> None:
+    """Not buried in a later "change these only if you need to" step.
+
+    Left blank, `second_brain_data_path` silently becomes
+    <vault>/.second-brain -- putting the app's own state back inside the
+    vault, the exact layout the 2026-09-03 split moved away from and whose
+    absence then broke every Hermes-side Skill. A default that quietly picks
+    the shape you deliberately abandoned has to be visible.
+    """
+    body = client.get("/setup/status").json()
+    vault_step = next(s for s in body["steps"] if s["id"] == "vault")
+    keys = [f["key"] for f in vault_step["fields"]]
+
+    assert "second_brain_data_path" in keys
+    assert keys.index("second_brain_data_path") == keys.index("vault_path") + 1
+
+
+def test_the_data_folder_says_what_leaving_it_blank_does(unconfigured) -> None:
+    body = client.get("/setup/status").json()
+    field = next(
+        f for s in body["steps"] for f in s["fields"] if f["key"] == "second_brain_data_path"
+    )
+
+    assert "BLANK" in field["description"]
+    assert ".second-brain" in field["description"]
