@@ -22,7 +22,7 @@ themselves; they report real findings back to you, and you do the write.
 ## Prerequisites
 
 - Vault path (pass as `--vault-path` on every script call):
-  `C:\myWorx\Moussa MD\Moussa Brain`
+  `$SECOND_BRAIN_VAULT_PATH`
 
 ## What this builds
 
@@ -71,7 +71,7 @@ then `## Summary` / `## Details`, then any real images you attached.
 6. Call the script as a PLAIN, direct `terminal` call using its own full
    absolute path:
    ```
-   terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\profiles\\azure-expert\\skills\\knowledge-base\\azure-kb-writer\\scripts\\write_azure_doc.py\" --vault-path \"C:\\myWorx\\Moussa MD\\Moussa Brain\" --input-file <scratch path>")
+   terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\profiles\\azure-expert\\skills\\knowledge-base\\azure-kb-writer\\scripts\\write_azure_doc.py\" --input-file <scratch path>")
    ```
 
 Calling it again with the same `title`/`area` (and same `category` for

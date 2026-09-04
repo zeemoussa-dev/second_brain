@@ -23,7 +23,7 @@ took two minutes of back-and-forth to get there.
 ## Prerequisites
 
 - Vault path (pass as `--vault-path` on every script call):
-  `C:\myWorx\Moussa MD\Moussa Brain`
+  `$SECOND_BRAIN_VAULT_PATH`
 
 ## What this builds
 
@@ -59,7 +59,7 @@ mechanical and doesn't understand the content):
 using its own full absolute path:
 
 ```
-terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\profiles\\notes-manager\\skills\\notes-capture\\capture-notes\\scripts\\capture_note.py\" --vault-path \"C:\\myWorx\\Moussa MD\\Moussa Brain\" --input-file <scratch path>")
+terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\profiles\\notes-manager\\skills\\notes-capture\\capture-notes\\scripts\\capture_note.py\" --input-file <scratch path>")
 ```
 
 The script best-effort wikilinks any real Customer/Partner name it

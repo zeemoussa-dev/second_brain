@@ -47,7 +47,7 @@ classification itself.
 ## How to run the discovery half (recurring)
 
 ```
-terminal(command="python find_new_entities.py --vault-path \"C:\\myWorx\\Moussa MD\\Moussa Brain\"", cwd="<this Skill's scripts/ folder>")
+terminal(command="python find_new_entities.py", cwd="<this Skill's scripts/ folder>")
 ```
 
 **Never wrap this in `bash -lc "..."`** -- same categorical Hermes
@@ -107,7 +107,7 @@ conversational continuity). Parse the company name and the real intent,
 then call:
 
 ```
-terminal(command="python apply_entity_decision.py --vault-path \"C:\\myWorx\\Moussa MD\\Moussa Brain\" --company \"Oracle\" --decision partner [--affiliate-of \"PARENT\"] [--aliases \"extra text\"]")
+terminal(command="python apply_entity_decision.py --company \"Oracle\" --decision partner [--affiliate-of \"PARENT\"] [--aliases \"extra text\"]")
 ```
 
 `--company` matches an entry's own `Company Name` OR any of its own

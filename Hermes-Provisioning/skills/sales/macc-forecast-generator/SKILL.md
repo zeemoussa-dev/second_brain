@@ -41,7 +41,7 @@ failure. Instead:
 2. Call `stage_macc_forecast.py` to place a fresh, BLANK working copy of
    the template in the customer's own folder:
    ```
-   terminal(command="PYTHONUTF8=1 python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\profiles\\macc-expert\\skills\\sales\\macc-forecast-generator\\scripts\\stage_macc_forecast.py\" --vault-path \"C:\\myWorx\\Moussa MD\\Moussa Brain\" --customer \"<Customer>\"")
+   terminal(command="PYTHONUTF8=1 python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\profiles\\macc-expert\\skills\\sales\\macc-forecast-generator\\scripts\\stage_macc_forecast.py\" --customer \"<Customer>\"")
    ```
    Lands at `Work/Customers/<Customer>/Files/MACC Estimator/<Customer>
    MACC Forecast <date> (staged).xlsx`.
@@ -87,7 +87,7 @@ failure. Instead:
    Max **8 engagements** and max **20 quarters** per engagement -- the
    template's own real, fixed capacity.
    ```
-   terminal(command="PYTHONUTF8=1 python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\profiles\\macc-expert\\skills\\sales\\macc-forecast-generator\\scripts\\fill_macc_template.py\" --vault-path \"C:\\myWorx\\Moussa MD\\Moussa Brain\" --input-file <scratch path>")
+   terminal(command="PYTHONUTF8=1 python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\profiles\\macc-expert\\skills\\sales\\macc-forecast-generator\\scripts\\fill_macc_template.py\" --input-file <scratch path>")
    ```
    Lands at the same folder without the `(staged)`/`Info Needed` suffix
    -- the real, final sheet. The staged blank copy and the checklist

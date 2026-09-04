@@ -23,6 +23,7 @@ note write) stays entirely hand-written, unchanged.
 from __future__ import annotations
 
 import argparse
+import os
 import json
 from pathlib import Path
 
@@ -62,13 +63,27 @@ def capture_file_link(vault_path: Path, conversation_id: str, message_path: str,
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--vault-path", required=True)
+    parser.add_argument(
+        "--vault-path",
+        # Defaults to what Second Brain's setup wizard writes into Hermes'
+        # own .env, so a Skill never has to name a machine-specific
+        # absolute path and a bundle never has to have one rewritten on
+        # import. Pass it only to override.
+        default=os.environ.get("SECOND_BRAIN_VAULT_PATH", ""),
+    )
     parser.add_argument("--conversation-id", required=True)
     parser.add_argument("--message-path", required=True)
     parser.add_argument("--received", required=True)
     parser.add_argument("--label", required=True)
     parser.add_argument("--url", required=True)
     args = parser.parse_args()
+    if not (args.vault_path or "").strip():
+        # An empty value would become Path("") -> the CWD, which is exactly the
+        # silent-wrong-folder failure this whole change exists to remove.
+        raise SystemExit(
+            "No vault path. Set SECOND_BRAIN_VAULT_PATH in Hermes' own .env "
+            "(Second Brain's setup wizard writes it) or pass --vault-path."
+        )
 
     result = capture_file_link(
         Path(args.vault_path), args.conversation_id, args.message_path, args.received, args.label, args.url,

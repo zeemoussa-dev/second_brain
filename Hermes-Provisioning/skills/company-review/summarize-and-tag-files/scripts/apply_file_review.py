@@ -105,6 +105,7 @@ write.
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import re
 import shutil
@@ -405,11 +406,25 @@ def apply_file_review(vault_path: Path, data: dict, force: bool = False) -> dict
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--vault-path", required=True)
+    parser.add_argument(
+        "--vault-path",
+        # Defaults to what Second Brain's setup wizard writes into Hermes'
+        # own .env, so a Skill never has to name a machine-specific
+        # absolute path and a bundle never has to have one rewritten on
+        # import. Pass it only to override.
+        default=os.environ.get("SECOND_BRAIN_VAULT_PATH", ""),
+    )
     parser.add_argument("--input-file", required=True)
     parser.add_argument("--append", action="store_true", help="Add a Details pass (optionally with diagram images) to an already-summarized File instead of applying an initial review.")
     parser.add_argument("--force", action="store_true", help="Bypass the already-summarized skip-guard and overwrite an existing '## Summary' anyway.")
     args = parser.parse_args()
+    if not (args.vault_path or "").strip():
+        # An empty value would become Path("") -> the CWD, which is exactly the
+        # silent-wrong-folder failure this whole change exists to remove.
+        raise SystemExit(
+            "No vault path. Set SECOND_BRAIN_VAULT_PATH in Hermes' own .env "
+            "(Second Brain's setup wizard writes it) or pass --vault-path."
+        )
 
     vault_path = Path(args.vault_path)
     data = json.loads(Path(args.input_file).read_text(encoding="utf-8-sig"))

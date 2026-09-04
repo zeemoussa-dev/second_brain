@@ -34,6 +34,7 @@ must always pass the real, current value explicitly.
 from __future__ import annotations
 
 import argparse
+import os
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -167,9 +168,23 @@ def write_index(data_path: Path, folders: dict[str, list[dict]]) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--vault-path", required=True)
+    parser.add_argument(
+        "--vault-path",
+        # Defaults to what Second Brain's setup wizard writes into Hermes'
+        # own .env, so a Skill never has to name a machine-specific
+        # absolute path and a bundle never has to have one rewritten on
+        # import. Pass it only to override.
+        default=os.environ.get("SECOND_BRAIN_VAULT_PATH", ""),
+    )
     parser.add_argument("--data-path", required=True)
     args = parser.parse_args()
+    if not (args.vault_path or "").strip():
+        # An empty value would become Path("") -> the CWD, which is exactly the
+        # silent-wrong-folder failure this whole change exists to remove.
+        raise SystemExit(
+            "No vault path. Set SECOND_BRAIN_VAULT_PATH in Hermes' own .env "
+            "(Second Brain's setup wizard writes it) or pass --vault-path."
+        )
 
     vault_path = Path(args.vault_path)
     data_path = Path(args.data_path)

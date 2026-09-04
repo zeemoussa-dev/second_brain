@@ -27,14 +27,15 @@ summarizes -- that's Step 4, separate and later, not built yet.
   this Skill against the raw, un-curated output would create a hub note
   for every mechanically-detected domain, noise included.
 - No `pywin32`, no Outlook, no network calls -- pure local vault read/write.
-- Vault path (pass as `--vault-path`): `C:\myWorx\Moussa MD\Moussa Brain`
+- Vault path: the scripts read `SECOND_BRAIN_VAULT_PATH` from Hermes' own
+  `.env` themselves; `--vault-path` only overrides it.
 
 ## How to Run
 
 One script, one call:
 
 ```
-terminal(command="python create_companies_partners.py --vault-path \"C:\\myWorx\\Moussa MD\\Moussa Brain\"", cwd="<this Skill's scripts/ folder>")
+terminal(command="python create_companies_partners.py", cwd="<this Skill's scripts/ folder>")
 ```
 
 Prints `{"created", "auto_created_parents", "skipped_ignored",

@@ -74,6 +74,7 @@ skipped_unconfirmed_parent / people_moved.
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import re
 from pathlib import Path
@@ -1008,7 +1009,14 @@ def build(vault_path: Path, entities_path: Path) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--vault-path", required=True)
+    parser.add_argument(
+        "--vault-path",
+        # Defaults to what Second Brain's setup wizard writes into Hermes'
+        # own .env, so a Skill never has to name a machine-specific
+        # absolute path and a bundle never has to have one rewritten on
+        # import. Pass it only to override.
+        default=os.environ.get("SECOND_BRAIN_VAULT_PATH", ""),
+    )
     parser.add_argument("--entities-name", default="Entities.md")
     parser.add_argument(
         "--retag-only", action="store_true",
@@ -1016,6 +1024,13 @@ def main() -> int:
              "against whatever Customer/Partner/Affiliate hub notes already exist.",
     )
     args = parser.parse_args()
+    if not (args.vault_path or "").strip():
+        # An empty value would become Path("") -> the CWD, which is exactly the
+        # silent-wrong-folder failure this whole change exists to remove.
+        raise SystemExit(
+            "No vault path. Set SECOND_BRAIN_VAULT_PATH in Hermes' own .env "
+            "(Second Brain's setup wizard writes it) or pass --vault-path."
+        )
 
     vault_path = Path(args.vault_path)
 

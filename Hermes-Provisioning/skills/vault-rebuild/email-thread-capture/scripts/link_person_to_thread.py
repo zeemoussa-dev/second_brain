@@ -24,6 +24,7 @@ replacing `vault_lib.py`'s own hardcoded `_CALLER_ALLOW_LISTS`.
 from __future__ import annotations
 
 import argparse
+import os
 import json
 from pathlib import Path
 
@@ -62,11 +63,25 @@ def link_person_to_thread(vault_path: Path, conversation_id: str, sender_name: s
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--vault-path", required=True)
+    parser.add_argument(
+        "--vault-path",
+        # Defaults to what Second Brain's setup wizard writes into Hermes'
+        # own .env, so a Skill never has to name a machine-specific
+        # absolute path and a bundle never has to have one rewritten on
+        # import. Pass it only to override.
+        default=os.environ.get("SECOND_BRAIN_VAULT_PATH", ""),
+    )
     parser.add_argument("--conversation-id", required=True)
     parser.add_argument("--sender-name", required=True)
     parser.add_argument("--sender-email", required=True)
     args = parser.parse_args()
+    if not (args.vault_path or "").strip():
+        # An empty value would become Path("") -> the CWD, which is exactly the
+        # silent-wrong-folder failure this whole change exists to remove.
+        raise SystemExit(
+            "No vault path. Set SECOND_BRAIN_VAULT_PATH in Hermes' own .env "
+            "(Second Brain's setup wizard writes it) or pass --vault-path."
+        )
 
     result = link_person_to_thread(Path(args.vault_path), args.conversation_id, args.sender_name, args.sender_email)
     print(json.dumps(result, ensure_ascii=False))

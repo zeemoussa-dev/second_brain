@@ -260,11 +260,25 @@ def derive(vault_path: str, sample: list[dict], profile: str | None, timeout: in
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--vault-path", required=True)
+    parser.add_argument(
+        "--vault-path",
+        # Defaults to what Second Brain's setup wizard writes into Hermes'
+        # own .env, so a Skill never has to name a machine-specific
+        # absolute path and a bundle never has to have one rewritten on
+        # import. Pass it only to override.
+        default=os.environ.get("SECOND_BRAIN_VAULT_PATH", ""),
+    )
     parser.add_argument("--sample-file", default=None, help="JSON array of {subject, sender_email, body}; defaults to the built-in 5 real seed examples")
     parser.add_argument("--profile", default=None, help="Hermes profile to relay to; omit for the default/root profile")
     parser.add_argument("--timeout", type=int, default=_DEFAULT_TIMEOUT_SECONDS)
     args = parser.parse_args()
+    if not (args.vault_path or "").strip():
+        # An empty value would become Path("") -> the CWD, which is exactly the
+        # silent-wrong-folder failure this whole change exists to remove.
+        raise SystemExit(
+            "No vault path. Set SECOND_BRAIN_VAULT_PATH in Hermes' own .env "
+            "(Second Brain's setup wizard writes it) or pass --vault-path."
+        )
 
     if args.sample_file:
         with open(args.sample_file, "r", encoding="utf-8") as f:

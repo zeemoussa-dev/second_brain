@@ -18,6 +18,18 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix(skills): every `SKILL.md` pointed `--vault-path` at
+  `C:\myWorx\Moussa MD\Moussa Brain` -- a folder deleted in the 2026-09-03
+  move. 19 references across 15 files, none of them the current vault. Capture
+  only worked because the cron PROMPT passed the right path, overriding the
+  Skill. Any agent following a Skill literally used a dead path.
+- feat(skills): `--vault-path` now defaults to `SECOND_BRAIN_VAULT_PATH` from
+  Hermes' own `.env` across all 35 scripts that take it, so a Skill never
+  names a machine-specific path and a bundle never needs one rewritten on
+  import. Each script fails loudly when it is unset rather than falling back
+  to `Path("")` -- the CWD -- which is the silent-wrong-folder failure this
+  whole change exists to remove.
+
 - fix(skills): the vault scan no longer dies on a path past Windows'
   260-character MAX_PATH. The 2026-09-03 vault move lengthened the vault root
   from 32 to 71 characters, pushing an existing archived folder from 220 to

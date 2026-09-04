@@ -19,7 +19,7 @@ Azure Expert's own `azure-kb-writer`.
 ## Prerequisites
 
 - Vault path (pass as `--vault-path` on every script call):
-  `C:\myWorx\Moussa MD\Moussa Brain`
+  `$SECOND_BRAIN_VAULT_PATH`
 
 ## What this builds
 
@@ -82,7 +82,7 @@ write something anyway.
 3. Call the script as a PLAIN, direct `terminal` call using its own full
    absolute path:
    ```
-   terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\profiles\\research-agent\\skills\\librarian\\research-kb-writer\\scripts\\write_research_doc.py\" --vault-path \"C:\\myWorx\\Moussa MD\\Moussa Brain\" --input-file <scratch path>")
+   terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\profiles\\research-agent\\skills\\librarian\\research-kb-writer\\scripts\\write_research_doc.py\" --input-file <scratch path>")
    ```
 
 ## This script NEVER overwrites an existing note

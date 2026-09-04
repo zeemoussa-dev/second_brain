@@ -30,6 +30,7 @@ Prints {"matched": bool, "name", "domain", "section", "ignore",
 from __future__ import annotations
 
 import argparse
+import os
 import json
 from pathlib import Path
 
@@ -91,13 +92,27 @@ def apply_entity_decision(
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--vault-path", required=True)
+    parser.add_argument(
+        "--vault-path",
+        # Defaults to what Second Brain's setup wizard writes into Hermes'
+        # own .env, so a Skill never has to name a machine-specific
+        # absolute path and a bundle never has to have one rewritten on
+        # import. Pass it only to override.
+        default=os.environ.get("SECOND_BRAIN_VAULT_PATH", ""),
+    )
     parser.add_argument("--entities-name", default="Entities.md")
     parser.add_argument("--company", required=True)
     parser.add_argument("--decision", required=True, choices=["customer", "partner", "affiliate", "ignore"])
     parser.add_argument("--affiliate-of", default=None)
     parser.add_argument("--aliases", default=None)
     args = parser.parse_args()
+    if not (args.vault_path or "").strip():
+        # An empty value would become Path("") -> the CWD, which is exactly the
+        # silent-wrong-folder failure this whole change exists to remove.
+        raise SystemExit(
+            "No vault path. Set SECOND_BRAIN_VAULT_PATH in Hermes' own .env "
+            "(Second Brain's setup wizard writes it) or pass --vault-path."
+        )
 
     vault_path = Path(args.vault_path)
     # Settings/Entities.md under .second-brain -- see find_new_entities.py's

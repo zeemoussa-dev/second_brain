@@ -22,7 +22,7 @@ it); this script's own job is purely mechanical placement.
 ## Prerequisites
 
 - Vault path (pass as `--vault-path` on every script call):
-  `C:\myWorx\Moussa MD\Moussa Brain`
+  `$SECOND_BRAIN_VAULT_PATH`
 
 ## What this builds
 
@@ -64,7 +64,7 @@ real images you attached.
 5. Call the script as a PLAIN, direct `terminal` call using its own full
    absolute path:
    ```
-   terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\profiles\\compass-expert\\skills\\knowledge-base\\compass-kb-writer\\scripts\\write_compass_doc.py\" --vault-path \"C:\\myWorx\\Moussa MD\\Moussa Brain\" --input-file <scratch path>")
+   terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\profiles\\compass-expert\\skills\\knowledge-base\\compass-kb-writer\\scripts\\write_compass_doc.py\" --input-file <scratch path>")
    ```
 
 Calling it again with the same `title`/`area` overwrites that SAME note

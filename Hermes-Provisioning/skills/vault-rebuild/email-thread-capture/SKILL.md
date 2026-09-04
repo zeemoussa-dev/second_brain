@@ -48,8 +48,10 @@ server vs. Hermes-native Skill scripts," for why.
   `terminal(command="python -m pip install pywin32")` (a real `.py`/
   module-args invocation, not `-c`/`-lc`, so it runs without a prompt) and
   retry.
-- Vault path (pass as `--vault-path` on every script call below):
-  `C:\myWorx\Moussa MD\Moussa Brain`
+- Vault path: the scripts read `SECOND_BRAIN_VAULT_PATH` from Hermes' own
+  `.env` themselves (written there by Second Brain's setup wizard), so
+  `--vault-path` only needs passing to override it. Never hardcode an
+  absolute path here -- this Skill has to work on any machine.
 
 ## How to Run
 

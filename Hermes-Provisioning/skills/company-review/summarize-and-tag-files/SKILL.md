@@ -26,7 +26,7 @@ apply a decision you already made, never to decide anything itself.
   -- this Skill needs real Customer/Partner/Affiliate hub notes to
   recognize company names against.
 - Vault path (pass as `--vault-path` on every script call):
-  `C:\myWorx\Moussa MD\Moussa Brain`
+  `$SECOND_BRAIN_VAULT_PATH`
 
 ## Before you start: build your own company list
 
@@ -112,7 +112,7 @@ payload, then call the one script -- as a PLAIN, direct `terminal` call,
 using the script's own full absolute path:
 
 ```
-terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\skills\\company-review\\summarize-and-tag-files\\scripts\\apply_file_review.py\" --vault-path \"C:\\myWorx\\Moussa MD\\Moussa Brain\" --input-file <scratch path>")
+terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\skills\\company-review\\summarize-and-tag-files\\scripts\\apply_file_review.py\" --input-file <scratch path>")
 ```
 
 **Never wrap this in `bash -lc "..."`** (or any other `-c`/`-lc`

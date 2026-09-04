@@ -19,7 +19,7 @@ uploaded file instead of text/voice content.
 ## Prerequisites
 
 - Vault path (pass as `--vault-path` on every script call):
-  `C:\myWorx\Moussa MD\Moussa Brain`
+  `$SECOND_BRAIN_VAULT_PATH`
 
 ## What this builds
 
@@ -78,7 +78,7 @@ then uses the download path's own name) when you genuinely don't know the
 real one.
 
 ```
-terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\profiles\\files-manager\\skills\\notes-capture\\capture-files\\scripts\\capture_file.py\" --vault-path \"C:\\myWorx\\Moussa MD\\Moussa Brain\" --input-file <scratch path>")
+terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\profiles\\files-manager\\skills\\notes-capture\\capture-files\\scripts\\capture_file.py\" --input-file <scratch path>")
 ```
 
 The script creates the file's own folder (handles same-day name collisions
@@ -99,7 +99,7 @@ captured file's own path, as returned by Job 1>", "details": "<your
 detailed findings>"}`, then call the SAME script with `--append`:
 
 ```
-terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\profiles\\files-manager\\skills\\notes-capture\\capture-files\\scripts\\capture_file.py\" --vault-path \"C:\\myWorx\\Moussa MD\\Moussa Brain\" --append --input-file <scratch path>")
+terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\profiles\\files-manager\\skills\\notes-capture\\capture-files\\scripts\\capture_file.py\" --append --input-file <scratch path>")
 ```
 
 This appends a `## Details` section to the file's existing description note

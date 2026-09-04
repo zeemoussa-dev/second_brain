@@ -28,7 +28,7 @@ Meetings intentionally does not repeat that mistake).
 - `pywin32` (`pip install pywin32`) and Outlook desktop running and
   signed in.
 - Vault path (pass as `--vault-path` / `SECOND_BRAIN_VAULT_PATH` env
-  var): `C:\myWorx\Moussa MD\Moussa Brain`
+  var): `$SECOND_BRAIN_VAULT_PATH`
 - Optional `SECOND_BRAIN_SELF_EMAIL` / `--self-email`: excludes the
   vault owner's own address from every meeting's own attendee list --
   they are never captured as an attendee of their own meeting.

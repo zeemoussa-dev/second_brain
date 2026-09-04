@@ -32,7 +32,7 @@ you already made -- it never decides anything itself.
 - No `pywin32`, no Outlook, no network calls beyond your own normal
   reasoning -- pure local vault read/write.
 - Vault path (pass as `--vault-path` on every script call):
-  `C:\myWorx\Moussa MD\Moussa Brain`
+  `$SECOND_BRAIN_VAULT_PATH`
 
 ## Before you start: build your own company list
 
@@ -112,7 +112,7 @@ payload, then call the one script -- as a PLAIN, direct `terminal` call,
 absolute path, never a bare filename**:
 
 ```
-terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\skills\\company-review\\summarize-and-tag-threads\\scripts\\apply_thread_review.py\" --vault-path \"C:\\myWorx\\Moussa MD\\Moussa Brain\" --input-file <scratch path>")
+terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\skills\\company-review\\summarize-and-tag-threads\\scripts\\apply_thread_review.py\" --input-file <scratch path>")
 ```
 
 **2026-08-21 bug fix, live-confirmed:** a bare `apply_thread_review.py`

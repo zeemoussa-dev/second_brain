@@ -20,10 +20,10 @@ mechanical job -- neither performs the actual web lookup itself.
 ## Prerequisites
 
 - Vault path (pass as `--note-path`'s own directory context on every call
-  -- the real vault root is `C:\myWorx\Moussa MD\Moussa Brain`):
+  -- the real vault root is `$SECOND_BRAIN_VAULT_PATH`):
   `--note-path` always takes the ALREADY-RESOLVED absolute path to the
   specific attendee's own existing Person note (e.g.
-  `C:\myWorx\Moussa MD\Moussa Brain\Work\People\<slug>.md`), not the
+  `$SECOND_BRAIN_VAULT_PATH\Work\People\<slug>.md`), not the
   vault root itself.
 
 ## What these scripts do

@@ -59,6 +59,7 @@ for a Thread target is now enforced SOLELY by the Thread template's own
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import re
 import uuid
@@ -217,11 +218,25 @@ def link_opportunity(vault_path: Path, note_path_str: str, opportunity_title: st
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--vault-path", required=True)
+    parser.add_argument(
+        "--vault-path",
+        # Defaults to what Second Brain's setup wizard writes into Hermes'
+        # own .env, so a Skill never has to name a machine-specific
+        # absolute path and a bundle never has to have one rewritten on
+        # import. Pass it only to override.
+        default=os.environ.get("SECOND_BRAIN_VAULT_PATH", ""),
+    )
     parser.add_argument("--note-path", required=True)
     parser.add_argument("--opportunity", required=True)
     parser.add_argument("--customer", default=None)
     args = parser.parse_args()
+    if not (args.vault_path or "").strip():
+        # An empty value would become Path("") -> the CWD, which is exactly the
+        # silent-wrong-folder failure this whole change exists to remove.
+        raise SystemExit(
+            "No vault path. Set SECOND_BRAIN_VAULT_PATH in Hermes' own .env "
+            "(Second Brain's setup wizard writes it) or pass --vault-path."
+        )
 
     vault_path = Path(args.vault_path)
     result = link_opportunity(vault_path, args.note_path, args.opportunity, args.customer)

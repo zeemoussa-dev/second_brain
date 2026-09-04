@@ -37,11 +37,11 @@ folder).
 ## Prerequisites
 
 - Vault path (pass as `--vault-path` below):
-  `C:\myWorx\Moussa MD\Moussa Brain`
+  `$SECOND_BRAIN_VAULT_PATH`
 - App Database Folder (pass as `--data-path` below) -- Second Brain's
   own data root, independently configurable from Settings > System since
   2026-08-27, defaults to `<vault>/.second-brain`:
-  `C:\myWorx\Moussa MD\Moussa Brain\.second-brain`. **If the operator
+  ``$SECOND_BRAIN_DATA_PATH``. **If the operator
   ever relocates the App Database Folder from that Settings page, this
   literal value in this file must be updated to match** -- this Skill has
   no way to read that backend setting itself.
@@ -56,7 +56,7 @@ cron-triggered run with no one there to approve it (confirmed live,
 `email-thread-capture`'s own SKILL.md, 2026-08-21):
 
 ```
-terminal(command="python build_vault_index.py --vault-path \"C:\\myWorx\\Moussa MD\\Moussa Brain\" --data-path \"C:\\myWorx\\Moussa MD\\Moussa Brain\\.second-brain\"")
+terminal(command="python build_vault_index.py --data-path \"$SECOND_BRAIN_VAULT_PATH\\.second-brain\"")
 ```
 
 Run from this Skill's own `scripts/` folder (so the sibling

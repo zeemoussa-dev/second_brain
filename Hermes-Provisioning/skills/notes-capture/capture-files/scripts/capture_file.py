@@ -27,6 +27,7 @@ Usage: identical real two-mode contract --
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import re
 import shutil
@@ -202,10 +203,24 @@ def add_file_detail(vault_path: Path, file_path: str, details: str, images: list
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--vault-path", required=True)
+    parser.add_argument(
+        "--vault-path",
+        # Defaults to what Second Brain's setup wizard writes into Hermes'
+        # own .env, so a Skill never has to name a machine-specific
+        # absolute path and a bundle never has to have one rewritten on
+        # import. Pass it only to override.
+        default=os.environ.get("SECOND_BRAIN_VAULT_PATH", ""),
+    )
     parser.add_argument("--input-file", required=True)
     parser.add_argument("--append", action="store_true", help="Add a Details pass to an already-captured file instead of capturing a new one.")
     args = parser.parse_args()
+    if not (args.vault_path or "").strip():
+        # An empty value would become Path("") -> the CWD, which is exactly the
+        # silent-wrong-folder failure this whole change exists to remove.
+        raise SystemExit(
+            "No vault path. Set SECOND_BRAIN_VAULT_PATH in Hermes' own .env "
+            "(Second Brain's setup wizard writes it) or pass --vault-path."
+        )
 
     vault_path = Path(args.vault_path)
     data = json.loads(Path(args.input_file).read_text(encoding="utf-8-sig"))
