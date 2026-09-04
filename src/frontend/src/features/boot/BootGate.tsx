@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { BootStatus, BootStageId } from './bootApiClient';
 import { getBootStatus, retryBoot } from './bootApiClient';
+import { SetupWizard } from '../setup/SetupWizard';
+import { getSetupStatus } from '../setup/setupApiClient';
 
 const STAGE_LABELS: Record<BootStageId, string> = {
   checking_hermes: 'Checking Hermes',
@@ -66,6 +68,21 @@ export function BootGate({ children }: { children: React.ReactNode }) {
   const [backendUnreachable, setBackendUnreachable] = useState(false);
   const everReadyRef = useRef(false);
   const failureStreakRef = useRef(0);
+  // REQ-SB-89: `null` means "haven't asked yet" -- distinct from `false`,
+  // so the very first paint doesn't flash the boot screen at an
+  // unconfigured install on its way to the wizard.
+  const [setupRequired, setSetupRequired] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    // Asked once, not polled: an unconfigured backend only stops being
+    // unconfigured by restarting, which remounts this component anyway.
+    getSetupStatus()
+      .then((status) => setSetupRequired(status.setup_required))
+      // A backend that can't answer this isn't necessarily unconfigured --
+      // it may simply be down, which the boot screen below already reports
+      // properly. Don't claim setup is needed on a failed fetch.
+      .catch(() => setSetupRequired(false));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,9 +121,15 @@ export function BootGate({ children }: { children: React.ReactNode }) {
 
   if (status?.state === 'ready') everReadyRef.current = true;
 
+  // An unconfigured backend serves no route but /setup, /health and
+  // /boot-status, and never runs boot at all -- so this must come before
+  // the boot screen, which would otherwise spin on "Starting up" forever.
+  if (setupRequired) return <SetupWizard />;
+
   // Cold boot (or the very first load, before we've heard from the
   // backend at all) -- block entry into the app entirely.
   if (!everReadyRef.current) {
+    if (setupRequired === null) return null;
     return (
       <div className="boot-screen">
         <div className="boot-screen-panel">

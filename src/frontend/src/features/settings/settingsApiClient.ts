@@ -16,7 +16,11 @@ export interface SystemSettingField {
   label: string;
   icon: string;
   description: string;
+  /** A configured secret arrives masked, never as the real credential
+   *  (REQ-SB-89). Submitting the mask back is a no-op server-side. */
   value: string;
+  secret: boolean;
+  required: boolean;
   status: SystemSettingFieldStatus;
 }
 

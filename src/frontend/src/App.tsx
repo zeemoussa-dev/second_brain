@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router';
 import { AppShell } from './components/shell/AppShell';
+import { SetupPage } from './pages/SetupPage';
 import { AgentsMapPage } from './pages/AgentsMapPage';
 import { ChatPage } from './pages/ChatPage';
 import { CrawlersPage } from './pages/CrawlersPage';
@@ -63,6 +64,7 @@ function App() {
           <Route path="/meeting-cockpit/:stem" element={<MeetingCockpitPage />} />
           <Route path="/inbox-cockpit/:stem" element={<InboxCockpitPage />} />
         </Route>
+        <Route path="/setup" element={<SetupPage />} />
       </Routes>
     </BrowserRouter>
   );

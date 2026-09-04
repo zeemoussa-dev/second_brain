@@ -10,6 +10,7 @@ import './styles/vault-browser.css'
 import './styles/vault-graph.css'
 import './styles/cockpit.css'
 import './styles/boot.css'
+import './styles/setup.css'
 import App from './App.tsx'
 import { BootGate } from './features/boot/BootGate.tsx'
 

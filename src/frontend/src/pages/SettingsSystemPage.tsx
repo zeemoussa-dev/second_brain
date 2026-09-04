@@ -86,6 +86,8 @@ export function SettingsSystemPage() {
                 <span className="item-row-meta">{field.description}</span>
                 <input
                   className="input"
+                  type={field.secret ? 'password' : 'text'}
+                  autoComplete="off"
                   value={drafts[field.key] ?? ''}
                   onChange={(event) => setDrafts((prev) => ({ ...prev, [field.key]: event.target.value }))}
                 />
@@ -104,6 +106,20 @@ export function SettingsSystemPage() {
       <button type="button" className="btn btn-primary" disabled={!dirty || saving} onClick={handleSave}>
         {saving ? 'Saving…' : 'Save changes'}
       </button>
+
+      <div className="card setup-rerun-card" style={{ marginTop: 'var(--space-6)' }}>
+        <h2>Setup wizard</h2>
+        <p className="text-muted" style={{ fontSize: 'var(--font-size-sm)' }}>
+          Walks through every setting above one step at a time, checking each against this machine
+          as you go. Runs by itself on a fresh install; re-run it here any time.
+        </p>
+        <Link className="btn" to="/setup">
+          <span className="material-symbols-outlined" aria-hidden="true" style={{ fontSize: '16px', verticalAlign: 'middle', marginRight: '4px' }}>
+            auto_fix_high
+          </span>
+          Run setup wizard
+        </Link>
+      </div>
 
       <div className="card" style={{ marginTop: 'var(--space-6)' }}>
         <h2>Shut down</h2>
