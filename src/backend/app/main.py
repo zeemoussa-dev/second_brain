@@ -1,8 +1,9 @@
 import asyncio
 from contextlib import AsyncExitStack, asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.business.core.vault.vault_manager import VaultManager
 from app.api.agents_router import router as agents_router
@@ -19,6 +20,7 @@ from app.api.pipelines_router import router as pipelines_router
 from app.api.sections_router import router as sections_router
 from app.api.skills_router import router as skills_router
 from app.api.settings_system_router import router as settings_system_router
+from app.api.setup_router import router as setup_router
 from app.api.system_health_router import router as system_health_router
 from app.api.tools_router import router as tools_router
 from app.api.vault_index_router import router as vault_index_router
@@ -59,6 +61,14 @@ async def lifespan(app: FastAPI):
     # app's own existing capture-scheduler lifespan (ADR-005), for the
     # life of the process (ADR-015 point 7). Confirmed live, 2026-08-20:
     # /mcp/outlook 404'd until this was added.
+    if settings.setup_required:
+        # REQ-SB-89: nothing in this lifespan has anywhere to point on an
+        # unconfigured install -- the registry loader and the vault index
+        # both resolve paths that are still unset. They would raise inside
+        # fire-and-forget tasks, which surfaces as noise in the log rather
+        # than as the one thing the operator needs to see (the wizard).
+        yield
+        return
     async with AsyncExitStack() as stack:
         await tools_registry.enter_tool_server_lifespans(stack)
         # REQ-SB-80 -- RegistryLoader's cold boot + hot-reload poll loop.
@@ -127,7 +137,42 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Paths that must keep working while the app is unconfigured: the wizard
+# itself, the liveness probe, and the boot status BootGate polls to decide
+# what to render. Everything else needs real settings to mean anything.
+_SETUP_MODE_OPEN_PREFIXES = ("/setup", "/health", "/boot-status")
+
+
+@app.middleware("http")
+async def gate_on_setup_mode(request: Request, call_next):
+    """REQ-SB-89: a fresh install used to crash at import instead of asking
+    for its configuration. It now boots with empty settings, which means
+    every OTHER route would run against no vault and no model -- reading and
+    writing nothing useful, or worse, against a wrong default path. They are
+    refused with a 503 the frontend turns into the wizard, rather than being
+    allowed to half-work."""
+    path = request.url.path
+    if (
+        settings.setup_required
+        # A preflight must never be turned into a 503: the browser would
+        # surface an opaque CORS error and the wizard's own POST would look
+        # like a network failure rather than a refusal it can act on.
+        and request.method != "OPTIONS"
+        and not path.startswith(_SETUP_MODE_OPEN_PREFIXES)
+    ):
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": "Second Brain is not configured yet.",
+                "setup_required": True,
+                "missing": settings.missing_required_settings,
+            },
+        )
+    return await call_next(request)
+
+
 app.include_router(health_check_router)
+app.include_router(setup_router)
 app.include_router(artifacts_router)
 app.include_router(backup_router)
 app.include_router(boot_router)
@@ -155,4 +200,11 @@ app.include_router(index_router)
 # Idempotent/additive-only by construction (registry.py's own
 # _mounted_tool_ids tracking); a genuinely empty registry.json mounts
 # nothing, real, tested behavior, not a theoretical no-op.
-tools_registry.mount_all_tools(app)
+# Skipped entirely in setup mode (REQ-SB-89): the registry it reads lives
+# under second_brain_data_path, which is unset until the wizard has run, so
+# this is the one module-level call that would still crash the import on a
+# fresh install. Nothing is lost by deferring it -- a Tool has nothing to
+# serve without a configured vault, and the restart the wizard ends with
+# re-runs this line with real settings.
+if not settings.setup_required:
+    tools_registry.mount_all_tools(app)
