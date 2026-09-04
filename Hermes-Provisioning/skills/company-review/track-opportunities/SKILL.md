@@ -117,7 +117,7 @@ engine `capture-notes`/`capture-files`/every other real Skill in this
 vault uses -- its own full absolute path never changes):
 
 ```
-terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\skills\\company-review\\track-opportunities\\scripts\\vault_manager.py\" create --template-id opportunity --input-file <scratch path>")
+terminal(command="python \"${HERMES_SKILL_DIR}\scripts\vault_manager.py\" create --template-id opportunity --input-file <scratch path>")
 ```
 
 Payload: `{"title": str, "parent_value": str, "frontmatter":
@@ -165,7 +165,7 @@ genuinely unclear which one):
   Lives on the `-captures.md` child -- pass `"child_suffix": "captures"`.
 
 ```
-terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\skills\\company-review\\track-opportunities\\scripts\\vault_manager.py\" modify-section --template-id opportunity --section \"<Log|Actions|Related|Summary|Captures>\" --mode append --input-file <scratch path>")
+terminal(command="python \"${HERMES_SKILL_DIR}\scripts\vault_manager.py\" modify-section --template-id opportunity --section \"<Log|Actions|Related|Summary|Captures>\" --mode append --input-file <scratch path>")
 ```
 
 (`--mode replace` for a Summary rewrite -- everything else is `append`,
@@ -197,7 +197,7 @@ alone never tells you which one -- only the operator's own real intent
 does.
 
 ```
-terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\skills\\company-review\\track-opportunities\\scripts\\link_opportunity.py\" --note-path \"<Thread or Meeting's own concept .md path>\" --opportunity \"<title>\" [--customer \"<name>\"]")
+terminal(command="python \"${HERMES_SKILL_DIR}\scripts\link_opportunity.py\" --note-path \"<Thread or Meeting's own concept .md path>\" --opportunity \"<title>\" [--customer \"<name>\"]")
 ```
 
 If the title matches more than one Opportunity across different

@@ -113,7 +113,7 @@ this Skill's own `scripts/`. The absolute-path form removes that
 dependency entirely, even when a `cwd` parameter is also available):
 
 ```
-terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\profiles\\<this profile>\\skills\\vault-rebuild\\meeting-capture\\scripts\\run_full_meeting_capture.py\"")
+terminal(command="python \"${HERMES_SKILL_DIR}\scripts\run_full_meeting_capture.py\"")
 ```
 
 (real, per-profile deployment path -- e.g. `profiles\meeting-prep-agent\skills\...` for the `meeting-capture-recurring` cron job; every profile this Skill is deployed to has its own copy under its own `profiles\<name>\skills\` tree, never a shared profile-less `hermes\skills\` location.)

@@ -77,7 +77,7 @@ Run it as a background process so you can keep checking in rather than
 blocking on it:
 
 ```
-terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\skills\\vault-rebuild\\email-thread-capture\\scripts\\run_full_capture.py\"", background=true)
+terminal(command="python \"${HERMES_SKILL_DIR}\scripts\run_full_capture.py\"", background=true)
 ```
 
 Poll its progress periodically (it prints one `PAGE N done: ...` line per
@@ -100,7 +100,7 @@ redo (that's `run_full_capture.py`'s own, separate, one-time job) and
 never blind trust in "now" (which could silently miss a real gap).
 
 ```
-terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\skills\\vault-rebuild\\email-thread-capture\\scripts\\run_delta_capture.py\"")
+terminal(command="python \"${HERMES_SKILL_DIR}\scripts\run_delta_capture.py\"")
 ```
 
 Prints `{"status", "pages", "watermark_before", "watermark_after",

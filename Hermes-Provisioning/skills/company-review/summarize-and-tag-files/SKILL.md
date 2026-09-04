@@ -112,7 +112,7 @@ payload, then call the one script -- as a PLAIN, direct `terminal` call,
 using the script's own full absolute path:
 
 ```
-terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\skills\\company-review\\summarize-and-tag-files\\scripts\\apply_file_review.py\" --input-file <scratch path>")
+terminal(command="python \"${HERMES_SKILL_DIR}\scripts\apply_file_review.py\" --input-file <scratch path>")
 ```
 
 **Never wrap this in `bash -lc "..."`** (or any other `-c`/`-lc`

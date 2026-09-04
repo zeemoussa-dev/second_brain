@@ -112,7 +112,7 @@ payload, then call the one script -- as a PLAIN, direct `terminal` call,
 absolute path, never a bare filename**:
 
 ```
-terminal(command="python \"C:\\Users\\mahmoud.moussa\\AppData\\Local\\hermes\\skills\\company-review\\summarize-and-tag-threads\\scripts\\apply_thread_review.py\" --input-file <scratch path>")
+terminal(command="python \"${HERMES_SKILL_DIR}\scripts\apply_thread_review.py\" --input-file <scratch path>")
 ```
 
 **2026-08-21 bug fix, live-confirmed:** a bare `apply_thread_review.py`
