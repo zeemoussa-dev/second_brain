@@ -18,6 +18,59 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- chore(memory): curated `MEMORY.md` -- 469 KB/250 entries down to 329 KB/191
+  (operator, 2026-09-04: "Visit every memory (you are allowed to remove stuff)
+  Avoid confusing you"). Removed 62 entries that were record-of-getting-there
+  rather than standing truth: superseded architecture-pass narratives (the end
+  state lives in `ADR.md`/`architecture.md`), one-off UI/CSS fixes, and
+  correction-trails where only the final answer still matters. Every standing
+  constraint was kept -- spot-verified that the TLS middlebox, `MAX_PATH`,
+  `COMPASS_BASE_URL`, capture-watermark, Hermes env-chaining and Store-stub
+  Python entries all survived. Two entries were corrected in place rather than
+  deleted because their symptom is still worth knowing: the port-8001 empty-UI
+  failure, and the `_FALLBACK_SECTION_NAME` fallback (which also correctly
+  flagged that `pipeline_manager` still creates a Section). Added a "Read this
+  first" header stating the actual mechanism -- vault_manager is
+  template-driven, a new note type is a `Template.json` and never new code --
+  because the file's volume had made that findable-but-unfound. Nothing was
+  rewritten to look better than it was; removed entries remain in git history.
+
+- docs(deployment): §2 records the auxiliary temperature warning that a real
+  `hermes chat` surfaces on Compass/gpt-5, and why it went unseen for two
+  deployments -- machines 1 and 2 verified Compass by model discovery only,
+  never by a chat, so the auxiliary path was never exercised. gpt-5 accepts
+  no `temperature` but its default while Hermes' auxiliary tasks send fixed
+  values (title 0.3, compression 0.1). Hermes' own strip-and-retry does not
+  fire because its matcher only recognises negatively phrased errors and
+  Compass phrases this one positively ("...value *is* supported"). Records
+  the three real options (accept / disable title generation / route
+  auxiliary tasks to `gpt-4o` via documented `auxiliary` config -- verified
+  clean, not adopted only because this deployment standardises on gpt-5),
+  the live-probed list of which Compass models this key can actually reach
+  (the discovered catalogue is not the licensed set), and that `compression`
+  hits the same 400 -- functional rather than cosmetic, and worth checking
+  first if a long cron session misbehaves.
+- fix(sections): a clean install now starts with NO Sections. Two separate
+  things generated them, and removing either alone was not enough.
+  (a) `section_manager._seed_state()` wrote a starting six (Customer,
+  Librarian, Industry, Technology, Data Gatherer, Sales) on first read, so
+  a fresh machine came up already populated with groupings nobody on it had
+  chosen. It now persists an empty store instead -- still written to disk,
+  so "no Sections yet" is a real state rather than a repeated first-read.
+  (b) `agent_manager._section_id()` resolved an unplaced agent to a
+  "Data Gatherer" Section and CREATED it when absent. Because Primary is
+  mirrored from Hermes on every `GET /agents`, that made deleting every
+  Section silently undo itself on the very next read. It returns `None`
+  now -- `Agent.section_id` was already `str | None`, so an unplaced agent
+  is simply unplaced. Sections only ever come from an explicit human
+  action. Verified live: 0 sections before and after `GET /agents`,
+  Primary `section_id: null`, `{"sections": []}` on disk with no
+  `data/Sections` tree, and the Agents Map renders its real empty state.
+  Not changed: `pipeline_manager._section_id_by_name()` still creates a
+  Section named by a Pipeline's own data, which cannot fire on a clean
+  build (no Pipelines) and would need `Pipeline.section_id` to become
+  optional -- flagged rather than widened.
+
 - fix(skills): the company-review scripts still resolved `Settings/Entities.md`
   and the engagement config at the hardcoded `<vault>/.second-brain`, which the
   2026-09-04 consolidation deleted. They read nothing, rebuilt from scratch, and
@@ -37,6 +90,22 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   stops being a silent decision.
 - fix(setup): the Hermes step said saving writes only `OBSIDIAN_VAULT_PATH`.
   It writes four settings, into the home `.env` and every profile.
+- fix(frontend): the API base URL now defaults to `http://127.0.0.1:8001`,
+  the port `tools\run-backend.cmd` actually serves, instead of `8000`. Six
+  files carried the stale default. The 8001 override lives in
+  `src/frontend/.env.local`, which `src/frontend/.gitignore`'s `*.local`
+  rule excludes from the repo -- so a fresh clone never receives it and
+  falls back to a port nothing listens on. Found on the third machine
+  (2026-09-04): the app rendered a completely black page, with the real
+  cause (`ERR_CONNECTION_REFUSED` on `/setup/status` and `/boot-status`)
+  visible only in devtools. Every earlier machine was immune because the
+  file already existed locally -- `SPRINT-013` describes it as "the
+  frontend's *committed* `.env.local`", which that ignore rule makes
+  impossible. `.env.local` is now a real override rather than a
+  load-bearing, uncommittable prerequisite.
+- docs(deployment): §3 records the above as the third fresh-install defect,
+  including that Vite reads env only at startup, so the dev server must be
+  restarted after changing `.env.local`.
 
 - fix(skills): `SKILL.md` files no longer hardcode this machine's Hermes
   home to locate their own scripts. They use `${HERMES_SKILL_DIR}`, the
@@ -64,7 +133,7 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   environment variable. Re-running the setup wizard is the fix.
 
 - fix(skills): every `SKILL.md` pointed `--vault-path` at
-  `C:\myWorx\Moussa MD\Moussa Brain` -- a folder deleted in the 2026-09-03
+  `<OPERATOR_VAULT_OLD>` -- a folder deleted in the 2026-09-03
   move. 19 references across 15 files, none of them the current vault. Capture
   only worked because the cron PROMPT passed the right path, overriding the
   Skill. Any agent following a Skill literally used a dead path.
@@ -103,6 +172,27 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   read and wrote (2026-09-01). Preferring the data-folder copy would have
   silently skipped every email between the two. The displaced copy is kept as
   `.superseded`, never destroyed.
+- docs(deployment): three corrections to §1 from a third real install
+  (2026-09-04, `cbo-agent01`). (a) The official installer takes
+  `-SkipComputerUse -SkipSetup`, so the `cua-driver` hang is *avoidable*
+  rather than something to detect and kill; documented the
+  download-hash-run form too, since the canonical `iex (irm ...)`
+  one-liner is blind remote code execution that automation sandboxes
+  refuse. That run exited 0. (b) The fallback `setup-hermes.sh` route does
+  not finish on Windows and does not say so — it symlinks the POSIX
+  `venv/bin/hermes` while uv creates `venv/Scripts/hermes.exe`, and under
+  `set -e` it exits there, silently skipping the bundled-skills sync;
+  deps install *before* that point, so it looks successful while leaving
+  `skills/` empty. (c) `hermes doctor --fix` starts a dashboard and a
+  gateway and does not return — those processes then hold
+  `%LOCALAPPDATA%\hermes` open against a reinstall; and plain `doctor`
+  can hang outright once Node is on `PATH` (59.8 minutes without
+  completing, stuck in `npm audit --json --workspace web`, killed) —
+  piping through `Select-Object -First N` hides this by closing the pipe
+  and killing the process early. `npm audit` runs under whatever Node is
+  first on `PATH`, so keeping Hermes on its own bundled Node
+  (`%LOCALAPPDATA%\hermes\node`) rather than another project's portable
+  toolchain avoids it.
 
 - feat(setup): the wizard now pushes the whole `SECOND_BRAIN_*` set into
   Hermes' own `.env` -- `SECOND_BRAIN_VAULT_PATH`, `SECOND_BRAIN_DATA_PATH`
@@ -113,7 +203,7 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   scripts and shipped through Artifacts bundles.
 - fix(skills): `run_delta_capture.py`, `run_full_capture.py` and
   `run_full_meeting_capture.py` no longer default `SECOND_BRAIN_VAULT_PATH`
-  to `C:\myWorx\Moussa MD\Moussa Brain` -- a path deleted when the vault
+  to `<OPERATOR_VAULT_OLD>` -- a path deleted when the vault
   moved, so an unset variable meant silently operating on a folder that no
   longer existed. They now fail loudly with the fix.
 
@@ -281,7 +371,7 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   new machine and restarted the gateway to pick it up. Verified Node now
   validates the intercepted chain (`web.whatsapp.com` → HTTP 200).
 - chore(deploy): located the real vault on the new machine
-  (`~\OneDrive - G42\myData\Moussa Brain\second-brain`) and set
+  (`<OPERATOR_VAULT>`) and set
   `VAULT_PATH`; verified `app/config.py` resolves it and derives
   `second_brain_data_path` correctly. Recorded in `Deployment.md` that it
   was still mid-OneDrive-sync when set (skeleton complete, most folders
@@ -469,7 +559,7 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   scripts\`) plus all 26 real, active per-profile copies of this Skill
   (27 locations total, SHA-256-confirmed byte-identical to the migrated
   repo source). Real retrofit-safety confirmed against the LIVE vault
-  (`C:\myWorx\Moussa MD\Moussa Brain`): two known real Threads re-ingested
+  (`<OPERATOR_VAULT_OLD>`): two known real Threads re-ingested
   idempotently (only the additive `id` backfill changed on disk, confirmed
   via diff); a real ~100-message sample (last 100 Inbox+Sent, pulled via
   the deployed `list_recent_emails.py`) retrofitted — 94 already-existing
@@ -5083,7 +5173,7 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   freshness check on its own, unlike a Thread. Proven against a scratch
   vault (refuse-on-non-empty, normal-write-on-empty, `--force` override,
   `--append` path unaffected — all 4 cases pass) and live against the
-  real vault (`C:\myWorx\Moussa MD\Moussa Brain`): a poisoned second call
+  real vault (`<OPERATOR_VAULT_OLD>`): a poisoned second call
   against an already-summarized real File was refused, real file content
   and mtime byte-for-byte unchanged afterward. Deployed to both real,
   live locations this script normally resyncs to: the primary/default

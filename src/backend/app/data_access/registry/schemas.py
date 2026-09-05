@@ -1,8 +1,10 @@
-"""REQ-SB-80's real data/ tree shape, as plain dataclasses -- mirrors
-`data_access/system/tools/schema.py`'s own convention (a dataclass per
-file kind, no validation library), rather than introducing Pydantic
-models for file data when this codebase's only existing precedent for
-"Tool contains Skills" already does it this way.
+"""REQ-SB-80's real data/ tree shape, as plain dataclasses -- a dataclass
+per file kind, no validation library, rather than introducing Pydantic
+models for file data.
+
+(The convention was originally inherited from `data_access/system/tools/
+schema.py`, the abandoned MCP Tool -> Category -> Action layer removed on
+2026-09-04. The convention outlived it and is kept deliberately.)
 """
 from __future__ import annotations
 

@@ -197,7 +197,7 @@ notes directly from the live vault (`Work/Threads/...`, read-only).
   incidental prose/fencing), and persists `{version, derived_at,
   derivation_profile, sample_size, sample_subjects, definition}` to
   `.second-brain/data/EmailCapture/noise_definition.json` UNDER THE REAL
-  VAULT (`C:\myWorx\Moussa MD\Moussa Brain`), never inside this repo —
+  VAULT (`<OPERATOR_VAULT_OLD>`), never inside this repo —
   per `ADR-018`'s own explicit Decision text ("a real, structured,
   persisted file under the VAULT's own `.second-brain/data/` tree").
   A failed relay/parse leaves any previously-persisted artifact

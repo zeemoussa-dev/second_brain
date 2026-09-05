@@ -565,7 +565,7 @@ confirmed the new `'glimpse_first_context'` node is present alongside
 every pre-existing node (Step 7, non-AC smoke check — PASS).
 
 **Live verification setup:** Ran against the REAL configured vault
-(`VAULT_PATH=C:\myWorx\Moussa MD\Moussa Brain`) and the REAL already-
+(`VAULT_PATH=<OPERATOR_VAULT_OLD>`) and the REAL already-
 running MCP server on port 8001 (confirmed via `Get-NetTCPConnection`
 before starting — not restarted, since the graph itself runs in the
 verification script's own process via a direct `await agent_orchestration

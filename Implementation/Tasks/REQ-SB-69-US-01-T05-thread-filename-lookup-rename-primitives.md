@@ -300,7 +300,7 @@ escalations):**
    (`Implementation/Learnings.md`, `SPRINT-037`/`SPRINT-021` precedent).
 
 **Verification — manual mode, run live against the real, configured
-vault (`VAULT_PATH = C:\myWorx\Moussa MD\Moussa Brain`, confirmed 2 real
+vault (`VAULT_PATH = <OPERATOR_VAULT_OLD>`, confirmed 2 real
 pre-existing Thread notes: `01D26A7530444A23803A002210620160.md`,
 `0C41DC9411479C4BAC82EBDDDCA753E7.md`), via a disposable Python script
 (`verify_t05.py`) that wrote/renamed/deleted only its own

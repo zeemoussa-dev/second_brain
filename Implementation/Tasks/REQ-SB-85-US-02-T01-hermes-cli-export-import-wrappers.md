@@ -181,7 +181,7 @@ sample disagrees with a real live call, treat the live call as ground
 truth and correct the code in-scope").** Before writing the wrapper, ran
 `hermes profile export --help` / `hermes profile import --help` live
 against this machine's own real, installed `hermes.exe`
-(`C:\Users\mahmoud.moussa\AppData\Local\hermes\hermes-agent\bin\hermes.exe`)
+(`C:\Users\<operator>\AppData\Local\hermes\hermes-agent\bin\hermes.exe`)
 and cross-checked against the real, installed
 `hermes_cli\subcommands\profile.py` source. Ground truth found:
 - `hermes profile export` — `usage: hermes profile export [-h] [-o OUTPUT]
@@ -251,7 +251,7 @@ installed in this session).
    ...\.local\bin\<name>.bat" side effect) — a real, pre-existing Hermes
    behavior, out of this task's own scope to change. Removed both
    now-dangling `.bat` files by hand
-   (`C:\Users\mahmoud.moussa\.local\bin\sbf-t01-verify-scratch{,-copy}.bat`)
+   (`C:\Users\<operator>\.local\bin\sbf-t01-verify-scratch{,-copy}.bat`)
    so no scratch artifact of any kind was left behind. The export archive
    itself lived only inside a Python `tempfile.TemporaryDirectory()`,
    already auto-removed on script exit.

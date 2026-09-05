@@ -137,7 +137,7 @@ copy of the live `thread/Template.json` under
 scratch path for every invocation of either orchestrator (both read the
 vault path exclusively from this env var, no CLI arg — confirmed by direct
 source read, unchanged). `pywin32` installed for the real interpreter this
-session's shells actually resolve (`py`, `C:\Users\mahmoud.moussa\
+session's shells actually resolve (`py`, `C:\Users\<operator>\
 AppData\Local\Python\pythoncore-3.14-64\python.exe` — `python`/`python3`
 were not resolvable at all in this session's shells, a fresh instance of
 this project's own documented `npx`/`node` PATH-resolution antipattern,

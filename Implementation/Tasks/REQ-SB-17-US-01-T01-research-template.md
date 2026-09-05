@@ -170,7 +170,7 @@ what to replace them with.
 ## Implementation Log
 
 **2026-08-11, coder.** Authored `Templates/Research.md` in the real vault
-(`VAULT_PATH = C:\myWorx\Moussa MD\Moussa Brain`) exactly per this task's
+(`VAULT_PATH = <OPERATOR_VAULT_OLD>`) exactly per this task's
 `## Files to Modify` spec, verbatim. Vault content only — no `src/backend`/
 `src/frontend` file touched.
 

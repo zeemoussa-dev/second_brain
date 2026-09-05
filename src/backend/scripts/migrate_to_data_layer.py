@@ -42,7 +42,6 @@ from app.business.hermes import agents_map_adapter as adapter
 from app.business.hermes.client import get_client
 from app.config import settings
 from app.data_access.registry import loader as registry_loader
-from app.data_access.system.tools import registry as tools_registry
 
 DATA_ROOT = settings.vault_path / ".second-brain" / "data"
 
@@ -188,24 +187,9 @@ def migrate_tools_and_skills() -> None:
     for tool in tool_defs:
         _write_json(DATA_ROOT / "Tools" / tool["id"] / "Tool.json", tool)
 
-    # Outlook's own real Skill: gather_emails, sourced from the already-real
-    # data_access/system/tools/registry.json (a genuine Second-Brain-native
-    # Tool/Action, not a Hermes-mirrored SKILL.md).
-    for tool in tools_registry.load_tools_registry():
-        if tool.id != "outlook":
-            continue
-        for category in tool.categories:
-            for action in category.actions:
-                _write_json(
-                    DATA_ROOT / "Tools" / "outlook" / "Skills" / action.id / "Skill.json",
-                    {"id": action.id, "name": action.name, "description": action.description, "category": category.id},
-                )
-                _write_json(
-                    DATA_ROOT / "Tools" / "outlook" / "Skills" / action.id / "Skill-visual.json",
-                    {"icon": action.icon},
-                )
 
-    skill_count = 1  # gather_emails, written above
+    skill_count = 0  # the Outlook gather_emails Action used to be written here,
+                     # sourced from the MCP Tools registry removed on 2026-09-04
     for category, slug, tool_id in SKILL_SOURCES:
         skill_md = _skill_md_path(category, slug)
         if skill_md is None:

@@ -268,7 +268,7 @@ match field-for-field.
 Templates & In-Vault Guide (REQ-SB-15)" (the REQ-SB-17 addendum). Bounds
 the decomposer/coder to exactly:
 - **New file:** `Templates/Research.md`, in the real vault at
-  `VAULT_PATH` (`C:\myWorx\Moussa MD\Moussa Brain\Templates\Research.md`),
+  `VAULT_PATH` (`<OPERATOR_VAULT_OLD>\Templates\Research.md`),
   sibling to the existing `Templates/Customer.md`,
   `Templates/Opportunity.md`, `Templates/Agreement.md`,
   `Templates/Consumption-Snapshot.md`. Frontmatter: `type: Research`,
@@ -279,7 +279,7 @@ the decomposer/coder to exactly:
   customer/company frontmatter field, tag, or wikilink placeholder
   anywhere in the file.
 - **Edit location:** `Work/Guides/Manual-Entry-Guide.md`
-  (`C:\myWorx\Moussa MD\Moussa Brain\Work\Guides\Manual-Entry-Guide.md`) —
+  (`<OPERATOR_VAULT_OLD>\Work\Guides\Manual-Entry-Guide.md`) —
   additive only: (a) update the opening paragraph's "four note types"
   count/list to five, adding Research; (b) append a new `## Research`
   section after the existing `## Consumption-Snapshot` section, matching

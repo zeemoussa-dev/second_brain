@@ -44,20 +44,9 @@ class Settings(BaseSettings):
     # WRITING notes into the wrong folder.
     vault_path: Path | None = None
     self_email: str = ""
-    # Optional since 2026-09-03, matching `app/hermes/config.py`, which already
-    # defaulted it to "". Gates the write-capable `/mcp/*` tool endpoints
-    # against non-loopback callers.
-    #
-    # SECURITY: an EMPTY value disables that gate rather than closing it --
-    # `inbound_auth.py` compares the caller's header to this string, so a
-    # remote caller sending no header matches "" and is let through. That is
-    # harmless today ONLY because `data_access/system/tools/registry.json`
-    # registers no Tools, so nothing is mounted under `/mcp/*` to reach.
-    # Set a real secret before registering the first Tool.
-    hermes_mcp_shared_secret: str = ""
     # Outbound direction (Second Brain calling INTO Hermes' own local
     # backend, https://github.com/nousresearch/hermes-agent -- the reverse
-    # of hermes_mcp_shared_secret above, which authenticates Hermes calling
+    # (the removed inbound MCP direction, which authenticated Hermes calling
     # IN). Port 9119 is `hermes serve`'s own real default (confirmed live,
     # 2026-08-20 -- NOT port 8642/a REST-API-gateway shape as originally
     # researched; that description didn't match this installed version at

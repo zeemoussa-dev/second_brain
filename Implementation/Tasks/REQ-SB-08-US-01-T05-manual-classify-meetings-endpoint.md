@@ -323,11 +323,11 @@ unrelated `agentic-map` process per `MEMORY.md`):**
 11. **[REQ-SB-08-US-01-AC-11]** `HPC kickoff meeting` and
     `Maik:Naima:Moussa Quick Sync` (a real, self-organized meeting where I
     also appear as a recipient — a genuine, common Outlook pattern, not a
-    contrived case) both include `mahmoud.moussa@core42.ai`
+    contrived case) both include `<operator>@core42.ai`
     (`Settings.self_email`) in their *raw* attendee list (confirmed via a
     direct `list_calendar_events` call), but **neither Meeting note's
     `**Attendees:**` line includes it**, and no `Work/People/
-    mahmoud.moussa@core42.ai.md` Person note exists anywhere in the vault
+    <operator>@core42.ai.md` Person note exists anywhere in the vault
     (confirmed via a direct glob). Every other real attendee on both events
     was processed normally (Person notes created/reused, customer
     derivation ran against their companies — e.g. `Maik:Naima:Moussa Quick

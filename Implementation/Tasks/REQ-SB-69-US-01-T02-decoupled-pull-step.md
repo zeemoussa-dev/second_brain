@@ -267,7 +267,7 @@ touched by `T03`).
 
 **Manual verification — all four `## Tests` steps run live against the
 real, configured Outlook desktop and the real, configured vault
-(`VAULT_PATH=C:\myWorx\Moussa MD\Moussa Brain`), via the real backend
+(`VAULT_PATH=<OPERATOR_VAULT_OLD>`), via the real backend
 venv (`src/backend/.venv`). This task owns no locked AC directly (per the
 story's own AC→task mapping table, `AC-01` is verified at `T04`, once
 both `T02` and `T03` are composed) — every step below is a plain,

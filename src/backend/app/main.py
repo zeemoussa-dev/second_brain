@@ -1,5 +1,5 @@
 import asyncio
-from contextlib import AsyncExitStack, asynccontextmanager
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,7 +28,6 @@ from app.api.vault_router import router as vault_router
 from app.api.vault_search_router import router as vault_search_router
 from app.config import settings
 from app.data_access.registry import loader as registry_loader
-from app.data_access.system.tools import registry as tools_registry
 
 # capture_scheduler's own `lifespan` is deliberately NOT imported/entered
 # below anymore (2026-08-24, operator: "something keeps creating log
@@ -54,13 +53,6 @@ _vault_manager = VaultManager()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # A Mount()-ed Starlette sub-application's own lifespan (here, every
-    # Tool server mount_all_tools() already registered at module level
-    # below) needs its own session_manager.run() entered explicitly --
-    # it is NOT invoked automatically just by mounting, alongside the
-    # app's own existing capture-scheduler lifespan (ADR-005), for the
-    # life of the process (ADR-015 point 7). Confirmed live, 2026-08-20:
-    # /mcp/outlook 404'd until this was added.
     if settings.setup_required:
         # REQ-SB-89: nothing in this lifespan has anywhere to point on an
         # unconfigured install -- the registry loader and the vault index
@@ -69,55 +61,53 @@ async def lifespan(app: FastAPI):
         # than as the one thing the operator needs to see (the wizard).
         yield
         return
-    async with AsyncExitStack() as stack:
-        await tools_registry.enter_tool_server_lifespans(stack)
-        # REQ-SB-80 -- RegistryLoader's cold boot + hot-reload poll loop.
-        # Background task, never awaited (same "don't block 'application
-        # startup complete'" reasoning as every other fire-and-forget task
-        # in this lifespan) -- GET /boot-status is servable from the
-        # instant the app accepts connections, so BootScreen can show real
-        # "in_progress" stages instead of a blank screen while this runs.
-        asyncio.create_task(registry_loader.boot_and_watch())
-        # 2026-08-22 (operator-directed, "we're fully on Hermes now"): the
-        # old Second-Brain-native Agent orchestration layer (the Librarian
-        # bootstrap included) is retired -- ADR-001 already named Hermes as
-        # the real agent/skill/schedule runtime going forward, and ADR-003
-        # is the new, live, read-only mirror of Hermes' own real Agent/Skill
-        # definitions (app/hermes/definitions.py). The former
-        # bootstrap call here (ensure_librarian_agents_and_section, plus its
-        # own librarian-housekeeping/threads-cleaning retire/schedule-
-        # removal calls) is deliberately no longer invoked -- agent_
-        # registry.py's own _SEED_AGENTS is now empty and .second-brain/
-        # agents_registry.json's created_agents was cleared to match;
-        # re-adding this call would just recreate the two agents that were
-        # just removed. The function itself is left in librarian_
-        # housekeeping.py, unused, rather than deleted, since nothing else
-        # calls it and removing it isn't needed to stop the recreation.
-        # 2026-08-27 (operator: "we're fully agentic now"): the
-        # Second-Brain-native default-schedules dispatcher
-        # (agent_schedule_registry.py, app/scheduling/default_schedules.json)
-        # is retired -- Hermes owns all scheduling/dispatch natively now,
-        # nothing left here to fire on app start.
-        # 2026-08-23 (operator: "The Vault Browser page shows the wrong
-        # notes then when I refresh it is showing no notes") --
-        # vault_indexing.py's own index is a plain module-level dict, no
-        # disk persistence at all (ADR-024's own explicit "no .second-
-        # brain/ persistence, no database this pass" tradeoff) -- every
-        # backend restart (a real, frequent event in dev, `--reload`
-        # included) silently wiped it back to empty, with nothing left to
-        # rebuild it automatically; GET /vault-search/status's own
-        # `indexed: false` then made the WHOLE browse/search page show
-        # its honest-but-blank "Nothing indexed yet" state until a human
-        # remembered to call POST /vault-index/rebuild by hand. Rebuilds
-        # eagerly on every start instead -- background task (never
-        # awaited, same "don't block 'application startup complete'"
-        # reasoning as the schedule dispatch above), `asyncio.to_thread`
-        # since `rebuild_index()` itself is a synchronous, blocking,
-        # read-heavy full-vault scan (confirmed live: ~1,126 notes,
-        # comfortably sub-second) that would otherwise tie up the event
-        # loop for its own duration if awaited directly on it.
-        asyncio.create_task(asyncio.to_thread(_vault_manager.rebuild_index))
-        yield
+    # REQ-SB-80 -- RegistryLoader's cold boot + hot-reload poll loop.
+    # Background task, never awaited (same "don't block 'application
+    # startup complete'" reasoning as every other fire-and-forget task
+    # in this lifespan) -- GET /boot-status is servable from the
+    # instant the app accepts connections, so BootScreen can show real
+    # "in_progress" stages instead of a blank screen while this runs.
+    asyncio.create_task(registry_loader.boot_and_watch())
+    # 2026-08-22 (operator-directed, "we're fully on Hermes now"): the
+    # old Second-Brain-native Agent orchestration layer (the Librarian
+    # bootstrap included) is retired -- ADR-001 already named Hermes as
+    # the real agent/skill/schedule runtime going forward, and ADR-003
+    # is the new, live, read-only mirror of Hermes' own real Agent/Skill
+    # definitions (app/hermes/definitions.py). The former
+    # bootstrap call here (ensure_librarian_agents_and_section, plus its
+    # own librarian-housekeeping/threads-cleaning retire/schedule-
+    # removal calls) is deliberately no longer invoked -- agent_
+    # registry.py's own _SEED_AGENTS is now empty and .second-brain/
+    # agents_registry.json's created_agents was cleared to match;
+    # re-adding this call would just recreate the two agents that were
+    # just removed. The function itself is left in librarian_
+    # housekeeping.py, unused, rather than deleted, since nothing else
+    # calls it and removing it isn't needed to stop the recreation.
+    # 2026-08-27 (operator: "we're fully agentic now"): the
+    # Second-Brain-native default-schedules dispatcher
+    # (agent_schedule_registry.py, app/scheduling/default_schedules.json)
+    # is retired -- Hermes owns all scheduling/dispatch natively now,
+    # nothing left here to fire on app start.
+    # 2026-08-23 (operator: "The Vault Browser page shows the wrong
+    # notes then when I refresh it is showing no notes") --
+    # vault_indexing.py's own index is a plain module-level dict, no
+    # disk persistence at all (ADR-024's own explicit "no .second-
+    # brain/ persistence, no database this pass" tradeoff) -- every
+    # backend restart (a real, frequent event in dev, `--reload`
+    # included) silently wiped it back to empty, with nothing left to
+    # rebuild it automatically; GET /vault-search/status's own
+    # `indexed: false` then made the WHOLE browse/search page show
+    # its honest-but-blank "Nothing indexed yet" state until a human
+    # remembered to call POST /vault-index/rebuild by hand. Rebuilds
+    # eagerly on every start instead -- background task (never
+    # awaited, same "don't block 'application startup complete'"
+    # reasoning as the schedule dispatch above), `asyncio.to_thread`
+    # since `rebuild_index()` itself is a synchronous, blocking,
+    # read-heavy full-vault scan (confirmed live: ~1,126 notes,
+    # comfortably sub-second) that would otherwise tie up the event
+    # loop for its own duration if awaited directly on it.
+    asyncio.create_task(asyncio.to_thread(_vault_manager.rebuild_index))
+    yield
 
 
 app = FastAPI(title="Second Brain", lifespan=lifespan)
@@ -191,20 +181,3 @@ app.include_router(pipelines_router)
 app.include_router(skills_router)
 app.include_router(tools_router)
 app.include_router(index_router)
-
-# 2026-08-20 architecture pass -- Tools registry (data_access/system/
-# tools/): mounts every declared Tool's own MCP server at its own
-# mount_path (e.g. /mcp/outlook), called here at module level (NOT inside
-# the async lifespan above) -- Starlette's routing table needs every
-# mount registered before the app starts serving, not added mid-startup.
-# Idempotent/additive-only by construction (registry.py's own
-# _mounted_tool_ids tracking); a genuinely empty registry.json mounts
-# nothing, real, tested behavior, not a theoretical no-op.
-# Skipped entirely in setup mode (REQ-SB-89): the registry it reads lives
-# under second_brain_data_path, which is unset until the wizard has run, so
-# this is the one module-level call that would still crash the import on a
-# fresh install. Nothing is lost by deferring it -- a Tool has nothing to
-# serve without a configured vault, and the restart the wizard ends with
-# re-runs this line with real settings.
-if not settings.setup_required:
-    tools_registry.mount_all_tools(app)

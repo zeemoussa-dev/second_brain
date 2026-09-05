@@ -503,7 +503,7 @@ over the course of this verification session) renders verbatim in the
 
 **`[REQ-SB-31-US-01-AC-06]`** — temporarily moved the real
 `last_capture_run.json` aside (`Move-Item` to a `.verify-backup`
-sibling, same directory, same real vault — `C:\myWorx\Moussa MD\Moussa
+sibling, same directory, same real vault — `C:\myWorx\<operator vault>\Moussa
 Brain\.second-brain\`), confirmed `GET /system-health` →
 `last_capture_run: null`, then reloaded the real page: "Last capture
 run" card showed the honest `.empty-state` — "No capture run has

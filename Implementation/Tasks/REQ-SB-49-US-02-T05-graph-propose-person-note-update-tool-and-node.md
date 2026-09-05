@@ -323,7 +323,7 @@ function `T01` also touches).
 agent_orchestration.run_agent_conversation(...)`) against the real backend
 `.venv`, real vault, real Compass Provider, real `people-producer` agent
 (Manual mode), using a real Person note ("Mahmoud Moussa",
-`Work/People/mahmoud.moussa@core42.ai.md`) and a real captured email note
+`Work/People/<operator>@core42.ai.md`) and a real captured email note
 stem as the Cockpit-thread ref:**
 - **AC-01** — PASS: `"Mahmoud Moussa is leaving the company and going to
   Core42, please update his note"` produced a real reply proposing the
@@ -332,7 +332,7 @@ stem as the Cockpit-thread ref:**
   list_pending_proposals(...)` confirmed a new real pending proposal
   naming Mahmoud Moussa existed. (Note: the vault has TWO real Person
   notes independently named "Mahmoud Moussa" —
-  `mahmoud.moussa@core42.ai.md` and `mahmoud.m.moussa@live.com.md`; the
+  `<operator>@core42.ai.md` and `<operator-email>.md`; the
   resolver's own first-match scan order isn't guaranteed across runs —
   a pre-existing real vault data-quality condition, not a defect in this
   task's own resolver, which correctly finds *a* real match and never

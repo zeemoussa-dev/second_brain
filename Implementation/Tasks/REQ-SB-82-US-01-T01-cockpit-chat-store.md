@@ -161,7 +161,7 @@ locking layer. Never imports `business/cockpit/threads.py`.
   exception — PASS.
 - **File-on-disk confirmation:** read `.second-brain/cockpit_chat.json`
   directly off the real vault path
-  (`C:\myWorx\Moussa MD\Moussa Brain\.second-brain\cockpit_chat.json`)
+  (`<OPERATOR_VAULT_OLD>\.second-brain\cockpit_chat.json`)
   after the calls above — contained exactly the 3 real per-subject
   entries written (`meeting:SCRATCH-TEST-STEM-T01`, `meeting:stem-a`,
   `email:stem-b`), confirming genuine file-backed persistence, not

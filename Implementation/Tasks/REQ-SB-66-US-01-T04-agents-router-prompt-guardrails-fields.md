@@ -185,7 +185,7 @@ established rule"), Scenario 5/6 (`AC-05`/`AC-06`) verify fully in `T05`
 The four numbered steps below are this task's own **non-AC smoke checks**,
 run directly against the real backend venv (`src/backend/.venv`) via
 FastAPI's `TestClient`, real `agent_registry`/`vault_writer` wiring, real
-configured vault (`VAULT_PATH=C:\myWorx\Moussa MD\Moussa Brain`) — not a
+configured vault (`VAULT_PATH=<OPERATOR_VAULT_OLD>`) — not a
 persisted pytest file (repo has no test suite for this layer yet, matching
 `T01`'s own "Automated tests: n/a — test tooling pending" precedent).
 

@@ -243,7 +243,7 @@ own real, already-shipped behavior, not guessed.
 
 Verification was run directly against the real, configured backend venv
 (`src/backend/.venv`) and the real, configured vault
-(`VAULT_PATH=C:\myWorx\Moussa MD\Moussa Brain`) via a one-off Python
+(`VAULT_PATH=<OPERATOR_VAULT_OLD>`) via a one-off Python
 script driving `email_staging` directly — no HTTP server needed, no
 locked AC maps to this task alone (per this task's own `## Tests`
 preamble; `T02`/`T03`/`T04` exercise these primitives end-to-end against

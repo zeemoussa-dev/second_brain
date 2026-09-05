@@ -188,7 +188,7 @@ computing `is_dir()` once per child and reusing that single boolean for
 both the sort key and the type decision. See `MEMORY.md` Constraints.
 
 **Verification — `REQ-SB-86-US-01-AC-01` (both manual steps), live, against
-the real, currently-configured vault (`C:\myWorx\Moussa MD\Moussa Brain`):**
+the real, currently-configured vault (`<OPERATOR_VAULT_OLD>`):**
 
 1. Killed the stale-but-listening non-`--reload` uvicorn instance
    (PID 52376/parent 27656) already on port 8001 — confirmed stale first

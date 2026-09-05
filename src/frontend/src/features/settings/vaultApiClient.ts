@@ -130,7 +130,7 @@ export function fetchVaultExportTree(): Promise<{ root: string; tree: VaultTreeN
 // Export flow (REQ-SB-86-US-02-T03) -- a dedicated fetch, not apiFetch,
 // since it must resolve response.blob() for the real .sbd bytes rather
 // than JSON. Mirrors artifactsApiClient.ts's own commitExport() shape.
-const EXPORT_DATA_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
+const EXPORT_DATA_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8001';
 
 export async function exportVaultData(
   selection: string[],

@@ -284,7 +284,7 @@ was already disclosed as implementation latitude, not a locked
 requirement.
 
 **Verification (manual mode, live against the real, configured vault,
-`VAULT_PATH=C:\myWorx\Moussa MD\Moussa Brain`):**
+`VAULT_PATH=<OPERATOR_VAULT_OLD>`):**
 
 Ran `thread_match_merge` directly (not through a live Outlook pull —
 mirrors `T05`/`T06`/`T07`'s own established direct-call verification

@@ -152,7 +152,7 @@ exactly as specified, calling `capture_raw_thread_messages(limit=limit)`.
 
 **Real, live AC verification — every call a real HTTP request against
 the real backend server (`uvicorn`, `127.0.0.1:8000`) and the real,
-live operator Outlook mailbox/vault (`C:\myWorx\Moussa MD\Moussa Brain`):**
+live operator Outlook mailbox/vault (`<OPERATOR_VAULT_OLD>`):**
 
 **`[REQ-SB-71-US-02-AC-01]` PASS.** `POST /poc/capture-raw-thread-
 messages?limit=10` → `200 OK`. This one real call drained a large

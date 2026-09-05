@@ -350,7 +350,7 @@ active Hermes profile location this Skill actually runs from (previously
 holding only the pre-migration script, no `vault_manager.py` copy at
 all) -- byte-identical to the repo copies, confirmed by diff.
 `REQ-SB-87-US-04-AC-07` verified live, read-then-compare, against the
-REAL vault (`C:\myWorx\Moussa MD\Moussa Brain`): ran the deployed,
+REAL vault (`<OPERATOR_VAULT_OLD>`): ran the deployed,
 migrated script against two real, already-`job4`-processed Threads
 ("Masdar Open Items", "TAQA") reusing their own already-applied
 summary/companies verbatim -- both real runs produced a clean diff (only

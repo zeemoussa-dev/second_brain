@@ -350,7 +350,7 @@ None`), verified live, and logged. `gate: flagged` (trigger-4) reflects
 this — not a blocker on `T06`'s own locked ACs, which are unaffected.
 
 **Verification — manual mode, run live against the real, configured
-vault (`VAULT_PATH = C:\myWorx\Moussa MD\Moussa Brain`), via two
+vault (`VAULT_PATH = <OPERATOR_VAULT_OLD>`), via two
 disposable, self-cleaning Python scripts (`verify_t06.py`,
 `verify_bug019.py`) using only `T06VerifyCustomer`/`T06VERIFY-CONV-*`
 prefixed disposable data, all cleaned up (Thread notes deleted, the

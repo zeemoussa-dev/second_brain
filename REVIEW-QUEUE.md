@@ -8731,7 +8731,7 @@ each story's own `## Notes` for the authorization breadcrumb.)
   `email-delta-capture` cron cutover, per the operator's own "Run the
   retrofit now" authorization) is `Done` — both locked ACs (`AC-05`,
   `AC-06`) verified live against the REAL, live vault
-  (`C:\myWorx\Moussa MD\Moussa Brain`), not a scratch copy. Two real
+  (`<OPERATOR_VAULT_OLD>`), not a scratch copy. Two real
   Threads re-ingested idempotently (only the additive `id` backfill
   changed on disk, `diff`-confirmed); a real ~100-message sample (last
   100 real Inbox+Sent items) retrofitted — 94 already-existing

@@ -276,7 +276,7 @@ rendered Job-Settings UI. The 5 numbered steps below are this task's own
 **non-AC smoke checks**, run directly against the real backend venv
 (`src/backend/.venv`) via FastAPI's `TestClient`, real `agent_registry`/
 `agent_prompts`/`email_capture_pipeline` wiring, real configured vault
-(`VAULT_PATH = C:\myWorx\Moussa MD\Moussa Brain`) — not a persisted pytest
+(`VAULT_PATH = <OPERATOR_VAULT_OLD>`) — not a persisted pytest
 file (repo has no test suite for this layer yet, matching `T01`/`T04`'s own
 "Automated tests: n/a — test tooling pending" precedent).
 

@@ -58,7 +58,7 @@ export function previewExport(selection: ArtifactSelectionEntry[]): Promise<Expo
 // here (rather than importing a non-exported constant) because this call
 // needs the raw Response to read it as a Blob; apiFetch always resolves
 // via response.json().
-const EXPORT_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
+const EXPORT_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8001';
 
 export async function commitExport(
   selection: ArtifactSelectionEntry[],

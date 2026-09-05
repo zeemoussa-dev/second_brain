@@ -214,7 +214,7 @@ on day/hour, not specified verbatim by the ADR beyond its one worked
 example, but the only reading that reproduces that example exactly).
 
 **Verification — manual mode, run live against the real, configured
-vault (`VAULT_PATH = C:\myWorx\Moussa MD\Moussa Brain`), via two
+vault (`VAULT_PATH = <OPERATOR_VAULT_OLD>`), via two
 disposable, self-cleaning Python scripts (mirroring `T06`'s own
 `verify_t06.py` precedent), using only `T07VERIFY-*`-prefixed disposable
 data, both cleaned up (disposable Thread notes deleted) and confirmed

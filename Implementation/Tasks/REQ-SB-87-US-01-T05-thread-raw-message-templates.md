@@ -217,7 +217,7 @@ finalizing field names — do not invent a field name not confirmed real.
 
 **What was built:** `.second-brain/data/Templates/thread/Template.json`
 authored at the live vault path
-(`C:\myWorx\Moussa MD\Moussa Brain\.second-brain\data\Templates\thread\
+(`<OPERATOR_VAULT_OLD>\.second-brain\data\Templates\thread\
 Template.json` — resolved from `.env`'s `VAULT_PATH`), matching every
 real field/section confirmed by directly reading
 `email-thread-capture/scripts/vault_lib.py`:

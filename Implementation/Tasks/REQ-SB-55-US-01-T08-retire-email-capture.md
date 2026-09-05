@@ -288,7 +288,7 @@ mandatory REAL live run:**
 5. **[`REQ-SB-55-US-01-AC-09`, the mandatory real, live run]** Confirmed
    real Outlook COM reachable (`outlook_com.list_recent_mail(limit=3)`
    returned real, current inbox items). Confirmed the real, configured
-   `VAULT_PATH` (`C:\myWorx\Moussa MD\Moussa Brain`) exists and was used
+   `VAULT_PATH` (`<OPERATOR_VAULT_OLD>`) exists and was used
    UNMODIFIED (no scratch-vault override for this one step, per this
    story's own Constraint that `AC-09` is not satisfiable via a
    mocked/simulated pipeline). Confirmed exactly 1 genuinely new

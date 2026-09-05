@@ -6,8 +6,8 @@ This file provides guidance to Claude Code when working with this repository.
 
 **Second Brain** — A personal knowledge base service that indexes and serves the
 user's Obsidian vault directly (no staging/promotion gate — it's trusted personal
-data, not agent-written scratch data), integrating with Hermes (an MCP-based
-multi-channel communication tool) as a planned integration point.
+data, not agent-written scratch data), integrating with Hermes (a separate agent runtime that owns all real capture,
+enrichment and scheduling) as its execution layer.
 
 Standalone project for now. Eventual integration with `agentic-map`'s agents (so
 they can query this KB instead of, or alongside, their current Postgres/Qdrant KB)
@@ -62,7 +62,32 @@ trusted.
 - **Never force-push to main/master.** Warn the user if they request it.
 - **Never stage sensitive files** (`.env`, credentials). Warn if asked to commit them.
 
-## `MEMORY.md` Protocol
+## Memory Protocol
+
+**Framework memory vs instance memory — decide this FIRST, before writing
+anything down.**
+
+| Memory | Where | Scope |
+|---|---|---|
+| **Framework** | repo `MEMORY.md` | true on every install; ships with the product |
+| **Instance** | `<SECOND_BRAIN_DATA_PATH>/AGENT-MEMORY.md` | one machine's paths, vault, mailbox, model, keys, live state |
+| **Another operator's instance** | their machine | never read or written from here |
+
+**The test:** would this still be true on a fresh install with a different vault
+and mailbox? **Yes → framework `MEMORY.md`. No → that machine's
+`AGENT-MEMORY.md`.**
+
+- "The backend serves port 8001" → framework.
+- "The vault is at `C:\The-Vault\CBO-Vault`" → instance.
+- **Fix something in the framework → record it in framework memory**, in the same
+  change as the fix.
+
+Never put a real vault path, mailbox, key or machine name in a repo file. Use
+`<OPERATOR_VAULT>` / `<operator>` placeholders — mixing instance detail into
+shared docs is what caused one install to act on another install's assumptions
+(2026-09-04).
+
+### Within framework `MEMORY.md`
 
 - **Decisions** → `MEMORY.md` under `## Decisions` — format: `[date] Decision – Reason`
 - **Patterns** → `MEMORY.md` under `## Patterns` — format: `Pattern name – description`
@@ -82,8 +107,8 @@ trusted.
 ## Status
 
 **Stack in one line:** Python + FastAPI backend (Obsidian vault indexing, no
-staging/promotion gate) + TypeScript/React/Vite frontend, MCP-integrated
-communication via Hermes.
+staging/promotion gate) + TypeScript/React/Vite frontend, with Hermes as the
+agent runtime that performs capture and runs scheduled jobs.
 
 **Architecture decisions:** `Implementation/Architecture/ADR.md` is the authoritative
 source. Always read it alongside `Implementation/Architecture/architecture.md`
@@ -96,9 +121,16 @@ status.
 **Key artefacts:**
 
 - **`src/`** — the single root for all application code.
-  `src/backend` (Python + FastAPI — vault parsing/indexing, KB API, Hermes MCP
+  `src/backend` (Python + FastAPI — vault parsing/indexing, KB API, Hermes
   integration), `src/frontend` (TypeScript + React + Vite — notes browser/search
   UI).
+- **`Documentation/Framework/`** — **How to Use the Framework.** The shared
+  reference for the operator and for you: same document, no separate versions.
+  Start at `README.md` (concepts and task recipes), then `Templates.md` before
+  adding a new note type (a new note type is a new `Template.json`, never new
+  code), `Artifacts.md` for Agent/Skill/Pipeline shapes and the
+  `.sbf`/`.sbb`/`.sbd` formats, and `Hermes-Provisioning.md` for what depends on
+  the folder held outside the working tree.
 - **`Documentation/PRD.md`** — full product requirements document. Read
   before implementing any feature.
 - **`html-prototype/`** — clickable HTML/CSS/JS prototype. No build step; open
@@ -239,7 +271,7 @@ sprint is always single-phase.
 | Phase | Focus |
 |---|---|
 | **MVP** | Obsidian vault indexing + search/browse over personal notes, no staging gate |
-| **P1** | Hermes MCP integration for multi-channel communication |
+| **P1** | Hermes integration for multi-channel communication |
 | **P2** | Integration surface for agentic-map's agents to query this KB (future, cross-project work) |
 
 ## Source Module Layout

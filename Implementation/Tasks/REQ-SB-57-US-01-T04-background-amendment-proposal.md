@@ -304,7 +304,7 @@ escalations):**
    precedent (`Implementation/Learnings.md` `SPRINT-023`).
 
 **Live verification — `REQ-SB-57-US-01-AC-03`:** performed directly
-against the real, configured vault (`C:\myWorx\Moussa MD\Moussa Brain`),
+against the real, configured vault (`<OPERATOR_VAULT_OLD>`),
 via a disposable throwaway Customer (`ZZZ-T04-Verify-Co`, created with
 `vault_writer.create_customer_directory_baseline`, blank `## Background`
 baseline).

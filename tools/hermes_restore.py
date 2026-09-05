@@ -70,7 +70,7 @@ _TEXT_SUFFIXES = {".md", ".json", ".yaml", ".yml", ".py", ".txt"}
 # these at BUNDLE time; this module substitutes them back for the
 # TARGET's own real, resolved paths at restore time. Chosen over the
 # older "rewrite literal old-path -> literal new-path" design (operator,
-# 2026-09-03: "C:\myWorx\Moussa MD\Moussa Brain should be a place holder
+# 2026-09-03: "<OPERATOR_VAULT_OLD> should be a place holder
 # and pass it on Restore and same for the other Path") after a real bug
 # in that design: second_brain_data_path is a real, longer string that
 # CONTAINS the vault path as its own prefix whenever it's vault-relative

@@ -15,8 +15,7 @@ capture.
 ## Stack
 
 - **Backend** — Python + FastAPI (`src/backend`): vault parsing/indexing,
-  agent orchestration (LangGraph), Compass/Anthropic LLM integration, MCP
-  tool server, and triggers for Hermes's cron jobs.
+  Compass LLM integration, and triggers for Hermes's cron jobs.
 - **Hermes** — a separate agent runtime (`%LOCALAPPDATA%\hermes`, not part
   of this repo) that does all real email/meeting/company capture and
   enrichment via its own scheduled cron jobs.

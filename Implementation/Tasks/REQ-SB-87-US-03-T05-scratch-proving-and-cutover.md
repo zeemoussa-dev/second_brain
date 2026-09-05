@@ -148,7 +148,7 @@ scratch-vault-only. Its own `## Files to Modify` is `None` (verification-
 only); its own `## Out of Scope` explicitly names "The actual `--vault-path`
 cutover action itself — performed once, jointly, by `REQ-SB-87-US-02-T05`."
 **Nothing in this task's own real scope touched the REAL vault
-(`C:\myWorx\Moussa MD\Moussa Brain`) or the REAL Hermes profile/cron
+(`<OPERATOR_VAULT_OLD>`) or the REAL Hermes profile/cron
 deployment for `job4`/`email-delta-capture`** — confirmed at the end of this
 pass via `git status` (zero diff on any Hermes-Provisioning file — this
 task's own `## Files to Modify` is `None`, and none was touched) and via

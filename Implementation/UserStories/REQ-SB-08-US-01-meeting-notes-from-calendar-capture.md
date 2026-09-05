@@ -654,7 +654,7 @@ majority vote, correctly wikilinked to both the matched Customer hub note
 and every attendee's Person note, idempotent across multiple reruns (byte-
 for-byte unchanged where nothing should change, manually-added content
 preserved), and — the story's own most-important AC — the vault owner's
-own email (`mahmoud.moussa@core42.ai`, sourced into `Settings.self_email`
+own email (`<operator>@core42.ai`, sourced into `Settings.self_email`
 via a one-time, read-only Outlook `CurrentUser` COM probe, not a guess or a
 runtime dynamic lookup, consistent with ADR-008's own reasoning) confirmed
 excluded from both Person-note creation and customer derivation on **real**

@@ -35,7 +35,7 @@ mirroring `job4-summarize-tag-threads`'s own real, confirmed shape.
 **Before / Inputs:**
 - **Real, confirmed cron gap:** no job of any kind — enabled, disabled, or
   otherwise — currently exists for `summarize-and-tag-files`. The real,
-  central `cron/jobs.json` (`C:\Users\mahmoud.moussa\AppData\Local\hermes\
+  central `cron/jobs.json` (`C:\Users\<operator>\AppData\Local\hermes\
   cron\jobs.json`) has no entry naming this Skill; the `files-manager`
   profile's own directory carries no `cron/` folder at all (confirmed live
   this session).

@@ -51,7 +51,7 @@ re-scanning the filesystem its own ad hoc way
   structure (forward or backward) is computed or stored anywhere; Obsidian's
   own graph view is the only place backlinks currently render at all.
 - **Real vault, grounded numbers (2026-08-13, `VAULT_PATH` from `.env`:
-  `C:\myWorx\Moussa MD\Moussa Brain`):** 496 real notes under `Work/`
+  `<OPERATOR_VAULT_OLD>`):** 496 real notes under `Work/`
   (204 Email, 134 People, 51 Meetings, 6 Customers, 1 Partner, plus
   Notifications/Files/Newsletters not individually counted here) — each
   produced by this project's own capture pipelines or manual templates, so

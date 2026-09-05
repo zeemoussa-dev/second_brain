@@ -19,100 +19,29 @@ Pipelines assume Hermes cron jobs already exist.
 
 ---
 
-## Where this deployment actually stands (2026-09-03, second machine)
+## Per-install state lives with the install, not here
 
-Live status of the fresh corporate laptop, so the next session doesn't
-have to rediscover it. Update this block as it moves.
+This guide is the **framework's** deployment procedure — the steps that are true
+on any machine. It deliberately carries **no** live status for any particular
+deployment.
 
-**Done — Hermes is installed and healthy:**
+Each install records its own paths, vault, mailbox, model, keys and current state
+in its own instance memory:
 
-- Hermes Agent **v0.21.0** at `%LOCALAPPDATA%\hermes`, Python 3.11.16,
-  portable Node 22.23.2, uv 0.12.9, ripgrep, ffmpeg. `hermes --version`
-  and `hermes doctor` both pass.
-- `UV_SYSTEM_CERTS=1` persisted at **User** scope — the corporate-TLS fix
-  without which nothing installs. Leave it set.
-- Config migrated v0 → v40 (`hermes doctor --fix`).
-- **Compass provider applied** to `config.yaml` (`model:` switched off the
-  stock OpenRouter default to `compass`/`gpt-5`). Confirmed reaching
-  Compass for real: Hermes has since discovered and written back the full
-  Compass model catalogue (`models_discovered: true`), which only happens
-  on a successful authenticated call. Note Hermes rewrites this file
-  programmatically, so hand-written comments in it do not survive.
-- **Gateway installed and running** via
-  `hermes gateway install --start-on-login --start-now` — Startup-folder
-  login item (UAC declined), gateway process up, log healthy.
-- **Backend and frontend both build and run** (§3). Backend venv on
-  Python 3.11.16 with all deps installed; started through the fixed
-  `tools\run-backend.cmd` and `GET /health` returned
-  `{"status":"ok"}`. Frontend: `tools\node` populated (Node 22.23.2 /
-  npm 10.9.8), 134 packages installed, dev server served HTTP 200 on
-  5173 via `tools\run-frontend.cmd`. Both were stopped again afterwards —
-  nothing is left running.
-- **`tools\*.cmd` launchers repaired** — they all hardcoded the first
-  machine's path and could never have worked here (§3).
-- **`requirements.txt` pinned `mcp<2`** — an unpinned `mcp` broke the
-  backend outright on a fresh resolve (§3).
+    <SECOND_BRAIN_DATA_PATH>/AGENT-MEMORY.md
 
-**Not done — each needs the operator personally, and each blocks what
-follows it:**
+**The test for where something goes:** would it still be true on a fresh install
+with a different vault and mailbox? **Yes → this guide. No → that machine's
+instance memory.**
 
-1. **WhatsApp pairing** (`hermes whatsapp`) — needs a QR scan from the
-   phone, and must be run from a real interactive terminal. Blocked on
-   2026-09-03 by `Connection closed (reason: 500)`; the cause and fix are
-   the corporate TLS interception (§1) — `NODE_OPTIONS=--use-system-ca`
-   is now set both as a User variable and in `%LOCALAPPDATA%\hermes\.env`,
-   and the gateway restarted. **Still to be confirmed from the operator's
-   own shell** — see the shell-asymmetry warning in `MEMORY.md`: verifying
-   this from a tool shell that is not behind the interception produces a
-   confident false pass.
-   Not a blocker for capture — the gateway runs cron jobs with no
-   messaging platform enabled. Do **not** enable WhatsApp before pairing
-   succeeds: enabled-but-unpaired takes the whole gateway down (§2).
-2. **Let the vault finish syncing** before any capture or cron job runs.
-3. Specialist profiles, Skill deployment, cron jobs — §2, in that order.
+This block previously held one specific laptop's live status — its vault path,
+which steps were done, which were pending. That is precisely the content that
+made a *later* install act on an *earlier* install's assumptions, so it moved out
+rather than being updated in place. The history of it remains in git.
 
-**Second Brain's own `.env` is complete.** Backend verified booting
-against it — `GET /health` → `{"status":"ok"}`. `COMPASS_BASE_URL` carries
-the full-completions form, `COMPASS_API_KEY` and `SELF_EMAIL` are set,
-`VAULT_PATH` resolves, and `SECOND_BRAIN_DATA_PATH` deliberately points
-outside the synced vault.
+Personal paths and identities elsewhere in this repo were replaced with
+`<OPERATOR_VAULT>` / `<operator>` placeholders on 2026-09-04 for the same reason.
 
-`ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` and `HERMES_MCP_SHARED_SECRET` are
-intentionally left unset — they became optional on 2026-09-03 because
-nothing uses them (§4 records the verification and the one security
-caveat on the empty MCP secret).
-
-**Vault located, but it was still syncing when set.**
-`C:\Users\mahmoud.moussa\OneDrive - G42\myData\Moussa Brain\second-brain`
-— confirmed resolving, and `.second-brain` state will default inside it.
-When first pointed at, the OKF skeleton was complete but nearly empty
-(People 96, Research 3, Threads 2, everything else 0, 112 files / 0.1 MB
-total, and **zero** OneDrive online-only placeholders, so it was genuine
-absence rather than unfetched stubs). **Let the sync finish before running
-any capture or cron job** — dedup only protects against duplicates it can
-structurally see, so a half-synced vault will get duplicate notes for
-everything that had not yet arrived.
-
-**Watch the 260-char `MAX_PATH` trap here.** This vault root is already
-**71 characters**, leaving ~189 for everything beneath it. Real note
-paths nest deep (`Work\Threads\<thread title>\messages\<date> <HH:MM>
-<sender>.md`), and on this host `Path.exists()`/`is_file()`/`is_dir()`
-silently return `False` past that limit rather than raising — so an
-over-long note reads as "missing" with no error anywhere. Worth
-re-checking if notes start mysteriously not being found.
-
-**Known-broken, left alone deliberately:** `npm run build` fails on 8
-pre-existing TypeScript errors (§3). `npm run dev` is unaffected, which
-is what the launchers and the actual workflow use.
-
-**Machine baseline found before installing** (useful for judging whether
-a future machine is comparable): Git for Windows already present
-user-scope; Outlook desktop installed but not running; **no** real
-Python, **no** `py` launcher, **no** Node, **no** `uv`; execution policy
-`Undefined` at every persistent scope; network reachable to github.com,
-nousresearch, astral.sh.
-
----
 
 ## 1. Hermes Deployment
 
@@ -260,6 +189,32 @@ bash setup-hermes.sh   # creates the uv-managed venv, installs deps,
 hermes --version
 ```
 
+**`setup-hermes.sh` does not finish on Windows, and does not say so**
+(2026-09-04, third machine — this is why the official installer above is
+now the preferred route, not just the tidier one). The script symlinks
+`$SCRIPT_DIR/venv/bin/hermes`, a POSIX layout; on Windows uv creates
+`venv/Scripts/hermes.exe`, so `ln` fails with `No such file or
+directory`. The script runs under `set -e`, so it exits right there —
+**silently skipping the bundled-skills sync that follows it**. Dependency
+installation happens *before* that point, which is exactly why the run
+looks successful: you get a working `hermes.exe` and an empty
+`skills/` folder. There is no Windows branch in the script at all; it
+only distinguishes Termux from "desktop/server", both assumed POSIX.
+
+Two things to do by hand afterwards if you are stuck on this route:
+
+```powershell
+# 1. A .cmd shim beats a symlink here -- no Developer Mode, no elevation.
+#    (Hermes also self-heals its own launchers into %LOCALAPPDATA%\hermes\bin
+#    on first run, so check there before creating one.)
+'@echo off'                                                  | Set-Content "$env:USERPROFILE\.local\bin\hermes.cmd" -Encoding ascii
+"`"$env:LOCALAPPDATA\hermes\hermes-agent\venv\Scripts\hermes.exe`" %*" | Add-Content "$env:USERPROFILE\.local\bin\hermes.cmd" -Encoding ascii
+
+# 2. Run the sync the script never reached (seeds 58 bundled skills).
+cd "$env:LOCALAPPDATA\hermes\hermes-agent"
+.\venv\Scripts\python.exe tools\skills_sync.py
+```
+
 **Known trap:** a bare `python`/`python3` on this machine's `PATH` may
 resolve to the **Microsoft Store execution-alias stub**
 (`AppData\Local\Microsoft\WindowsApps\python.exe`), which prints "Python
@@ -343,13 +298,62 @@ against the current schema:
 hermes doctor --fix    # migrates the config; reports what it couldn't fix
 ```
 
+**Do not run `--fix` unattended, and do not assume it returns.** On
+2026-09-04 it started a **dashboard and a gateway** and simply kept
+running — the migration is not a short, self-terminating command. Left in
+a background shell it looked like a hang; what it had actually done was
+leave `hermes.exe dashboard` and two `gateway run` processes live, which
+then held `%LOCALAPPDATA%\hermes` open and blocked a later reinstall
+until they were stopped (`hermes gateway stop`, then kill the survivors).
+
+**Plain `hermes doctor` can hang outright once Node is on `PATH`.** It
+runs `npm audit` across the `agent-browser`/`web` workspaces, so the
+*same* machine that finished in seconds with no Node installed ran for
+**59.8 minutes without completing** once Node appeared, sitting in
+`npm audit --json --workspace web` the whole time. It had to be killed.
+Treat this as a hang, not slowness.
+
+Two traps around diagnosing it:
+
+- **Measuring through a pipe hides it.** `hermes doctor | Select-Object
+  -First 50` closes the pipe early and kills the process, so it *looks*
+  fast while never actually completing. Redirect to a file for the real
+  runtime and the real output.
+- **Check *which* Node it found.** `npm audit` runs under whatever Node is
+  first on `PATH`. If that is another project's portable toolchain,
+  `doctor` is auditing that project's dependency tree, not Hermes' —
+  confirm with `Get-CimInstance Win32_Process` and read the full
+  `CommandLine`. Keeping Hermes on its own bundled Node
+  (`%LOCALAPPDATA%\hermes\node`, installed by the official installer
+  unless something else already occupies `PATH`) avoids this entirely.
+
 #### Installing non-interactively? Two real gotchas
 
 Only relevant when driving the installer from a script or an automation
 tool rather than typing it into a real terminal:
 
+- **Pass `-SkipComputerUse -SkipSetup` and the two hangs below never
+  happen** (2026-09-04, third machine). The installer takes real
+  parameters, so the `cua-driver` hang described next is avoidable rather
+  than something to detect and kill, and `-SkipSetup` skips the
+  interactive wizard that a non-interactive shell cannot answer anyway.
+  Getting the file so you can pass flags to it also sidesteps a second
+  problem: the canonical `iex (irm ...)` one-liner is blind remote code
+  execution, which agent/automation sandboxes routinely refuse. Download,
+  check, then run:
+
+  ```powershell
+  $dest = "$env:TEMP\hermes-install.ps1"
+  Invoke-WebRequest 'https://hermes-agent.nousresearch.com/install.ps1' -OutFile $dest
+  (Get-FileHash $dest -Algorithm SHA256).Hash   # 245 KB on 2026-09-04
+  & $dest -SkipComputerUse -SkipSetup
+  ```
+
+  This run exited **0** — no hang, no killed child, nothing to diagnose.
+
 - **It can hang forever at `Installing Computer Use driver
-  (cua-driver)`.** That step spawns `powershell.exe -Version 5.1 -s`
+  (cua-driver)`.** Only if you did *not* pass `-SkipComputerUse` above.
+  That step spawns `powershell.exe -Version 5.1 -s`
   (stdin/server mode), which blocks reading standard input that never
   arrives. Symptom: zero output for many minutes, and the child process
   burning ~0 CPU. `cua-driver` is desktop-control tooling that this
@@ -617,6 +621,73 @@ hermes model                       # should show compass / gpt-5
 hermes chat -q "reply with OK"     # a real round-trip through Compass
 ```
 
+**Actually run the chat.** Machines 1 and 2 verified Compass by model
+discovery alone (`models_discovered: true`), which is a real authenticated
+call but not a *chat* — so neither ever exercised the auxiliary path, and
+the warning below went unseen for two deployments. It is not new, and it is
+not caused by anything you configured; it simply cannot appear until
+something starts a chat session.
+
+#### Expected on gpt-5: the auxiliary temperature warning
+
+A successful round-trip on gpt-5 still prints:
+
+```
+⚠ Auxiliary title generation failed: HTTP 400:
+  Invalid 'temperature': Only the default (1) value is supported.
+```
+
+The main answer arrives normally and the exit code is 0 — only the
+auxiliary task fails. gpt-5 accepts no temperature but its default, while
+Hermes' auxiliary tasks send their own fixed values (`title_generator.py`
+0.3, `context_compressor.py` 0.1).
+
+Hermes *has* a retry that strips `temperature` and tries again
+(`auxiliary_client.py`), and it does not fire here. Its matcher
+(`_is_unsupported_parameter_error`) only recognises negatively phrased
+errors — `not supported`, `unsupported parameter`, `invalid parameter`.
+Compass phrases this one **positively** ("...value *is* supported"), so no
+marker matches and the retry silently declines. Worth knowing before
+concluding the retry is broken: it is working exactly as written.
+
+Three real options, verified live 2026-09-04:
+
+1. **Accept it** — what this deployment does. Titles are cosmetic; the
+   session still gets a fallback title, and chat/tools/cron are unaffected.
+2. **Silence it** — `auxiliary.title_generation.enabled: false`. Supported
+   config, removes the noise, and does nothing for compression.
+3. **Route auxiliary tasks off gpt-5** — the only option that also fixes
+   compression, using documented config rather than patching `hermes-agent`:
+
+   ```yaml
+   auxiliary:
+     title_generation:
+       provider: "main"
+       model: "gpt-4o"
+     compression:
+       provider: "main"
+       model: "gpt-4o"
+   ```
+
+   Confirmed clean: the warning disappears and a real title is generated.
+   Not adopted here only because this deployment standardises on gpt-5.
+
+**Which Compass models this key can actually reach** (probed directly,
+2026-09-04 — the discovered catalogue lists what the *gateway* offers, not
+what your subscription is licensed for, and the difference is real):
+
+| Model | Result |
+|---|---|
+| `gpt-5` | works (rejects any non-default `temperature`) |
+| `gpt-4o` | works, and accepts `temperature` |
+| `gpt-4o-mini`, `gpt-4.1-mini`, `gpt-5-mini`, `gpt-5.2` | `You may not have a quota or access to use this model` |
+
+**The one thing worth watching:** `compression` sends `temperature: 0.1`,
+so on gpt-5 context compaction hits the same 400. That is functional, not
+cosmetic, and long-running cron sessions are exactly what triggers
+compaction. Not yet observed failing in practice — but if a long session
+starts misbehaving, look here first.
+
 Every specialist profile created via `--clone` (see below) inherits
 whatever model/provider the `default` profile has configured — set
 Compass up on `default` first, and confirm Step 3 passes, before cloning
@@ -830,17 +901,19 @@ cd ..\..\src\frontend
 ..\..\tools\node\npm.cmd install
 ```
 
-**Two real defects this install surfaced.** Both are repo bugs a fresh
+**Three real defects this install surfaced.** All are repo bugs a fresh
 machine exposes and an existing one hides:
 
-1. **`requirements.txt` had `mcp` unpinned** — a fresh resolve now pulls
-   **mcp 2.x**, which renamed `FastMCP` to `MCPServer`. The backend then
-   dies on import at
-   `app/data_access/system/tools/registry.py`'s `from mcp.server.fastmcp
-   import FastMCP`. **Fixed** by pinning `mcp<2` (resolves to 1.29.1,
-   the API the code is written against). Migrating to 2.x is separate,
-   real work. Other unpinned entries (`langchain-openai`, `anthropic`,
-   `pypdf`, `pyyaml`, `python-multipart`, `langchain-mcp-adapters`) are
+1. **`requirements.txt` had `mcp` unpinned** — a fresh resolve pulled
+   **mcp 2.x**, which renamed `FastMCP` to `MCPServer`, and the backend died
+   on import at `app/data_access/system/tools/registry.py`'s
+   `from mcp.server.fastmcp import FastMCP`. First fixed by pinning `mcp<2`.
+   **Fully retired on 2026-09-04:** that file was the package's only importer
+   and the MCP Tool layer was deleted, so `mcp` and `langchain-mcp-adapters`
+   were dropped from `requirements.txt` entirely — the pin and the reason for
+   it are both gone. Verified by uninstalling both from the venv and re-running
+   the suite (41 pass) plus a live `GET /health`. Other unpinned entries
+   (`langchain-openai`, `anthropic`, `pypdf`, `pyyaml`, `python-multipart`) are
    the same class of risk and have not bitten yet.
 2. **`npm run build` fails** — 8 pre-existing TypeScript errors
    (7 × `TS7053` indexing `CSSProperties` with a `string` in the
@@ -850,6 +923,30 @@ machine exposes and an existing one hides:
    Vite does not typecheck. It means `tsc -b` was already broken before
    this machine existed — the workflow here is `npm run dev`, and nobody
    runs the production build. Real, but app code, not config.
+3. **The frontend pointed at the wrong backend port, so a fresh clone
+   rendered a blank screen** (2026-09-04, third machine). Six files
+   defaulted `VITE_API_BASE_URL` to `http://127.0.0.1:8000` while the
+   backend serves **8001**. The override lives in
+   `src/frontend/.env.local`, which `src/frontend/.gitignore`'s `*.local`
+   rule excludes — so it never arrives with a clone, and the stale default
+   takes over. The symptom gives you almost nothing: a black page, and
+   `ERR_CONNECTION_REFUSED` on `/setup/status` and `/boot-status` only if
+   you open devtools. Earlier machines were immune because the file
+   already existed there; `SPRINT-013` even calls it "the frontend's
+   *committed* `.env.local`", which it cannot be under that ignore rule.
+   **Fixed** by changing the default to 8001 so the code agrees with the
+   port `run-backend.cmd` actually serves. `.env.local` is now a genuine
+   override rather than a load-bearing file. If you do need a different
+   port, that file is still the place:
+
+   ```powershell
+   # only when the backend is NOT on the default 8001
+   'VITE_API_BASE_URL=http://127.0.0.1:<port>' |
+     Set-Content src\frontend\.env.local -Encoding ascii
+   ```
+
+   Vite reads env only at startup — restart the dev server after changing
+   it, or the old value silently persists.
 
 **The `tools\*.cmd` launchers were broken and are now fixed.** Every one
 of them hardcoded `C:\myWorx\Projects\Second Brain\...` — the *first*
@@ -909,7 +1006,7 @@ has no defaults, by design):
 | ~~`ANTHROPIC_MODEL`~~ | **No longer required** (2026-09-03) — see below |
 | `VAULT_PATH` | Absolute path to the Obsidian vault directory (copied over from the old laptop) |
 | `SELF_EMAIL` | The Outlook mailbox address capture runs against |
-| ~~`HERMES_MCP_SHARED_SECRET`~~ | **No longer required** (2026-09-03) — see below |
+| ~~`HERMES_MCP_SHARED_SECRET`~~ | **Removed entirely** (2026-09-04) — see below |
 
 > **Three settings became optional on 2026-09-03.**
 > `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` and `HERMES_MCP_SHARED_SECRET`
@@ -923,13 +1020,18 @@ has no defaults, by design):
 > `data_access/providers.py`, which seeds a Provider row for display — an
 > empty credential just shows as unconfigured, which is accurate.
 >
-> **Security note on the empty shared secret.** `inbound_auth.py` compares
-> the caller's header against this string, so an **empty** value *disables*
-> the `/mcp/*` gate rather than closing it: a remote caller sending no
-> header matches `""` and is allowed through. That is harmless today only
-> because `data_access/system/tools/registry.json` registers no Tools, so
-> nothing is mounted under `/mcp/*` to reach. **Set a real secret before
-> registering the first Tool.**
+> **`HERMES_MCP_SHARED_SECRET` no longer exists (2026-09-04).** It gated the
+> `/mcp/*` endpoints, and the whole MCP Tool layer has been deleted — Second
+> Brain exposes nothing over MCP. Remove the line from any `.env` you carry
+> forward; it is simply ignored.
+>
+> It was deleted rather than left dormant for a real reason worth recording:
+> an **empty** value *disabled* that gate rather than closing it. `inbound_auth`
+> compared the caller's header against the string, so a remote caller sending
+> no header matched `""` and was let through. That was harmless only for as
+> long as nothing was mounted under `/mcp/*` — the moment anyone registered a
+> Tool, it would have been an open door on a setting nobody would have thought
+> to fill in.
 
 > **The two Compass base URLs are deliberately different. Do not
 > reconcile them.**

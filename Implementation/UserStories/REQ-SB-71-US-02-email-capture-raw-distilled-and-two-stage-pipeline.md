@@ -633,7 +633,7 @@ here).
 
 All 7 tasks built and marked `Done`, all 7 locked ACs (`AC-01`-`AC-07`)
 verified with real, live evidence against the real operator Outlook
-mailbox and the real vault (`C:\myWorx\Moussa MD\Moussa Brain`) — every
+mailbox and the real vault (`<OPERATOR_VAULT_OLD>`) — every
 verification call went through a real `POST /poc/*` HTTP endpoint, never
 a raw script call, per this story's own standing Constraint. Full
 evidence in each task's own `## Implementation Log`; summarized:

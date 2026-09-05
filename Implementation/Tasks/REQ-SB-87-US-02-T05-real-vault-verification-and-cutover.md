@@ -228,7 +228,7 @@ location.** Deployed `ingest_email.py`, `rename_thread.py`,
 vault_manager.py`, already byte-identical to this Skill's own repo
 copy) to: (a) the ONE real, active location the live
 `email-delta-capture` cron job's own `SKILL.md`-documented absolute
-path actually calls (`C:\Users\mahmoud.moussa\AppData\Local\hermes\
+path actually calls (`C:\Users\<operator>\AppData\Local\hermes\
 skills\vault-rebuild\email-thread-capture\scripts\` — confirmed still
 on the OLD, pre-migration code, `vault_lib.py`-only, no
 `vault_manager.py`, before this deploy); (b) all 26 real, active
@@ -340,7 +340,7 @@ already-documented Constraint this migration's own sibling task
 established (`REQ-SB-87-US-04-T04`, 2026-09-01 `MEMORY.md` entry):
 `email-delta-capture`'s own real cron job definition
 (`cron\jobs.json`, `afbc0d78d611`) has NO separate `--vault-path`
-field — the real vault path (`C:\myWorx\Moussa MD\Moussa Brain`) is
+field — the real vault path (`<OPERATOR_VAULT_OLD>`) is
 embedded directly in the job's own prompt text and has been since the
 job was created; there was no literal argument to edit. The real
 cutover act is therefore the CODE deployment above. Resumed the

@@ -155,7 +155,7 @@ section states `## Actions` → `allowed_callers: ["apply_thread_review"]`
 — "the SAME identity as `## Summary` — one caller, two sections", not a
 different future caller. Confirmed directly against the real, live
 vault's own `Templates/thread/Template.json`
-(`C:/myWorx/Moussa MD/Moussa Brain/.second-brain/data/Templates/thread/
+(`C:/myWorx/<operator vault>/<operator vault>/.second-brain/data/Templates/thread/
 Template.json`) — matches `ADR-017` exactly. This task's own locked scope
 (Scenario 6 / `AC-06`) only exercises `## Summary`/`## Personal Notes`;
 `## Actions` access is enabled by the same template declaration but not

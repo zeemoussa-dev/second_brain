@@ -140,7 +140,7 @@ contract.
   this script" instruction.
 - Real, live `research-agent` Hermes profile provisioned on the operator's
   actual Hermes install (`hermes profile create research-agent --clone`),
-  under `C:\Users\mahmoud.moussa\AppData\Local\hermes\profiles\
+  under `C:\Users\<operator>\AppData\Local\hermes\profiles\
   research-agent\` — real SOUL.md authored (Librarian-Section identity,
   not meeting-scoped, "may itself grow into a full Expert... same way
   Compass/Azure Experts did", always writes a brand-new note into its own
@@ -153,7 +153,7 @@ contract.
   `skills/librarian/research-kb-writer/` (confirmed registered via
   `hermes -p research-agent skills list` — `librarian` category, `local`
   source, `enabled`). `.env` already carried the real
-  `OBSIDIAN_VAULT_PATH=C:\myWorx\Moussa MD\Moussa Brain` from clone-time
+  `OBSIDIAN_VAULT_PATH=<OPERATOR_VAULT_OLD>` from clone-time
   inheritance (root `.env` fix, `MEMORY.md` 2026-08-25 entry) — confirmed
   directly by reading the cloned file, no manual edit needed; also stated
   explicitly in SOUL.md's own prose per every other real profile's
@@ -200,7 +200,7 @@ provisioned):**
   enables human-in-the-loop workflows..." -Q --create-if-missing -c
   "verify-research-agent"`. The agent ran real `web_search` lookups
   (LangChain/LangGraph docs), then called `write_research_doc.py` for
-  real. Confirmed a genuine new file at `C:\myWorx\Moussa MD\Moussa
+  real. Confirmed a genuine new file at `C:\myWorx\<operator vault>\Moussa
   Brain\Work\Research\LangGraph checkpointing-persistence and
   human-in-the-loop (HITL).md` — read back directly: real, substantive,
   cited content (LangChain/LangGraph doc URLs), not a fabrication. **Pass.**

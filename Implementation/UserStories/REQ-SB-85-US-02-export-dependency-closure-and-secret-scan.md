@@ -53,7 +53,7 @@ one file
 - **Hermes' own `hermes profile export`/`import` grounded directly
   against the real, installed source — confirmed live, not assumed from
   the PRD's own prose alone** (`hermes_cli/profiles.py`,
-  `C:\Users\mahmoud.moussa\AppData\Local\hermes\hermes-agent\`):
+  `C:\Users\<operator>\AppData\Local\hermes\hermes-agent\`):
   - `export_profile(name, output_path)` is a real, non-interactive `hermes
     profile export <name> [output]` CLI subcommand (confirmed via
     `main.py`'s own `elif action == "export":` dispatch, not just the
