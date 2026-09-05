@@ -18,6 +18,15 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix(skills): the company-review scripts still resolved `Settings/Entities.md`
+  and the engagement config at the hardcoded `<vault>/.second-brain`, which the
+  2026-09-04 consolidation deleted. They read nothing, rebuilt from scratch, and
+  the discovery job proposed already-existing companies as new -- losing 37
+  `Created: Yes` and 6 `Ignore: Yes` flags into a resurrected legacy folder.
+  The curated file in the data folder was never touched. All four scripts now
+  resolve through the data root; the two whose Skills ship no `vault_manager.py`
+  carry an inlined resolver rather than importing a module that isn't there.
+
 - fix(setup): the App Database Folder now sits in the wizard's first step,
   beside the vault it relates to, instead of last under "already have
   working defaults -- change them only if you need to". Left blank it

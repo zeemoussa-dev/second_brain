@@ -79,6 +79,8 @@ import json
 import re
 from pathlib import Path
 
+import vault_manager
+
 import vault_manager as vm
 
 _SLUG_INVALID_CHARS = re.compile(r'[\\/:*?"<>|]')
@@ -691,7 +693,7 @@ def _load_engagement_config(vault_path: Path) -> dict:
     2026-08-22 rule ("G42 and its Affiliates are internal"). Self-heals a
     missing file to the operator-confirmed default on first read, same
     pattern as meeting_thread_link_config.py/person_ignore_list.json."""
-    path = vault_path / ".second-brain" / _ENGAGEMENT_CONFIG_FILE
+    path = vault_manager.data_root(vault_path) / _ENGAGEMENT_CONFIG_FILE
     default = {"internal_roots": ["G42"]}
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -1055,7 +1057,7 @@ def main() -> int:
 
     # Settings/Entities.md under .second-brain -- see find_new_entities.py's
     # own comment for the full 2026-08-27 relocation reasoning.
-    entities_path = vault_path / ".second-brain" / "Settings" / args.entities_name
+    entities_path = vault_manager.data_root(vault_path) / "Settings" / args.entities_name
     if not entities_path.exists():
         print(json.dumps({"error": f"{entities_path} does not exist -- run entity-domain-extraction first"}))
         return 1

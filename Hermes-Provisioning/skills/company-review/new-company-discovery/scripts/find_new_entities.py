@@ -43,6 +43,18 @@ import json
 import re
 from pathlib import Path
 
+
+# Same resolution as vault_manager.data_root(), inlined because this Skill
+# ships no vault_manager.py -- importing one that isn't there is how this
+# script would fail at run time rather than here. Kept byte-for-byte in step
+# with that function: SECOND_BRAIN_DATA_PATH first, the historical in-vault
+# folder as the fallback.
+def _data_root(vault_path: Path) -> Path:
+    configured = os.environ.get("SECOND_BRAIN_DATA_PATH", "").strip()
+    return Path(configured) if configured else vault_path / ".second-brain"
+
+
+
 _FRONTMATTER_LINE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*):\s?(.*)$")
 _LIST_ITEM_PATTERN = re.compile(r'"((?:[^"\\]|\\.)*)"')
 _WIKILINK_PATTERN = re.compile(r"\[\[([^\]]+)\]\]")
@@ -345,7 +357,7 @@ def main() -> int:
     # the vault from Second Brain's own System settings page, this script
     # (and every other Entities.md consumer in this Skill) keeps looking
     # here -- a known, disclosed limitation, not a bug.
-    entities_path = vault_path / ".second-brain" / "Settings" / args.entities_name
+    entities_path = _data_root(vault_path) / "Settings" / args.entities_name
     if not entities_path.exists():
         print(json.dumps({"error": f"{entities_path} does not exist -- run entity-domain-extraction first"}))
         return 1
