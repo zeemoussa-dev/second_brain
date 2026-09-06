@@ -1,3 +1,5 @@
+import type { CSSProperties } from 'react';
+
 // Shared Visual-tab catalog (icon + color), reused by both the Agent
 // detail panel and (once it gets its own settings surface) Section Hubs
 // — one picker, one data shape, applied everywhere, per the operator's
@@ -150,3 +152,15 @@ export function getIconColorForBackground(hex: string | null): string | undefine
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
   return luminance > 0.55 ? 'var(--color-on-accent)' : 'var(--color-text)';
 }
+
+// A style object that may also carry CSS custom properties.
+//
+// React sets `--x` keys on the DOM correctly at runtime, but
+// `CSSProperties` has no index signature for them, so assigning one is a
+// type error (TS7053). The sites below were written as
+// `style['--node-color' as string] = ...`, which does not silence it --
+// the cast widens the KEY to `string`, and `string` is precisely what
+// cannot index `CSSProperties`. Widening the type of the style object
+// itself is what actually works, and it stays type-safe: the value is
+// still checked, and a typo'd standard property is still caught.
+export type StyleWithCssVars = CSSProperties & Record<`--${string}`, string>;

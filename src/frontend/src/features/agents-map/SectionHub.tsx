@@ -1,7 +1,6 @@
-import type { CSSProperties } from 'react';
 import type { AgentSection } from './mockAgents';
 import { HUB_RADIUS, polarToCartesian } from './polarLayout';
-import { getVisualIconName } from './visualOptions';
+import { getVisualIconName, type StyleWithCssVars } from './visualOptions';
 
 interface SectionHubProps {
   section: AgentSection;
@@ -65,8 +64,8 @@ export function SectionHub({
   // already read (falling back to --color-accent when a Section has
   // none set), so setting it here is the only wiring needed; the icon
   // glyph falls back to the generic "hub" glyph the same way.
-  const style: CSSProperties = { top: `${y}%`, left: `${x}%` };
-  if (section.color) style['--hub-color' as string] = section.color;
+  const style: StyleWithCssVars = { top: `${y}%`, left: `${x}%` };
+  if (section.color) style['--hub-color'] = section.color;
   // Same picker-id -> real-ligature resolution AgentNode.tsx already
   // applies (2026-08-16, "icons still not visible on agents") -- a
   // Section's own icon can be a VisualPicker `id` (e.g. "compass") whose
