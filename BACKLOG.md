@@ -219,6 +219,9 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 
 | ID | Title | Area | Status | Fixed by |
 |---|---|---|---|---|
+| BUG-043 | `hermes.exe` is looked for one directory too deep, so every Hermes CLI operation fails on a correct install | Logic | Open | — |
+| BUG-044 | A failed Blueprint install leaves the Section it created behind | Logic | Open | — |
+| BUG-045 | An unhandled 500 reaches the browser as `TypeError: Failed to fetch`, hiding every server error from the UI | Logic | Open | — |
 
 > **Emptied 2026-09-06** with `BUGS.md`, which this mirrors — 42 rows.
 > History: `git show d64dcb4:BACKLOG.md`. Next id is **`BUG-043`**.

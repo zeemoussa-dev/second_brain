@@ -18,6 +18,12 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- docs: `BUG-043` / `BUG-044` / `BUG-045` logged from the first real Blueprint
+  install on a clean machine — the `hermes.exe` path is one directory too deep
+  (blocker), a failed install leaves its Section behind, and an unhandled 500
+  surfaces in the browser only as `TypeError: Failed to fetch`. Mirrored into
+  `BACKLOG.md` `## Bugs` in the same touch, per the ledger's own rule.
+
 - docs: `ADR-019` records the restructure; the live documentation now matches it —
   `Artifacts.md` (five kinds, Index documented, Skill locations, `writes:`),
   `Templates.md` (the two version fields; where `allowed_callers` went),
