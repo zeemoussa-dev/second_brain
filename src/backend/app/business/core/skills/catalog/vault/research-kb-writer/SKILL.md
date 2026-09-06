@@ -1,13 +1,18 @@
 ---
 name: research-kb-writer
 description: The one real, mechanical write path into the Research knowledge area (Work/Research/). Use this whenever you've researched a topic and reached a real, conclusive finding worth keeping -- never for a request that found nothing conclusive.
-version: 0.1.0
+version: 0.2.0
 author: second-brain
 license: MIT
 platforms: [windows]
 metadata:
   hermes:
     tags: [second-brain, research, librarian, knowledge-base, vault-write]
+writes:
+  - action: write_research_doc
+    template: research-kb-doc
+    requires: 1
+    sections: [Summary, Details]
 ---
 
 # Research KB Writer

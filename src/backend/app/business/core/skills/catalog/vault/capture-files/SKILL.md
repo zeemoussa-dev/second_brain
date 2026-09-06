@@ -1,13 +1,18 @@
 ---
 name: capture-files
 description: Catch-all capture for a file uploaded with no stated context (e.g. WhatsApp media with no message attached). Reads the file, writes a real summary, files both under today's date. Use this whenever a file arrives that isn't part of an existing Thread/Meeting capture pipeline and nothing else claims it.
-version: 0.1.0
+version: 0.2.0
 author: second-brain
 license: MIT
 platforms: [windows]
 metadata:
   hermes:
     tags: [second-brain, files, whatsapp, quick-capture]
+writes:
+  - action: capture_file
+    template: file
+    requires: 1
+    sections: [Summary, Details]
 ---
 
 # Capture Files

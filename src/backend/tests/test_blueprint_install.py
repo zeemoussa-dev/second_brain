@@ -34,13 +34,24 @@ def test_required_templates_are_derived_from_the_skills_not_authored() -> None:
     assert "thread" in BlueprintManager().preflight("librarian")["templates"]
 
 
-def test_preflight_reports_skills_it_could_not_check(monkeypatch) -> None:
-    """The closure is only as complete as the declarations. A Skill that
-    declares nothing is checked against no Template, and a partial check
-    that reads as a clean one is worse than no check."""
+def test_preflight_reports_which_skills_it_could_not_check() -> None:
+    """The Template closure is only as complete as the Skills' declarations,
+    so preflight names the ones it could not check. Every librarian Skill now
+    declares `writes:`, so that list is empty and the check is total -- the
+    point is that the field EXISTS, because a partial check reading as a
+    clean one is worse than no check."""
     result = BlueprintManager().preflight("librarian")
 
-    assert "capture-files" in result["unchecked_skills"]
+    assert result["unchecked_skills"] == []
+    assert result["templates"] == ["file", "note", "research-kb-doc", "thread"]
+
+
+def test_an_undeclared_skill_is_reported_as_unchecked(monkeypatch) -> None:
+    monkeypatch.setattr(SkillManager, "_declared_writes", lambda self, sid: [])
+
+    result = BlueprintManager().preflight("librarian")
+
+    assert set(result["unchecked_skills"]) == set(result["skills"])
     assert result["ok"] is True, "unchecked is not the same as failing"
 
 

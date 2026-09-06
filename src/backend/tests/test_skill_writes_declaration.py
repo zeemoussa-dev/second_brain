@@ -16,17 +16,30 @@ from app.business.core.skills.skill_manager import SkillManager
 from app.business.core.templates.template_manager import TemplateManager
 
 
-def test_the_derived_map_matches_what_the_templates_used_to_declare() -> None:
-    """The migration must be lossless: exactly the control that existed
-    before, expressed on the side that owns the Actions."""
-    assert SkillManager().build_section_access_map() == {
-        "thread": {
-            "Summary": ["apply_thread_review"],
-            "Actions": ["apply_thread_review"],
-            "Related": ["link_opportunity", "link_person_to_thread"],
-            "Files": ["apply_file_review", "capture_attachments", "capture_file_link"],
-        }
+def test_the_thread_mapping_still_matches_what_the_template_used_to_declare() -> None:
+    """Losslessness for `thread` specifically -- that is the migration this
+    guards. Asserted as a SUBSET, not equality: the map legitimately grows as
+    more Skills declare `writes:`, and pinning the whole map would fail every
+    time coverage improves, which is the opposite of what this should reward.
+    """
+    assert SkillManager().build_section_access_map()["thread"] == {
+        "Summary": ["apply_thread_review"],
+        "Actions": ["apply_thread_review"],
+        "Related": ["link_opportunity", "link_person_to_thread"],
+        "Files": ["apply_file_review", "capture_attachments", "capture_file_link"],
     }
+
+
+def test_every_writer_of_a_restricted_template_is_declared() -> None:
+    """Declaring `writes:` for a Template turns enforcement ON for it: any
+    section it names is then closed to every caller not listed. A second
+    Skill writing that same section and NOT declaring it would be refused at
+    run time. `apply_file_review` writes file.Summary/file.Details alongside
+    capture_file and was exactly this case."""
+    access = SkillManager().build_section_access_map()
+
+    assert set(access["file"]["Summary"]) == {"apply_file_review", "capture_file"}
+    assert set(access["file"]["Details"]) == {"apply_file_review", "capture_file"}
 
 
 def test_the_templates_no_longer_name_any_skill() -> None:

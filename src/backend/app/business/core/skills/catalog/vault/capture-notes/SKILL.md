@@ -1,13 +1,18 @@
 ---
 name: capture-notes
 description: Quick, no-questions-asked capture of anything relayed here -- a thought, an observation, a transcribed voice note, a reminder -- into today's General Notes file. Use this whenever the incoming message is content to log, not a request that needs a decision or a specific action.
-version: 0.1.0
+version: 0.2.0
 author: second-brain
 license: MIT
 platforms: [windows]
 metadata:
   hermes:
     tags: [second-brain, notes, whatsapp, quick-capture]
+writes:
+  - action: capture_note
+    template: note
+    requires: 1
+    sections: [Summary, Body]
 ---
 
 # Capture Notes
