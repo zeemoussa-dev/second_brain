@@ -435,6 +435,14 @@ is a thin status mirror of the index table below.
   and add a guard test that fails if any shipped master contains a literal
   `C:\Users\` path — that test is what stops this recurring, since the SOULs are
   prose and nothing else checks them.
+- **Do this together with [[BUG-052]].** Both are the same underlying question —
+  what happens to a Blueprint's authored text on its way into a live Hermes
+  profile. 051 is that the text is copied without substitution; 052 is that it is
+  copied without the framing that makes it usable. Fixing one and not the other
+  leaves the Blueprint install half-trustworthy, and both touch
+  `blueprint_manager.install` and `artifact_import`.
+- **Owner:** left for the framework session at the operator's direction
+  (2026-09-07). Not fixed here.
 
 ### BUG-052 — Primary is never told it HAS peers; the routing snippets land as orphan bullets
 
@@ -486,3 +494,8 @@ is a thin status mirror of the index table below.
   Verify by asking a fresh Primary to capture a note and confirming it relays
   rather than answering itself — the write succeeding is not evidence the routing
   works, which is what made this look installed when it was not.
+- **Do this together with [[BUG-051]]** — same underlying question (what happens
+  to a Blueprint's authored text on its way into a live profile), same two
+  modules. 051 is the text arriving unsubstituted; 052 is it arriving unframed.
+- **Owner:** left for the framework session at the operator's direction
+  (2026-09-07). Not fixed here.
