@@ -16,14 +16,22 @@ from app.config import settings
 _INDEXES_SUBPATH = ("data", "Indexes")
 
 # The real, checked-in source for the shared, standalone index-build
-# engine and the vault_manager.py read_note() it reuses -- copied
-# (never hand-duplicated) into a profile's own scripts/ dir on deploy,
-# same "prepare here, apply where it's needed" convention vault_manager.py
-# itself already established. Resolved relative to this repo's own
-# checkout layout (src/backend/app/data_access/indexes.py -> repo root),
-# not settings -- this is bundled source, not user data.
-_REPO_ROOT = Path(__file__).resolve().parents[4]
-_INDEX_BUILDER_SOURCE_DIR = _REPO_ROOT / "Hermes-Provisioning" / "skills" / "vault-rebuild" / "vault-index" / "scripts"
+# engine, the vault_manager.py read_note() it reuses, and the per-Index
+# runner template -- copied (never hand-duplicated) into a profile's own
+# scripts/ dir on deploy, same "prepare here, apply where it's needed"
+# convention vault_manager.py itself already established. Resolved
+# relative to this file's own package layout, not settings -- this is
+# bundled source, not user data.
+#
+# BACKEND-OWNED (operator, 2026-09-06). This used to resolve into
+# Hermes-Provisioning/skills/vault-rebuild/vault-index/scripts/ -- an
+# Index reaching into a Skill's own private scripts folder for its
+# engine. That folder is normally held OUTSIDE the checkout, so
+# deploy_index_builder() raised FileNotFoundError on every install
+# without it. An Index is an artifact in its own right; it ships its
+# own code.
+_INDEX_PAYLOAD_DIR = Path(__file__).resolve().parents[1] / "business" / "core" / "index" / "scripts"
+_RUNNER_TEMPLATE_NAME = "index_runner.py.template"
 
 
 def _indexes_root() -> Path:
@@ -98,12 +106,23 @@ def deploy_index_builder(profile_id: str | None) -> None:
     and the vault_manager.py it sibling-imports into this profile's own
     scripts/ dir -- always overwrites with the current checked-in source,
     so every real Index's own stub script stays on the same, current
-    engine rather than an install-time snapshot."""
+    engine rather than an install-time snapshot. Raises FileNotFoundError
+    if the payload is missing, rather than deploying a half-set."""
     target_dir = scripts_dir(profile_id)
     target_dir.mkdir(parents=True, exist_ok=True)
     for filename in ("index_builder_lib.py", "vault_manager.py"):
-        source = _INDEX_BUILDER_SOURCE_DIR / filename
+        source = _INDEX_PAYLOAD_DIR / filename
         shutil.copyfile(source, target_dir / filename)
+
+
+def read_index_runner_template() -> str:
+    """The raw per-Index runner text, placeholders unsubstituted --
+    IndexManager bakes its own literals in (deciding WHAT the deployed
+    script says is business logic; reading and writing the file is not).
+    Deliberately a `.template`, not a `.py`: it is payload for a Hermes
+    cron worker, and a real .py here would be import-collected by the
+    backend's own test run."""
+    return (_INDEX_PAYLOAD_DIR / _RUNNER_TEMPLATE_NAME).read_text(encoding="utf-8")
 
 
 def _index_script_path(index_id: str, profile_id: str | None) -> Path:
