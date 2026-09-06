@@ -51,8 +51,11 @@ class VaultClient:
         folder_date: str | None = None,
     ) -> dict:
         self._check_alive()
+        # Keyword-only on purpose: the engine takes (…, title, note_name=…)
+        # while the retired fork took (…, note_name, title, …). Passing these
+        # positionally silently swaps a note's name and its title.
         return vault_manager.create(
-            self._vault_path, self._template, note_name, title,
+            self._vault_path, self._template, title=title, note_name=note_name,
             note_id=note_id, frontmatter=frontmatter, sections=sections, folder_date=folder_date,
         )
 
@@ -67,9 +70,11 @@ class VaultClient:
     def write_section(self, note_id: str, section: str, content: str, *, mode: str = "replace",
                        note_name: str | None = None, title: str | None = None, frontmatter: dict | None = None) -> dict:
         self._check_alive()
+        # Keyword-only for the same reason: the engine takes
+        # (…, section, content, mode, note_id=…); the fork put note_id first.
         return vault_manager.modify_section(
-            self._vault_path, self._template, note_id, section, content, mode,
-            note_name=note_name, title=title, frontmatter=frontmatter,
+            self._vault_path, self._template, section=section, content=content, mode=mode,
+            note_id=note_id, note_name=note_name, title=title, frontmatter=frontmatter,
         )
 
     def update_property(self, note_path: Path, key: str, value) -> dict:

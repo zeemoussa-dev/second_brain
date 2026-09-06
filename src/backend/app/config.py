@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from pydantic import model_validator
@@ -108,3 +109,14 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# The canonical vault engine is standalone by design -- stdlib only, no
+# backend import -- so it resolves the App Database Folder from the
+# ENVIRONMENT (vault_manager.data_root), exactly as it does inside a Hermes
+# worker. pydantic loads .env into Settings without exporting to os.environ,
+# so in-process it would fall back to <vault>/.second-brain and silently look
+# for Templates in a directory that has not existed since the 2026-09-03
+# config/vault split. Export it here so the engine behaves identically in
+# this process and in Hermes.
+if settings.second_brain_data_path:
+    os.environ.setdefault("SECOND_BRAIN_DATA_PATH", str(settings.second_brain_data_path))

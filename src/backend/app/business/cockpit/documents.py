@@ -84,7 +84,10 @@ def save_document(subject_note_stem: str, filename: str, content: bytes, caption
     caption = (caption or "").strip()
     summary = caption or "Uploaded during the meeting — no caption given."
 
-    template = vm.load_template(settings.second_brain_data_path, _FILE_TEMPLATE_ID)
+    # The engine derives the App Database Folder itself (data_root); it wants
+    # the VAULT path. Passing the data path here was a workaround for the
+    # retired fork resolving Templates relative to the vault.
+    template = vm.load_template(settings.vault_path, _FILE_TEMPLATE_ID)
     result = vm.create(
         settings.vault_path, template, note_name=f"{subject_note_name}/Files", title=title,
         sections={"Summary": summary},
