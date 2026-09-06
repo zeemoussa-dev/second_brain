@@ -18,6 +18,36 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix(index): the per-Index runner is now backend-owned payload
+  (`src/backend/app/business/core/index/scripts/` — build engine,
+  `vault_manager.py`, and `index_runner.py.template`). It previously resolved
+  into `Hermes-Provisioning/skills/vault-rebuild/vault-index/scripts/`, a
+  *Skill's* private folder normally held outside the checkout, so
+  `deploy_index_builder()` raised `FileNotFoundError` and Index creation was
+  broken on any install without it. The runner is a real `.template` that
+  parses as Python on its own; `_render_stub` substitutes through `repr()`,
+  `ast.parse()`s the result, and refuses a template declaring a placeholder
+  nothing substitutes.
+- fix(index): three live cron jobs (`index-adnoc`/`masdar`/`taqa`) had each
+  failed 12 runs in a row on a raw `Path('C:\Users\...')` literal (`\U` reads
+  as a truncated unicode escape). Fixed at the root, redeployed, and verified
+  running: adnoc 147 notes, masdar 180, taqa 32.
+- fix(index): the build engine walks via `vault_manager.iter_md_files()`
+  instead of `Path.rglob()`. One archived note past Windows' 260-char
+  `MAX_PATH` was raising `FileNotFoundError` mid-iteration and abandoning
+  every remaining note in that top-level folder. Prefixed paths are rebuilt
+  with `relpath` against the walk root; the `is_file()` guard is gone, since
+  past `MAX_PATH` it silently returns `False`.
+- feat(artifacts): Index is the fifth artifact kind — handled across
+  `artifacts_inventory`, `artifact_dependency_resolver`, `artifact_export` and
+  `artifact_import`, so an Index can finally travel in a `.sbf` bundle. The
+  payload folder is stated explicitly (`indexes/`, not naive `indexs/`);
+  `storage_path` rides the existing placeholder machinery; and `import_index`
+  drops foreign `cron_job_id`/`cron_profile_id` so an imported Index arrives
+  unscheduled rather than silently running a job nobody asked for.
+- test: 17 new backend tests covering runner rendering, the long-path walk,
+  and the new artifact kind (58 passing, up from 41).
+
 - chore(memory): curated `MEMORY.md` -- 469 KB/250 entries down to 329 KB/191
   (operator, 2026-09-04: "Visit every memory (you are allowed to remove stuff)
   Avoid confusing you"). Removed 62 entries that were record-of-getting-there
