@@ -1,0 +1,47 @@
+{
+  "id": "meeting-series",
+  "identity": {
+    "strategy": "id"
+  },
+  "on_missing": "create",
+  "allow_create_folder": true,
+  "root": {
+    "type": "md",
+    "own_folder": true,
+    "plain_filename": true,
+    "on_existing_title": "always_new",
+    "frontmatter_defaults": {
+      "type": "Meeting",
+      "recurrence": true,
+      "tags": [
+        "kind/meeting"
+      ]
+    },
+    "sections": [
+      {
+        "name": "Summary",
+        "access": "machine_write"
+      },
+      {
+        "name": "Quick Notes",
+        "access": "machine_write"
+      },
+      {
+        "name": "Related",
+        "access": "machine_write"
+      },
+      {
+        "name": "History",
+        "access": "machine_write"
+      },
+      {
+        "name": "Personal Notes",
+        "access": "user_edit"
+      },
+      {
+        "name": "Actions",
+        "access": "user_edit"
+      }
+    ]
+  }
+}

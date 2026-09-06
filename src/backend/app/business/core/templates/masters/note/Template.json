@@ -1,0 +1,30 @@
+{
+  "id": "note",
+  "identity": {
+    "strategy": "id"
+  },
+  "on_missing": "create",
+  "allow_create_folder": true,
+  "root": {
+    "type": "md",
+    "own_folder": false,
+    "plain_filename": true,
+    "on_existing_title": "always_new",
+    "frontmatter_defaults": {
+      "type": "Note",
+      "tags": [
+        "kind/notes"
+      ]
+    },
+    "sections": [
+      {
+        "name": "Summary",
+        "access": "machine_write"
+      },
+      {
+        "name": "Body",
+        "access": "machine_write"
+      }
+    ]
+  }
+}

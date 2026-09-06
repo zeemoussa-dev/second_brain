@@ -1,0 +1,30 @@
+{
+  "id": "research-kb-doc",
+  "identity": {
+    "strategy": "id"
+  },
+  "on_missing": "create",
+  "allow_create_folder": true,
+  "root": {
+    "type": "md",
+    "own_folder": false,
+    "plain_filename": false,
+    "on_existing_title": "always_new",
+    "frontmatter_defaults": {
+      "type": "ResearchDoc",
+      "tags": [
+        "research"
+      ]
+    },
+    "sections": [
+      {
+        "name": "Summary",
+        "access": "machine_write"
+      },
+      {
+        "name": "Details",
+        "access": "machine_write"
+      }
+    ]
+  }
+}
