@@ -1,10 +1,11 @@
 # Artifacts — what the framework is made of, and what moves between installs
 
-Four things are **artifacts**: **Template**, **Agent**, **Skill**, **Pipeline**.
+Five things are **artifacts**: **Template**, **Agent**, **Skill**, **Pipeline**
+and **Index**.
 They are what you author to extend the system, and what travels between installs
 in a `.sbf` bundle.
 
-Verified against the code, 2026-09-04. Templates have their own guide —
+Verified against the code, 2026-09-06. Templates have their own guide —
 [Templates.md](Templates.md).
 
 ---
@@ -17,7 +18,9 @@ notes.
 
 ```
 data/
-  Templates/<id>/Template.json
+  Templates/<id>/Template.json                                # Entity ("Master") Template
+  Indexes/<id>/Index.json
+  section_access.json                                        # DERIVED from deployed Skills
   Sections/<section>/Section.json
   Sections/<section>/Agents/<agent>/Agent.json   + soul.md
   Background/Agents/<agent>/Agent.json           + soul.md   # agents outside any Section
@@ -82,17 +85,22 @@ content, the Registry holds the metadata.
 | `mutates` | Whether it writes anything |
 | `origin` | `second-brain` (authored here) \| `jarvis` (synced in) |
 | `deployed_to` | The real Hermes profile ids it is currently pushed to |
+| `writes` | *(SKILL.md frontmatter)* which of its Actions write which Template sections, and the Template `version` each was written against |
 
 **A Skill is inert until copied to a real Hermes profile.** Editing it in the
 repo does nothing to a live install by itself.
 
-> **Not present in the working tree by default.** `Hermes-Provisioning/` is held
-> outside the checkout on purpose (operator, 2026-09-04) so it is not read as a
-> standing part of the project — it still exists and is brought back when needed.
-> While it is absent, `data_access/skills.py` finds no Skill content and
-> `GET /skills` returns `[]` **silently**, so an empty Skills list means "the
-> source is not here right now", never "no Skills exist". See
-> [Hermes-Provisioning.md](Hermes-Provisioning.md) for exactly what needs it.
+> **Where Skill content lives (changed 2026-09-06, `ADR-019`).** It is now in
+> the repo at `src/backend/app/business/core/skills/catalog/<tool>/<slug>/`,
+> grouped by the **Tool** it acts through. It used to live in
+> `Hermes-Provisioning/`, a folder held outside the checkout — which meant
+> `data_access/skills.py` found no content and `GET /skills` returned `[]`
+> **silently** whenever it was absent. That folder no longer exists.
+>
+> A Skill does **not** carry the shared engine it sibling-imports. One
+> canonical `vault_manager.py` lives in `../managers/` and is materialised
+> into `<hermes_home>/managers/` on `PYTHONPATH`. The repo previously held 16
+> copies in 5 versions and the live install 228 across 41 profiles.
 
 ---
 
@@ -117,13 +125,40 @@ composed at read time with live cron state from Hermes.
 
 ---
 
+## Index
+
+A scoped, scheduled vault index: which `Work/` folders, which tags, how deep,
+where the built output lands, and a real Hermes cron job that rebuilds it.
+
+| Field | Meaning |
+|---|---|
+| `id`, `name` | Identity |
+| `folders`, `tags`, `depth` | What is in scope; empty means no filter |
+| `storage_path` | Absolute path the built output is written to |
+| `schedule` | Same syntax `hermes cron create` accepts |
+| `cron_*` | Read live from Hermes, never persisted |
+
+Its build engine is **backend-owned payload** at
+`business/core/index/scripts/` — code the app ships to a Hermes cron worker
+and never imports itself. It used to be sourced from the `vault-index`
+*Skill's* private `scripts/` folder, so an Index depended on a Skill for its
+own implementation, and Index creation raised outright on any checkout
+without it (`ADR-019`).
+
+> Importing an Index deliberately keeps **no** `cron_job_id`/`cron_profile_id`:
+> those are opaque ids minted by the exporting machine's Hermes and mean
+> nothing here. An imported Index arrives real and rebuildable but
+> **unscheduled**, rather than silently running a job nobody asked for.
+
+---
+
 ## Moving artifacts between installs
 
 ### The three archive formats — do not confuse them
 
 | Format | Carries | Built by |
 |---|---|---|
-| **`.sbf`** | Artifacts — Template, Agent, Skill, Pipeline | `artifact_export.py` / `artifact_import.py` / `sbf_archive.py` |
+| **`.sbf`** | Artifacts — Template, Agent, Skill, Pipeline, Index | `artifact_export.py` / `artifact_import.py` / `sbf_archive.py` |
 | **`.sbb`** | Hermes structural backup — profiles, cron, skills | `tools/hermes_backup.py` / `hermes_restore.py` |
 | **`.sbd`** | Real vault **data** (the notes themselves) | `sbd_archive.py` |
 
@@ -165,3 +200,4 @@ composed at read time with live cron state from Hermes.
 | Give an agent a new capability it runs | **Skill** |
 | Add a new specialist that reasons | **Agent** (a Hermes profile, annotated here) |
 | Run something on a schedule, in steps | **Pipeline** + a Hermes cron job |
+| Keep a scoped, rebuilt view of the vault | **Index** |

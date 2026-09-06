@@ -13,15 +13,15 @@ in the other — it is a schema-version mismatch, not a content mismatch.
 
 | | **v2** — two-layer | **v1** — flat |
 |---|---|---|
-| Read by | `Hermes-Provisioning/shared/vault_manager.py` — **every Skill** | `src/backend/app/vault/vault_manager.py` — **the backend** |
+| Read by | `app/business/core/skills/managers/vault_manager.py` — **every Skill** | `src/backend/app/vault/vault_manager.py` — **the backend** |
 | Shape | `identity` / `on_missing` / `allow_create_folder` at top, everything else nested under **`root`** | every key at the top level |
 | Child notes | **yes** — `root.children` with `growth: "dynamic"` | no |
 | `note_name` | a **`create()` parameter** | a **template key** |
-| Per-caller access | yes (`allowed_callers`) | no |
+| Per-caller access | yes, but **not from the template** — see below | no |
 
 **Write v2 unless you are specifically targeting the backend.** Capture pipelines
 run as Skills, so they use v2. The backend's engine is older and has not been
-brought forward yet — see [Hermes-Provisioning.md](Hermes-Provisioning.md).
+brought forward yet.
 
 The v2 engine's own docstring puts it plainly: *"a template is TWO layers, not one
 flat object"*, where `root` is "today's entire old flat schema, unchanged in
@@ -38,6 +38,24 @@ Verified against both engines, 2026-09-05.
 
 The folder name **is** the template id. Nothing registers a Template — dropping
 the file in is enough, and it takes effect on the next read (no caching).
+
+---
+
+## Two version fields, and they are not the same thing
+
+| Field | Answers | Bumped when |
+|---|---|---|
+| `schema_version` | how to **parse** this file (v1 flat / v2 two-layer) | the shape changes |
+| `version` | what the **content** promises — which sections exist | a section is removed or renamed |
+
+A Skill's `writes: requires:` is matched against **`version`**, never
+`schema_version`, and the match is **exact**: a content bump means a section it
+writes may be gone, so an older Skill is wrong rather than merely behind.
+
+Every shipped template declares both. Before they existed, `TemplateManager`
+read v1 field names out of v2 files and every `.get()` returned its default, so
+all 11 parsed to **zero sections with no error at all** — a file that cannot say
+what it is gets read by the wrong parser, silently.
 
 ---
 
@@ -58,7 +76,7 @@ the file in is enough, and it takes effect on the next read (no caching).
 | Key | Default | Effect |
 |---|---|---|
 | `type` | `"md"` | Node type. **Not** a domain label — leave it `"md"` |
-| `sections` | `[]` | `[{ "name", "access", "allowed_callers"? }]` |
+| `sections` | `[]` | `[{ "name", "access", "required_non_empty"? }]` |
 | `frontmatter_defaults` | `{}` | Merged into every note's frontmatter |
 | `on_existing_title` | `"update_section"` | Same title updates in place; anything else always makes a new file |
 | `own_folder` | `false` | Give each note its own folder so attachments sit beside it |
@@ -146,8 +164,22 @@ Renaming is `update(id, title=...)` — nothing moves and no backlink breaks.
 | `public` | Open |
 
 `human_only` is structural. An agent cannot write one no matter what its prompt
-says. In v2 a section may also declare `allowed_callers` to narrow it to specific
-callers.
+says.
+
+**A template no longer names Skills.** Until 2026-09-06 a v2 section could carry
+`allowed_callers`, listing the Skill Actions permitted to write it. That was a
+reverse edge — vault *structure* depending on the capability layer — so it moved
+to the side that owns the Actions (`ADR-019`): a Skill declares `writes:` in its
+own `SKILL.md` frontmatter, and the backend derives
+`<data>/data/section_access.json` from what is actually **deployed**. The shared
+`vault_manager` reads that map at write time, so `ADR-017`'s per-caller
+enforcement is unchanged in effect; the migration was verified lossless before
+the field was removed.
+
+What that leaves in the template is `access`, which names nobody and is the
+guarantee that actually matters: across all 11 shipped templates
+`allowed_callers` only ever appeared on `machine_write` sections, never on
+`human_only`.
 
 > **Trap: an undeclared section defaults to `machine_write` (open).** Protection
 > is opt-in. Omitting a section does not protect it.

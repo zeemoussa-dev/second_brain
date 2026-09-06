@@ -572,7 +572,7 @@ two consumers. Hermes needs its own model pointed at it.
 **Do this by editing `config.yaml` directly, not through `hermes setup
 model`.** Registering a *custom* (Compass-shaped) provider is not exposed
 as a documented non-interactive CLI flag — this repo's own
-`Hermes-Provisioning/config/custom_providers.yaml` is the verified,
+`Documentation/Framework/hermes/custom_providers.yaml` is the verified,
 already-proven mechanism, and is the intended reuse point. A fresh
 install ships pointing at OpenRouter
 (`model.default: anthropic/claude-opus-4.6`), so this is a real change,
@@ -596,7 +596,7 @@ custom_providers:
 ```
 
 Two traps, both already paid for once (see
-`Hermes-Provisioning/config/custom_providers.yaml`'s own header):
+`Documentation/Framework/hermes/custom_providers.yaml`'s own header):
 
 - `base_url` **must not** end in `/chat/completions`. Hermes appends that
   itself, and the doubled path returns a real 404. Do **not** copy Second
@@ -805,7 +805,7 @@ specialist actually needs:
   `default` itself) folder rather than deleting them — this vault's own
   convention, so they're easy to re-enable later. `hermes skills
   opt-out --remove --yes` only strips *bundled* skills; a Skill copied in
-  from this repo's own `Hermes-Provisioning/skills/` needs direct
+  from this repo's own Skill catalog needs direct
   filesystem removal from the cloned profile's own `skills/` tree.
 - **Strip write/tool capability for a bounded relay target.** A profile
   meant only to be reached via one-shot `hermes -p <profile> chat -q
@@ -820,15 +820,24 @@ specialist actually needs:
 
 ### Deploying this repo's own Skills to a profile
 
-Anything under `Hermes-Provisioning/skills/` in this repo is **inert
-until manually copied** to the real profile(s) that need it — editing a
-file in this repo does nothing to a live Hermes install by itself:
+Anything under `src/backend/app/business/core/skills/catalog/` is **inert
+until deployed** to the real profile(s) that need it — editing a file in
+this repo does nothing to a live Hermes install by itself.
+
+Prefer `SkillManager.deploy()` / `.redeploy()` over a manual copy: they run
+the deploy-time precondition check, refresh the shared `managers/` engine,
+republish the derived `section_access.json`, and handle a Skill whose Tool
+grouping has changed (create in the new folder, remove the old) — a raw copy
+does none of that and can leave the same Skill deployed under two categories.
+
+A manual copy remains possible for a one-off, but note the shared engine is
+**not** part of a Skill's folder any more (`ADR-019`):
 
 ```powershell
 # Canonical source (this repo) -> real deployed location
 Copy-Item -Recurse `
-  "Hermes-Provisioning\skills\<group>\<skill>" `
-  "$env:LOCALAPPDATA\hermes\profiles\<profile>\skills\<group>\<skill>" `
+  "srcackendppusiness\core\skills\catalog\<tool>\<skill>" `
+  "$env:LOCALAPPDATA\hermes\profiles\<profile>\skills\<tool>\<skill>" `
   -Force
 ```
 
@@ -1043,7 +1052,7 @@ has no defaults, by design):
 >
 > Copying either into the other produces a real 404 — from a doubled path
 > one way, a missing one the other. This has been paid for once already;
-> see `Hermes-Provisioning/config/custom_providers.yaml`'s own header.
+> see `Documentation/Framework/hermes/custom_providers.yaml`'s own header.
 
 > **`.env` does not support inline comments — the comment becomes the
 > value.** Hit for real on 2026-09-03. Writing
@@ -1097,7 +1106,7 @@ Do these in order — each one assumes the previous is real and working:
 6. If this is meant to process an existing inbox's history (not just new
    mail going forward), run `retrofit_capture.py --vault-path <path>
    --limit <N>` once against the real vault
-   (`Hermes-Provisioning/skills/vault-rebuild/email-thread-capture/scripts/`)
+   (`app/business/core/skills/catalog/outlook/email-thread-capture/scripts/`)
    to backfill recent messages through the full pipeline — this is the
    one-off onboarding tool for exactly this situation, not something the
    standing cron jobs do retroactively.

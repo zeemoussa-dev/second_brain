@@ -129,8 +129,8 @@ status.
   Start at `README.md` (concepts and task recipes), then `Templates.md` before
   adding a new note type (a new note type is a new `Template.json`, never new
   code), `Artifacts.md` for Agent/Skill/Pipeline shapes and the
-  `.sbf`/`.sbb`/`.sbd` formats, and `Hermes-Provisioning.md` for what depends on
-  the folder held outside the working tree.
+  `.sbf`/`.sbb`/`.sbd` formats. (`Hermes-Provisioning.md` is a retirement
+  notice only — that folder was removed on 2026-09-06, `ADR-019`.)
 - **`Documentation/PRD.md`** — full product requirements document. Read
   before implementing any feature.
 - **`html-prototype/`** — clickable HTML/CSS/JS prototype. No build step; open
@@ -278,8 +278,30 @@ sprint is always single-phase.
 
 All application code lives under `src/`. Do not create new top-level directories.
 
-**Backend (`src/backend`):** [Describe the module layout — packages/folders and
-their purpose — once `/architect` establishes it at `/plan-tasks`.]
+**Backend (`src/backend/app`)** — layered `api -> business -> data_access`
+(`ADR-003`). `business/` understands Entities; `data_access/` understands files.
 
-**Frontend (`src/frontend`):** [Describe the module layout — directories and
-their purpose — once `/architect` establishes it at `/plan-tasks`.]
+| Path | Holds |
+|---|---|
+| `api/` | FastAPI routers, one per surface |
+| `business/core/<entity>/` | one Manager per artifact — the sole gateway onto its data |
+| `business/logic/` | cross-entity composition (artifact export/import, inventory) |
+| `business/hermes/` | client onto the live Hermes install |
+| `data_access/` | raw I/O only — no defaults applied, no shape validated |
+| `vault/`, `obsidian/` | the backend's own vault reading |
+
+Two directories are **payload**, not application code — the backend ships them
+to a Hermes worker and never imports them (`ADR-019`). The test is simply: does
+the app ever `import` it?
+
+| Path | Holds |
+|---|---|
+| `business/core/skills/catalog/<tool>/<slug>/` | the shipped Skills, grouped by Tool |
+| `business/core/skills/managers/` | **one** copy of each shared engine (`vault_manager.py`) |
+| `business/core/index/scripts/` | the index build engine + its runner template |
+| `business/core/templates/masters/` | the shipped Entity ("Master") Templates |
+
+**Frontend (`src/frontend/src`):** `features/<area>/` (agents-map, cockpit,
+vault, my-day, settings, hermes-ops), each holding its own components and API
+client. Note it has **no tests and does not declare `vitest`** — the `npx vitest`
+command below downloads it from the network and finds nothing.

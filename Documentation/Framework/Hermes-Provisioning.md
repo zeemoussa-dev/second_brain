@@ -1,68 +1,45 @@
-# `Hermes-Provisioning/` — what needs it, and when to bring it back
+# `Hermes-Provisioning/` — retired 2026-09-06
 
-`Hermes-Provisioning/` is the canonical source for the Hermes side of the system:
-the Skills, the shared engine, and the provisioning config. It **exists** — it is
-just deliberately **held outside the working tree** (operator, 2026-09-04) so it
-is not read as a standing part of the project on every task.
+**This folder no longer exists.** Nothing depends on it, and nothing should be
+brought back. This page is kept only so the name resolves to an answer instead
+of a dead reference.
 
-**This page is the contract for that arrangement:** it lists exactly what depends
-on the folder, so it can be brought back for a specific job and taken away again
-afterwards, instead of living in the checkout permanently.
+It used to be the canonical source for the Hermes side of the system — the
+Skills, the shared engine, the provisioning config — deliberately held *outside*
+the working tree so it was not read as a standing part of the project.
 
-Verified against the code, 2026-09-04.
+That arrangement was the problem. `data_access/skills.py` resolved Skill content
+through it, so while it was absent `SkillManager.get_all()` returned **0** and
+`GET /skills` returned `[]` **silently** — an empty Skills list read as "no
+Skills exist" rather than "the source is not here". Skills are backend-owned
+framework content; they now live with the rest of it.
 
----
+## Where its contents went
 
-## Real code dependencies — exactly three
-
-These resolve a filesystem path at runtime. Everything else that mentions
-`Hermes-Provisioning` is a comment or docstring with no runtime effect.
-
-| # | Where | What it resolves | What happens while the folder is absent |
-|---|---|---|---|
-| 1 | `src/backend/app/data_access/skills.py:17` | `Hermes-Provisioning/skills` — **all Skill content** | `GET /skills` returns `[]` **silently**. No error, no warning. |
-| 2 | `src/backend/app/data_access/indexes.py:26` | `.../vault-rebuild/vault-index/scripts` — the index-builder source copied into a profile on deploy | Reading Indexes is unaffected (that reads `<data>/data/Indexes/`). Only **deploying** the builder into a Hermes profile breaks. |
-| 3 | `tools/hermes_backup.py:274` | `Hermes-Provisioning/skills` — the canonical Skill-id list | ⚠️ **Returns an empty set, so a `.sbb` backup bundles ZERO Skills — silently.** |
-
-### The one that can actually hurt you
-
-**#3.** `hermes_backup.py` only bundles a profile's Skill folder if its id appears
-in the canonical list derived from `Hermes-Provisioning/skills/`. With the folder
-absent that list is empty, so the backup completes normally, reports success, and
-contains **no Skills at all**.
-
-> **Bring the folder back before taking any `.sbb` backup you intend to restore
-> from.** A backup taken without it looks fine and is not.
-
----
-
-## Non-code dependencies — the work that needs it
-
-| Task | Why |
+| Was | Now |
 |---|---|
-| **Deploying a Skill to a Hermes profile** | The Skill content is the thing being copied. A Skill is inert until copied into a real profile — editing anywhere else does nothing to a live install. |
-| **Child-note vault shapes** | `create_dynamic_child()` and per-caller section access live only in the canonical `Hermes-Provisioning/shared/vault_manager.py`. The backend's copy is an older engine without them — see [Templates.md](Templates.md). |
-| **Re-provisioning Hermes from scratch** | `config/custom_providers.yaml` carries the verified Compass provider entry, including the `base_url` form that avoids the double-append 404. Not needed once a machine's `config.yaml` is already set up. |
-| **Re-syncing the shared engine** | When `vault_manager.py` changes canonically, every deployed copy needs re-copying. That is a fan-out across profiles, and the canonical file is the source. |
-| **Taking a `.sbb` backup** | See #3 above. |
+| `skills/<category>/<slug>/` | `src/backend/app/business/core/skills/catalog/<tool>/<slug>/` — grouped by **Tool** |
+| `shared/vault_manager.py` | `.../skills/managers/vault_manager.py` — **one** canonical copy |
+| `shared/build_vault_index.py` | `.../skills/managers/build_vault_index.py` |
+| `config/custom_providers.yaml` | [`hermes/custom_providers.yaml`](hermes/custom_providers.yaml) |
+| `cron/meeting-prep-agent.md` | [`hermes/meeting-prep-agent.md`](hermes/meeting-prep-agent.md) |
+| `mcp-servers/outlook.yaml` | **dropped** — dead since the MCP Tool layer was removed (`49f064f`) |
 
----
+The one piece worth reading before touching Hermes' own `config.yaml` is the
+Compass provider entry: its `base_url` must **not** be the full completions URL,
+because Hermes appends `/chat/completions` itself, and there are two `base_url`
+fields for the same logical provider of which only `custom_providers[]` is
+actually read. That trap is documented in
+[`hermes/custom_providers.yaml`](hermes/custom_providers.yaml).
 
-## When you do *not* need it
+## What replaced the "prepare here, apply there" discipline
 
-Most work. Specifically:
+It survives, but for **one file instead of a folder**. The shared engine is
+deployed to `<hermes_home>/managers/` and put on `PYTHONPATH` via Hermes' own
+`.env`; `SkillManager.deploy()` refreshes it on every deploy. A Skill does not
+carry its own copy, because a local copy silently wins over `PYTHONPATH`
+(`sys.path[0]` is the script's own directory) — which is exactly how 228 stale
+copies came to run across 41 profiles.
 
-- Anything in `src/backend` or `src/frontend` — the app runs fine without it.
-- Authoring or testing a **Template** — Templates live in
-  `<SECOND_BRAIN_DATA_PATH>/data/Templates/`, not here.
-- Reading or writing notes through the vault engine.
-- Sections, Agents, Pipelines, Providers, Indexes — all read from the app
-  database folder.
-
----
-
-## The tell
-
-If Skills unexpectedly come back **empty** — in the UI, from `GET /skills`, or
-inside a backup — that is almost always this, not a bug and not an empty system.
-Check whether the folder is present before investigating anything else.
+See [`ADR-019`](../../Implementation/Architecture/ADR.md) for the full decision
+and [`Artifacts.md`](Artifacts.md) for the artifact shapes.
