@@ -63,6 +63,7 @@ import re
 from app.business import agent_visual_registry
 from app.business.core.agents.agent import Agent
 from app.business.core.sections.section_manager import SectionManager
+from app.business.core.skills.skill_manager import SkillManager, SkillPreconditionError
 from app.business.hermes.client import HermesAgent, get_client
 from app.data_access.registry import loader as registry_loader
 from app.data_access.registry import writer as registry_writer
@@ -193,6 +194,7 @@ class AgentManager:
             guardrails=guardrails,
             scope=scope,
             skill_ids=[skill.id for skill in hermes_agent.skills],
+            declared_skill_ids=list(getattr(getattr(registry_agent, "config", None), "skill_ids", None) or []),
             depends_on=registry_agent.config.depends_on if registry_agent is not None else [],
             preferred_index_ids=registry_agent.config.preferred_index_ids if registry_agent is not None else [],
             tools=tools,
@@ -443,6 +445,43 @@ class AgentManager:
             agent_dir, config={**config, "icon": icon, "color": color}, soul_text=soul_text,
         )
 
+    def ensure_skills(self, agent_id: str, skill_ids: list[str]) -> dict[str, str]:
+        """Deploys each declared Skill to this Agent's own Hermes profile.
+        skill_id -> "deployed" | "already" | the refusal reason.
+
+        Semantics are deliberately ADDITIVE: "make sure this Agent has
+        these", not "make these its only Skills". A profile is created by
+        cloning another, so it inherits the clone source's Skills too;
+        trimming those is a separate, explicit act (the real
+        `_disabled-skills-unused-by-<agent>/` convention), not something a
+        declaration should do silently.
+
+        This is the half of the model that did not exist before
+        2026-09-06. `Agent.json`'s `skill_ids` was written `[]` on create
+        and only ever repopulated by MIRRORING what Hermes already had --
+        so it recorded reality after the fact and could never express
+        intent. Declaring an Agent's Skills did nothing.
+
+        Refusals are returned, not raised: one Skill failing its Template
+        precondition must not abandon the others half-deployed.
+        """
+        results: dict[str, str] = {}
+        skill_manager = SkillManager()
+        for skill_id in skill_ids:
+            skill = skill_manager.get_by_id(skill_id)
+            if skill is None:
+                results[skill_id] = "no such Skill in the catalog"
+                continue
+            if agent_id in skill.deployed_to:
+                results[skill_id] = "already"
+                continue
+            try:
+                skill_manager.deploy(skill_id, agent_id)
+                results[skill_id] = "deployed"
+            except SkillPreconditionError as exc:
+                results[skill_id] = str(exc)
+        return results
+
     def create(
         self,
         agent_id: str,
@@ -459,6 +498,7 @@ class AgentManager:
         preferred_index_ids: list[str] | None = None,
         tools: list[str] | None = None,
         primary_routing_snippet: str | None = None,
+        skill_ids: list[str] | None = None,
         clone_from: str = "default",
     ) -> Agent:
         """Real Hermes-side profile creation (`hermes profile create
@@ -489,7 +529,8 @@ class AgentManager:
             config={
                 "id": agent_id, "name": name, "type": type,
                 "is_background_agent": is_background_agent,
-                "depends_on": depends_on or [], "provider_id": None, "skill_ids": [],
+                "depends_on": depends_on or [], "provider_id": None,
+                "skill_ids": list(skill_ids or []),
                 "preferred_index_ids": preferred_index_ids or [],
                 "primary_routing_snippet": primary_routing_snippet,
             },
@@ -498,6 +539,8 @@ class AgentManager:
         if tools is not None:
             inherited = {name_ for name_, enabled in get_client().cli.list_tools(agent_id).items() if enabled}
             self._apply_tools(agent_id, tools, inherited)
+        if skill_ids:
+            self.ensure_skills(agent_id, skill_ids)
         self._reload_registry()
         return self.get_by_id(agent_id)
 

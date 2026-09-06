@@ -29,7 +29,15 @@ class Agent:
     guardrails: str | None
     scope: dict  # {"folders": [...], "tags": [...]}
 
+    # What Hermes ACTUALLY has in this profile, mirrored live -- includes
+    # every Skill the profile inherited from its clone source, in Hermes'
+    # own "<category>/<slug>" form.
     skill_ids: list[str] = field(default_factory=list)
+    # What the Registry DECLARES this agent should have, bare slugs. The
+    # two are different questions and were previously conflated: the
+    # declaration was written to Agent.json and then overwritten on every
+    # read by the mirror, so it could never be compared against reality.
+    declared_skill_ids: list[str] = field(default_factory=list)
     depends_on: list[str] = field(default_factory=list)
     # Real Index ids (business/core/index/) this agent should consult
     # FIRST when looking for data in the vault -- pure association today
