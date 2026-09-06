@@ -18,6 +18,16 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat(skills): **Skills now declare what they write.** `allowed_callers` is gone
+  from Entity Templates — it was a reverse edge, making vault *structure* depend
+  on the capability layer. A Skill declares `writes:` in its `SKILL.md`
+  frontmatter; the backend derives `<data>/data/section_access.json` from the
+  **deployed** set and republishes it on every deploy/undeploy; the shared
+  `vault_manager` reads it at write time, so ADR-017's per-caller enforcement is
+  preserved. Verified lossless before removal. `SkillManager.deploy()` now
+  refuses a Skill whose declaration doesn't resolve against a real
+  `machine_write` section, instead of shipping something that only fails at run
+  time. `access` (incl. `human_only`) stays in the Template, naming nobody.
 - fix(vault-manager): `iter_md_files` now yields **plain** paths instead of
   Windows extended-length (`\?\`) ones. Returning prefixed paths broke callers
   silently — `relative_to()` raised `ValueError` into a swallowing `except`, and
