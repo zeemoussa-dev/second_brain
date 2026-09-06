@@ -405,7 +405,32 @@ is a thin status mirror of the index table below.
   `skills/catalog/vault/summarize-and-tag-threads/SKILL.md:126`, and
   `skills/catalog/outlook/email-thread-capture/scripts/derive_noise_definition.py:36`
   each carry an operator-specific absolute path in an example.
-- **Fix direction:** replace the SOUL line with a placeholder the installer
-  substitutes from this install's configured `vault_path`, and scrub the three
-  example paths. Worth a guard test that fails if any shipped master contains a
-  literal `C:\Users\` path.
+- **The mechanism to do this right ALREADY EXISTS, and Blueprint install simply
+  does not call it** (operator's question, 2026-09-07: *"The Blueprint should be
+  pointing to the correct path from .env no?"* — yes, and that is precisely why
+  this is a framework bug rather than a provisioning one):
+
+  | | |
+  |---|---|
+  | Token | `@@SECOND_BRAIN_VAULT_PATH@@` (with `@@SECOND_BRAIN_HERMES_HOME@@`, `@@SECOND_BRAIN_DATA_PATH@@`) |
+  | Written on export | `artifact_export._substitute_placeholders` — real path to token |
+  | Resolved on import | `artifact_import._restore_placeholders` — token to `settings.vault_path`, i.e. `.env` |
+  | Its stated purpose | *"so a Skill deployed here always resolves against THIS deployment, never the source machine's own path"* |
+
+  The `.sbf` artifact route runs it. The Blueprint route does not: grepping the
+  whole chain — `data_access/blueprints.read_blueprint_asset` ->
+  `blueprint_manager.install` -> `agent_manager.create(prompt=soul)` — finds
+  **zero** references to any placeholder. `read_blueprint_asset` returns the file
+  verbatim and the SOUL is written into the profile verbatim.
+- **So there are two defects, and fixing either alone is wrong.** The shipped
+  SOUL carries a literal path where it should carry the token; and the install
+  performs no substitution, so a SOUL correctly authored with the token would
+  reach the profile with `@@SECOND_BRAIN_VAULT_PATH@@` sitting in it literally.
+- **Fix direction:** put `@@SECOND_BRAIN_VAULT_PATH@@` in the three SOULs and run
+  the existing `_restore_placeholders` (raw form, not JSON-escaped — a SOUL is
+  markdown) over every Blueprint asset at install time. Reuse the mechanism
+  rather than adding a second one; a parallel substitution path is exactly how
+  two copies of the same fact start to drift. Then scrub the three example paths,
+  and add a guard test that fails if any shipped master contains a literal
+  `C:\Users\` path — that test is what stops this recurring, since the SOULs are
+  prose and nothing else checks them.
