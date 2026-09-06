@@ -24,8 +24,11 @@ elsewhere, in 5 different versions.
 """
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
+
+from app.config import settings
 
 _SKILLS_ROOT = Path(__file__).resolve().parents[1] / "business" / "core" / "skills" / "catalog"
 _MANAGERS_ROOT = Path(__file__).resolve().parents[1] / "business" / "core" / "skills" / "managers"
@@ -168,3 +171,15 @@ def deploy_shared_managers(hermes_home: Path) -> list[str]:
         shutil.copyfile(source, target / source.name)
         written.append(source.name)
     return written
+
+_SECTION_ACCESS_FILENAME = "section_access.json"
+
+
+def write_section_access_map(mapping: dict) -> Path:
+    """Persists the derived per-Action write map where the shared
+    vault_manager reads it: <data>/data/section_access.json. Raw write of
+    exactly what it is given -- SkillManager derives and owns the shape."""
+    path = settings.second_brain_data_path / "data" / _SECTION_ACCESS_FILENAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(mapping, indent=2, sort_keys=True), encoding="utf-8")
+    return path

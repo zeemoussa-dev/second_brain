@@ -1169,3 +1169,76 @@ def test_iter_md_files_yields_plain_paths_not_extended_length_ones(tmp_path):
     assert found[0] == root / "Standup.md"
     # The property callers actually depend on.
     assert found[0].relative_to(tmp_path) == Path("Work/Meetings/Standup.md")
+
+
+def _reset_access_map_cache():
+    vm._section_access_map_cache = None
+
+
+def test_the_derived_map_enforces_callers_when_the_template_declares_none(tmp_path, monkeypatch):
+    """allowed_callers moved OUT of Template.json (a reverse edge: vault
+    structure depending on the capability layer) and into a map derived
+    from what deployed Skills declare. The control must survive the move --
+    a template with no allowed_callers must still refuse a stranger."""
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "section_access.json").write_text(
+        '{"thread": {"Summary": ["apply_thread_review"]}}', encoding="utf-8"
+    )
+    monkeypatch.setenv("SECOND_BRAIN_DATA_PATH", str(tmp_path))
+    _reset_access_map_cache()
+
+    template = {"id": "thread", "root": {"sections": [{"name": "Summary", "access": "machine_write"}]}}
+
+    assert vm._section_allowed_callers(template, "Summary") == ["apply_thread_review"]
+    vm._require_machine_write(template, "Summary", "apply_thread_review")
+    with pytest.raises(vm.VaultManagerError, match="refused"):
+        vm._require_machine_write(template, "Summary", "some_other_script")
+    _reset_access_map_cache()
+
+
+def test_a_section_absent_from_the_map_stays_open_to_machine_write(tmp_path, monkeypatch):
+    """Absent means "open to any machine_write caller" -- the same meaning a
+    missing allowed_callers key always had. Getting this backwards would
+    lock every unlisted section instead of leaving it open."""
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "section_access.json").write_text('{"thread": {}}', encoding="utf-8")
+    monkeypatch.setenv("SECOND_BRAIN_DATA_PATH", str(tmp_path))
+    _reset_access_map_cache()
+
+    template = {"id": "thread", "root": {"sections": [{"name": "Notes", "access": "machine_write"}]}}
+
+    assert vm._section_allowed_callers(template, "Notes") is None
+    vm._require_machine_write(template, "Notes", "anything_at_all")
+    _reset_access_map_cache()
+
+
+def test_human_only_is_still_refused_regardless_of_the_map(tmp_path, monkeypatch):
+    """The guarantee that actually matters. access -- not the caller list --
+    is what keeps agents out of the operator's own writing, and it lives in
+    the Template where it belongs, naming no Skill."""
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "section_access.json").write_text(
+        '{"thread": {"Personal Notes": ["anything"]}}', encoding="utf-8"
+    )
+    monkeypatch.setenv("SECOND_BRAIN_DATA_PATH", str(tmp_path))
+    _reset_access_map_cache()
+
+    template = {"id": "thread", "root": {"sections": [{"name": "Personal Notes", "access": "human_only"}]}}
+
+    with pytest.raises(vm.VaultManagerError, match="human_only"):
+        vm._require_machine_write(template, "Personal Notes", "anything")
+    _reset_access_map_cache()
+
+
+def test_an_install_with_no_map_falls_back_to_the_template(tmp_path, monkeypatch):
+    """Transition safety: an install predating the map keeps the ADR-017
+    behaviour from Template.json."""
+    monkeypatch.setenv("SECOND_BRAIN_DATA_PATH", str(tmp_path))
+    _reset_access_map_cache()
+
+    template = {"id": "thread", "root": {"sections": [
+        {"name": "Summary", "access": "machine_write", "allowed_callers": ["legacy_caller"]},
+    ]}}
+
+    assert vm._section_allowed_callers(template, "Summary") == ["legacy_caller"]
+    _reset_access_map_cache()

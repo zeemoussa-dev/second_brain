@@ -22,21 +22,30 @@ structure. The framework shipped the engine and none of the contracts.
   one way: a Skill needs a Template; a Template knows nothing about Skills. An
   Entity Template is a vault structure at the end of the day.
 
-## `allowed_callers` is on its way out
+## `allowed_callers` is gone (2026-09-06)
 
-Some sections still carry `allowed_callers`, naming specific Skill Actions (e.g.
-`apply_thread_review`). That is a **reverse edge** — it makes the structure depend
-on the capability layer, and the dependency resolver already contradicts it
-("A Template has no further real dependencies of its own").
+Sections no longer name Skill Actions. That was a **reverse edge** — it made a
+vault structure definition depend on the capability layer, contradicting the
+dependency resolver's own "a Template has no further real dependencies of its
+own", and it meant a Master Template could not be shipped or versioned without
+knowing which Skills exist.
 
-It stays for now only because the live engine enforces it, and removing it before
-the Skill side can declare `writes: [thread.Summary, …]` would silently *loosen*
-access control. Remove it in the same change that lands the Skill-side
-declaration, not before.
+The control itself was not dropped. It moved to the side that owns the Actions:
+a Skill declares `writes:` in its `SKILL.md` frontmatter, and the backend derives
+`<data>/data/section_access.json` from what is actually **deployed**. The shared
+`vault_manager` reads that map at write time, so ADR-017's per-caller enforcement
+is intact. The migration was verified lossless — the derived map reproduces
+exactly what these templates used to declare.
 
-Note what `allowed_callers` is and is not protecting: across all 11 templates it
-appears only on `machine_write` sections, never on `human_only`. What keeps agents
-out of your Personal Notes is `access`, which names nobody and stays.
+Derived beats authored here: the map cannot name an Action that is not deployed,
+and cannot rot against a renamed script the way the hand-maintained list silently
+did. `SkillManager.validate_declared_writes` now refuses to deploy a Skill whose
+declaration does not resolve against a real, `machine_write` section.
+
+What `allowed_callers` protected is worth being precise about: across all 11
+templates it appeared only on `machine_write` sections, never on `human_only`.
+What keeps agents out of your Personal Notes is `access`, which names nobody and
+stays.
 
 ## Known blocker
 

@@ -33,9 +33,12 @@ it (operator: "skills that are generated with hermes will go under a
 tool called jarvis")."""
 from __future__ import annotations
 
+import re
+import yaml
 from datetime import datetime, timezone
 
 from app.business.core.skills.skill import Skill
+from app.business.core.templates.template_manager import TemplateManager
 from app.business.core.tools.tool_manager import ToolManager
 from app.business.hermes.client import get_client
 from app.config import settings
@@ -43,6 +46,14 @@ from app.data_access import skills as skills_data
 from app.data_access import tools as tools_data
 
 _JARVIS_TOOL_ID = "jarvis"
+
+
+_FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
+
+
+class SkillPreconditionError(Exception):
+    """A Skill's declared requirements are not satisfied on this install, so
+    deploying it would put something in Hermes that fails only when it runs."""
 
 
 class SkillManager:
@@ -167,6 +178,115 @@ class SkillManager:
         self._write_meta(skill)
         return skill
 
+    def _declared_writes(self, skill_id: str) -> list[dict]:
+        """This Skill's own `writes:` frontmatter -- which of its Actions
+        write which sections of which Master Template. Malformed entries are
+        skipped rather than crashing the whole map; a Skill that declares
+        nothing simply grants nothing."""
+        skill_md = skills_data.read_skill_md(skill_id) or ""
+        match = _FRONTMATTER_RE.match(skill_md)
+        if not match:
+            return []
+        try:
+            parsed = yaml.safe_load(match.group(1))
+        except yaml.YAMLError:
+            return []
+        declared = (parsed or {}).get("writes") if isinstance(parsed, dict) else None
+        if not isinstance(declared, list):
+            return []
+        entries = []
+        for entry in declared:
+            if not isinstance(entry, dict):
+                continue
+            action = entry.get("action")
+            template = entry.get("template")
+            sections = entry.get("sections")
+            if isinstance(action, str) and isinstance(template, str) and isinstance(sections, list):
+                entries.append({
+                    "action": action, "template": template,
+                    "sections": [s for s in sections if isinstance(s, str)],
+                })
+        return entries
+
+    def build_section_access_map(self) -> dict:
+        """template -> section -> [action, ...], derived from what the
+        DEPLOYED Skills declare.
+
+        This replaces `allowed_callers` inside Template.json. That was a
+        reverse edge: it made the vault's own structure depend on the
+        capability layer, contradicting the dependency resolver's own "a
+        Template has no further real dependencies of its own". An Entity
+        Template is a vault structure; it should not know which Skills
+        exist.
+
+        Derived, never authored, which is what makes it correct by
+        construction: it cannot name an Action that is not actually
+        deployed, and it cannot go stale against a renamed script the way a
+        hand-maintained list in Template.json silently did.
+
+        Only Skills with at least one real deployment target contribute --
+        a Skill sitting in the catalog undeployed grants nothing.
+        """
+        access: dict[str, dict[str, list[str]]] = {}
+        for skill in self.get_all():
+            if not skill.deployed_to:
+                continue
+            for entry in self._declared_writes(skill.id):
+                template = access.setdefault(entry["template"], {})
+                for section in entry["sections"]:
+                    callers = template.setdefault(section, [])
+                    if entry["action"] not in callers:
+                        callers.append(entry["action"])
+        for sections in access.values():
+            for callers in sections.values():
+                callers.sort()
+        return access
+
+    def validate_declared_writes(self, skill_id: str) -> list[str]:
+        """Every reason this Skill's `writes:` cannot be honoured, empty if
+        it can. Checks the intersection the model rests on: a Skill may
+        write section S of Template T only if it DECLARES T.S and T marks S
+        `machine_write`.
+
+        This is what `allowed_callers` could never do. It was an
+        unvalidated string inside Template.json, so renaming a script
+        silently locked the writer out -- the section simply stopped being
+        writable, with no error anywhere. Declared on the Skill and checked
+        against the real Template, a mismatch is caught before deployment
+        instead of at 3am inside a cron worker.
+        """
+        problems: list[str] = []
+        for entry in self._declared_writes(skill_id):
+            template = TemplateManager().get_by_id(entry["template"])
+            if template is None:
+                problems.append(
+                    f"{entry['action']}: no Master Template {entry['template']!r} on this install"
+                )
+                continue
+            by_name = {section.name: section for section in template.sections}
+            for section_name in entry["sections"]:
+                section = by_name.get(section_name)
+                if section is None:
+                    problems.append(
+                        f"{entry['action']}: template {entry['template']!r} has no section {section_name!r}"
+                    )
+                elif section.access != "machine_write":
+                    problems.append(
+                        f"{entry['action']}: section {section_name!r} of {entry['template']!r} "
+                        f"is {section.access!r}, not machine_write"
+                    )
+        return problems
+
+    def publish_section_access_map(self) -> dict:
+        """Rebuilds and persists the derived write map. Called on every
+        deploy/undeploy, not once: the map is a projection of which Skills
+        are deployed, so it has to be recomputed whenever that changes --
+        which is exactly what a hand-maintained allowed_callers list in
+        Template.json could never do."""
+        mapping = self.build_section_access_map()
+        skills_data.write_section_access_map(mapping)
+        return mapping
+
     def deploy(self, skill_id: str, profile_id: str) -> Skill | None:
         """Pushes this Skill's current real content to one more real
         Hermes profile.
@@ -184,6 +304,11 @@ class SkillManager:
         skill = self.get_by_id(skill_id)
         if skill is None or profile_id in skill.deployed_to:
             return skill
+        problems = self.validate_declared_writes(skill_id)
+        if problems:
+            raise SkillPreconditionError(
+                f"{skill_id!r} cannot be deployed -- " + "; ".join(problems)
+            )
         skill_md = skills_data.read_skill_md(skill_id) or ""
         scripts = skills_data.list_scripts(skill_id)
         skills_data.deploy_shared_managers(settings.hermes_home_path)
@@ -191,6 +316,7 @@ class SkillManager:
         skill.deployed_to.append(profile_id)
         skill.updated_at = datetime.now(timezone.utc).isoformat()
         self._write_meta(skill)
+        self.publish_section_access_map()
         return skill
 
     def undeploy(self, skill_id: str, profile_id: str) -> Skill | None:
@@ -204,6 +330,7 @@ class SkillManager:
             skill.deployed_to.remove(profile_id)
             skill.updated_at = datetime.now(timezone.utc).isoformat()
             self._write_meta(skill)
+            self.publish_section_access_map()
         return skill
 
     def delete(self, skill_id: str) -> dict:

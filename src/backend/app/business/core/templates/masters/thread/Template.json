@@ -21,10 +21,7 @@
     "sections": [
       {
         "name": "Summary",
-        "access": "machine_write",
-        "allowed_callers": [
-          "apply_thread_review"
-        ]
+        "access": "machine_write"
       },
       {
         "name": "Personal Notes",
@@ -32,27 +29,15 @@
       },
       {
         "name": "Actions",
-        "access": "machine_write",
-        "allowed_callers": [
-          "apply_thread_review"
-        ]
+        "access": "machine_write"
       },
       {
         "name": "Related",
-        "access": "machine_write",
-        "allowed_callers": [
-          "link_person_to_thread",
-          "link_opportunity"
-        ]
+        "access": "machine_write"
       },
       {
         "name": "Files",
-        "access": "machine_write",
-        "allowed_callers": [
-          "capture_attachments",
-          "capture_file_link",
-          "apply_file_review"
-        ]
+        "access": "machine_write"
       }
     ],
     "children": [

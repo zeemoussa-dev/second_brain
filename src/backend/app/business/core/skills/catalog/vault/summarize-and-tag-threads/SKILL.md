@@ -8,6 +8,10 @@ platforms: [windows]
 metadata:
   hermes:
     tags: [second-brain, company, partner, summary, one-time]
+writes:
+  - action: apply_thread_review
+    template: thread
+    sections: [Summary, Actions]
 ---
 
 # Summarize & Tag Threads (Step 4 of the company/partner sequence)

@@ -8,6 +8,10 @@ platforms: [windows]
 metadata:
   hermes:
     tags: [second-brain, company, files, summary, one-time]
+writes:
+  - action: apply_file_review
+    template: thread
+    sections: [Files]
 ---
 
 # Summarize & Tag Files (Job 5)

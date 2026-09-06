@@ -628,12 +628,57 @@ def _section_access(template: dict, section: str) -> str:
     return "machine_write"  # an undeclared section defaults open, same as today's real scripts
 
 
+_SECTION_ACCESS_FILENAME = "section_access.json"
+_section_access_map_cache: dict | None = None
+
+
+def _section_access_map() -> dict | None:
+    """The derived per-Action write map, or None if this install has none.
+
+    Replaces `allowed_callers` inside Template.json. That was a reverse
+    edge -- it made a vault STRUCTURE definition depend on the capability
+    layer, so a Template could not be shipped or versioned without knowing
+    which Skills exist. An Entity Template is a vault structure; it does
+    not know about Skills.
+
+    The map is DERIVED by the backend from what deployed Skills declare in
+    their own `writes:` frontmatter, never hand-authored, which is what
+    makes it correct by construction: it cannot name an Action that is not
+    deployed, and it cannot rot against a renamed script the way the
+    hand-maintained list in Template.json silently could.
+
+    Cached for the process: these scripts are short-lived one-shots.
+    """
+    global _section_access_map_cache
+    if _section_access_map_cache is not None:
+        return _section_access_map_cache or None
+    configured = os.environ.get("SECOND_BRAIN_DATA_PATH", "").strip()
+    if not configured:
+        _section_access_map_cache = {}
+        return None
+    path = Path(configured) / "data" / _SECTION_ACCESS_FILENAME
+    try:
+        loaded = json.loads(Path(long_path(path)).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        _section_access_map_cache = {}
+        return None
+    _section_access_map_cache = loaded if isinstance(loaded, dict) else {}
+    return _section_access_map_cache or None
+
+
 def _section_allowed_callers(template: dict, section: str) -> list[str] | None:
-    """The Template.json-declared per-caller allow-list for a section
-    (2026-09-01, `ADR-017` -- replaces `vault_lib.py`'s own hardcoded
-    `_CALLER_ALLOW_LISTS` Python dict). `None` (no key declared, or the
-    section itself is undeclared) means "open to any `machine_write`
-    caller" -- zero behavior change for every already-`Done` template."""
+    """The per-caller allow-list for a section. `None` means "open to any
+    `machine_write` caller".
+
+    The derived map wins wherever this install has one; Template.json's own
+    `allowed_callers` is the fallback for an install that predates it
+    (2026-09-01, `ADR-017`), so the two can coexist while the field is
+    removed from the templates.
+    """
+    access_map = _section_access_map()
+    if access_map is not None:
+        declared = (access_map.get(template["id"]) or {}).get(section)
+        return list(declared) if declared else None
     for entry in template["root"]["sections"]:
         if entry["name"] == section:
             allowed_callers = entry.get("allowed_callers")

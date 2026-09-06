@@ -8,6 +8,10 @@ platforms: [windows]
 metadata:
   hermes:
     tags: [second-brain, opportunity, customer, whatsapp, conversational]
+writes:
+  - action: link_opportunity
+    template: thread
+    sections: [Related]
 ---
 
 # Track Opportunities

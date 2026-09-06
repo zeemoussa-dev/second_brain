@@ -8,6 +8,16 @@ platforms: [windows]
 metadata:
   hermes:
     tags: [second-brain, email, vault, capture, recurring]
+writes:
+  - action: link_person_to_thread
+    template: thread
+    sections: [Related]
+  - action: capture_attachments
+    template: thread
+    sections: [Files]
+  - action: capture_file_link
+    template: thread
+    sections: [Files]
 ---
 
 # Email Thread Capture
