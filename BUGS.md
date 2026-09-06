@@ -616,6 +616,22 @@ is a thin status mirror of the index table below.
   state. Cover it with a test whose input is a SOUL already carrying pre-fix
   blocks — the existing tests appear to start from a clean SOUL, which is why
   this passed.
+- **Same fix area, second gap: the reset flag misses this change.**
+  `primary_session_reset_required` is computed only from newly-wired peers:
+
+      "primary_session_reset_required": bool(
+          [state for state in peers.values() if state == "wired"]
+      )
+
+  `_ensure_peer_section()` is called bare at `blueprint_manager.py:320` and its
+  return value — which says whether it just added the heading — is discarded. So
+  an install that changes Primary's SOUL *only* by adding the heading and lead-in
+  reports `false`: the prompt changed, a running Primary cannot see it, and
+  nothing says so. That is precisely the upgrade case above, and it showed up
+  live — the operator's first file upload after this redeploy went to the wrong
+  peer and was fixed by resetting the session by hand (2026-09-07).
+- **Fix that half too:** use `_ensure_peer_section()`'s return in the flag, so
+  any change to Primary's prompt sets it, not only a newly-wired peer.
 - **Note:** BUG-052 is `Closed` and its fix is right for the case it was tested
   on; this is the migration case, not a regression of the original reasoning.
 
