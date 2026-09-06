@@ -219,7 +219,7 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 
 | ID | Title | Area | Status | Fixed by |
 |---|---|---|---|---|
-| BUG-043 | `hermes.exe` is looked for one directory too deep, so every Hermes CLI operation fails on a correct install | Logic | Open | — |
+| BUG-043 | `hermes.exe` is looked for one directory too deep, so every Hermes CLI operation fails on a correct install | Logic | Closed | `5f0f40e` |
 | BUG-044 | A failed Blueprint install leaves the Section it created behind | Logic | Open | — |
 | BUG-045 | An unhandled 500 reaches the browser as `TypeError: Failed to fetch`, hiding every server error from the UI | Logic | Open | — |
 | BUG-046 | Blueprint install never asks which Section to install into | Logic | Open | — |

@@ -149,6 +149,8 @@ Where a rule does not belong here:
 
 - **`deployed_to` and an Agent's `skill_ids` record INTENT; Hermes holds reality. Never treat either as a survey of what is installed.** `deployed_to` was found recording 85 deployments against 348 real ones, so everything keyed off it was blind to most of the install. `reconcile_deployed_to()` re-derives it from disk. An Agent's `declared_skill_ids` (Registry) and `skill_ids` (live mirror) are likewise different questions.
 
+- **[2026-09-07] Hermes' launcher is `<hermes_home>/bin/hermes.exe`; `hermes-agent/` beside it is the cloned SOURCE tree and has no `bin/` at all.** Reason: `HermesCLI._hermes_exe` built `<home>/hermes-agent/bin/hermes.exe`, which exists on no install, so every CLI call returned "No real Hermes install found at the configured home path" on a perfectly healthy Hermes — and that message names the *install* rather than the wrong constant, so it reads as a provisioning fault and sends you to the wrong layer. Fixed in `5f0f40e` (BUG-043). Only `hermes_home_path` is configuration; any subpath below it is our own assumption about the installer's layout, so resolve with a `shutil.which("hermes")` fallback rather than trusting one hardcoded shape.
+
 ## Backend architecture
 
 - **`app/api/*.py` holds zero business logic.** A handler parses the request, calls ONE `business/` function, and maps the result or exception to a status. Mapping `None` to a 404 is the API layer's job; branching, computation and cross-manager composition belong in `business/logic/`.

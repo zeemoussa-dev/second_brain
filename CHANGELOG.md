@@ -18,6 +18,9 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix: `BUG-043` — `HermesCLI` resolves `hermes.exe` at `<home>/bin/`, with a
+  PATH fallback. Every Hermes CLI operation was failing on a healthy install.
+
 - docs: `BUG-046` / `BUG-047` logged against the Blueprint model — install never
   asks which Section to build into (`section_name` is a required Blueprint field,
   and no layer of the chain takes a target Section), and `librarian` therefore

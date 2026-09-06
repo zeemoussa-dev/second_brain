@@ -29,7 +29,7 @@ is a thin status mirror of the index table below.
 
 | ID | Title | Area | Severity | Status | Found | Fixed by |
 |---|---|---|---|---|---|---|
-| BUG-043 | `hermes.exe` is looked for one directory too deep, so every Hermes CLI operation fails on a correct install | Logic | Blocker | Open | 2026-09-07 | — |
+| BUG-043 | `hermes.exe` is looked for one directory too deep, so every Hermes CLI operation fails on a correct install | Logic | Blocker | Closed | 2026-09-07 | `5f0f40e` |
 | BUG-044 | A failed Blueprint install leaves the Section it created behind | Logic | Major | Open | 2026-09-07 | — |
 | BUG-045 | An unhandled 500 reaches the browser as `TypeError: Failed to fetch`, hiding every server error from the UI | Logic | Major | Open | 2026-09-07 | — |
 | BUG-046 | Blueprint install never asks which Section to install into — the Section is baked into the Blueprint and is not a parameter anywhere in the chain | Logic | Major | Open | 2026-09-07 | — |
@@ -62,7 +62,9 @@ is a thin status mirror of the index table below.
 
 - **Area:** Logic
 - **Severity:** Blocker
-- **Status:** Open
+- **Status:** Closed — fixed directly in `5f0f40e` at the operator's direction,
+  outside the `/triage` story route, because the fix is one constant and the
+  blocker was holding up a live install.
 - **Found:** 2026-09-07, first real Blueprint install on this machine.
   `POST /blueprints/librarian/install` → 500,
   `HermesUnavailableError: hermes profile create failed: No real Hermes install
@@ -95,6 +97,12 @@ is a thin status mirror of the index table below.
 - **Blast radius:** everything that shells out to Hermes — Blueprint install,
   Agent create/delete, profile deploy, Skill deployment. On this machine that is
   the entire agent-provisioning surface.
+- **Fixed 2026-09-07 (`5f0f40e`).** Resolves `<home>/bin/hermes.exe`, falling
+  back to `shutil.which("hermes")` when that layout is absent — asked
+  deliberately, since only `home_path` is configuration and the subpath was our
+  own assumption about the installer's layout. Verified live: `_hermes_exe()`
+  returns `AppData\Local\hermesin\hermes.exe` and `hermes profile list`
+  returns `ok=True`. No other module built the old path.
 
 ### BUG-044 — a failed Blueprint install leaves the Section it created behind
 
