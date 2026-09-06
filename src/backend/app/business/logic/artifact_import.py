@@ -26,6 +26,7 @@ from pathlib import Path
 import yaml
 
 from app.business.core.agents.agent_manager import AgentManager
+from app.business.core.index.index_manager import IndexManager
 from app.business.core.pipelines.pipeline_manager import PipelineManager
 from app.business.core.sections.section_manager import SectionManager
 from app.business.core.skills.skill_manager import SkillManager
@@ -202,6 +203,8 @@ def _deploy_one(
         return _deploy_template(artifact_id, conflicts, decision, payload)
     if kind == "pipeline":
         return _deploy_pipeline(artifact_id, conflicts, decision, payload)
+    if kind == "index":
+        return _deploy_index(artifact_id, conflicts, decision, payload)
     if kind == "agent":
         return _deploy_agent(artifact_id, conflicts, decision, payload, section_decision)
     raise ValueError(f"unrecognized artifact kind {kind!r}")
@@ -326,6 +329,27 @@ def _deploy_pipeline(artifact_id: str, conflicts: bool, decision: str | None, pa
     # decision == "keep_both"
     alt_id = _next_alternate_id(artifact_id, PipelineManager().get_by_id)
     PipelineManager().import_pipeline(alt_id, {**data, "id": alt_id})
+    return _deployed(kind, artifact_id, deployed_as=alt_id)
+
+
+def _deploy_index(artifact_id: str, conflicts: bool, decision: str | None, payload: dict[str, bytes]) -> dict:
+    """Same shape as Template/Pipeline above. `storage_path` is an
+    absolute machine path, so it rides the normal placeholder machinery
+    -- an Index whose output lands under the App Database Folder comes
+    back pointing at THIS install's folder, not the exporter's."""
+    kind = "index"
+    raw = payload.get(f"indexes/{artifact_id}/Index.json")
+    data = json.loads(_restore_placeholders(raw.decode("utf-8"), json_escaped=True)) if raw is not None else {}
+
+    if not conflicts or decision == "overwrite":
+        IndexManager().import_index(artifact_id, data)
+        return _deployed(kind, artifact_id)
+    if decision == "skip":
+        return _skipped(kind, artifact_id)
+
+    # decision == "keep_both"
+    alt_id = _next_alternate_id(artifact_id, IndexManager().get_by_id)
+    IndexManager().import_index(alt_id, {**data, "id": alt_id})
     return _deployed(kind, artifact_id, deployed_as=alt_id)
 
 
