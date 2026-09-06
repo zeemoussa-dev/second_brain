@@ -17,6 +17,15 @@ truth for the emerging shape right now, not this file. This file will be
 filled in once the design stabilizes past the "empty skeleton folders"
 stage; until then, treat anything written here as provisional.
 
+> **Structure changed on 2026-09-06 (`ADR-019`).** Skills, the shared
+> `vault_manager`, and the Entity ("Master") Templates are now backend-owned and
+> ship with the product; `Hermes-Provisioning/` no longer exists;
+> `allowed_callers` has moved off Template.json onto the Skills, via a derived
+> `section_access.json`. The per-requirement sections below are **historical
+> records of what each requirement established at the time** and are deliberately
+> not rewritten — read `ADR-019` and `Documentation/Framework/Artifacts.md` for
+> the current shape.
+
 ## What exists today (confirmed, not aspirational)
 
 - **Data taxonomy** (operator-defined): System Data (Second Brain's own
@@ -250,7 +259,7 @@ own row, real and `Done`) already exposes four entity Managers, each the sole
 real gateway onto its own store (the same "one real gateway per entity" rule
 `SectionManager`/`AgentManager` already established): `SkillManager`
 (`business/core/skills/skill_manager.py`, content in
-`Hermes-Provisioning/skills/<category>/<slug>/`, metadata in the Registry's
+`business/core/skills/catalog/<tool>/<slug>/`, metadata in the Registry's
 `Tools/<tool>/Skills/<slug>/Skill.json`), `TemplateManager`
 (`business/core/templates/template_manager.py`, `.second-brain/data/
 Templates/<id>/Template.json`, vault-only), `AgentManager`
@@ -326,8 +335,8 @@ except the two narrow write-path additions `ADR-015` records below.
     id, included_reason: "selected"|"dependency", depends_via}]`,
     `secret_scan: {findings_decided, redacted_count}`.
   - `skills/<slug>/SKILL.md`, `skills/<slug>/scripts/**` — mirrors
-    `Hermes-Provisioning/skills/<category>/<slug>/` (category lives in the
-    manifest entry, not the payload path).
+    `business/core/skills/catalog/<tool>/<slug>/` (the grouping folder lives
+    in the manifest entry, not the payload path).
   - `templates/<id>/Template.json` — mirrors `data/Templates/<id>/
     Template.json` exactly.
   - `pipelines/<id>.json` — mirrors `pipelines/<id>.json` exactly.

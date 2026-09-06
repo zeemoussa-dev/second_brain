@@ -471,7 +471,7 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
             <h3>{subjectKind === 'meeting' ? 'Attendees' : 'People on this email'}</h3>
             {data?.people.length ? (
               <div className="action-list">
-                {data.people.map((person) => <PersonChip person={person} key={person.email} />)}
+                {data.people.map((person) => <PersonChip person={person} onOpen={setOpenPersonStem} key={person.email} />)}
               </div>
             ) : (
               <div className="empty-state"><p className="text-muted">No people resolved yet.</p></div>

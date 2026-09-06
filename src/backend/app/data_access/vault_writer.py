@@ -1043,7 +1043,7 @@ def raw_message_note_path(
         # fallback below then makes the second one "Name-a1b2c3d4.md",
         # which in Obsidian's file view still just reads "Name" -- no way
         # to tell them apart or that there are two (found live against the
-        # Hermes-native port of this same function, `Hermes-Provisioning/
+        # Hermes-native port of this same function, `business/core/skills/
         # skills/vault-rebuild/email-thread-capture/scripts/vault_lib.py`,
         # ported back here for consistency). Including time-of-day (HH:MM,
         # almost always unique per message) fixes this directly and is

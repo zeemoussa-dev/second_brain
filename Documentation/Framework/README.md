@@ -161,7 +161,7 @@ Pipelines**. Nothing is invented for you.
 
 | Symptom | Usual cause |
 |---|---|
-| **Skills list is empty** | The `Hermes-Provisioning/` source is not in the working tree. It fails silently → **[Hermes-Provisioning.md](Hermes-Provisioning.md)** |
+| **Skills list is empty** | Since 2026-09-06 Skills ship in the repo at `app/business/core/skills/catalog/<tool>/<slug>/`, so an empty list is now a real finding rather than a missing folder. Check `SkillManager.check_deployment_drift()` too — it reports what is actually deployed vs what we ship |
 | **A note "does not exist" but you can see it** | Windows `MAX_PATH`. Past 260 characters the check returns *false* instead of erroring. Keep vault roots short. |
 | **The UI is blank** | The frontend cannot reach the backend — check the API base URL and port, not whether the backend is up. |
 | **A capture ran but wrote nothing** | Check whether the source ever produced items before assuming the pipeline failed. |
@@ -177,7 +177,7 @@ Pipelines**. Nothing is invented for you.
 | **[Vault-Layout.md](Vault-Layout.md)** | Where every kind of note lands, and the two folder shapes |
 | **[Artifacts.md](Artifacts.md)** | Agent / Skill / Pipeline shapes, disk layout, `.sbf` `.sbb` `.sbd` |
 | **[Hermes-Runtime.md](Hermes-Runtime.md)** | Operating a live Hermes — API, auth, profiles, cron scoping |
-| **[Hermes-Provisioning.md](Hermes-Provisioning.md)** | What depends on the folder held outside the tree |
+| **[Hermes-Provisioning.md](Hermes-Provisioning.md)** | Retirement notice — where that folder's contents went (`ADR-019`) |
 | **[Deployment.md](../../Deployment.md)** | Full deployment mechanics, from a fresh machine |
 
 ## Building one for someone else

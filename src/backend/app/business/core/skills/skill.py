@@ -9,7 +9,7 @@ class Skill:
              # (matches Agent.json's own skill_ids convention)
     name: str
     description: str
-    category: str  # the real Hermes-Provisioning/skills/<category> folder this lives under
+    category: str  # the catalog/<tool> folder this lives under (the Tool it acts through)
     tool_id: str | None = None  # the owning Tool grouping; None until assigned
     mutates: bool = True
     origin: str = "second-brain"  # "second-brain" (authored here) | "jarvis" (synced in, unattributed)

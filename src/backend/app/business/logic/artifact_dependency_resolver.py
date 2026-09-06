@@ -52,6 +52,7 @@ id, so an Agent's own dependency on a real Skill actually resolves.
 from __future__ import annotations
 
 from app.business.core.agents.agent_manager import AgentManager
+from app.business.core.index.index_manager import IndexManager
 from app.business.core.pipelines.pipeline_manager import PipelineManager
 from app.business.core.skills.skill_manager import SkillManager
 from app.business.core.templates.template_manager import TemplateManager
@@ -61,6 +62,7 @@ _skill_manager = SkillManager()
 _template_manager = TemplateManager()
 _agent_manager = AgentManager()
 _pipeline_manager = PipelineManager()
+_index_manager = IndexManager()
 
 
 def _skill_own_template_matches(skill_id: str, all_template_ids: list[str]) -> list[str]:
@@ -147,7 +149,14 @@ def resolve_closure(selection: list[dict]) -> list[dict]:
             skill_id = _pipeline_manager.get_implementing_skill_id(id_)
             if skill_id:
                 visit("skill", skill_id, "dependency", f"pipeline:{id_} (cron job skill)")
-        # An unknown `kind` (never produced by the real 4-Manager
+        elif kind == "index":
+            index = _index_manager.get_by_id(id_)
+            if index is None:
+                return
+            upsert(kind, id_, reason, depends_via)
+            # An Index depends on no other artifact: its build engine is
+            # backend-owned code that ships with the app, not a Skill.
+        # An unknown `kind` (never produced by the real 5-Manager
         # inventory this selection is sourced from) resolves to nothing,
         # same silent-skip discipline as an unresolvable id.
 

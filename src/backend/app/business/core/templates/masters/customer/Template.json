@@ -1,0 +1,63 @@
+{
+  "id": "customer",
+  "schema_version": 2,
+  "version": 1,
+  "identity": {
+    "strategy": "id"
+  },
+  "on_missing": "error",
+  "allow_create_folder": true,
+  "parent": {
+    "note_name": "Customers",
+    "match_fields": [
+      "name",
+      "title"
+    ],
+    "alias_field": "aliases",
+    "frontmatter_field": "affiliate_of",
+    "link_back_section": "## Affiliates",
+    "required": false,
+    "on_missing": "auto_create",
+    "child_subpath": "Affiliates"
+  },
+  "root": {
+    "type": "md",
+    "own_folder": true,
+    "plain_filename": true,
+    "plain_folder": true,
+    "on_existing_title": "error",
+    "frontmatter_defaults": {
+      "type": "Customer",
+      "affiliate_of": ""
+    },
+    "sections": [
+      {
+        "name": "Affiliates",
+        "access": "machine_write"
+      },
+      {
+        "name": "Log & Captures",
+        "access": "machine_write"
+      }
+    ],
+    "children_index_section": "Log & Captures",
+    "children": [
+      {
+        "suffix": "log",
+        "frontmatter_defaults": {
+          "type": "Log"
+        },
+        "name_template": "{title} Log",
+        "display_label": "Log"
+      },
+      {
+        "suffix": "captures",
+        "frontmatter_defaults": {
+          "type": "Captures"
+        },
+        "name_template": "{title} Captures",
+        "display_label": "Captures"
+      }
+    ]
+  }
+}

@@ -4,13 +4,22 @@ title: Conversational Agent Access via Hermes — a Hermes-connected agent answe
 requirement_ids: [REQ-SB-03]
 requirement_section: "REQ-SB-03: Conversational Agent Access via Hermes"
 phase: P1
-status: Draft
+status: Done
 gate: clear
 gate_reason: ""
 sprint: ""
 created: 2026-08-13
-updated: 2026-08-13
+updated: 2026-09-06
 ---
+
+> **Closed 2026-09-06 — delivered by other means, not by this story's own plan.**
+>
+> Delivered by other means.
+> The capability is live: Hermes agents answer vault-grounded questions on WhatsApp, backed by the vault-index Indexes and the deployed Skill catalog.
+> The mechanism this story specified -- an MCP Tool layer -- was removed on 2026-09-05 (49f064f) as dead code; 17 references in this file describe it.
+>
+> Kept rather than deleted: the requirement it serves (`REQ-SB-03`) is real and met, and the
+> superseded approach is worth being able to read back.
 
 # REQ-SB-03-US-01 — Conversational Agent Access via Hermes — a Hermes-connected agent answers questions grounded in the indexed vault
 

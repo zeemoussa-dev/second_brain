@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import type { StyleWithCssVars } from './visualOptions';
 import type { AgentSection, MockAgent } from './mockAgents';
 import { DRILLDOWN_HUB_ANGLE_DEG, polarToCartesian, pointTowards, type Point } from './polarLayout';
 import { layoutSectionDrilldown, type DependencyEdge } from './layoutAgents';
@@ -211,8 +212,8 @@ export function SectionDrilldown({
   // positioned relative to THIS point, not literal canvas center, via
   // polarToCartesian's own optional `center` param.
   const hubPoint = polarToCartesian(DRILLDOWN_HUB_RADIUS, DRILLDOWN_HUB_ANGLE_DEG);
-  const titleStyle: CSSProperties = { top: `${hubPoint.y + DRILLDOWN_TITLE_OFFSET}%`, left: `${hubPoint.x}%` };
-  if (section.color) titleStyle['--section-color' as string] = section.color;
+  const titleStyle: StyleWithCssVars = { top: `${hubPoint.y + DRILLDOWN_TITLE_OFFSET}%`, left: `${hubPoint.x}%` };
+  if (section.color) titleStyle['--section-color'] = section.color;
 
   // Hoisted out of the SVG-only block below (was a render-scoped IIFE) so
   // the hover card near the end of this component can reuse the exact
@@ -624,11 +625,11 @@ export function SectionDrilldown({
               bigger than the node itself so it reads as a halo around
               it, not a second ring drawn ON it. */}
           {focusedAgent && focusedAgentPoint && (() => {
-            const ringStyle: CSSProperties = {
+            const ringStyle: StyleWithCssVars = {
               top: `${focusedAgentPoint.y}%`,
               left: `${focusedAgentPoint.x}%`,
             };
-            if (focusedAgent.color) ringStyle['--node-color' as string] = focusedAgent.color;
+            if (focusedAgent.color) ringStyle['--node-color'] = focusedAgent.color;
             return <div className={`agent-focus-ring agent-focus-ring--${focusedAgent.type}`} style={ringStyle} />;
           })()}
           {/* Hover/focus info card (operator, 2026-08-16: "show the
@@ -643,11 +644,11 @@ export function SectionDrilldown({
               same point the node itself sits at, offset down past its
               own visual radius. */}
           {activeAgent && activeAgentPoint && (() => {
-            const cardStyle: CSSProperties = {
+            const cardStyle: StyleWithCssVars = {
               top: `${activeAgentPoint.y + drilldownAgentVisualRadius(activeAgent.type) + 3}%`,
               left: `${activeAgentPoint.x}%`,
             };
-            if (activeAgent.color) cardStyle['--node-color' as string] = activeAgent.color;
+            if (activeAgent.color) cardStyle['--node-color'] = activeAgent.color;
             return (
               <div ref={cardRef} className={`agent-hover-card agent-hover-card--${activeAgent.type}`} style={cardStyle}>
                 <span className="agent-hover-card-name">{activeAgent.label}</span>

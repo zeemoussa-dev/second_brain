@@ -15,16 +15,24 @@ Do all of the following yourself (no subagents), in order:
 2. **Read `MEMORY.md` (repo root) in full** — every Decisions, Patterns, and
    Constraints entry. These are atomic hard rules; they override defaults.
 
-3. **Read the last N `CHANGELOG.md` entries** (newest at the bottom — append-only).
+3. **Read this install's own instance memory** —
+   `<SECOND_BRAIN_DATA_PATH>/AGENT-MEMORY.md`. Real paths, the live Hermes version
+   and gateway state, which Skills are actually deployed, the cron fleet, and what
+   is currently broken *on this machine*. `MEMORY.md` (step 2) holds what is true on
+   every install; this holds what is true only here, and the two must never be
+   mixed. If the file does not exist, say so rather than assuming defaults — its
+   absence means instance facts are going somewhere they will drift.
+
+4. **Read the last N `CHANGELOG.md` entries** (newest at the bottom — append-only).
    N is the positional argument, default 10.
 
-4. **Read the live pipeline surfaces:**
+5. **Read the live pipeline surfaces:**
    - `REVIEW-QUEUE.md` — open gate-flags and escalation pointers awaiting action.
    - `ESCALATIONS.md` — note any **open** (unresolved) entries.
    - `Implementation/Pipeline.md` — the authoritative six-role pipeline contract.
    - `BACKLOG.md` — requirement → story coverage index; spot what still needs a story.
 
-5. **Confirm back to the human** with a concise report:
+6. **Confirm back to the human** with a concise report:
    - **Loaded:** files read; CLAUDE.md corrections applied (name them) or "no drift".
    - **State:** current phase/status, where the pipeline stands (Draft/Ready/In
      Progress stories, Ready sprints), most recent CHANGELOG activity.

@@ -60,3 +60,34 @@ def write_template_json(template_id: str, data: dict) -> None:
     (template_dir / "Template.json").write_text(
         json.dumps(data, indent=2), encoding="utf-8"
     )
+
+# The shipped Master Template set -- the framework's own Entity Templates,
+# version-controlled beside TemplateManager rather than left to each
+# install to invent. Resolved from this file's own package layout, not
+# from settings: this is bundled source, not user data. See that
+# directory's README for what a Master Template is and is not.
+_SHIPPED_MASTERS_DIR = (
+    Path(__file__).resolve().parents[1] / "business" / "core" / "templates" / "masters"
+)
+
+
+def list_shipped_master_ids() -> list[str]:
+    """Every Master Template that ships with the product. Empty (never an
+    exception) if the directory is missing, so a checkout without it
+    degrades to "seeds nothing" rather than failing app startup."""
+    if not _SHIPPED_MASTERS_DIR.is_dir():
+        return []
+    return sorted(
+        p.name for p in _SHIPPED_MASTERS_DIR.iterdir()
+        if p.is_dir() and (p / "Template.json").is_file()
+    )
+
+
+def read_shipped_master_json(template_id: str) -> dict:
+    """Raw parsed JSON for one shipped Master Template. Raises the same
+    way read_template_json does -- a shipped template that will not parse
+    is a build defect and must not be swallowed."""
+    path = _SHIPPED_MASTERS_DIR / template_id / "Template.json"
+    if not path.is_file():
+        raise FileNotFoundError(f"No shipped Master Template for {template_id!r}")
+    return json.loads(path.read_text(encoding="utf-8"))

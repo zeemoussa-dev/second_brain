@@ -1,0 +1,59 @@
+{
+  "id": "thread",
+  "schema_version": 2,
+  "version": 1,
+  "identity": {
+    "strategy": "id"
+  },
+  "on_missing": "error",
+  "allow_create_folder": true,
+  "root": {
+    "type": "md",
+    "own_folder": true,
+    "plain_filename": true,
+    "plain_folder": true,
+    "on_existing_title": "always_new",
+    "frontmatter_defaults": {
+      "type": "Thread",
+      "last_message_at": "",
+      "last_summarized_at": "",
+      "classification": ""
+    },
+    "sections": [
+      {
+        "name": "Summary",
+        "access": "machine_write"
+      },
+      {
+        "name": "Personal Notes",
+        "access": "human_only"
+      },
+      {
+        "name": "Actions",
+        "access": "machine_write"
+      },
+      {
+        "name": "Related",
+        "access": "machine_write"
+      },
+      {
+        "name": "Files",
+        "access": "machine_write"
+      }
+    ],
+    "children": [
+      {
+        "growth": "dynamic",
+        "name": "messages",
+        "folder": "messages",
+        "identity_fields": [
+          "conversation_id",
+          "message_id"
+        ],
+        "frontmatter_defaults": {
+          "type": "RawMessage"
+        }
+      }
+    ]
+  }
+}

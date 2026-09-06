@@ -36,17 +36,87 @@ from app.data_access import templates as templates_data
 
 
 class TemplateManager:
+    def _schema_version(self, data: dict) -> int:
+        """Which Template schema this file was written against.
+
+        Prefer what the file declares; fall back to its shape for the
+        files written before `schema_version` existed. `root` is what
+        defines v2 -- the two-layer split -- so its presence is the
+        inference.
+
+        This is resolved ONCE, explicitly, rather than per-field with
+        `.get()` fallbacks, because that is exactly how the bug this
+        replaces stayed invisible: reading v1 names out of a v2 file
+        never raises, every `.get()` simply returns its default, and all
+        11 real templates parsed to zero sections with error=None."""
+        declared = data.get("schema_version")
+        if isinstance(declared, int) and declared > 0:
+            return declared
+        return 2 if isinstance(data.get("root"), dict) else 1
+
     def _to_template(self, template_id: str, data: dict) -> Template:
+        """v1 keeps everything flat; v2 nests the same information under
+        `root` and renames three keys (`note_own_folder` -> `own_folder`,
+        `note_filename_plain` -> `plain_filename`, and moves
+        `on_existing_title` inside). `note_name` is not a rename: v2
+        dropped it as a template key entirely, so a v2 template
+        legitimately has none."""
+        version = self._schema_version(data)
+        source = (data.get("root") or {}) if version >= 2 else data
+        if version >= 2:
+            own_folder = source.get("own_folder", False)
+            plain_filename = source.get("plain_filename", False)
+        else:
+            own_folder = source.get("note_own_folder", False)
+            plain_filename = source.get("note_filename_plain", False)
         return Template(
             id=template_id,
+            schema_version=version,
+            version=int(data.get("version", 1)),
             note_name=data.get("note_name"),
             on_missing=data.get("on_missing", "create"),
-            on_existing_title=data.get("on_existing_title", "update_section"),
-            sections=[TemplateSection(**s) for s in data.get("sections", [])],
-            frontmatter_defaults=data.get("frontmatter_defaults", {}),
-            note_own_folder=data.get("note_own_folder", False),
-            note_filename_plain=data.get("note_filename_plain", False),
+            on_existing_title=source.get("on_existing_title", "update_section"),
+            sections=[TemplateSection(**s) for s in source.get("sections", [])],
+            frontmatter_defaults=source.get("frontmatter_defaults", {}),
+            note_own_folder=own_folder,
+            note_filename_plain=plain_filename,
         )
+
+    def seed_shipped_masters(self) -> dict:
+        """Installs every shipped Master Template this install does not
+        already have. Returns {"seeded": [...], "kept": [...]}.
+
+        **Never overwrites.** An id already present is left exactly as it
+        is, whatever it contains: the operator's own edit to `thread`
+        outranks the shipped copy, and this runs on every boot rather
+        than once, so overwriting would silently revert local changes on
+        every restart. Upgrading an existing template is a separate,
+        deliberate act that has to reconcile operator edits -- not
+        something a boot path does behind their back.
+
+        Why this exists at all (2026-09-06): nothing shipped Entity
+        Templates before, and nothing seeded them. A fresh install had no
+        vault structure whatsoever, so every capture Skill would have
+        failed on a missing template -- the framework shipped the engine
+        and none of the contracts.
+
+        Validates each shipped file through the existing `_to_template`
+        parser before writing it, the same read-side shape check
+        import_template applies, so a malformed shipped template raises
+        here instead of landing on disk.
+        """
+        existing = set(templates_data.list_template_ids())
+        seeded: list[str] = []
+        kept: list[str] = []
+        for template_id in templates_data.list_shipped_master_ids():
+            if template_id in existing:
+                kept.append(template_id)
+                continue
+            data = templates_data.read_shipped_master_json(template_id)
+            self._to_template(template_id, data)
+            templates_data.write_template_json(template_id, data)
+            seeded.append(template_id)
+        return {"seeded": seeded, "kept": kept}
 
     def get_by_id(self, template_id: str) -> Template | None:
         """None (never raises) if the id doesn't exist or its
@@ -86,5 +156,10 @@ class TemplateManager:
                 data = templates_data.read_template_json(template_id)
                 templates.append(self._to_template(template_id, data))
             except (OSError, ValueError, TypeError) as exc:
-                templates.append(Template(id=template_id, note_name=None, error=str(exc)))
+                # schema_version 0 = "could not be determined". Reading the
+                # file is what failed, so `data` may never have been bound;
+                # claiming v1 here would be a guess dressed as a fact.
+                templates.append(Template(
+                    id=template_id, schema_version=0, version=0, note_name=None, error=str(exc),
+                ))
         return templates

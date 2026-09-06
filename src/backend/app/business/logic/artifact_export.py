@@ -17,6 +17,7 @@ from pathlib import Path
 from app.business.hermes.client import get_client
 from app.business.logic import artifact_dependency_resolver, artifact_secret_scan, sbf_archive
 from app.config import settings
+from app.data_access import indexes as indexes_data
 from app.data_access import pipelines as pipelines_data
 from app.data_access import skills as skills_data
 from app.data_access import templates as templates_data
@@ -39,6 +40,13 @@ from app.data_access.registry import loader as registry_loader
 # hermes_backup.py, matching this codebase's own established "each module
 # owns its own business interpretation" convention (see artifact_import.
 # py's own identical duplication note for its _SEED_DATA_ALLOWLIST).
+# Payload folder per artifact kind. Only "index" needs stating -- naive
+# pluralisation would emit "indexs/", which the import side would then
+# never find.
+_PAYLOAD_FOLDER = {
+    "skill": "skills", "template": "templates", "agent": "agents", "index": "indexes",
+}
+
 _PLACEHOLDER_VAULT_PATH = "@@SECOND_BRAIN_VAULT_PATH@@"
 _PLACEHOLDER_HERMES_HOME = "@@SECOND_BRAIN_HERMES_HOME@@"
 _PLACEHOLDER_DATA_PATH = "@@SECOND_BRAIN_DATA_PATH@@"
@@ -133,6 +141,12 @@ def _text_content_for_scan(closure: list[dict]) -> dict[str, str]:
                     content[f"agents/{artifact_id}/soul.md"] = soul_path.read_text(encoding="utf-8")
                 except OSError:
                     pass
+        elif kind == "index":
+            try:
+                raw = indexes_data.read_index_json(artifact_id)
+            except (FileNotFoundError, ValueError):
+                continue
+            content[f"indexes/{artifact_id}/Index.json"] = json.dumps(raw, indent=2)
         # "pipeline" contributes nothing here -- see docstring.
     return content
 
@@ -226,7 +240,7 @@ def commit_export(selection: list[dict], secret_decisions: dict[str, str]) -> st
             payload[f"pipelines/{artifact_id}.json"] = pipeline_text.encode("utf-8")
             continue
 
-        prefix = f"{kind}s/{artifact_id}/"
+        prefix = f"{_PAYLOAD_FOLDER.get(kind, kind + 's')}/{artifact_id}/"
         for file_path, text in redacted_content.items():
             if file_path.startswith(prefix):
                 payload[file_path] = _substitute_placeholders(text).encode("utf-8")

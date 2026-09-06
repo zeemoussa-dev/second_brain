@@ -1,0 +1,32 @@
+{
+  "id": "file",
+  "schema_version": 2,
+  "version": 1,
+  "identity": {
+    "strategy": "id"
+  },
+  "on_missing": "create",
+  "allow_create_folder": true,
+  "root": {
+    "type": "md",
+    "own_folder": true,
+    "plain_filename": false,
+    "on_existing_title": "always_new",
+    "frontmatter_defaults": {
+      "type": "File",
+      "tags": [
+        "kind/file"
+      ]
+    },
+    "sections": [
+      {
+        "name": "Summary",
+        "access": "machine_write"
+      },
+      {
+        "name": "Details",
+        "access": "machine_write"
+      }
+    ]
+  }
+}

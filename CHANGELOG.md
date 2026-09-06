@@ -18,6 +18,121 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- docs: `ADR-019` records the restructure; the live documentation now matches it —
+  `Artifacts.md` (five kinds, Index documented, Skill locations, `writes:`),
+  `Templates.md` (the two version fields; where `allowed_callers` went),
+  `Hermes-Provisioning.md` (retirement notice + where-it-went table),
+  `CLAUDE.md` (Source Module Layout was an empty placeholder; now describes the
+  real layering and the four *payload* directories the app ships but never
+  imports), `Deployment.md` (paths, and prefer `SkillManager.deploy()/redeploy()`
+  over a raw copy). Tasks/Stories/Sprints/ESCALATIONS/BUGS left untouched — they
+  are append-only records of what was true at the time.
+- fix(skills): `SkillManager.update()`'s re-push to deployed profiles had always
+  been a **silent no-op** — it passed a bare slug where Hermes keys on
+  `<category>/<slug>`, so it resolved to a non-existent folder and returned
+  `None`. `redeploy()` added; the four changed Skills were redeployed across 27
+  deployments (26 moved to their new Tool folder, 1 created), leaving drift at 84
+  current / 1 missing.
+- feat(versioning): Master Templates carry a **content** `version` distinct from
+  `schema_version` (parse shape vs content contract); a Skill's `writes:` entry
+  declares `requires:` against it, and deploy refuses a mismatch — exact match,
+  not `>=`, since a bump means a section was removed or renamed.
+- feat(skills): `check_deployment_drift()` reports `missing`/`stale`/`modified`/
+  `current` per deployment — the first way to ask *is what's running still what we
+  ship?* Run live it caught this session's own unversioned SKILL.md edits (26
+  `modified`) and 2 genuinely missing deployments.
+- feat(skills): **Skills now declare what they write.** `allowed_callers` is gone
+  from Entity Templates — it was a reverse edge, making vault *structure* depend
+  on the capability layer. A Skill declares `writes:` in its `SKILL.md`
+  frontmatter; the backend derives `<data>/data/section_access.json` from the
+  **deployed** set and republishes it on every deploy/undeploy; the shared
+  `vault_manager` reads it at write time, so ADR-017's per-caller enforcement is
+  preserved. Verified lossless before removal. `SkillManager.deploy()` now
+  refuses a Skill whose declaration doesn't resolve against a real
+  `machine_write` section, instead of shipping something that only fails at run
+  time. `access` (incl. `human_only`) stays in the Template, naming nobody.
+- fix(vault-manager): `iter_md_files` now yields **plain** paths instead of
+  Windows extended-length (`\?\`) ones. Returning prefixed paths broke callers
+  silently — `relative_to()` raised `ValueError` into a swallowing `except`, and
+  every returned path compared unequal to the plain one the caller held. Nine
+  tests in the manager's own suite had been failing on it; they failed on the
+  symptom, the cause was one line. The `is_file()` guard went with it (past
+  MAX_PATH it silently returns `False`). `index_builder_lib` was compensating for
+  the old behaviour and is simplified to the new contract. 57 manager tests pass,
+  up from 47 pass / 9 fail.
+- refactor(skills): **`Hermes-Provisioning/` is gone.** The 17 Skills moved to
+  `src/backend/app/business/core/skills/catalog/<tool>/<slug>/`, grouped by the
+  Tool each actually depends on (vault 14, outlook 2, pricing 1) rather than by
+  the Registry's grouping, which had six of our own Skills mis-filed under the
+  catch-all `jarvis` Tool. Hermes provisioning notes moved to
+  `Documentation/Framework/hermes/`; the dead `mcp-servers/outlook.yaml` was
+  dropped. It had been a source folder held *outside* the checkout, so
+  `GET /skills` returned `[]` silently whenever it was absent.
+- refactor(skills): **one `vault_manager.py`.** The repo carried 16 copies in 5
+  versions — the drift that left `index_builder_lib` on `rglob` for weeks after
+  the MAX_PATH fix landed in a different copy. The canonical copy is what all 13
+  deployed Skills run (not `shared/`, which had drifted from every consumer);
+  `SkillManager.deploy()` now materialises it into exactly the Skills whose
+  scripts import it, and `deploy_index_builder()` sources the same copy.
+  `outlook_lib.py`/`vault_lib.py` are left duplicated on purpose — they have
+  already drifted and need a real merge, not a file move.
+- feat(templates): the 11 Entity ("Master") Templates now **ship with the product**
+  at `src/backend/app/business/core/templates/masters/`. Nothing shipped before —
+  they existed only in one operator's App Database Folder and the setup wizard
+  seeded none, so a fresh install had no vault structure and every capture Skill
+  would have failed on a missing template.
+- fix(templates): `TemplateManager` read v1 flat field names out of files that are
+  all v2, so **all 11 templates parsed to zero sections with `error=None`** — every
+  `.get()` fallback fired and nothing raised. Version is now resolved once and
+  explicitly, each shipped file declares `schema_version: 2`, and shape is only the
+  fallback for files predating the field. Templates now parse with real content
+  (34 sections across the 11). 19 new tests, one per shipped template.
+- fix(frontend): `npm run build` works again — it had failed with 8 TypeScript
+  errors since 2026-08-30/31. Seven were CSS custom properties assigned onto
+  `CSSProperties` via `style['--x' as string] = …`, which cannot type-check (the
+  cast widens the *key* to `string`, precisely what may not index
+  `CSSProperties`); they now use a shared
+  `StyleWithCssVars = CSSProperties & Record<`--${string}`, string>` in
+  `visualOptions.ts` rather than casting to `any`. The eighth was a real runtime
+  bug: the Cockpit People tab rendered `<PersonChip>` without its required
+  `onOpen`, so clicking a person chip there threw instead of opening their note.
+- docs(context): `/load-context` now reads this install's own instance memory at
+  `<SECOND_BRAIN_DATA_PATH>/AGENT-MEMORY.md` as step 3, and reports its absence
+  rather than assuming defaults. That file is specified in `CLAUDE.md`,
+  `Deployment.md`, `Documentation/Framework/README.md` and `MEMORY.md`, but was
+  never created and nothing read it — so machine-specific facts (paths, live Hermes
+  state, deployed Skills, cron status) had been accumulating in a session-local
+  store that drifts against the repo instead.
+- fix(index): the per-Index runner is now backend-owned payload
+  (`src/backend/app/business/core/index/scripts/` — build engine,
+  `vault_manager.py`, and `index_runner.py.template`). It previously resolved
+  into `Hermes-Provisioning/skills/vault-rebuild/vault-index/scripts/`, a
+  *Skill's* private folder normally held outside the checkout, so
+  `deploy_index_builder()` raised `FileNotFoundError` and Index creation was
+  broken on any install without it. The runner is a real `.template` that
+  parses as Python on its own; `_render_stub` substitutes through `repr()`,
+  `ast.parse()`s the result, and refuses a template declaring a placeholder
+  nothing substitutes.
+- fix(index): three live cron jobs (`index-adnoc`/`masdar`/`taqa`) had each
+  failed 12 runs in a row on a raw `Path('C:\Users\...')` literal (`\U` reads
+  as a truncated unicode escape). Fixed at the root, redeployed, and verified
+  running: adnoc 147 notes, masdar 180, taqa 32.
+- fix(index): the build engine walks via `vault_manager.iter_md_files()`
+  instead of `Path.rglob()`. One archived note past Windows' 260-char
+  `MAX_PATH` was raising `FileNotFoundError` mid-iteration and abandoning
+  every remaining note in that top-level folder. Prefixed paths are rebuilt
+  with `relpath` against the walk root; the `is_file()` guard is gone, since
+  past `MAX_PATH` it silently returns `False`.
+- feat(artifacts): Index is the fifth artifact kind — handled across
+  `artifacts_inventory`, `artifact_dependency_resolver`, `artifact_export` and
+  `artifact_import`, so an Index can finally travel in a `.sbf` bundle. The
+  payload folder is stated explicitly (`indexes/`, not naive `indexs/`);
+  `storage_path` rides the existing placeholder machinery; and `import_index`
+  drops foreign `cron_job_id`/`cron_profile_id` so an imported Index arrives
+  unscheduled rather than silently running a job nobody asked for.
+- test: 17 new backend tests covering runner rendering, the long-path walk,
+  and the new artifact kind (58 passing, up from 41).
+
 - chore(memory): curated `MEMORY.md` -- 469 KB/250 entries down to 329 KB/191
   (operator, 2026-09-04: "Visit every memory (you are allowed to remove stuff)
   Avoid confusing you"). Removed 62 entries that were record-of-getting-there

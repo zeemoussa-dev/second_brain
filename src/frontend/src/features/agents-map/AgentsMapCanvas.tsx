@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react';
+import type { StyleWithCssVars } from './visualOptions';
 import type { AgentSection, MockAgent } from './mockAgents';
 import type { ClusterMarker, DependencyEdge } from './layoutAgents';
 import type { JobTreeEntry } from './agentsApiClient';
@@ -632,8 +633,8 @@ export function AgentsMapCanvas({
             // Section has none set; the underline accent bar below uses
             // the same color always, not just on hover, for one
             // consistent per-Section identity.
-            const titleStyle: CSSProperties = { top: `${y}%`, left: `${x}%` };
-            if (section.color) titleStyle['--section-color' as string] = section.color;
+            const titleStyle: StyleWithCssVars = { top: `${y}%`, left: `${x}%` };
+            if (section.color) titleStyle['--section-color'] = section.color;
             return (
               <div
                 key={`${section.id}-title`}

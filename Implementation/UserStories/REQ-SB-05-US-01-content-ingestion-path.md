@@ -4,13 +4,22 @@ title: Content Ingestion Path — content arriving via a Hermes-connected channe
 requirement_ids: [REQ-SB-05]
 requirement_section: "REQ-SB-05: Content Ingestion Path"
 phase: P1
-status: Draft
+status: Done
 gate: flagged
 gate_reason: "unclear-requirement (ESC-023, partially resolved 2026-08-13 — see Notes) — the shared foundational Hermes-connectivity/mcp-authentication question REQ-SB-03-US-01 originally flagged is now resolved (real /mcp auth: yes, minimum-viable shared-secret shape; operator decision). What remains genuinely open, and is this story's own: (1) the transport mechanism by which a Hermes channel would actually deliver content to Second Brain (a new MCP tool call, a webhook/HTTP endpoint Hermes posts to, or something Hermes's own skill-wrapping convention dictates) — a real external-protocol unknown; (2) whether this story's own trust rule should compose with REQ-SB-04-US-01's confirmed scope/confirmation rule, or stand alone, since ingestion is itself a vault write. Neither was addressed by the operator's two resolutions and both need a human decision."
 sprint: ""
 created: 2026-08-13
-updated: 2026-08-13
+updated: 2026-09-06
 ---
+
+> **Closed 2026-09-06 — delivered by other means, not by this story's own plan.**
+>
+> Delivered by other means.
+> Content sent through a Hermes channel lands in the vault via the capture-files and capture-notes Skills, deployed across 41 profiles.
+> The MCP-based ingestion path this story specified was removed on 2026-09-05 (49f064f).
+>
+> Kept rather than deleted: the requirement it serves (`REQ-SB-05`) is real and met, and the
+> superseded approach is worth being able to read back.
 
 # REQ-SB-05-US-01 — Content Ingestion Path — content arriving via a Hermes-connected channel lands as a new vault note
 

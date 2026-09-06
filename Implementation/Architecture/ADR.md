@@ -2299,3 +2299,86 @@ code directly, not assumed:
   Thread stuck in a partially-classified state.
 
 ---
+
+## ADR-019: Skills, Master Templates and the Vault Manager become backend-owned framework artifacts; the Skill→Template dependency runs one way, enforced by a derived access map
+
+**Status:** Accepted
+**Date:** 2026-09-06
+
+**Context:** Four independent problems turned out to be the same problem.
+
+1. **Skill content lived outside the checkout.** `Hermes-Provisioning/` was
+   a source folder deliberately held outside the working tree, so
+   `SkillManager.get_all()` returned 0 and `GET /skills` returned `[]`
+   **silently** whenever it was absent — an empty Skills list read as "no
+   Skills exist" rather than "the source is not here".
+2. **Nothing shipped the contracts.** All 11 Entity Templates existed only
+   in one operator's App Database Folder; no `Template.json` was tracked in
+   this repo and the setup wizard seeded none. A fresh install had no vault
+   structure at all, so every capture Skill would have failed.
+3. **The shared engine was duplicated past the point of correctness.** The
+   repo held 16 copies of `vault_manager.py` in 5 versions; the live
+   install held 228 across 41 Hermes profiles, every one older than
+   canonical. This is not tidiness: it is why `index_builder_lib` ran
+   `rglob` for weeks after the `MAX_PATH` fix landed in a *different* copy,
+   and it is the shape of the 2026-09-04 `data_root` outage.
+4. **`allowed_callers` inside `Template.json` was a reverse edge.** It made
+   a vault *structure* definition depend on the capability layer,
+   contradicting `artifact_dependency_resolver`'s own "a Template has no
+   further real dependencies of its own", and meant a Master Template could
+   not be shipped or versioned without knowing which Skills exist.
+
+**Decision:**
+
+- **Tool → Manager → Actions; Skill = Template + `SKILL.md`.** A *Tool* is a
+  capability domain (vault / outlook / pricing). Its *Manager* is one action
+  library. A *Skill* composes those Actions into a purpose.
+- **Skills live at `app/business/core/skills/catalog/<tool>/<slug>/`**,
+  grouped by the Tool each actually depends on — derived from real
+  dependencies, not from the Registry's grouping, which had six of our own
+  Skills mis-filed under the catch-all `jarvis` Tool.
+- **One Manager, on `PYTHONPATH`.** `<hermes_home>/managers/` holds a single
+  copy; `.env` puts it on `PYTHONPATH`. Hermes *appends* a configured
+  `PYTHONPATH` to its own (`cron/scheduler.py`, `gateway/run.py`) and the
+  gateway mutates `os.environ` globally, so cron scripts and agent-invoked
+  Skills both inherit it. Skills no longer bundle the engine: a local copy
+  wins over `PYTHONPATH` (`sys.path[0]` is the script's own directory), so
+  bundling is not a safety net — it is the mechanism that made staleness
+  invisible.
+- **Master Templates ship and seed.** They live in the repo and are
+  installed on boot, never overwriting an existing one: seeding runs on
+  every boot, so overwriting would silently revert operator edits.
+- **`allowed_callers` moves off the Template.** A Skill declares `writes:`
+  in its own frontmatter; the backend derives
+  `<data>/data/section_access.json` from what is **deployed**, and the
+  shared `vault_manager` reads it at write time. `ADR-017`'s per-caller
+  enforcement is preserved, not dropped — the migration was verified
+  lossless before the field was removed. `access` (including `human_only`)
+  stays in the Template, naming nobody.
+- **Three distinct versions.** `schema_version` (how to parse), `version`
+  (what the content promises), and the Skill's own `version`. A Skill's
+  `requires:` is matched **exactly**, not `>=`: a content bump means a
+  section was removed or renamed, so an older Skill is wrong rather than
+  behind.
+
+**Consequences:**
+
+- A Skill can be refused at deploy time when its Master Template is missing,
+  is the wrong version, or lacks a section it declares — moving a silent
+  runtime data-loss failure to a loud pre-flight one.
+- Bundle self-sufficiency shifts from "the `.sbf` carries everything" to
+  "the framework guarantees the baseline", which makes the version
+  declaration load-bearing rather than decorative.
+- `deployed_to` is now known to under-report reality: 40 profiles carry
+  `summarize-and-tag-files` while the Registry records 1. `sync_from_hermes`
+  remains the only reconciliation path and it files unrecognised Skills
+  under `jarvis`. Not resolved here.
+- The Manager and the index engine deploy through **different** functions
+  (`deploy_shared_managers` vs `deploy_index_builder`), so a contract change
+  needs both redeployed — verified the hard way when the index jobs failed
+  after only one was refreshed.
+- `Documentation/Framework/Hermes-Provisioning.md` describes a folder that
+  no longer exists; its still-valid content (the Compass provider base_url
+  double-append trap) moved to `Documentation/Framework/hermes/`.
+
+---

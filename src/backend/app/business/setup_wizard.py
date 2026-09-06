@@ -21,7 +21,7 @@ silently broke when the operator split config out of the vault.
 Everything else here still only LOOKS: nothing creates a profile, deploys a
 Skill, writes a cron job, or restarts anything. That leaves applying real
 config as the operator's own action, matching
-`Hermes-Provisioning/README.md`'s own standing discipline.
+the Skill catalog's own standing discipline.
 """
 from __future__ import annotations
 
@@ -30,6 +30,7 @@ from pathlib import Path
 
 from app.business import system_settings
 from app.config import settings
+from app.data_access import skills as skills_data
 
 # Grouped so each step is one decision the operator can actually answer in
 # one sitting, in dependency order: where the notes live and who you are,
@@ -315,6 +316,9 @@ def _hermes_env_files_holding_the_vault_path(home: Path) -> list[Path]:
     return targets
 
 
+_PYTHONPATH_ENV_KEY = "PYTHONPATH"
+
+
 def sync_settings_to_hermes(vault_path: str, data_path: str = "", self_email: str = "") -> dict:
     """Writes the vault path into Hermes' own `.env` (operator-directed,
     2026-09-04: "When I set the Vault URL it need to reflect in Hermes
@@ -347,6 +351,14 @@ def sync_settings_to_hermes(vault_path: str, data_path: str = "", self_email: st
             "detail": "No Hermes install found — nothing to sync to",
             "files_written": 0,
         }
+    # Put the shared Skill managers on PYTHONPATH, and install them. Skills
+    # sibling-import vault_manager rather than carrying a copy; Hermes
+    # APPENDS a configured PYTHONPATH to its own instead of replacing it,
+    # so this is additive. Without it every Skill that imports a manager
+    # fails at run time -- which is why it is written here, alongside the
+    # vault path, rather than left as a manual provisioning step.
+    skills_data.deploy_shared_managers(home)
+    updates[_PYTHONPATH_ENV_KEY] = str(skills_data.shared_managers_target(home))
     targets = _hermes_env_files_holding_the_vault_path(home)
     written: list[str] = []
     for env_file in targets:
