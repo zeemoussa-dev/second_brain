@@ -18,6 +18,15 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix(frontend): `npm run build` works again — it had failed with 8 TypeScript
+  errors since 2026-08-30/31. Seven were CSS custom properties assigned onto
+  `CSSProperties` via `style['--x' as string] = …`, which cannot type-check (the
+  cast widens the *key* to `string`, precisely what may not index
+  `CSSProperties`); they now use a shared
+  `StyleWithCssVars = CSSProperties & Record<`--${string}`, string>` in
+  `visualOptions.ts` rather than casting to `any`. The eighth was a real runtime
+  bug: the Cockpit People tab rendered `<PersonChip>` without its required
+  `onOpen`, so clicking a person chip there threw instead of opening their note.
 - docs(context): `/load-context` now reads this install's own instance memory at
   `<SECOND_BRAIN_DATA_PATH>/AGENT-MEMORY.md` as step 3, and reports its absence
   rather than assuming defaults. That file is specified in `CLAUDE.md`,
