@@ -112,3 +112,35 @@ def test_a_malformed_blueprint_stays_visible_in_the_library(monkeypatch) -> None
     [blueprint] = BlueprintManager().get_all()
 
     assert blueprint.id == "broken" and blueprint.error is not None
+
+
+def test_a_hand_configured_primary_is_not_given_duplicate_routing(monkeypatch, tmp_path) -> None:
+    """apply_primary_routing_snippet is idempotent by MARKER, not content. On
+    a machine whose Primary SOUL.md was written by hand there is no marker,
+    so a naive apply appends a SECOND set of routing instructions for the
+    same agent -- and two descriptions of how to reach one agent is worse
+    than none, because the Primary has to pick."""
+    soul = tmp_path / "SOUL.md"
+    soul.write_text("- **`notes-manager`** -- quick capture, route here.\n", encoding="utf-8")
+
+    class _S:
+        hermes_home_path = tmp_path
+    monkeypatch.setattr("app.config.settings", _S)
+
+    assert BlueprintManager()._primary_already_describes("notes-manager") is True
+    assert BlueprintManager()._primary_already_describes("research-agent") is False
+
+
+def test_a_peer_without_a_routing_snippet_is_refused(monkeypatch) -> None:
+    """Marked peer but carrying nothing to route with -- the Agent would
+    install and never be reached, which looks like success."""
+    from app.data_access import blueprints as bd
+
+    real = bd.read_blueprint_json("librarian")
+    broken = {**real, "agents": [{**real["agents"][0], "primary_routing_snippet": None, "peer": True}]}
+    monkeypatch.setattr(bd, "read_blueprint_json", lambda bid: broken)
+
+    result = BlueprintManager().preflight("librarian")
+
+    assert result["ok"] is False
+    assert any("no primary_routing_snippet" in p for p in result["problems"])

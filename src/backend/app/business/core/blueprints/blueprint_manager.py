@@ -135,6 +135,19 @@ class BlueprintManager:
             },
         }
 
+    def _primary_already_describes(self, agent_id: str) -> bool:
+        """Whether this machine's Primary SOUL.md already mentions the agent
+        outside our own marker block. True for a hand-configured install,
+        where appending would duplicate rather than add."""
+        from app.config import settings
+        soul_path = settings.hermes_home_path / "SOUL.md"
+        if not soul_path.is_file():
+            return False
+        text = soul_path.read_text(encoding="utf-8", errors="replace")
+        from app.business.logic import artifact_import
+        begin, _ = artifact_import._primary_routing_markers(agent_id)
+        return agent_id in text and begin not in text
+
     def install(self, blueprint_id: str, *, wire_peers: bool = True) -> dict:
         """Creates the Section and its Agents and deploys each Agent's
         declared Skills. Refuses unless preflight passes -- nothing is
@@ -187,6 +200,16 @@ class BlueprintManager:
                 if not spec.peer or not spec.primary_routing_snippet:
                     continue
                 try:
+                    # apply_primary_routing_snippet is idempotent by MARKER,
+                    # not by content -- so on a machine whose Primary SOUL.md
+                    # was written by hand it would append a second, duplicate
+                    # set of routing instructions for the same agent. Two
+                    # descriptions of how to reach one agent is worse than
+                    # none: the Primary has to pick. Detect the unmarked
+                    # mention and leave it alone.
+                    if self._primary_already_describes(spec.id):
+                        peers[spec.id] = "already described in Primary (unmarked) -- left alone"
+                        continue
                     outcome = artifact_import.apply_primary_routing_snippet(
                         spec.id, spec.primary_routing_snippet,
                     )
