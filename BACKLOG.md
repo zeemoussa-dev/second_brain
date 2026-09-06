@@ -219,45 +219,7 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 
 | ID | Title | Area | Status | Fixed by |
 |---|---|---|---|---|
-| BUG-001 | Email notes don't wikilink to their sender's Person note | Logic | Closed | BUGFIX-01-US-01 |
-| BUG-002 | Agents Map: sections with 4+ agents visually spill into neighboring sections | UI | Closed | BUGFIX-02-US-01 |
-| BUG-003 | `insert_body_line_if_missing` corrupts notes whose body lacks the blank line after frontmatter | Logic | Open | — |
-| BUG-004 | Agents Map: an agent node renders directly on top of a neighboring Section's Hub | UI | Closed | direct fix, 2026-08-12 |
-| BUG-005 | Agents Map: top Section title renders off-screen above the viewport | UI | Open | — |
-| BUG-006 | Agents Map: Worker and Expert rings have zero gap, agents visually read as the same ring | UI | Open | — |
-| BUG-007 | `graph.py::_call_model` is a synchronous node with a blocking Provider call, suspected cause of a real dev-backend hang | Logic | Open | — |
-| BUG-008 | App-start Outlook-COM capture in `main.py`'s lifespan has no timeout, can hang the whole server's startup indefinitely | Logic | Closed | Direct fix, 2026-08-14 |
-| BUG-009 | Agents Map overview: agents fan out past their own Section's wedge boundary into a neighboring Section | UI | Closed | Direct fix, 2026-08-13 |
-| BUG-010 | Agents Map overview: on hover, an agent's Type and Name labels render at the identical position, directly overlapping | UI | Closed | Direct fix, 2026-08-13 |
-| BUG-011 | `_slugify`'s 80-char truncation can silently eat a filename's disambiguating id-suffix — causes a real same-path overwrite (content loss) in `Work/Tasks/`'s flat folder | Logic | Open | — |
-| BUG-012 | Mid-conversation model tool-calls bypass the working-mode approval gate for mutating Skills | Logic | Open | — |
-| BUG-013 | `skill_registry._load_state` re-applies the migration seed on every read, silently un-revoking a migration-seeded Skill right after a real revoke | Logic | Open | — |
-| BUG-014 | Thread email attachments are never captured (Outlook fetch never reads them), plus `write_attachments` has no filename-collision protection | Logic | Closed | BUGFIX-03-US-01 (`Done`, 2026-08-17 — both `T01` (gap-1 honest-signal fallback) and `T02` (gap-2 per-message nesting) shipped and live-verified; both locked ACs pass; [SPRINT-055](Implementation/Sprints/SPRINT-055-non-blocking-capture-dispatch-and-thread-attachment-fix.md) `Done`. `T02`'s own downstream consequence for `cockpit/attachments.py` (`ESC-043`) is now also resolved — see `BUG-018`, direct fix, same day) |
-| BUG-015 | `classify_email` consistently fails (not transient — retries confirmed no help) for 3 specific real "Forecast"-style emails; they never get captured | Logic | Open | — (2 partial direct fixes shipped — honest failure-count reporting, retry-with-backoff — root cause for these 3 messages still open, needs raw-body inspection) |
-| BUG-040 | `propose_person_note_update` writes a pending Person-note-edit proposal nobody can ever see, confirm, or discard | Logic | Open | — |
-| BUG-016 | An attendee resolving to a legacyExchangeDN address crashes `classify_recent_meetings`, aborting the whole meeting-capture run | Logic | Open | — |
-| BUG-017 | `_is_inline_attachment` false-positives on real, standalone attachments carrying a MIME Content-ID, silently dropping them from capture | Logic | Closed | Direct fix, 2026-08-17 |
-| BUG-018 | `BUGFIX-03-US-01-T02`'s per-message attachment nesting silently broke Inbox Cockpit's flat-path attachment lookup | Logic | Closed | Direct fix, 2026-08-17 |
-| BUG-019 | `REQ-SB-69-US-01-T06`'s human-readable Thread filenames silently broke `meeting_classification.py`'s Link-to-Thread PRIMARY strategy | Logic | Closed | Direct fix, 2026-08-17 |
-| BUG-020 | `process_staged_email`'s handler mislabeled every failed staged email as "filed" (`len(results)` without filtering `{"error": ...}` entries) | Logic | Closed | Direct fix, 2026-08-17 |
-| BUG-021 | `thread_match_merge`'s rename check produced a literal "None" filename for any pre-`ADR-046` Thread (missing `thread_name` frontmatter key) | Logic | Closed | Direct fix, 2026-08-17 |
-| BUG-022 | Meeting/Inbox Cockpit: every agent responds to a message, not just the addressed one | Logic | Closed | BUGFIX-04-US-01 |
-| BUG-023 | Meeting/Inbox Cockpit: pressing Enter in the chat input does nothing, must click Send | UI | Closed | BUGFIX-04-US-01 |
-| BUG-024 | Meeting/Inbox Cockpit: sent message/replies don't appear until manual page refresh | UI | Closed | BUGFIX-04-US-01 |
-| BUG-025 | Chat messages render as plain text instead of rich text (Meeting Cockpit, Inbox Cockpit, Agents Map chat panel) | UI | Closed | BUGFIX-04-US-01 |
-| BUG-026 | `thread_match_merge`'s legacy rename logic duplicates old-shape Threads and orphans `messages/`/`files/` on new-shape Threads (`ESC-048`/`ESC-050`) | Logic | Closed | BUGFIX-05-US-01 |
-| BUG-027 | `resolve_people_chips` 500s on a real Meeting note whose `attendees` frontmatter is a plain list of wikilink strings, not dicts | Logic | Closed | BUGFIX-06-US-01 |
-| BUG-028 | Customer/Project `log.md`/`captures.md` created with zero identifying content (no header, unlike `index.md`) | Logic | Closed | BUGFIX-07-US-01 |
-| BUG-029 | `meeting-capture`'s `run_capture_now` fires via both a scheduled tick and a direct dispatch 6ms apart, creating a permanent duplicate Pending Approval | Logic | Closed | BUGFIX-08-US-01 |
-| BUG-030 | A staged email/Thread that already generated a classification/routing Pending Approval gets reprocessed on the next capture tick, creating a fresh duplicate each time (same root cause also hit librarian-housekeeping) | Logic | Closed | BUGFIX-08-US-01 |
-| BUG-031 | Company Review "Customer" approval creates the Customer note but does not tag the source Threads with it (real example: Masdar) | Logic | Closed | Direct fix, 2026-08-19 |
-| BUG-032 | Company Review proposes companies that already exist as real Partner notes (Core42, G42) as NEW "Customer" candidates, and clicking Approve on them silently does nothing | Logic | Open | — |
-| BUG-033 | Agents Map / Job Tree still render `threads-cleaning` and `company-and-partner-building` as one collapsed agent node each, not their individual internal jobs | UI | Open | — |
-| BUG-034 | Agent detail panel's Schedule tab 404s on every real Hermes-sourced agent (`/agents/{id}/schedules` never rebuilt against the Hermes retrofit) | Logic | Open | — |
-| BUG-035 | Settings page's Providers card 404s entirely — full `/providers` CRUD was never rebuilt against the Hermes retrofit | Logic | Open | — |
-| BUG-036 | Some Meeting-series and Person notes are filed under a raw Outlook internal identifier as their own filename, even though a real human-readable name is already known in the same note's frontmatter | Logic | Open | Partial fix, 2026-08-24 |
-| BUG-037 | Cockpit (Inbox/Meeting) 404s entirely — archived router never rebuilt against the Hermes pivot | Logic | Closed | Direct fix, 2026-08-25 |
-| BUG-038 | BUG-036's raw-ID/DN naming produced full duplicate Meeting notes (7 recurring series + 17 one-time meetings each existed twice) | Logic | Closed | Direct fix, 2026-08-24 |
-| BUG-039 | Agents Map: `compass-solutions` not visually linked to `compass-expert` (a 2-outgoing-edge cap meant for pipeline Jobs also silently applied to agents) | UI | Closed | Direct fix, 2026-08-24 |
-| BUG-041 | Exporting a Pipeline artifact (`.sbf`) never includes the Skills/scripts that actually implement it — the dependency resolver's Pipeline branch has no real path from a Job step to a Skill | Logic | Closed | Direct fix, 2026-09-01 |
-| BUG-042 | `summarize-and-tag-threads` tags real Customer Threads (Masdar, TAQA) as generic "internal" instead of `customer/<slug>` — everything shows unclassified in My Day | Logic | Open | — |
+
+> **Emptied 2026-09-06** with `BUGS.md`, which this mirrors — 42 rows.
+> History: `git show d64dcb4:BACKLOG.md`. Next id is **`BUG-043`**.
+
