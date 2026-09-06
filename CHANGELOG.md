@@ -18,6 +18,15 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix(vault-manager): `iter_md_files` now yields **plain** paths instead of
+  Windows extended-length (`\?\`) ones. Returning prefixed paths broke callers
+  silently — `relative_to()` raised `ValueError` into a swallowing `except`, and
+  every returned path compared unequal to the plain one the caller held. Nine
+  tests in the manager's own suite had been failing on it; they failed on the
+  symptom, the cause was one line. The `is_file()` guard went with it (past
+  MAX_PATH it silently returns `False`). `index_builder_lib` was compensating for
+  the old behaviour and is simplified to the new contract. 57 manager tests pass,
+  up from 47 pass / 9 fail.
 - refactor(skills): **`Hermes-Provisioning/` is gone.** The 17 Skills moved to
   `src/backend/app/business/core/skills/catalog/<tool>/<slug>/`, grouped by the
   Tool each actually depends on (vault 14, outlook 2, pricing 1) rather than by
