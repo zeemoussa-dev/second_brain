@@ -174,8 +174,21 @@ Pipelines**. Nothing is invented for you.
 | Page | For |
 |---|---|
 | **[Templates.md](Templates.md)** | Authoring a note type — every key, the access model, testing |
+| **[Vault-Layout.md](Vault-Layout.md)** | Where every kind of note lands, and the two folder shapes |
 | **[Artifacts.md](Artifacts.md)** | Agent / Skill / Pipeline shapes, disk layout, `.sbf` `.sbb` `.sbd` |
+| **[Hermes-Runtime.md](Hermes-Runtime.md)** | Operating a live Hermes — API, auth, profiles, cron scoping |
 | **[Hermes-Provisioning.md](Hermes-Provisioning.md)** | What depends on the folder held outside the tree |
+| **[Deployment.md](../../Deployment.md)** | Full deployment mechanics, from a fresh machine |
+
+## Building one for someone else
+
+The pages above describe the system. To stand a **new** Second Brain up for a new
+person on a new machine, work through the ordered checklist:
+
+> **[assets/new-install-checklist.md](assets/new-install-checklist.md)**
+
+`assets/` holds the copyable parts that go with it — a starting
+`AGENT-MEMORY.md` and a worked `Template.json`.
 
 ## Documentation vs memory
 

@@ -58,6 +58,34 @@ never a second source of truth.
 > Second Brain cannot bootstrap Hermes. Hermes' profiles are the source; the
 > Registry annotates them.
 
+### One agent, one `Agent.json`
+
+The Registry finds agents by scanning directories, so a stray second `Agent.json`
+for the same agent elsewhere in the tree silently **shadows** the correct one in
+memory. It presents as agents disappearing from a Section rather than as an
+error. Any write path must resolve an agent's real directory before writing.
+
+Registry data for an agent is **one** file. An earlier split into
+`Agent-config.json` + `Agent-visual.json` was consolidated.
+
+---
+
+## Section — not an artifact, but you need the model
+
+A Section is not carried in a `.sbf` bundle and is not authored the way the four
+artifacts are. It still has a shape worth knowing.
+
+- **`SectionManager.create()` always creates a Hub Agent alongside the Section.**
+  That is a Manager-to-Manager call, a deliberate exception to this codebase's
+  compose-at-the-caller rule.
+- **The direction of travel is that a Section *is* its Hub Agent**, rather than a
+  grouping represented by one. Recorded from a design discussion and not yet
+  built — do not assume the code works this way, and do not design against it.
+- **A persisted `assignments` store is not what places an agent.** Placement comes
+  from the agent's own `section_id`; the assignments store is not the control
+  surface it looks like.
+- A background agent lives outside any Section, under `Background/Agents/`.
+
 ---
 
 ## Skill
