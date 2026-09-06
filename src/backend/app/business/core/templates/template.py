@@ -26,6 +26,10 @@ class Template:
     # that does not declare it is inferred from its shape -- see
     # TemplateManager._schema_version.
     schema_version: int
+    # The CONTENT contract -- which sections this template promises. Bumped
+    # when a section is removed or renamed; deliberately NOT schema_version,
+    # which says how to PARSE the file. A Skill depends on this one.
+    version: int
     note_name: str | None
     on_missing: str = "create"
     on_existing_title: str = "update_section"

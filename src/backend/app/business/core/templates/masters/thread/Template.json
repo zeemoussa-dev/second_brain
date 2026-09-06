@@ -1,6 +1,7 @@
 {
   "id": "thread",
   "schema_version": 2,
+  "version": 1,
   "identity": {
     "strategy": "id"
   },

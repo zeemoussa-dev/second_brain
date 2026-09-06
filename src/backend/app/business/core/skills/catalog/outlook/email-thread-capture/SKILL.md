@@ -1,7 +1,7 @@
 ---
 name: email-thread-capture
 description: Full-history (one-time) or incremental (recurring) Outlook capture into Second Brain's vault via standalone scripts.
-version: 0.3.0
+version: 0.4.0
 author: second-brain
 license: MIT
 platforms: [windows]
@@ -11,12 +11,15 @@ metadata:
 writes:
   - action: link_person_to_thread
     template: thread
+    requires: 1
     sections: [Related]
   - action: capture_attachments
     template: thread
+    requires: 1
     sections: [Files]
   - action: capture_file_link
     template: thread
+    requires: 1
     sections: [Files]
 ---
 

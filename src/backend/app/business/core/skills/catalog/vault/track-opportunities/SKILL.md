@@ -1,7 +1,7 @@
 ---
 name: track-opportunities
 description: Creates, updates, links, and answers questions about sales Opportunities filed under a real Customer hub note. Use this whenever the operator's message is about creating a new opportunity/deal/opp (e.g. "create a new opp", "new opportunity for ADNOC"), adding an update/log entry/action/related link to an EXISTING one ("log that I spoke to procurement on the ADNOC HPC opp", "add an action item to renew the Aldar deal"), linking a Thread or Meeting to an existing one ("link this thread to the ADNOC HPC Expansion opp"), or asking what opportunities exist / their status / consumption for a Customer ("what opportunities do we have in ADNOC", "what's the forecasted consumption this month").
-version: 0.4.0
+version: 0.5.0
 author: second-brain
 license: MIT
 platforms: [windows]
@@ -11,6 +11,7 @@ metadata:
 writes:
   - action: link_opportunity
     template: thread
+    requires: 1
     sections: [Related]
 ---
 

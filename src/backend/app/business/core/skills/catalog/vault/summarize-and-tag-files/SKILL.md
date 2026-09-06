@@ -1,7 +1,7 @@
 ---
 name: summarize-and-tag-files
 description: One-time, long-running captured-file summarization and company wiki-tagging pass -- Job 5 of the company/partner discovery sequence.
-version: 0.1.0
+version: 0.2.0
 author: second-brain
 license: MIT
 platforms: [windows]
@@ -11,6 +11,7 @@ metadata:
 writes:
   - action: apply_file_review
     template: thread
+    requires: 1
     sections: [Files]
 ---
 

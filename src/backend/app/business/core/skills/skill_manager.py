@@ -204,6 +204,7 @@ class SkillManager:
             if isinstance(action, str) and isinstance(template, str) and isinstance(sections, list):
                 entries.append({
                     "action": action, "template": template,
+                    "requires": entry.get("requires"),
                     "sections": [s for s in sections if isinstance(s, str)],
                 })
         return entries
@@ -263,6 +264,18 @@ class SkillManager:
                     f"{entry['action']}: no Master Template {entry['template']!r} on this install"
                 )
                 continue
+            required = entry.get("requires")
+            if isinstance(required, int) and required != template.version:
+                # EXACT match, not ">=". These are major CONTENT versions: a
+                # bump means a section was removed or renamed, so an older
+                # Skill is not merely behind, it is wrong. ">=" would let a
+                # Skill written for v1 pass against a v2 that dropped the
+                # very section it writes -- the failure this exists to catch.
+                problems.append(
+                    f"{entry['action']}: needs {entry['template']!r} v{required}, "
+                    f"install has v{template.version}"
+                )
+                continue
             by_name = {section.name: section for section in template.sections}
             for section_name in entry["sections"]:
                 section = by_name.get(section_name)
@@ -276,6 +289,75 @@ class SkillManager:
                         f"is {section.access!r}, not machine_write"
                     )
         return problems
+
+    def _frontmatter(self, skill_id: str) -> dict:
+        """This Skill's own SKILL.md frontmatter, {} if absent or malformed."""
+        match = _FRONTMATTER_RE.match(skills_data.read_skill_md(skill_id) or "")
+        if not match:
+            return {}
+        try:
+            parsed = yaml.safe_load(match.group(1))
+        except yaml.YAMLError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+
+    def check_deployment_drift(self) -> list[dict]:
+        """For every Skill, for every profile it claims to be deployed to:
+        is what is RUNNING still what we ship?
+
+        Nothing could answer that before, and the cost was concrete. Six of
+        our own Skills sat mis-filed under the catch-all `jarvis` Tool
+        because Hermes had become the de-facto source of truth; the index
+        engine ran `rglob` for weeks after the fix landed in a different
+        copy; 228 stale copies of vault_manager.py ran across 41 profiles.
+        Each of those is this same question, left unasked.
+
+        Statuses, most to least serious:
+          missing   -- deployed_to claims it, the profile does not have it
+          stale     -- deployed version differs from the catalog's
+          modified  -- same version, different content (edited in place --
+                       worse than stale: the version claims it is current)
+          current   -- byte-identical
+        """
+        client = get_client()
+        # One filesystem listing per PROFILE, not per skill-profile pair:
+        # this is O(skills x profiles) and each listing globs a real tree.
+        deployed_by_profile: dict[str, dict] = {}
+
+        def deployed_skills(profile_id: str) -> dict:
+            if profile_id not in deployed_by_profile:
+                deployed_by_profile[profile_id] = {
+                    s.slug: s for s in client.skills.get_all(profile_id)
+                }
+            return deployed_by_profile[profile_id]
+
+        report: list[dict] = []
+        for skill in self.get_all():
+            catalog_md = skills_data.read_skill_md(skill.id) or ""
+            catalog_version = str(self._frontmatter(skill.id).get("version", ""))
+            for profile_id in skill.deployed_to:
+                # Match on SLUG, not "<category>/<slug>". Hermes keys a
+                # deployed skill by the folder it landed in, and ours moved
+                # when the catalog was regrouped by Tool (2026-09-06), so a
+                # deployed copy still sits under its old category. The slug
+                # is the stable identity on both sides.
+                deployed = deployed_skills(profile_id).get(skill.id)
+                deployed_md = (
+                    client.skills.read(profile_id, deployed.id) if deployed is not None else None
+                )
+                if deployed is None or deployed_md is None:
+                    status, deployed_version = "missing", None
+                elif deployed_md == catalog_md:
+                    status, deployed_version = "current", deployed.version
+                elif deployed.version != catalog_version:
+                    status, deployed_version = "stale", deployed.version
+                else:
+                    status, deployed_version = "modified", deployed.version
+                report.append({
+                    "skill_id": skill.id, "profile_id": profile_id, "status": status,
+                    "catalog_version": catalog_version, "deployed_version": deployed_version,
+                })
+        return report
 
     def publish_section_access_map(self) -> dict:
         """Rebuilds and persists the derived write map. Called on every

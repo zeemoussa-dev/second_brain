@@ -72,6 +72,7 @@ class TemplateManager:
         return Template(
             id=template_id,
             schema_version=version,
+            version=int(data.get("version", 1)),
             note_name=data.get("note_name"),
             on_missing=data.get("on_missing", "create"),
             on_existing_title=source.get("on_existing_title", "update_section"),
@@ -159,6 +160,6 @@ class TemplateManager:
                 # file is what failed, so `data` may never have been bound;
                 # claiming v1 here would be a guess dressed as a fact.
                 templates.append(Template(
-                    id=template_id, schema_version=0, note_name=None, error=str(exc),
+                    id=template_id, schema_version=0, version=0, note_name=None, error=str(exc),
                 ))
         return templates
