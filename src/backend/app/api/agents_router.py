@@ -257,7 +257,14 @@ def delete_agent(agent_id: str) -> dict:
     # than a silent no-op, matching every other single-agent route here.
     if _agent_manager.get_by_id(agent_id) is None:
         raise HTTPException(status_code=404, detail=f"Unknown agent: {agent_id!r}")
-    return _agent_manager.delete(agent_id)
+    try:
+        return _agent_manager.delete(agent_id)
+    except HermesUnavailableError as exc:
+        # A refusal Hermes can explain must not arrive as a generic server
+        # error (BUG-054). The commonest cause on Windows is something still
+        # holding a file in the profile open -- `hermes serve` on its
+        # state.db -- which the operator can act on the moment they are told.
+        raise HTTPException(status_code=409, detail=str(exc))
 
 
 @router.post("/{agent_id}/specialists/regenerate")

@@ -229,9 +229,9 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 | BUG-050 | A dropped Hermes WebSocket ends the chat stream as HTTP 200 with an empty body | Logic | Closed | direct fix, 2026-09-07 |
 | BUG-051 | The shipped `librarian` Blueprint hard-codes another operator's vault path into every Agent SOUL | Logic | Closed | direct fix, 2026-09-07 |
 | BUG-052 | Primary is never told it HAS peers; routing snippets land as orphan bullets | Logic | Closed | direct fix, 2026-09-07 |
-| BUG-053 | Deleting an Agent makes a phantom `.deleted` Agent appear in the Agents list | Logic | Open | — |
-| BUG-054 | A refused Agent delete surfaces as a bare 500 with the reason only in the log | Logic | Open | — |
-| BUG-055 | The BUG-052 fix leaves an upgraded SOUL with an empty peer section below orphaned bullets | Logic | Open | — |
+| BUG-053 | Deleting an Agent makes a phantom `.deleted` Agent appear in the Agents list | Logic | Closed | direct fix, 2026-09-07 |
+| BUG-054 | A refused Agent delete surfaces as a bare 500 with the reason only in the log | Logic | Closed | direct fix, 2026-09-07 |
+| BUG-055 | The BUG-052 fix leaves an upgraded SOUL with an empty peer section below orphaned bullets | Logic | Closed | direct fix, 2026-09-07 |
 
 > **Emptied 2026-09-06** with `BUGS.md`, which this mirrors — 42 rows.
 > History: `git show d64dcb4:BACKLOG.md`. Next id is **`BUG-043`**.

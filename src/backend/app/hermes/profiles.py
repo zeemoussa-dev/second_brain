@@ -99,6 +99,23 @@ def _deep_merge(base: dict, patch: dict) -> dict:
     return merged
 
 
+def _is_real_profile(path) -> bool:
+    """A profile directory, not one of Hermes' own bookkeeping folders.
+
+    `hermes profile delete` does not erase a profile, it TOMBSTONES it: the
+    directory is moved under `profiles/.deleted/<name>`. Taking every
+    directory made `.deleted` itself an Agent, id and name both `.deleted`,
+    appearing in the Agents list and on the Agents Map after the first
+    deletion an install ever performs (BUG-053).
+
+    Excluded by the leading dot rather than by name: `.deleted` is the one
+    that bit us, but a dot-prefixed directory under `profiles/` is Hermes'
+    own bookkeeping by convention, and a real profile id never starts with
+    one -- `hermes profile create` slugs its input.
+    """
+    return path.is_dir() and not path.name.startswith(".")
+
+
 class HermesProfiles:
     def __init__(self, config: HermesConfig, skills: HermesSkills) -> None:
         self._config = config
@@ -145,7 +162,7 @@ class HermesProfiles:
         agents = [self._read_agent(_PRIMARY_PROFILE_ID, home)]
         profiles_root = home / "profiles"
         if profiles_root.is_dir():
-            for profile_dir in sorted(p for p in profiles_root.iterdir() if p.is_dir()):
+            for profile_dir in sorted(p for p in profiles_root.iterdir() if _is_real_profile(p)):
                 agents.append(self._read_agent(profile_dir.name, profile_dir))
         return agents
 

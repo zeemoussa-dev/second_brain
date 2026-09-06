@@ -206,7 +206,15 @@ class BlueprintManager:
 
     def _ensure_peer_section(self) -> bool:
         """Makes sure Primary's SOUL.md has a heading and lead-in for peer
-        bullets to live under. Returns True if it created one."""
+        bullets to live under, ABOVE any that are already there.
+
+        Appending it at the end was right for a fresh SOUL and wrong for one
+        that had already been wired by the pre-fix code (BUG-055) -- which is
+        every install the BUG-052 fix was written for. It produced a heading
+        announcing peers with nothing under it, and the bullets still
+        orphaned above: worse than what it replaced, because it now looks
+        deliberate.
+        """
         from app.config import settings
         soul_path = settings.hermes_home_path / "SOUL.md"
         if not soul_path.is_file():
@@ -215,10 +223,16 @@ class BlueprintManager:
         if self._PEER_HEADING in text:
             return False
         NL = chr(10)
-        soul_path.write_text(
-            text.rstrip(NL) + NL + NL + self._PEER_HEADING + NL + NL + self._PEER_LEAD_IN + NL,
-            encoding="utf-8",
-        )
+        block = self._PEER_HEADING + NL + NL + self._PEER_LEAD_IN + NL
+        marker = "<!-- BEGIN PRIMARY ROUTING:"
+        if marker in text:
+            # Migration: put the heading above the first block already there,
+            # so existing bullets end up underneath it rather than stranded.
+            cut = text.index(marker)
+            updated = text[:cut].rstrip(NL) + NL + NL + block + NL + text[cut:]
+        else:
+            updated = text.rstrip(NL) + NL + NL + block
+        soul_path.write_text(updated, encoding="utf-8")
         return True
 
     def _roll_back(self, agent_ids: list[str], section_id: str | None) -> dict:
