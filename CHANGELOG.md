@@ -18,6 +18,10 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- docs: `BUG-056` — deleting an Agent leaves its Skills' `deployed_to` records
+  behind, so a reinstall skips every deployment as "already" and the Agent comes
+  back with no Skills while the install reports success.
+
 - docs: `BUG-055` — the BUG-052 peer-heading fix appends below existing routing
   blocks on an already-wired SOUL, and the marker guard stops them ever moving
   under it, so the upgrade case ends with an empty peer section.
