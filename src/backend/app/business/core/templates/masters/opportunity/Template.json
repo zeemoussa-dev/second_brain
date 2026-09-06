@@ -1,5 +1,6 @@
 {
   "id": "opportunity",
+  "schema_version": 2,
   "identity": {
     "strategy": "id"
   },
@@ -59,10 +60,37 @@
       ]
     },
     "frontmatter_enums": {
-      "status": ["Open", "Won", "Lost", "On Hold", "Disengaged"],
-      "stage": ["Identified", "Qualified", "Proposed", "Committed", "Closed"],
-      "product": ["azure", "private-cloud", "gpuaas", "compass", "m365", "services", "marketplace-isv", "other"],
-      "route": ["direct-ea-mca", "csp", "marketplace-private-offer", "marketplace-mpo", "unknown"]
+      "status": [
+        "Open",
+        "Won",
+        "Lost",
+        "On Hold",
+        "Disengaged"
+      ],
+      "stage": [
+        "Identified",
+        "Qualified",
+        "Proposed",
+        "Committed",
+        "Closed"
+      ],
+      "product": [
+        "azure",
+        "private-cloud",
+        "gpuaas",
+        "compass",
+        "m365",
+        "services",
+        "marketplace-isv",
+        "other"
+      ],
+      "route": [
+        "direct-ea-mca",
+        "csp",
+        "marketplace-private-offer",
+        "marketplace-mpo",
+        "unknown"
+      ]
     },
     "frontmatter_rules": [
       "status in {Won,Lost} requires stage == Closed",

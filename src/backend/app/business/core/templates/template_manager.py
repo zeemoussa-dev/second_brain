@@ -36,16 +36,49 @@ from app.data_access import templates as templates_data
 
 
 class TemplateManager:
+    def _schema_version(self, data: dict) -> int:
+        """Which Template schema this file was written against.
+
+        Prefer what the file declares; fall back to its shape for the
+        files written before `schema_version` existed. `root` is what
+        defines v2 -- the two-layer split -- so its presence is the
+        inference.
+
+        This is resolved ONCE, explicitly, rather than per-field with
+        `.get()` fallbacks, because that is exactly how the bug this
+        replaces stayed invisible: reading v1 names out of a v2 file
+        never raises, every `.get()` simply returns its default, and all
+        11 real templates parsed to zero sections with error=None."""
+        declared = data.get("schema_version")
+        if isinstance(declared, int) and declared > 0:
+            return declared
+        return 2 if isinstance(data.get("root"), dict) else 1
+
     def _to_template(self, template_id: str, data: dict) -> Template:
+        """v1 keeps everything flat; v2 nests the same information under
+        `root` and renames three keys (`note_own_folder` -> `own_folder`,
+        `note_filename_plain` -> `plain_filename`, and moves
+        `on_existing_title` inside). `note_name` is not a rename: v2
+        dropped it as a template key entirely, so a v2 template
+        legitimately has none."""
+        version = self._schema_version(data)
+        source = (data.get("root") or {}) if version >= 2 else data
+        if version >= 2:
+            own_folder = source.get("own_folder", False)
+            plain_filename = source.get("plain_filename", False)
+        else:
+            own_folder = source.get("note_own_folder", False)
+            plain_filename = source.get("note_filename_plain", False)
         return Template(
             id=template_id,
+            schema_version=version,
             note_name=data.get("note_name"),
             on_missing=data.get("on_missing", "create"),
-            on_existing_title=data.get("on_existing_title", "update_section"),
-            sections=[TemplateSection(**s) for s in data.get("sections", [])],
-            frontmatter_defaults=data.get("frontmatter_defaults", {}),
-            note_own_folder=data.get("note_own_folder", False),
-            note_filename_plain=data.get("note_filename_plain", False),
+            on_existing_title=source.get("on_existing_title", "update_section"),
+            sections=[TemplateSection(**s) for s in source.get("sections", [])],
+            frontmatter_defaults=source.get("frontmatter_defaults", {}),
+            note_own_folder=own_folder,
+            note_filename_plain=plain_filename,
         )
 
     def get_by_id(self, template_id: str) -> Template | None:
@@ -86,5 +119,10 @@ class TemplateManager:
                 data = templates_data.read_template_json(template_id)
                 templates.append(self._to_template(template_id, data))
             except (OSError, ValueError, TypeError) as exc:
-                templates.append(Template(id=template_id, note_name=None, error=str(exc)))
+                # schema_version 0 = "could not be determined". Reading the
+                # file is what failed, so `data` may never have been bound;
+                # claiming v1 here would be a guess dressed as a fact.
+                templates.append(Template(
+                    id=template_id, schema_version=0, note_name=None, error=str(exc),
+                ))
         return templates

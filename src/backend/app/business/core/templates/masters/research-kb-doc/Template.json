@@ -1,5 +1,6 @@
 {
   "id": "research-kb-doc",
+  "schema_version": 2,
   "identity": {
     "strategy": "id"
   },

@@ -1,5 +1,6 @@
 {
   "id": "thread",
+  "schema_version": 2,
   "identity": {
     "strategy": "id"
   },
@@ -21,7 +22,9 @@
       {
         "name": "Summary",
         "access": "machine_write",
-        "allowed_callers": ["apply_thread_review"]
+        "allowed_callers": [
+          "apply_thread_review"
+        ]
       },
       {
         "name": "Personal Notes",
@@ -30,17 +33,26 @@
       {
         "name": "Actions",
         "access": "machine_write",
-        "allowed_callers": ["apply_thread_review"]
+        "allowed_callers": [
+          "apply_thread_review"
+        ]
       },
       {
         "name": "Related",
         "access": "machine_write",
-        "allowed_callers": ["link_person_to_thread", "link_opportunity"]
+        "allowed_callers": [
+          "link_person_to_thread",
+          "link_opportunity"
+        ]
       },
       {
         "name": "Files",
         "access": "machine_write",
-        "allowed_callers": ["capture_attachments", "capture_file_link", "apply_file_review"]
+        "allowed_callers": [
+          "capture_attachments",
+          "capture_file_link",
+          "apply_file_review"
+        ]
       }
     ],
     "children": [
@@ -48,7 +60,10 @@
         "growth": "dynamic",
         "name": "messages",
         "folder": "messages",
-        "identity_fields": ["conversation_id", "message_id"],
+        "identity_fields": [
+          "conversation_id",
+          "message_id"
+        ],
         "frontmatter_defaults": {
           "type": "RawMessage"
         }
