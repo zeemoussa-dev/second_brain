@@ -165,9 +165,12 @@ class SkillManager:
             skills_data.write_script(skill.category, skill_id, rel_path, content)
 
         if skill_md_content is not None or scripts:
-            client = get_client()
+            # Was a silent no-op: the bare slug never resolved to a real
+            # deployed folder. See _push_to_profile.
+            current_md = skills_data.read_skill_md(skill_id) or ""
+            current_scripts = skills_data.list_scripts(skill_id)
             for profile_id in skill.deployed_to:
-                client.skills.update(profile_id, skill_id, skill_md_content=skill_md_content, scripts=scripts)
+                self._push_to_profile(skill, profile_id, current_md, current_scripts)
 
         old_tool_id = skill.tool_id or _JARVIS_TOOL_ID
         if tool_id is not None and tool_id != old_tool_id:
@@ -177,6 +180,57 @@ class SkillManager:
         skill.updated_at = datetime.now(timezone.utc).isoformat()
         self._write_meta(skill)
         return skill
+
+    def _push_to_profile(
+        self, skill: Skill, profile_id: str, skill_md: str, scripts: dict[str, str]
+    ) -> str:
+        """Puts this Skill's current content into one profile and returns
+        what happened: "created" | "updated" | "moved".
+
+        Two things this has to get right, both of which were wrong before:
+
+        1. Hermes keys a deployed skill by "<category>/<slug>", while ours
+           is the bare slug. `SkillManager.update()` passed the bare slug
+           to `HermesSkills.update()`, whose `_skill_dir` partitions on "/"
+           -- so it resolved to a folder that does not exist, returned None,
+           and the re-push to every deployed profile was a SILENT NO-OP.
+           That is how a deployed copy drifts from the catalog unnoticed.
+
+        2. The catalog was regrouped by Tool on 2026-09-06, so a deployed
+           copy can still sit under its old category folder. Writing the
+           new location without removing the old one would leave Hermes
+           seeing the same Skill twice, under two categories.
+        """
+        client = get_client()
+        existing = next(
+            (s for s in client.skills.get_all(profile_id) if s.slug == skill.id), None
+        )
+        if existing is None:
+            client.skills.create(profile_id, skill.category, skill.id, skill_md, scripts)
+            return "created"
+        if existing.category != skill.category:
+            client.skills.create(profile_id, skill.category, skill.id, skill_md, scripts)
+            client.skills.delete(profile_id, existing.id)
+            return "moved"
+        client.skills.update(profile_id, existing.id, skill_md_content=skill_md, scripts=scripts)
+        return "updated"
+
+    def redeploy(self, skill_id: str) -> dict[str, str]:
+        """Pushes current catalog content to every profile this Skill is
+        already deployed to. profile_id -> what happened."""
+        skill = self.get_by_id(skill_id)
+        if skill is None:
+            return {}
+        problems = self.validate_declared_writes(skill_id)
+        if problems:
+            raise SkillPreconditionError(f"{skill_id!r} cannot be deployed -- " + "; ".join(problems))
+        skill_md = skills_data.read_skill_md(skill_id) or ""
+        scripts = skills_data.list_scripts(skill_id)
+        skills_data.deploy_shared_managers(settings.hermes_home_path)
+        return {
+            profile_id: self._push_to_profile(skill, profile_id, skill_md, scripts)
+            for profile_id in skill.deployed_to
+        }
 
     def _declared_writes(self, skill_id: str) -> list[dict]:
         """This Skill's own `writes:` frontmatter -- which of its Actions
