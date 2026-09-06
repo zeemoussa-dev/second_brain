@@ -18,6 +18,10 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- docs: `BUG-055` — the BUG-052 peer-heading fix appends below existing routing
+  blocks on an already-wired SOUL, and the marker guard stops them ever moving
+  under it, so the upgrade case ends with an empty peer section.
+
 - docs: `BUG-053` / `BUG-054` logged while redeploying the split Blueprints — Hermes
   tombstones deleted profiles into `profiles/.deleted/`, which our enumeration turns
   into a phantom Agent, and a refused delete reaches the operator as a bare 500.

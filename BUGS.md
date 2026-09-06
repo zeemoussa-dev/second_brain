@@ -41,6 +41,7 @@ is a thin status mirror of the index table below.
 | BUG-052 | Peer routing snippets are appended to Primary's SOUL.md as orphan bullets with no heading, no "these are your peers" lead-in and no session reset, so Primary does not know it has peers and the operator has to explain each one by hand | Logic | Major | Closed | 2026-09-07 | direct fix, 2026-09-07 |
 | BUG-053 | Deleting any Agent makes a phantom Agent called `.deleted` appear in the Agents list and on the Agents Map — Hermes tombstones deleted profiles into `profiles/.deleted/` and the profile enumeration treats that dot-directory as a profile | Logic | Major | Open | 2026-09-07 | — |
 | BUG-054 | `DELETE /agents/{id}` returns a bare 500 when Hermes refuses the profile delete, so the operator sees "The server failed handling this request" and the real reason stays in the server log | Logic | Minor | Open | 2026-09-07 | — |
+| BUG-055 | The BUG-052 fix does not migrate a SOUL that already has pre-fix routing blocks: the peer heading is appended BELOW the existing bullets and the marker guard stops them ever moving under it, leaving a section that announces peers and lists none | Logic | Major | Open | 2026-09-07 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -571,3 +572,48 @@ is a thin status mirror of the index table below.
 - **Fix direction:** catch `HermesUnavailableError` in the route and return 409
   with the message, matching how `sections_router.delete_section` already
   handles `SectionBlockedError`.
+
+### BUG-055 — the BUG-052 fix leaves an upgraded SOUL worse than it found it
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-09-07, redeploying the split Blueprints on a machine whose
+  Primary `SOUL.md` had already been wired by the **pre-fix** code. Observed
+  afterwards, in this order:
+
+      <paragraph about tone>
+      <!-- BEGIN PRIMARY ROUTING: files-manager -->  ... bullet ...
+      <!-- BEGIN PRIMARY ROUTING: notes-manager -->  ... bullet ...
+
+      ## Your peer agents
+      You have peer agents. Each owns a domain you do not handle yourself. ...
+
+  A heading that announces peers, with **nothing under it**, and the two peer
+  bullets still orphaned above it.
+- **Repro:** wire peers with the pre-fix code, then install a Blueprint with the
+  fix in place. Every install that actually suffered BUG-052 is in exactly this
+  state — which is to say, every install the fix was written for.
+- **Root cause — the fix is correct for a fresh SOUL and unconsidered for an
+  upgraded one.** `blueprint_manager.install:320` calls `_ensure_peer_section()`
+  before applying snippets, commented *"Heading first, so the bullets appended
+  below have something to belong to"* — right, on a SOUL with no bullets yet. On
+  one that already has them, `_ensure_peer_section` appends the heading at the
+  END (`text.rstrip() + heading + lead-in`), i.e. below them. And the snippets
+  are idempotent **by marker**, so `apply_primary_routing_snippet` returns
+  "already applied" and the bullets are never moved. Nothing in the flow can ever
+  reconcile the two.
+- **Expected:** an install that adds the peer section to a SOUL which already has
+  marker-wrapped routing blocks moves those blocks under the new heading, or
+  inserts the heading above the first one.
+- **Actual:** the layout above, which reads worse than the original bug: before,
+  Primary saw undescribed bullets; now it also sees a section claiming peers
+  exist while listing none directly under it.
+- **Fix direction:** insert the heading immediately **before the first**
+  `<!-- BEGIN PRIMARY ROUTING:` marker when any exists, and only append at the
+  end when none does. That is a pure text placement change and needs no new
+  state. Cover it with a test whose input is a SOUL already carrying pre-fix
+  blocks — the existing tests appear to start from a clean SOUL, which is why
+  this passed.
+- **Note:** BUG-052 is `Closed` and its fix is right for the case it was tested
+  on; this is the migration case, not a regression of the original reasoning.
