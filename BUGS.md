@@ -38,6 +38,7 @@ is a thin status mirror of the index table below.
 | BUG-049 | `boot-status` reports `state: ready` with `checking_hermes: done` and `error: null` while `hermes_reachable` is `false`, and never re-checks — the app looks healthy while every agent chat is impossible | Logic | Major | Open | 2026-09-07 | — |
 | BUG-050 | A Hermes WebSocket that closes mid-turn raises `ConnectionClosedError`, which the chat stream does not catch — the SSE response ends with HTTP 200 and an EMPTY body, and the dead session is never evicted so every later message fails the same way | Logic | Major | Open | 2026-09-07 | — |
 | BUG-051 | The shipped `librarian` Blueprint hard-codes ANOTHER OPERATOR'S absolute vault path into all three Agent SOULs, so every fresh install's agents are pointed at a vault that is not theirs | Logic | Blocker | Open | 2026-09-07 | — |
+| BUG-052 | Peer routing snippets are appended to Primary's SOUL.md as orphan bullets with no heading, no "these are your peers" lead-in and no session reset, so Primary does not know it has peers and the operator has to explain each one by hand | Logic | Major | Open | 2026-09-07 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -434,3 +435,54 @@ is a thin status mirror of the index table below.
   and add a guard test that fails if any shipped master contains a literal
   `C:\Users\` path — that test is what stops this recurring, since the SOULs are
   prose and nothing else checks them.
+
+### BUG-052 — Primary is never told it HAS peers; the routing snippets land as orphan bullets
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-09-07, operator report after the `librarian` install: *"the
+  Primary Profile in Hermes didn't know about the Agents As Peers — I have to
+  tell him to use Notes Manager as Peer for the data to work and tell it the
+  details."*
+- **The install reports success, and it is not lying about the write.**
+  `install()` returned `"peers":{"files-manager":"wired","notes-manager":"wired"}`,
+  and Primary's `SOUL.md` did grow 667 -> 1925 bytes with both marker-wrapped
+  blocks present. The bytes are there. They just do not read as instructions
+  Primary can act on.
+- **Fault 1 — the snippet is appended with no context around it.**
+  `artifact_import.apply_primary_routing_snippet:508` builds the whole block as:
+
+      block = f"\n\n{begin}\n{snippet.strip()}\n{end}\n"
+
+  — markers plus the raw snippet, nothing else. The snippets are authored as
+  **list items** (`- **\`notes-manager\`** -- quick capture, ...`), clearly
+  written to sit underneath an existing routing section. On a fresh install no
+  such section exists: Hermes' stock `SOUL.md` is a single paragraph about tone,
+  so the result is that paragraph followed by two dangling bullets. Nothing
+  anywhere says *these are your peer agents* or *delegate to them*. Each bullet
+  describes what one agent owns; none establishes that Primary may route at all.
+- **Fault 2 — a running Primary never re-reads it.** This repo already records
+  the constraint that a Hermes session prompt is injected once and never re-read,
+  and `POST /agents/{id}/chat/reset` documents itself as *"the only real way to
+  make an agent pick up a changed SOUL.md mid-conversation"*. `install()` writes
+  the snippet and neither resets Primary's session nor tells the operator to.
+  So even a perfectly-worded snippet has no effect on the conversation the
+  operator is already in — which is exactly when they try it.
+- **Expected:** after installing a Blueprint with peer Agents, Primary knows it
+  has those peers and routes to them without being told. That is the entire point
+  of `wire_peers`, whose own code comment says: *"A peer is only REACHABLE once
+  Primary knows to relay to it. Without this the Agent exists, runs, and is simply
+  never reached -- which looks like a working install and is not."* The comment
+  describes this bug precisely; the check it inspired only verifies that text was
+  appended.
+- **Actual:** the operator had to explain the peer and its usage by hand, per
+  agent — the manual work `wire_peers` exists to remove.
+- **Fix direction:** have the first `apply_primary_routing_snippet` on a SOUL
+  create the section its bullets belong to (a heading plus a one-line lead-in
+  naming these as peers Primary may delegate to), with later snippets appending
+  inside it; and reset Primary's chat session after wiring, or return a flag the
+  UI turns into "restart your conversation with Primary for this to take effect".
+  Verify by asking a fresh Primary to capture a note and confirming it relays
+  rather than answering itself — the write succeeding is not evidence the routing
+  works, which is what made this look installed when it was not.

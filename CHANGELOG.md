@@ -18,6 +18,10 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- docs: `BUG-052` — peer routing snippets are appended to Primary's SOUL.md with
+  no heading, no lead-in naming them as peers, and no session reset, so Primary
+  does not act on them and the operator has to explain each peer by hand.
+
 - docs: `BUG-049` / `BUG-050` / `BUG-051` logged from the first agent chat on a
   clean install — a boot check that reports ready while Hermes is unreachable, a
   dropped WebSocket that ends the chat stream as an empty 200, and shipped
