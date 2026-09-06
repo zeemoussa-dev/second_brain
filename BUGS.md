@@ -106,6 +106,15 @@ is a thin status mirror of the index table below.
   afterwards shows **`Librarian`** present alongside the operator's own five.
 - **Repro:** with BUG-043 unfixed, `POST /blueprints/librarian/install`. It
   returns 500; the Section survives.
+- **Proof it was the install and not the operator** (asked and checked, rather
+  than assumed): the operator's own five Sections are all stamped **2026-09-05
+  ~01:00**; `librarian` is stamped **2026-09-07 01:21:03**, matching
+  `agent_sections.json`'s own mtime to the second. The backend process started
+  01:18:13, and its log across that whole window contains **no `POST /sections`**
+  — the single mutating request in it is the failed install. The Section's
+  `icon`/`color` are also `null`, whereas a completed install would have set
+  `database` / `#7c3aed` on the line immediately after `create()`; they are null
+  precisely because the raise happened in between.
 - **Expected:** `install()`'s docstring states preconditions are checked first so
   that *"a refusal never leaves a partial install"*. Either the failure should be
   caught by a precondition, or the partial work should be rolled back.
