@@ -18,6 +18,7 @@ install, `hermes <command> --help`):
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -45,8 +46,21 @@ class HermesCLI:
         self._config = config
 
     def _hermes_exe(self) -> Path | None:
-        exe = self._config.home_path / "hermes-agent" / "bin" / "hermes.exe"
-        return exe if exe.is_file() else None
+        # `bin/` is a SIBLING of the cloned `hermes-agent/` source tree, not a
+        # child of it -- the installer puts the launcher at <home>/bin/ and puts
+        # that same directory on PATH. This looked for <home>/hermes-agent/bin/
+        # until 2026-09-07 (BUG-043), which exists on no install, so every CLI
+        # call failed with "No real Hermes install found" on a perfectly healthy
+        # Hermes and read as a deployment fault rather than a wrong constant.
+        exe = self._config.home_path / "bin" / "hermes.exe"
+        if exe.is_file():
+            return exe
+        # Only the home path is configured; this subpath is our assumption about
+        # the installer's layout. Fall back to whatever provisioning actually put
+        # on PATH so a differently-laid-out install degrades to working rather
+        # than to the same misleading message.
+        found = shutil.which("hermes")
+        return Path(found) if found else None
 
     def _run(self, args: list[str], timeout: float = 30.0) -> tuple[bool, str]:
         """Runs to completion and captures output -- for commands whose
