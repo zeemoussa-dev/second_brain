@@ -39,6 +39,8 @@ is a thin status mirror of the index table below.
 | BUG-050 | A Hermes WebSocket that closes mid-turn raises `ConnectionClosedError`, which the chat stream does not catch — the SSE response ends with HTTP 200 and an EMPTY body, and the dead session is never evicted so every later message fails the same way | Logic | Major | Closed | 2026-09-07 | direct fix, 2026-09-07 |
 | BUG-051 | The shipped `librarian` Blueprint hard-codes ANOTHER OPERATOR'S absolute vault path into all three Agent SOULs, so every fresh install's agents are pointed at a vault that is not theirs | Logic | Blocker | Closed | 2026-09-07 | direct fix, 2026-09-07 |
 | BUG-052 | Peer routing snippets are appended to Primary's SOUL.md as orphan bullets with no heading, no "these are your peers" lead-in and no session reset, so Primary does not know it has peers and the operator has to explain each one by hand | Logic | Major | Closed | 2026-09-07 | direct fix, 2026-09-07 |
+| BUG-053 | Deleting any Agent makes a phantom Agent called `.deleted` appear in the Agents list and on the Agents Map — Hermes tombstones deleted profiles into `profiles/.deleted/` and the profile enumeration treats that dot-directory as a profile | Logic | Major | Open | 2026-09-07 | — |
+| BUG-054 | `DELETE /agents/{id}` returns a bare 500 when Hermes refuses the profile delete, so the operator sees "The server failed handling this request" and the real reason stays in the server log | Logic | Minor | Open | 2026-09-07 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -499,3 +501,73 @@ is a thin status mirror of the index table below.
   modules. 051 is the text arriving unsubstituted; 052 is it arriving unframed.
 - **Owner:** left for the framework session at the operator's direction
   (2026-09-07). Not fixed here.
+
+### BUG-053 — deleting an Agent makes a phantom `.deleted` Agent appear
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-09-07, deleting the three librarian Agents to redeploy them
+  after the BUG-051 fix. `GET /agents` then returned:
+
+      default          Primary
+      .deleted         .deleted        <- not a real agent
+      notes-manager    Notes Manager
+
+- **Repro:** delete any Agent, then `GET /agents`. Reproduces on the first
+  deletion an install ever performs — nothing exotic is required.
+- **Root cause:** Hermes' own `profile delete` does not erase a profile, it
+  **tombstones** it: the directory is moved under `<hermes home>/profiles/.deleted/<name>`.
+  Confirmed on disk — `profiles/.deleted/` here holds `files-manager`,
+  `notes-manager` and `research-agent`. Our enumeration takes every directory
+  under `profiles/` without exception (`app/hermes/profiles.py:148`):
+
+      for profile_dir in sorted(p for p in profiles_root.iterdir() if p.is_dir()):
+          agents.append(self._read_agent(profile_dir.name, profile_dir))
+
+  `.deleted` is a directory, so it becomes an Agent whose id and name are both
+  `.deleted`.
+- **Expected:** deleted profiles stay deleted from the app's point of view.
+- **Actual:** a phantom Agent in the Agents list and on the Agents Map, with a
+  detail panel, that cannot be chatted with or meaningfully deleted. It is also
+  a container of *other* profiles, so its contents are whatever was deleted last.
+- **Why Major rather than cosmetic:** it is in the primary Agent listing that the
+  UI, the Agents Map and every caller of `find_by_id` read, and it appears
+  permanently after the first delete. It also makes the count of agents wrong for
+  anything that reasons over the list.
+- **Fix direction:** skip dot-directories when enumerating profiles — Hermes owns
+  that namespace and may add others. Prefer excluding every `.`-prefixed name
+  over special-casing `.deleted` alone. Worth checking `find_by_id` on the same
+  file for the same assumption.
+
+### BUG-054 — a refused Agent delete surfaces as a bare 500 with the reason only in the log
+
+- **Area:** Logic
+- **Severity:** Minor
+- **Status:** Open
+- **Found:** 2026-09-07, deleting `notes-manager` while `hermes serve` held its
+  `state.db` open. The API returned:
+
+      HTTP 500 {"detail":"The server failed handling this request.","path":"/agents/notes-manager"}
+
+  while the log carried the real one:
+  `HermesUnavailableError: hermes profile delete failed: Profile: notes-manager`.
+- **Note:** the 500 body itself is BUG-045's fix working — before it, this would
+  have reached the browser as `TypeError: Failed to fetch`. This bug is the next
+  layer: the response is now truthful but still says nothing actionable.
+- **Root cause:** `agents_router.delete_agent` (`api/agents_router.py:251`)
+  guards only the unknown-id case with a 404 and lets `AgentManager.delete()`
+  raise straight through. Every other Hermes-backed failure mode is unhandled,
+  so a refusal Hermes explains becomes a generic server error.
+- **Expected:** a 409 naming the reason — the operator can then act on it (here:
+  something still has the profile open).
+- **Underlying trigger, NOT ours:** Hermes' own `profile delete` fails on Windows
+  when any file in the profile is open. Its traceback shows two faults of its
+  own — `shutil.rmtree(..., onexc=...)` raising `TypeError: rmtree() got an
+  unexpected keyword argument 'onexc'` (that keyword is 3.12+, and its bundled
+  runtime is 3.11), then the fallback hitting
+  `PermissionError: [WinError 32] ... state.db`. Worth reporting upstream, but
+  our half is simply to report what Hermes said instead of swallowing it.
+- **Fix direction:** catch `HermesUnavailableError` in the route and return 409
+  with the message, matching how `sections_router.delete_section` already
+  handles `SectionBlockedError`.

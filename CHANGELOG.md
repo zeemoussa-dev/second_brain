@@ -18,6 +18,10 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- docs: `BUG-053` / `BUG-054` logged while redeploying the split Blueprints — Hermes
+  tombstones deleted profiles into `profiles/.deleted/`, which our enumeration turns
+  into a phantom Agent, and a refused delete reaches the operator as a bare 500.
+
 - docs: `BUG-052` — peer routing snippets are appended to Primary's SOUL.md with
   no heading, no lead-in naming them as peers, and no session reset, so Primary
   does not act on them and the operator has to explain each peer by hand.
