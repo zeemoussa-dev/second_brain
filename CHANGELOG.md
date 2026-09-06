@@ -18,6 +18,14 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat(versioning): Master Templates carry a **content** `version` distinct from
+  `schema_version` (parse shape vs content contract); a Skill's `writes:` entry
+  declares `requires:` against it, and deploy refuses a mismatch — exact match,
+  not `>=`, since a bump means a section was removed or renamed.
+- feat(skills): `check_deployment_drift()` reports `missing`/`stale`/`modified`/
+  `current` per deployment — the first way to ask *is what's running still what we
+  ship?* Run live it caught this session's own unversioned SKILL.md edits (26
+  `modified`) and 2 genuinely missing deployments.
 - feat(skills): **Skills now declare what they write.** `allowed_callers` is gone
   from Entity Templates — it was a reverse edge, making vault *structure* depend
   on the capability layer. A Skill declares `writes:` in its `SKILL.md`
