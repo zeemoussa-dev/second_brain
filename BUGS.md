@@ -32,6 +32,8 @@ is a thin status mirror of the index table below.
 | BUG-043 | `hermes.exe` is looked for one directory too deep, so every Hermes CLI operation fails on a correct install | Logic | Blocker | Open | 2026-09-07 | — |
 | BUG-044 | A failed Blueprint install leaves the Section it created behind | Logic | Major | Open | 2026-09-07 | — |
 | BUG-045 | An unhandled 500 reaches the browser as `TypeError: Failed to fetch`, hiding every server error from the UI | Logic | Major | Open | 2026-09-07 | — |
+| BUG-046 | Blueprint install never asks which Section to install into — the Section is baked into the Blueprint and is not a parameter anywhere in the chain | Logic | Major | Open | 2026-09-07 | — |
+| BUG-047 | The `librarian` Blueprint ships a whole Section covering three concerns; files and notes should be separate, independently installable Blueprints | Logic | Major | Open | 2026-09-07 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -153,3 +155,78 @@ is a thin status mirror of the index table below.
 - **Impact beyond this bug:** every future server-side failure is equally
   invisible in the UI. It cost real time here: the operator reported a fetch
   error, when the actual cause was a wrong executable path (BUG-043).
+### BUG-046 — Blueprint install never asks which Section to install into
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-09-07, installing the `librarian` Blueprint on a machine that
+  already had five Sections (`Customers`, `Productivity`, `Sales`, `Core42`,
+  `Products`). The install was never offered a choice — it went straight to
+  minting a sixth Section named `Librarian`.
+- **Repro:** `POST /blueprints/librarian/install` on an install with existing
+  Sections, or click Install in the UI. No Section is asked for at any point.
+- **Expected:** installing a Blueprint asks which Section its Agents should join
+  — either an existing one or a new one — and defaults to the Blueprint's
+  suggestion rather than imposing it.
+- **Actual:** the target Section is fixed by the Blueprint file and cannot be
+  overridden. The whole chain has no parameter for it:
+
+  | Layer | Evidence |
+  |---|---|
+  | `Blueprint.json` | `"section": { "name": "Librarian", ... }` |
+  | `blueprint.py:35` | `section_name: str` — a **required** field |
+  | `blueprint_manager.py:166` | `SectionManager().create(blueprint.section_name)` |
+  | `blueprints_router.py:47` | `install(blueprint_id, wire_peers: bool = True)` |
+
+- **Root cause, and why it matters more than a missing prompt:** a Blueprint is
+  currently modelled as *"a Section plus its Agents"*, not as *"a set of Agents"*.
+  Because `section_name` is required, a Blueprint **cannot** be authored without
+  bringing a Section along, and two Blueprints can never populate one Section.
+  That single modelling choice is what forces the bundling in
+  [[BUG-047]] — the granularity of a Blueprint is pinned to the granularity of a
+  Section whether or not that suits the recipe.
+- **Fix direction:** make the target Section an install-time argument
+  (`install(blueprint_id, *, section_id: str | None = None, ...)`), demote
+  `Blueprint.section` to a *suggested* Section used only when the operator asks
+  for a new one, and have the UI ask. Once it is a parameter, several Blueprints
+  can build into one Section and BUG-047 becomes authorable.
+- **Related:** fixes BUG-047's precondition. Interacts with BUG-044 — today a
+  failed install leaves behind a Section the operator never asked for in the
+  first place.
+
+### BUG-047 — the `librarian` Blueprint bundles three concerns into one all-or-nothing Section
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-09-07, reviewing what `librarian` actually installs. Its own
+  description names three concerns: *"files, notes and research"*.
+- **What it ships:** one Section (`Librarian`) and three Agents —
+
+  | Agent | Type | Skills |
+  |---|---|---|
+  | `files-manager` | producer | `capture-files`, `summarize-and-tag-files` |
+  | `notes-manager` | producer | `capture-notes` |
+  | `research-agent` | expert | `research-kb-writer` |
+
+- **Expected:** files capture and notes capture are independent capabilities and
+  should be **separate Blueprints**, each installable on its own into a Section
+  the operator chooses. An operator who wants note capture and not file capture
+  should be able to have exactly that.
+- **Actual:** it is all-or-nothing. The three Agents arrive together, in a Section
+  the Blueprint names, and there is no supported way to take one without the
+  others short of hand-editing the Blueprint file — which then diverges from the
+  shipped master on the next update.
+- **Why this is structural, not just packaging:** `Blueprint.section_name` is a
+  required field (`blueprint.py:35`), so a Blueprint always carries a Section and
+  two Blueprints can never populate the same one. Splitting `librarian` into
+  `files` and `notes` today would produce **two Sections**, which is worse than
+  the bundle. **BUG-046 must be fixed first** — the split is only authorable once
+  the target Section is an install-time argument.
+- **Fix direction:** after BUG-046, split the library into at least a `files`
+  Blueprint (`files-manager`) and a `notes` Blueprint (`notes-manager`), and
+  decide deliberately where `research-agent` belongs — it is an `expert`, not a
+  capture producer, and may warrant its own. Keep each Blueprint's peer routing
+  snippet with its own Agent so `wire_peers` stays correct per-install.
+- **Related:** blocked by [[BUG-046]].

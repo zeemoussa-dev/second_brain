@@ -18,6 +18,12 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- docs: `BUG-046` / `BUG-047` logged against the Blueprint model — install never
+  asks which Section to build into (`section_name` is a required Blueprint field,
+  and no layer of the chain takes a target Section), and `librarian` therefore
+  bundles files, notes and research into one all-or-nothing Section. The second
+  is blocked by the first.
+
 - docs: `BUG-043` / `BUG-044` / `BUG-045` logged from the first real Blueprint
   install on a clean machine — the `hermes.exe` path is one directory too deep
   (blocker), a failed install leaves its Section behind, and an unhandled 500
