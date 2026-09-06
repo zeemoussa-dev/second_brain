@@ -18,6 +18,21 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- docs: `ADR-019` records the restructure; the live documentation now matches it —
+  `Artifacts.md` (five kinds, Index documented, Skill locations, `writes:`),
+  `Templates.md` (the two version fields; where `allowed_callers` went),
+  `Hermes-Provisioning.md` (retirement notice + where-it-went table),
+  `CLAUDE.md` (Source Module Layout was an empty placeholder; now describes the
+  real layering and the four *payload* directories the app ships but never
+  imports), `Deployment.md` (paths, and prefer `SkillManager.deploy()/redeploy()`
+  over a raw copy). Tasks/Stories/Sprints/ESCALATIONS/BUGS left untouched — they
+  are append-only records of what was true at the time.
+- fix(skills): `SkillManager.update()`'s re-push to deployed profiles had always
+  been a **silent no-op** — it passed a bare slug where Hermes keys on
+  `<category>/<slug>`, so it resolved to a non-existent folder and returned
+  `None`. `redeploy()` added; the four changed Skills were redeployed across 27
+  deployments (26 moved to their new Tool folder, 1 created), leaving drift at 84
+  current / 1 missing.
 - feat(versioning): Master Templates carry a **content** `version` distinct from
   `schema_version` (parse shape vs content contract); a Skill's `writes:` entry
   declares `requires:` against it, and deploy refuses a mismatch — exact match,
