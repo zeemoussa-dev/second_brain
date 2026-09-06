@@ -13,11 +13,10 @@ vault_manager.py itself already established.
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from vault_manager import iter_md_files, long_path, read_note
+from vault_manager import iter_md_files, read_note
 
 _WORK_ROOT = "Work"
 
@@ -74,17 +73,15 @@ def build_index(vault_path: Path, *, folders=None, tags=None, depth=None) -> dic
             continue
         notes = []
         # iter_md_files, not rglob: it walks the extended-length form and
-        # prunes `_` folders during the walk. rglob descends into a folder
-        # before anything can reject it, so one archived note past Windows'
-        # 260-char MAX_PATH raised FileNotFoundError mid-iteration and
-        # abandoned the entire top-level folder (live, 2026-09-06 --
-        # index-adnoc/masdar/taqa). No is_file() guard here either: past
-        # MAX_PATH it silently returns False, which would drop exactly the
-        # notes this fix is meant to recover, and os.walk already yields
-        # files only.
-        walk_root = long_path(top)
-        for md_path in sorted(top / os.path.relpath(str(found), walk_root)
-                              for found in iter_md_files(top)):
+        # prunes `_` folders during the walk, and it yields PLAIN paths.
+        # rglob descends into a folder before anything can reject it, so one
+        # archived note past Windows' 260-char MAX_PATH raised
+        # FileNotFoundError mid-iteration and abandoned the entire top-level
+        # folder (live, 2026-09-06 -- index-adnoc/masdar/taqa). No is_file()
+        # guard here either: past MAX_PATH it silently returns False, which
+        # would drop exactly the notes this fix is meant to recover, and
+        # os.walk already yields files only.
+        for md_path in sorted(iter_md_files(top)):
             if md_path.name in _RESERVED_FILENAMES:
                 continue
             relative_parts = md_path.relative_to(top).parts

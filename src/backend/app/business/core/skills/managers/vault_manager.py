@@ -258,19 +258,35 @@ def long_path(path) -> str:
 
 def iter_md_files(root: Path):
     """Every real .md under `root`, PRUNING `_`-prefixed folders during the
-    walk rather than filtering them out afterwards.
+    walk rather than filtering them out afterwards, and yielding PLAIN paths.
 
     rglob() walks into a folder before anything can reject it, so an
     excluded-but-unreadable subtree (an over-MAX_PATH archive) still aborted
     the entire scan. Pruning here means the archive is never entered at all,
     which fixes the crash and skips a large amount of pointless IO. Long-path
     form on the walk root keeps the traversal working even where a real path
-    genuinely does exceed 260 characters."""
-    for current, dirnames, filenames in os.walk(long_path(root)):
+    genuinely does exceed 260 characters.
+
+    The walk root is the extended-length form, so os.walk yields paths
+    carrying that prefix -- and handing those back to callers broke them in
+    a second way (found live 2026-09-06): `relative_to(vault_path)` raises
+    ValueError against a prefixed path, and every returned path compared
+    unequal to the plain one the caller was holding. Each result is
+    therefore rebuilt against the ORIGINAL root rather than having its
+    prefix stripped by hand.
+
+    Plain paths are safe to hand out because every read/write in this module
+    goes through read_note/write_note, which re-apply long_path for the I/O
+    itself. Do NOT re-guard the results with is_file(): past MAX_PATH that
+    silently returns False and would drop exactly the notes this walk exists
+    to reach, and os.walk already yields files only.
+    """
+    walk_root = long_path(root)
+    for current, dirnames, filenames in os.walk(walk_root):
         dirnames[:] = [d for d in dirnames if not d.startswith("_")]
         for filename in filenames:
             if filename.endswith(".md"):
-                yield Path(current) / filename
+                yield root / os.path.relpath(os.path.join(current, filename), walk_root)
 
 
 def data_root(vault_path: Path) -> Path:
@@ -717,8 +733,6 @@ def _iter_real_md_files(vault_path: Path, root: Path):
     Excluding archived folders here also avoids surfacing a stale
     archived duplicate as a real match, not just avoiding the crash."""
     for md_path in sorted(iter_md_files(root)):
-        if not md_path.is_file():
-            continue
         try:
             relative_parts = md_path.relative_to(vault_path).parts
         except ValueError:

@@ -160,6 +160,11 @@ def deploy_shared_managers(hermes_home: Path) -> list[str]:
     target.mkdir(parents=True, exist_ok=True)
     written = []
     for source in sorted(_MANAGERS_ROOT.glob("*.py")):
+        # Test scaffolding is not payload. conftest.py in particular would
+        # be picked up by any pytest run rooted at the install and change
+        # sys.path there.
+        if source.name == "conftest.py" or source.name.startswith("test_"):
+            continue
         shutil.copyfile(source, target / source.name)
         written.append(source.name)
     return written

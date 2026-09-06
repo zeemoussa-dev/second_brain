@@ -1146,3 +1146,26 @@ def test_undeclared_allowed_callers_stays_open_to_any_caller(vault):
         content="arbitrary caller", mode="replace", caller="anything",
     )
     assert vm.get_section_content(Path(created["path"]), "Open") == "arbitrary caller"
+
+
+def test_iter_md_files_yields_plain_paths_not_extended_length_ones(tmp_path):
+    """The walk root is the extended-length form, so os.walk yields paths
+    carrying that prefix. Handing those back broke callers two ways (live,
+    2026-09-06): relative_to(vault_path) raised ValueError, and every
+    returned path compared unequal to the plain one the caller held.
+
+    Nine tests in this file failed on it. They failed on the SYMPTOM; this
+    one pins the contract, so a future change to the walk cannot quietly
+    reintroduce it.
+    """
+    root = tmp_path / "Work" / "Meetings"
+    root.mkdir(parents=True)
+    (root / "Standup.md").write_text("---\nid: x\n---\n\nbody\n", encoding="utf-8")
+
+    found = list(vm.iter_md_files(root))
+
+    assert len(found) == 1
+    assert not str(found[0]).startswith(chr(92) * 2 + "?")
+    assert found[0] == root / "Standup.md"
+    # The property callers actually depend on.
+    assert found[0].relative_to(tmp_path) == Path("Work/Meetings/Standup.md")
