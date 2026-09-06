@@ -18,6 +18,13 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- docs(context): `/load-context` now reads this install's own instance memory at
+  `<SECOND_BRAIN_DATA_PATH>/AGENT-MEMORY.md` as step 3, and reports its absence
+  rather than assuming defaults. That file is specified in `CLAUDE.md`,
+  `Deployment.md`, `Documentation/Framework/README.md` and `MEMORY.md`, but was
+  never created and nothing read it — so machine-specific facts (paths, live Hermes
+  state, deployed Skills, cron status) had been accumulating in a session-local
+  store that drifts against the repo instead.
 - fix(index): the per-Index runner is now backend-owned payload
   (`src/backend/app/business/core/index/scripts/` — build engine,
   `vault_manager.py`, and `index_runner.py.template`). It previously resolved
