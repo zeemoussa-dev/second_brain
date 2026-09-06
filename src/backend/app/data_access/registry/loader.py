@@ -292,6 +292,32 @@ def _hermes_reachable() -> bool:
         return False
 
 
+async def recheck_hermes() -> dict:
+    """Re-runs ONLY the Hermes reachability probe and updates boot status.
+
+    Fault 2 of BUG-049: the check ran once at boot and never again, so an
+    operator who started Hermes afterwards had no way to clear the warning
+    short of restarting the backend -- and the app went on reporting the
+    stale answer. Deliberately narrower than boot(): re-reading the whole
+    registry to answer "is Hermes up yet" would be a heavy, surprising
+    side effect for a health check.
+    """
+    reachable = await asyncio.to_thread(_hermes_reachable)
+    _status["hermes_reachable"] = reachable
+    _set_stage("checking_hermes", "done" if reachable else "failed")
+    if reachable and (_status.get("error") or {}).get("file") == "hermes":
+        _status["error"] = None
+    elif not reachable and _status["state"] == "ready":
+        _status["error"] = {
+            "file": "hermes",
+            "message": (
+                "Hermes is not reachable, so agent chat and skill runs will fail. "
+                "Start it (`hermes serve`) and re-check from Settings."
+            ),
+        }
+    return get_boot_status()
+
+
 async def boot(mode: str = "cold_boot") -> None:
     """Runs every stage in order, updating `_status` as it goes. Never
     raises out to the caller -- a fire-and-forget asyncio.create_task
@@ -304,7 +330,13 @@ async def boot(mode: str = "cold_boot") -> None:
         _set_stage("checking_hermes", "in_progress")
         reachable = await asyncio.to_thread(_hermes_reachable)
         _status["hermes_reachable"] = reachable
-        _set_stage("checking_hermes", "done")
+        # A failed check must not read the same as a passed one (BUG-049).
+        # This ran unconditionally "done", so boot-status said ready with
+        # error: null while Hermes was unreachable -- and agent chat, the
+        # product's core function, cannot work in that state. The app still
+        # boots: the vault browser and settings are useful without Hermes.
+        # It just stops claiming everything is fine.
+        _set_stage("checking_hermes", "done" if reachable else "failed")
 
         _set_stage("loading_sections", "in_progress")
         sections = await asyncio.to_thread(_load_sections)
@@ -324,6 +356,16 @@ async def boot(mode: str = "cold_boot") -> None:
 
         _registry = Registry(sections=sections, agents=agents, tools=tools, providers=providers)
         _status["state"] = "ready"
+        if not _status.get("hermes_reachable"):
+            # Surfaced, not fatal. `state` stays ready because the rest of the
+            # app works; `error` is what the UI reads to say something true.
+            _status["error"] = {
+                "file": "hermes",
+                "message": (
+                    "Hermes is not reachable, so agent chat and skill runs will fail. "
+                    "Start it (`hermes serve`) and re-check from Settings."
+                ),
+            }
         _status["loaded_at"] = time.time()
         _last_seen_fingerprint = _tree_fingerprint()
     except RegistryLoadError as exc:

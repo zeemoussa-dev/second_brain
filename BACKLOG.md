@@ -221,12 +221,12 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 |---|---|---|---|---|
 | BUG-043 | `hermes.exe` is looked for one directory too deep, so every Hermes CLI operation fails on a correct install | Logic | Closed | `5f0f40e` |
 | BUG-044 | A failed Blueprint install leaves the Section it created behind | Logic | Closed | direct fix, 2026-09-07 |
-| BUG-045 | An unhandled 500 reaches the browser as `TypeError: Failed to fetch`, hiding every server error from the UI | Logic | Open | — |
+| BUG-045 | An unhandled 500 reaches the browser as `TypeError: Failed to fetch`, hiding every server error from the UI | Logic | Closed | direct fix, 2026-09-07 |
 | BUG-046 | Blueprint install never asks which Section to install into | Logic | Closed | direct fix, 2026-09-07 |
 | BUG-047 | The `librarian` Blueprint bundles three concerns into one all-or-nothing Section | Logic | Closed | direct fix, 2026-09-07 |
-| BUG-048 | A test asserts equality against live machine state while its own docstring says subset | Logic | Open | — |
-| BUG-049 | `boot-status` reports ready while `hermes_reachable` is false, and never re-checks | Logic | Open | — |
-| BUG-050 | A dropped Hermes WebSocket ends the chat stream as HTTP 200 with an empty body | Logic | Open | — |
+| BUG-048 | A test asserts equality against live machine state while its own docstring says subset | Logic | Closed | direct fix, 2026-09-07 |
+| BUG-049 | `boot-status` reports ready while `hermes_reachable` is false, and never re-checks | Logic | Closed | direct fix, 2026-09-07 |
+| BUG-050 | A dropped Hermes WebSocket ends the chat stream as HTTP 200 with an empty body | Logic | Closed | direct fix, 2026-09-07 |
 | BUG-051 | The shipped `librarian` Blueprint hard-codes another operator's vault path into every Agent SOUL | Logic | Closed | direct fix, 2026-09-07 |
 | BUG-052 | Primary is never told it HAS peers; routing snippets land as orphan bullets | Logic | Closed | direct fix, 2026-09-07 |
 

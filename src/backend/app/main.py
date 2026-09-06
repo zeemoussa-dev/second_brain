@@ -1,4 +1,5 @@
 import asyncio
+import traceback
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -138,6 +139,32 @@ app = FastAPI(title="Second Brain", lifespan=lifespan)
 # browser->backend fetch call). Sourced from settings.cors_allowed_origins
 # (System settings page, 2026-08-27) instead of hardcoded here — default
 # still matches the two Vite dev ports this repo ships with.
+# Registered BEFORE CORSMiddleware below, and middleware added later wraps
+# earlier -- so this sits INSIDE CORS and its response is processed on the way
+# back out. That placement is the whole fix (BUG-045): FastAPI mounts
+# Starlette's ServerErrorMiddleware outermost, above user middleware, so an
+# exception escaping the routes became a 500 ABOVE CORS, carrying no CORS
+# headers. The browser then rejected it as `TypeError: Failed to fetch` -- no
+# status, no body, indistinguishable from the backend being down, which sends
+# you looking at the wrong layer entirely.
+@app.middleware("http")
+async def return_unhandled_errors_as_json(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except Exception:
+        # Logged in full here because the response deliberately does not carry
+        # the traceback: the operator needs something truthful to see, not the
+        # server's internals in the browser.
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "The server failed handling this request.",
+                "path": request.url.path,
+            },
+        )
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins_list,

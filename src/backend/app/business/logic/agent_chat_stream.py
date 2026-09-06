@@ -14,6 +14,8 @@ import re
 from collections.abc import AsyncIterator
 
 from app.business.hermes import chat_sessions
+import websockets.exceptions
+
 from app.business.hermes.client import HermesUnavailableError
 
 # Real event types seen live on a Hermes chat session besides the ones
@@ -231,6 +233,15 @@ async def _stream_reply(session) -> AsyncIterator[str]:
     yield _sse({"type": "error", "detail": "Hermes closed the connection before replying"})
 
 
+def _describe(exc: Exception) -> str:
+    """A message that names the failure. `ConnectionClosedError` stringifies
+    to something like "no close frame received or sent", which tells an
+    operator nothing about WHAT closed."""
+    if isinstance(exc, websockets.exceptions.WebSocketException):
+        return f"The connection to Hermes dropped mid-turn ({type(exc).__name__}: {exc})."
+    return str(exc)
+
+
 async def stream_chat_turn(agent_id: str, message: str) -> AsyncIterator[str]:
     """The full orchestration for one streamed chat turn: acquire this
     agent's own chat lock, send the prompt over a kept-alive Hermes
@@ -252,11 +263,23 @@ async def stream_chat_turn(agent_id: str, message: str) -> AsyncIterator[str]:
         try:
             session = await chat_sessions.get_or_create_session(agent_id)
             await session.send_prompt(message)
-        except HermesUnavailableError as exc:
+        except (HermesUnavailableError, websockets.exceptions.WebSocketException) as exc:
+            # A WS that DROPS mid-turn was not caught here (BUG-050), so the
+            # generator raised after StreamingResponse had already sent
+            # headers: the client got HTTP 200 with an empty body and no
+            # error frame -- a turn that looks successful and simply produced
+            # nothing. Hermes being down already produced a clean error
+            # frame; a connection that dies has to produce the same one.
             await chat_sessions.discard_session(agent_id)
-            yield _sse({"type": "error", "detail": str(exc)})
+            yield _sse({"type": "error", "detail": _describe(exc)})
             return
-        async for frame in _stream_reply(session):
-            yield frame
+        try:
+            async for frame in _stream_reply(session):
+                yield frame
+        except websockets.exceptions.WebSocketException as exc:
+            # Same failure, later in the turn: the socket can die while the
+            # reply is still streaming, after frames have already been sent.
+            await chat_sessions.discard_session(agent_id)
+            yield _sse({"type": "error", "detail": _describe(exc)})
     finally:
         lock.release()

@@ -16,18 +16,34 @@ from app.business.core.skills.skill_manager import SkillManager
 from app.business.core.templates.template_manager import TemplateManager
 
 
-def test_the_thread_mapping_still_matches_what_the_template_used_to_declare() -> None:
-    """Losslessness for `thread` specifically -- that is the migration this
-    guards. Asserted as a SUBSET, not equality: the map legitimately grows as
-    more Skills declare `writes:`, and pinning the whole map would fail every
-    time coverage improves, which is the opposite of what this should reward.
+def test_the_map_contains_exactly_what_the_deployed_skills_declare() -> None:
+    """The real invariant, and it holds on any install.
+
+    The previous version hard-coded six Actions and asserted equality, while
+    its own docstring said subset -- so it was really asserting "this machine
+    has deployed every thread-writing Skill", a deployment fact rather than a
+    code property, and it failed on any partial install (BUG-048).
+
+    build_section_access_map() counts only DEPLOYED Skills by design, so the
+    property to check is that it mirrors those declarations exactly: nothing
+    missing, and nothing from a Skill that is not deployed.
     """
-    assert SkillManager().build_section_access_map()["thread"] == {
-        "Summary": ["apply_thread_review"],
-        "Actions": ["apply_thread_review"],
-        "Related": ["link_opportunity", "link_person_to_thread"],
-        "Files": ["apply_file_review", "capture_attachments", "capture_file_link"],
-    }
+    manager = SkillManager()
+    expected: dict[str, dict[str, set[str]]] = {}
+    undeployed_actions: set[str] = set()
+    for skill in manager.get_all():
+        for entry in manager._declared_writes(skill.id):
+            if not skill.deployed_to:
+                undeployed_actions.add(entry["action"])
+                continue
+            for section in entry["sections"]:
+                expected.setdefault(entry["template"], {}).setdefault(section, set()).add(entry["action"])
+
+    actual = manager.build_section_access_map()
+
+    assert {t: {s: set(c) for s, c in sec.items()} for t, sec in actual.items()} == expected
+    granted = {a for sec in actual.values() for callers in sec.values() for a in callers}
+    assert not (undeployed_actions - granted) & granted, "an undeployed Skill must grant nothing"
 
 
 def test_every_writer_of_a_restricted_template_is_declared() -> None:
