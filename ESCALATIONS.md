@@ -1995,7 +1995,13 @@ on `REQ-SB-04-US-01-T03` replaces its own `depends_on: []` with the real
 id and resets its `status`/`gate` to ordinary lockstep with the rest of
 the story. See `REVIEW-QUEUE.md`.
 
-**Status:** Open
+**Status:** Resolved 2026-09-06 — moot, not implemented. `REQ-SB-04-US-01`'s
+scope enforcement is live through `vault_manager`: a Template section's
+`access` plus a per-Action allow-list (`ADR-017`), now derived into
+`<data>/data/section_access.json` from what Skills declare (`ADR-019`). The
+MCP scope check this escalation blocked on was removed with the whole MCP
+Tool layer in `49f064f` (2026-09-05), so `REQ-SB-29-US-01` is no longer a
+prerequisite for anything here. Resolving artefacts: `ADR-019`, `49f064f`.
 
 ## ESC-027: Real, pre-existing filename-stem collision in the live vault — two distinct real notes silently collapse to one `vault_indexing` index entry, `_slugify`'s 80-char truncation eats the disambiguating hash suffix — 2026-08-13
 

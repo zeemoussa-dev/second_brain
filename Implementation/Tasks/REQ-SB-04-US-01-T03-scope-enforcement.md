@@ -4,7 +4,7 @@ title: "⚠️ BLOCKED — real scope enforcement (`_is_within_assigned_scope`),
 parent_story: REQ-SB-04-US-01
 requirement_id: REQ-SB-04
 type: backend
-status: Draft
+status: Done
 gate: flagged
 gate_reason: "Individually flagged, mirroring ESC-011's/ESC-018's own precedent exactly. Blocked on REQ-SB-29-US-01, which has not been decomposed at all (status: Draft, zero task files exist) — no real task id exists anywhere to depend on. Logged as ESCALATIONS.md -> ESC-026 (new). Do not start until REQ-SB-29-US-01 has shipped its own vault-scope-assignment mechanism and a follow-up decomposer pass replaces this depends_on: [] with the real task id."
 phase: P1
@@ -12,6 +12,12 @@ depends_on: []
 created: 2026-08-13
 updated: 2026-08-13
 ---
+
+> **Closed 2026-09-06 with its story.** Scope enforcement is live via
+> vault_manager's Template `access` + the derived per-Action allow-list
+> (`ADR-017`/`ADR-019`), not via the MCP scope check this task specified.
+> Its blocker (`ESC-026`, REQ-SB-29-US-01) is moot: the MCP Tool layer it
+> depended on was removed on 2026-09-05.
 
 # REQ-SB-04-US-01-T03 — ⚠️ BLOCKED — real scope enforcement
 

@@ -4,13 +4,22 @@ title: Agent Vault Write Access — scoped, confirmed writes from a Hermes-conne
 requirement_ids: [REQ-SB-04]
 requirement_section: "REQ-SB-04: Agent Vault Write Access"
 phase: P1
-status: In Progress
+status: Done
 gate: clear
 gate_reason: "trigger-3 (ADR-025 created) — /mcp shared-secret auth + write-capable MCP tool + trigger=\"hermes\" Pending Approval dispatch. T03 (scope enforcement, AC-01/AC-02) is individually held at status: Draft/gate: flagged, blocked on REQ-SB-29-US-01 (ESCALATIONS.md -> ESC-026); T01/T02 are Ready."
 sprint: "SPRINT-029"
 created: 2026-08-13
-updated: 2026-08-13
+updated: 2026-09-06
 ---
+
+> **Closed 2026-09-06 — delivered by other means, not by this story's own plan.**
+>
+> Delivered by other means.
+> Scoped, bounded agent writes are live through vault_manager: a Template section's `access` (human_only / user_edit / machine_write) plus a per-Action allow-list -- ADR-017, now derived into `<data>/data/section_access.json` from what Skills declare (ADR-019).
+> That is this story's guarantee, reached without the MCP shared-secret auth and write-capable MCP tool it specified, which no longer exist.
+>
+> Kept rather than deleted: the requirement it serves (`REQ-SB-04`) is real and met, and the
+> superseded approach is worth being able to read back.
 
 # REQ-SB-04-US-01 — Agent Vault Write Access — scoped, confirmed writes from a Hermes-connected agent
 
