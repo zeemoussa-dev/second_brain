@@ -4,106 +4,102 @@
 point of the vault engine — if you find yourself writing a script to produce a
 new kind of note, stop and write a Template instead.
 
+Verified against the code, 2026-09-06.
+
 ---
 
-## Read this first: there are TWO schemas, and two engines
+## Masters ship; each install seeds its own copy
 
-This is the thing that bites. A Template written for one engine **will not load**
-in the other — it is a schema-version mismatch, not a content mismatch.
+Templates are **Entity Templates** (also "Master Templates"). The product ships
+them; every install gets its own copy.
+
+| | Where |
+|---|---|
+| **Shipped master** | `src/backend/app/business/core/templates/masters/<id>/Template.json` |
+| **This install's copy** | `<SECOND_BRAIN_DATA_PATH>/data/Templates/<id>/Template.json` |
+
+`TemplateManager.seed_shipped_masters()` runs **on every boot** and installs any
+master this install does not already have.
+
+> **It never overwrites.** An id already present is kept exactly as it is —
+> because it runs every boot, and overwriting would silently revert an operator's
+> edit on every restart. Upgrading an existing template is a separate, deliberate
+> act.
+>
+> **The trap that follows from that:** a hand-authored template **outranks the
+> shipped master forever**. If you write your own `thread` before the master
+> seeds, yours wins, silently, and every Skill that declares a write against a
+> section yours happens to lack fails at deploy. If a master exists for the id you
+> want, delete your local copy and let it seed rather than hand-authoring one.
+
+The folder name **is** the template id, and there is no caching — a change takes
+effect on the next read.
+
+---
+
+## Two schemas, and how the engine decides
+
+Both are supported. `schema_version` says which:
 
 | | **v2** — two-layer | **v1** — flat |
 |---|---|---|
-| Read by | `app/business/core/skills/managers/vault_manager.py` — **every Skill** | `src/backend/app/vault/vault_manager.py` — **the backend** |
-| Shape | `identity` / `on_missing` / `allow_create_folder` at top, everything else nested under **`root`** | every key at the top level |
-| Child notes | **yes** — `root.children` with `growth: "dynamic"` | no |
-| `note_name` | a **`create()` parameter** | a **template key** |
-| Per-caller access | yes, but **not from the template** — see below | no |
+| Shape | `identity` / `on_missing` at top, the rest nested under **`root`** | every key at the top level |
+| Child notes | **yes** — `root.children` | no |
+| Key names | `own_folder`, `plain_filename` | `note_own_folder`, `note_filename_plain` |
 
-**Write v2 unless you are specifically targeting the backend.** Capture pipelines
-run as Skills, so they use v2. The backend's engine is older and has not been
-brought forward yet.
+**Write v2.** v1 is still parsed so older files keep working.
 
-The v2 engine's own docstring puts it plainly: *"a template is TWO layers, not one
-flat object"*, where `root` is "today's entire old flat schema, unchanged in
-substance, just nested".
+A file that does not declare `schema_version` is inferred from its shape — the
+presence of `root` means v2. That inference is resolved **once**, deliberately,
+and the reason is worth knowing:
 
-Verified against both engines, 2026-09-05.
-
-## Where Templates live
-
-| Consumer | Path |
-|---|---|
-| The backend | `<SECOND_BRAIN_DATA_PATH>/data/Templates/<id>/Template.json` |
-| A Skill (v2 engine) | `data_root()/data/Templates/<id>/Template.json` — `SECOND_BRAIN_DATA_PATH` if set, else `<vault>/.second-brain` |
-
-The folder name **is** the template id. Nothing registers a Template — dropping
-the file in is enough, and it takes effect on the next read (no caching).
+> Reading v1 key names out of a v2 file **never raises**. Every `.get()` just
+> returns its default. That is how the bug this replaced stayed invisible: all 11
+> real templates parsed to **zero sections with `error: None`** — no failure, no
+> warning, just silently empty. If a template's sections come back empty, suspect
+> a schema mismatch before anything else.
 
 ---
 
-## Two version fields, and they are not the same thing
-
-| Field | Answers | Bumped when |
-|---|---|---|
-| `schema_version` | how to **parse** this file (v1 flat / v2 two-layer) | the shape changes |
-| `version` | what the **content** promises — which sections exist | a section is removed or renamed |
-
-A Skill's `writes: requires:` is matched against **`version`**, never
-`schema_version`, and the match is **exact**: a content bump means a section it
-writes may be gone, so an older Skill is wrong rather than merely behind.
-
-Every shipped template declares both. Before they existed, `TemplateManager`
-read v1 field names out of v2 files and every `.get()` returned its default, so
-all 11 parsed to **zero sections with no error at all** — a file that cannot say
-what it is gets read by the wrong parser, silently.
-
----
-
-## v2 — the current schema
+## v2 reference
 
 ### Top level
 
 | Key | Default | Effect |
 |---|---|---|
 | `id` | — | Must match the folder name |
+| `schema_version` | inferred | `2`. Say it explicitly rather than relying on inference |
+| `version` | — | The **content** contract — see below |
 | `identity` | `{"strategy": "id"}` | How an existing record is found. **An object, not a string** |
-| `on_missing` | `"create"` | `"error"` refuses to create — use it when a note *must* already exist |
-| `allow_create_folder` | `true` | May the containing folder be auto-created, or is a missing one an error |
-| `parent` | — | For a child *template*; supplies `child_subpath` so `create()` derives `note_name` itself |
+| `on_missing` | `"create"` | `"error"` refuses to create — right when a note *must* already exist |
+| `allow_create_folder` | `true` | May the containing folder be auto-created |
+| `parent` | — | For a child template; supplies `child_subpath` so `create()` derives `note_name` itself |
 
-### `root` — the note itself
+### `root`
 
 | Key | Default | Effect |
 |---|---|---|
 | `type` | `"md"` | Node type. **Not** a domain label — leave it `"md"` |
-| `sections` | `[]` | `[{ "name", "access", "required_non_empty"? }]` |
-| `frontmatter_defaults` | `{}` | Merged into every note's frontmatter |
-| `on_existing_title` | `"update_section"` | Same title updates in place; anything else always makes a new file |
-| `own_folder` | `false` | Give each note its own folder so attachments sit beside it |
-| `plain_filename` | `false` | Drop the `YYYY-MM-DD-` prefix |
-| `plain_folder` | `false` | Same, for the folder name |
+| `sections` | `[]` | `[{ "name", "access" }]` |
+| `frontmatter_defaults` | `{}` | Merged into every note |
+| `on_existing_title` | `"update_section"` | Or `"always_new"` — every call makes a new file |
+| `own_folder` | `false` | Each note gets its own folder, so attachments sit beside it |
+| `plain_filename` / `plain_folder` | `false` | Drop the `YYYY-MM-DD-` prefix |
 | `children` | `[]` | See below |
 | `children_index_section` | — | The section children get wikilinked into |
 
-**`note_name` is not a v2 template key.** It is passed to `create()`:
+**`note_name` is not a v2 key.** It is passed to `create()`.
 
-```python
-create(vault_path, template, title, note_name="Threads", note_id=conversation_id, ...)
-```
-
-### Child notes — `root.children`
-
-This is what v2 adds and v1 cannot do: real per-item notes inside the parent's
-folder, rather than everything appended into one section.
+### `root.children` — real per-item notes
 
 | Key | Effect |
 |---|---|
-| `name` | The child name you pass to `create_dynamic_child` |
-| `growth` | Must be `"dynamic"` — the engine looks it up by this |
-| `folder` | Subfolder under the parent's own folder, e.g. `messages` |
-| `identity_fields` | **The natural key.** Same values → same existing note, never a duplicate |
+| `name` | The child name passed to `create_dynamic_child` |
+| `growth` | Must be `"dynamic"` |
+| `folder` | Subfolder under the parent's own folder |
+| `identity_fields` | **The natural key** — same values return the same note, never a duplicate |
 | `frontmatter_defaults` | Merged into each child |
-| `sections` | Optional. If absent, write a flat `body` instead |
+| `sections` | Optional; omit it and write a flat `body` instead |
 
 ```python
 create_dynamic_child(vault_path, template, root_id=conversation_id,
@@ -113,162 +109,134 @@ create_dynamic_child(vault_path, template, root_id=conversation_id,
                      body=message_text)
 ```
 
-`body` and `sections` are **mutually exclusive** — pass `body` for a child whose
-template declares no sections (a plain email body has no `## Headers`), and
-`sections` for one that does.
-
-**Filenames come from frontmatter `title`**, falling back to the joined identity
-values. Put the real timestamp *and* sender in the title: date alone collides,
-and a folder of same-day messages becomes indistinguishable. Note the engine also
-prefixes the **capture** date, so a backfill shows capture date + received time.
+`body` and `sections` are **mutually exclusive**. Filenames come from frontmatter
+`title`, falling back to the joined identity values — put the real timestamp *and*
+sender in it, because date alone collides.
 
 ---
 
-## v1 — the backend's older schema
+## `version` — the content contract, and what depends on it
 
-Flat. Same ideas, fewer of them.
+Two version fields, deliberately distinct:
 
-| Key | Default |
-|---|---|
-| `id`, `note_name` | — |
-| `on_missing` | `"create"` |
-| `on_existing_title` | `"update_section"` |
-| `note_own_folder`, `note_filename_plain` | `false` |
-| `sections` | `[]` — `[{ "name", "access" }]` |
-| `frontmatter_defaults` | `{}` |
+- **`schema_version`** — how to **parse** the file.
+- **`version`** — what the **content** promises: which sections exist. Bump it
+  when a section is removed or renamed.
 
-Notes land at `Work/<note_name>/<YYYY-MM-DD>-<Title>.md`. The root is **`Work/`**,
-not `Notes/`.
+A Skill's `writes:` entry may declare `requires: <n>`. `SkillManager` refuses the
+deployment when that does not match the installed `template.version` — so a Skill
+written against a section that has since been renamed fails at deploy time rather
+than silently writing nowhere.
 
 ---
 
-## Identity — the part that makes re-runs safe
+## Section access — declared by Skills, not by the Template
 
-Frontmatter **`id`** is the stable key: a caller-supplied external id (a
-conversation id, a calendar event id) or an auto-generated uuid4. The engine also
-stamps `title` and `created`.
+`allowed_callers` **no longer lives in a Template.** A Skill declares what it
+writes, in its `SKILL.md` frontmatter:
 
-**Key on a real external id and re-running a capture is idempotent** — the engine
-finds the existing note and updates it rather than writing a second copy. Key on
-nothing and every run duplicates. This is the single most important decision when
-designing a Template. For child notes the equivalent is `identity_fields`.
+```yaml
+writes:
+  - action: link_person_to_thread
+    template: thread
+    sections: [Related]
+    requires: 1
+```
 
-Renaming is `update(id, title=...)` — nothing moves and no backlink breaks.
+`SkillManager.build_section_access_map()` derives `template → section → actions`
+from those declarations. Two consequences worth internalising:
 
-## Section access — a real guarantee, not a convention
+- **It counts only DEPLOYED Skills.** "A Skill sitting in the catalog undeployed
+  grants nothing." On a machine with no deployments the map is legitimately empty
+  — that is correct, not a fault.
+- **It is derived, never authored**, so it cannot name an Action that is not
+  actually deployed, and cannot go stale against a renamed script the way a
+  hand-maintained list in the Template silently did.
+
+The Template still declares each section's own `access`:
 
 | Value | Meaning |
 |---|---|
 | `machine_write` | Automated callers may write it |
-| `human_only` | **The engine refuses** an automated write — it raises |
+| `human_only` | **The engine refuses** an automated write |
 | `public` | Open |
 
-`human_only` is structural. An agent cannot write one no matter what its prompt
-says.
-
-**A template no longer names Skills.** Until 2026-09-06 a v2 section could carry
-`allowed_callers`, listing the Skill Actions permitted to write it. That was a
-reverse edge — vault *structure* depending on the capability layer — so it moved
-to the side that owns the Actions (`ADR-019`): a Skill declares `writes:` in its
-own `SKILL.md` frontmatter, and the backend derives
-`<data>/data/section_access.json` from what is actually **deployed**. The shared
-`vault_manager` reads that map at write time, so `ADR-017`'s per-caller
-enforcement is unchanged in effect; the migration was verified lossless before
-the field was removed.
-
-What that leaves in the template is `access`, which names nobody and is the
-guarantee that actually matters: across all 11 shipped templates
-`allowed_callers` only ever appeared on `machine_write` sections, never on
-`human_only`.
-
-> **Trap: an undeclared section defaults to `machine_write` (open).** Protection
-> is opt-in. Omitting a section does not protect it.
-
-Vault convention: `## Actions` and `## Personal Notes` are the human-owned ones.
-
-## The two ways a note gets written
-
-```python
-create(vault_path, template, title, note_name=..., note_id=..., sections={...})
-modify_section(vault_path, template, note_id, section, content, mode, ...)
-```
-
-`modify_section` is **"create if it does not exist, otherwise update this
-section"** in one call. `mode` is `"replace"` or `"append"`. Omit `note_name`/
-`title` to force "must already exist". That single call is usually all a capture
-needs.
+> **An undeclared section defaults to `machine_write` (open).** Protection is
+> opt-in.
 
 ---
 
-## Worked example — `thread` (v2, in production use)
+## Identity — what makes re-runs safe
 
-One note per thread, keyed on the provider's conversation id, with **real
-per-message child notes**:
+Frontmatter **`id`** is the stable key: a caller-supplied external id (a
+conversation id, an event id) or a uuid4. The engine also stamps `title` and
+`created`.
+
+**Key on a real external id and a re-run is idempotent** — the engine finds the
+existing note and updates it instead of writing a second copy. Key on nothing and
+every run duplicates. For child notes the equivalent is `identity_fields`.
+
+---
+
+## Worked example — the shipped `thread` master
 
 ```json
 {
   "id": "thread",
+  "schema_version": 2,
+  "version": 1,
   "identity": { "strategy": "id" },
-  "on_missing": "create",
+  "on_missing": "error",
   "allow_create_folder": true,
   "root": {
     "type": "md",
     "own_folder": true,
-    "on_existing_title": "update_section",
-    "children_index_section": "Messages",
+    "plain_filename": true,
+    "plain_folder": true,
+    "on_existing_title": "always_new",
     "frontmatter_defaults": {
-      "kind": "thread", "source": "email",
-      "participants": [], "last_message_at": "", "last_summarized_at": ""
+      "type": "Thread", "last_message_at": "",
+      "last_summarized_at": "", "classification": ""
     },
     "sections": [
       { "name": "Summary",        "access": "machine_write" },
-      { "name": "Messages",       "access": "machine_write" },
+      { "name": "Personal Notes", "access": "human_only" },
+      { "name": "Actions",        "access": "machine_write" },
       { "name": "Related",        "access": "machine_write" },
-      { "name": "Actions",        "access": "human_only" },
-      { "name": "Personal Notes", "access": "human_only" }
+      { "name": "Files",          "access": "machine_write" }
     ],
     "children": [
       {
-        "name": "messages",
         "growth": "dynamic",
+        "name": "messages",
         "folder": "messages",
         "identity_fields": ["conversation_id", "message_id"],
-        "frontmatter_defaults": { "kind": "message", "source": "email" }
+        "frontmatter_defaults": { "type": "RawMessage" }
       }
     ]
   }
 }
 ```
 
-Produces:
-
-```
-Work/Threads/2026-09-05-Q3 renewal/
-  2026-09-05-Q3 renewal.md
-  messages/
-    2026-09-05-2026-09-04 09-12 alice@example.com.md
-    2026-09-05-2026-09-04 10-40 bob@example.com.md
-```
-
-The same shape fits any threaded source — chat, tickets — not just email.
+Note `on_missing: "error"` — a Thread must already exist before a message is
+filed into it, so a typo cannot mint an empty Thread. That is a deliberate choice
+this template makes, not a default.
 
 ## How to test a Template before trusting it
 
-Run it against a scratch vault, never the real one. Point
-`SECOND_BRAIN_DATA_PATH` at the scratch config folder, copy the Template in, then
-check the things a mistake actually breaks:
+Against a scratch vault, never the real one. Point `SECOND_BRAIN_DATA_PATH` at a
+scratch config folder, copy the Template in, then check what a mistake actually
+breaks:
 
-1. **Does it load?** Both schema errors below fail here, loudly.
-2. **Does a second call on the same id duplicate?** Re-ingest the same item and
-   count the files. Expect no growth.
+1. **Does it load, with the sections you expect?** Empty sections and
+   `error: None` is the schema-mismatch signature above.
+2. **Does a second call on the same id duplicate?** Re-ingest and count files.
 3. **Is `human_only` enforced?** A write to one must raise.
 4. **Read the note.** Do not infer it from return values.
 
-## Two schema errors worth knowing
+## Errors that fail at load
 
-Both were hit authoring the `thread` template, and both fail at load:
-
-- **`"identity": "id"`** → `AttributeError: 'str' object has no attribute
-  'setdefault'`. It must be an **object**: `{"strategy": "id"}`.
-- **`root.type` as a domain label** (`"thread"`) — it is a *node type* and
-  defaults to `"md"`. Leave it alone.
+- **`"identity": "id"`** as a string → `AttributeError: 'str' object has no
+  attribute 'setdefault'`. It must be an object: `{"strategy": "id"}`.
+- **`root.type` as a domain label** (`"thread"`) — it is a node type and defaults
+  to `"md"`.
