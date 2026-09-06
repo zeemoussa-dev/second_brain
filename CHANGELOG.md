@@ -18,6 +18,17 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat(templates): the 11 Entity ("Master") Templates now **ship with the product**
+  at `src/backend/app/business/core/templates/masters/`. Nothing shipped before —
+  they existed only in one operator's App Database Folder and the setup wizard
+  seeded none, so a fresh install had no vault structure and every capture Skill
+  would have failed on a missing template.
+- fix(templates): `TemplateManager` read v1 flat field names out of files that are
+  all v2, so **all 11 templates parsed to zero sections with `error=None`** — every
+  `.get()` fallback fired and nothing raised. Version is now resolved once and
+  explicitly, each shipped file declares `schema_version: 2`, and shape is only the
+  fallback for files predating the field. Templates now parse with real content
+  (34 sections across the 11). 19 new tests, one per shipped template.
 - fix(frontend): `npm run build` works again — it had failed with 8 TypeScript
   errors since 2026-08-30/31. Seven were CSS custom properties assigned onto
   `CSSProperties` via `style['--x' as string] = …`, which cannot type-check (the
