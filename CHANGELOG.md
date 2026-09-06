@@ -18,6 +18,22 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- refactor(skills): **`Hermes-Provisioning/` is gone.** The 17 Skills moved to
+  `src/backend/app/business/core/skills/catalog/<tool>/<slug>/`, grouped by the
+  Tool each actually depends on (vault 14, outlook 2, pricing 1) rather than by
+  the Registry's grouping, which had six of our own Skills mis-filed under the
+  catch-all `jarvis` Tool. Hermes provisioning notes moved to
+  `Documentation/Framework/hermes/`; the dead `mcp-servers/outlook.yaml` was
+  dropped. It had been a source folder held *outside* the checkout, so
+  `GET /skills` returned `[]` silently whenever it was absent.
+- refactor(skills): **one `vault_manager.py`.** The repo carried 16 copies in 5
+  versions — the drift that left `index_builder_lib` on `rglob` for weeks after
+  the MAX_PATH fix landed in a different copy. The canonical copy is what all 13
+  deployed Skills run (not `shared/`, which had drifted from every consumer);
+  `SkillManager.deploy()` now materialises it into exactly the Skills whose
+  scripts import it, and `deploy_index_builder()` sources the same copy.
+  `outlook_lib.py`/`vault_lib.py` are left duplicated on purpose — they have
+  already drifted and need a real merge, not a file move.
 - feat(templates): the 11 Entity ("Master") Templates now **ship with the product**
   at `src/backend/app/business/core/templates/masters/`. Nothing shipped before —
   they existed only in one operator's App Database Folder and the setup wizard
