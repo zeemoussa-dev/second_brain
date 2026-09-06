@@ -132,3 +132,34 @@ def read_manager_source(filename: str) -> str:
     if not path.is_file():
         raise FileNotFoundError(f"No shared manager named {filename!r}")
     return path.read_text(encoding="utf-8")
+
+def shared_managers_target(hermes_home: Path) -> Path:
+    """Where the ONE shared copy of each manager lives on a real install.
+
+    Skills import these as plain siblings (`from vault_manager import ...`),
+    which works because this directory is on PYTHONPATH -- Hermes APPENDS a
+    configured PYTHONPATH to its own rather than replacing it
+    (cron/scheduler.py, gateway/run.py), and the gateway mutates os.environ
+    globally, so both `--no-agent --script` cron jobs and agent-invoked
+    Skills inherit it. Verified live 2026-09-06 on both paths.
+    """
+    return hermes_home / "managers"
+
+
+def deploy_shared_managers(hermes_home: Path) -> list[str]:
+    """Copies every canonical manager into the install's shared directory,
+    always overwriting. Returns the filenames written.
+
+    Idempotent and cheap, so callers run it on every deploy rather than
+    once: that is what makes staleness impossible. The install previously
+    carried 228 copies of vault_manager.py across 41 profiles, ALL of them
+    an older version than canonical, and nothing noticed because a local
+    copy silently wins over PYTHONPATH (sys.path[0] is the script's own
+    directory)."""
+    target = shared_managers_target(hermes_home)
+    target.mkdir(parents=True, exist_ok=True)
+    written = []
+    for source in sorted(_MANAGERS_ROOT.glob("*.py")):
+        shutil.copyfile(source, target / source.name)
+        written.append(source.name)
+    return written

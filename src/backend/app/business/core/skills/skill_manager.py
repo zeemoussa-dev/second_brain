@@ -38,6 +38,7 @@ from datetime import datetime, timezone
 from app.business.core.skills.skill import Skill
 from app.business.core.tools.tool_manager import ToolManager
 from app.business.hermes.client import get_client
+from app.config import settings
 from app.data_access import skills as skills_data
 from app.data_access import tools as tools_data
 
@@ -166,37 +167,26 @@ class SkillManager:
         self._write_meta(skill)
         return skill
 
-    # Shared libraries a skill sibling-imports but does not carry. The repo
-    # holds ONE copy; deploy materialises it. Before 2026-09-06 there were
-    # 16 copies of vault_manager.py in 5 different versions, which is how
-    # the index engine stayed on rglob for weeks after the MAX_PATH fix
-    # landed in a different copy.
-    _MATERIALISED_MANAGERS = ("vault_manager.py",)
-
-    def _with_managers(self, scripts: dict[str, str]) -> dict[str, str]:
-        """Adds each shared manager this skill actually imports. Detected
-        from the scripts' own import statements rather than declared: the
-        imports ARE the dependency, and a declaration could disagree with
-        them silently."""
-        merged = dict(scripts)
-        for filename in self._MATERIALISED_MANAGERS:
-            module = filename.removesuffix(".py")
-            imported = any(
-                f"import {module}" in text or f"from {module} import" in text
-                for text in scripts.values()
-            )
-            if imported and filename not in merged:
-                merged[filename] = skills_data.read_manager_source(filename)
-        return merged
-
     def deploy(self, skill_id: str, profile_id: str) -> Skill | None:
         """Pushes this Skill's current real content to one more real
-        Hermes profile."""
+        Hermes profile.
+
+        Refreshes the install's shared managers first (idempotent, one
+        small copy) and does NOT bundle vault_manager.py into the Skill.
+        A local copy would silently WIN over the shared one -- sys.path[0]
+        is the script's own directory -- so bundling it is what let 228
+        stale copies run across 41 profiles while canonical moved on.
+
+        This requires PYTHONPATH to point at the shared directory, which
+        `setup_wizard.sync_settings_to_hermes` writes into Hermes' .env
+        and which takes effect on the next gateway restart.
+        """
         skill = self.get_by_id(skill_id)
         if skill is None or profile_id in skill.deployed_to:
             return skill
         skill_md = skills_data.read_skill_md(skill_id) or ""
-        scripts = self._with_managers(skills_data.list_scripts(skill_id))
+        scripts = skills_data.list_scripts(skill_id)
+        skills_data.deploy_shared_managers(settings.hermes_home_path)
         get_client().skills.create(profile_id, skill.category, skill_id, skill_md, scripts)
         skill.deployed_to.append(profile_id)
         skill.updated_at = datetime.now(timezone.utc).isoformat()
