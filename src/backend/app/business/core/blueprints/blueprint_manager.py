@@ -328,10 +328,15 @@ class BlueprintManager:
                 "rolled_back": undone,
             }
 
+        soul_changed = False
         if wire_peers and any(a.peer and a.primary_routing_snippet for a in blueprint.agents):
             # Heading first, so the bullets appended below have something to
-            # belong to.
-            self._ensure_peer_section()
+            # belong to. Its return is KEPT: adding the heading changes
+            # Primary's prompt on its own, and discarding it meant an upgrade
+            # install reported no reset needed while a running Primary could
+            # not see the change (BUG-055). That cost a real misrouted file
+            # upload, fixed by hand.
+            soul_changed = self._ensure_peer_section()
         if wire_peers:
             # A peer is only REACHABLE once Primary knows to relay to it.
             # Without this the Agent exists, runs, and is simply never
@@ -371,7 +376,9 @@ class BlueprintManager:
             # re-reads it, so a Primary mid-conversation cannot see the peers
             # that were just wired -- which is exactly when the operator
             # tries them. Surfaced rather than assumed (BUG-052).
+            # ANY change to Primary's prompt needs the session restarting --
+            # a newly wired peer, or just the heading and lead-in appearing.
             "primary_session_reset_required": bool(
-                [state for state in peers.values() if state == "wired"]
+                soul_changed or [state for state in peers.values() if state == "wired"]
             ),
         }

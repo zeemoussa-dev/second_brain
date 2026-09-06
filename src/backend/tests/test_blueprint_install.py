@@ -236,3 +236,27 @@ def test_peer_wiring_reports_that_primary_needs_a_session_reset(monkeypatch) -> 
 
     assert result["peers"]["notes-manager"] == "wired"
     assert result["primary_session_reset_required"] is True
+
+
+def test_adding_only_the_peer_heading_still_requires_a_session_reset(monkeypatch) -> None:
+    """BUG-055, second gap: the flag was computed from newly-wired peers only,
+    and _ensure_peer_section()'s return -- which says whether the heading was
+    just added -- was discarded. An upgrade install therefore changed
+    Primary's prompt and reported no reset needed. Live cost: a file upload
+    routed to the wrong peer, fixed by resetting the session by hand."""
+    from app.business.core.agents.agent_manager import AgentManager
+    from app.business.core.sections.section_manager import SectionManager
+
+    monkeypatch.setattr(BlueprintManager, "preflight",
+                        lambda self, bid, sid=None: {"ok": True, "templates": [], "problems": []})
+    monkeypatch.setattr(BlueprintManager, "_ensure_peer_section", lambda self: True)
+    # Every peer already described by hand, so nothing is newly "wired".
+    monkeypatch.setattr(BlueprintManager, "_primary_already_describes", lambda self, aid: True)
+    monkeypatch.setattr(SectionManager, "get_by_id", lambda self, sid: type("S", (), {"id": "librarian"})())
+    monkeypatch.setattr(AgentManager, "get_by_id", lambda self, aid: object())
+    monkeypatch.setattr(AgentManager, "ensure_skills", lambda self, aid, skills: {})
+
+    result = BlueprintManager().install("notes-capture", section_id="librarian")
+
+    assert "wired" not in result["peers"].values()
+    assert result["primary_session_reset_required"] is True
