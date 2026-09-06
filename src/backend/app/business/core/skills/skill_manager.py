@@ -181,6 +181,54 @@ class SkillManager:
         self._write_meta(skill)
         return skill
 
+    def _all_profile_ids(self) -> list[str]:
+        """Every real Hermes profile, "default" included -- profiles.get_all()
+        enumerates named profiles only."""
+        named = [agent.id for agent in get_client().profiles.get_all()]
+        return ["default"] + [p for p in named if p != "default"]
+
+    def reconcile_deployed_to(self, *, dry_run: bool = True) -> dict:
+        """Sets each Skill's `deployed_to` to what is ACTUALLY on disk.
+
+        Deliberately narrower than sync_from_hermes: it imports nothing and
+        touches no content. It answers one question -- which profiles really
+        have this Skill -- and records the answer.
+
+        Matches on SLUG, not "<category>/<slug>". sync_from_hermes filters by
+        a category allowlist, and after the 2026-09-06 regrouping by Tool
+        that allowlist ("vault"/"outlook"/"pricing") no longer matches where
+        the deployed copies actually sit (their old categories), so it would
+        now miss every one of them.
+
+        Why this is needed at all: `deployed_to` had drifted badly under-set
+        -- `summarize-and-tag-files` recorded 1 deployment while 40 profiles
+        carried it. Anything keyed off deployed_to was therefore blind to
+        most of reality, including the drift check itself.
+        """
+        client = get_client()
+        by_profile = {
+            profile_id: {s.slug for s in client.skills.get_all(profile_id)}
+            for profile_id in self._all_profile_ids()
+        }
+        changes: dict[str, dict] = {}
+        for skill in self.get_all():
+            actual = sorted(p for p, slugs in by_profile.items() if skill.id in slugs)
+            recorded = sorted(skill.deployed_to)
+            if actual == recorded:
+                continue
+            changes[skill.id] = {
+                "added": [p for p in actual if p not in recorded],
+                "removed": [p for p in recorded if p not in actual],
+                "was": len(recorded), "now": len(actual),
+            }
+            if not dry_run:
+                skill.deployed_to = actual
+                skill.updated_at = datetime.now(timezone.utc).isoformat()
+                self._write_meta(skill)
+        if changes and not dry_run:
+            self.publish_section_access_map()
+        return changes
+
     def _push_to_profile(
         self, skill: Skill, profile_id: str, skill_md: str, scripts: dict[str, str]
     ) -> str:
