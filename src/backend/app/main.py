@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.business.core.templates.template_manager import TemplateManager
 from app.business.core.vault.vault_manager import VaultManager
 from app.api.agents_router import router as agents_router
 from app.api.artifacts_router import router as artifacts_router
@@ -61,6 +62,22 @@ async def lifespan(app: FastAPI):
         # than as the one thing the operator needs to see (the wizard).
         yield
         return
+    # Install any shipped Master Template this install does not have yet.
+    # Deliberately synchronous and ahead of the registry loader below: it
+    # is 11 small files, and everything downstream -- the registry, and
+    # every capture Skill -- assumes the vault structure already exists.
+    # Before 2026-09-06 nothing shipped Entity Templates and nothing
+    # seeded them, so a fresh install had no vault structure at all.
+    # Never overwrites an existing template; see seed_shipped_masters.
+    try:
+        seeding = TemplateManager().seed_shipped_masters()
+        if seeding["seeded"]:
+            print(f"[startup] seeded Master Templates: {', '.join(seeding['seeded'])}")
+    except Exception as exc:
+        # A malformed shipped template is a build defect, but refusing to
+        # start hides it behind a dead port -- the operator could not even
+        # reach the UI to be told. Serve, and say so loudly instead.
+        print(f"[startup] ERROR: could not seed Master Templates: {exc!r}")
     # REQ-SB-80 -- RegistryLoader's cold boot + hot-reload poll loop.
     # Background task, never awaited (same "don't block 'application
     # startup complete'" reasoning as every other fire-and-forget task

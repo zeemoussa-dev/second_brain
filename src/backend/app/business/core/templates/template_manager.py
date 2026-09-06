@@ -81,6 +81,42 @@ class TemplateManager:
             note_filename_plain=plain_filename,
         )
 
+    def seed_shipped_masters(self) -> dict:
+        """Installs every shipped Master Template this install does not
+        already have. Returns {"seeded": [...], "kept": [...]}.
+
+        **Never overwrites.** An id already present is left exactly as it
+        is, whatever it contains: the operator's own edit to `thread`
+        outranks the shipped copy, and this runs on every boot rather
+        than once, so overwriting would silently revert local changes on
+        every restart. Upgrading an existing template is a separate,
+        deliberate act that has to reconcile operator edits -- not
+        something a boot path does behind their back.
+
+        Why this exists at all (2026-09-06): nothing shipped Entity
+        Templates before, and nothing seeded them. A fresh install had no
+        vault structure whatsoever, so every capture Skill would have
+        failed on a missing template -- the framework shipped the engine
+        and none of the contracts.
+
+        Validates each shipped file through the existing `_to_template`
+        parser before writing it, the same read-side shape check
+        import_template applies, so a malformed shipped template raises
+        here instead of landing on disk.
+        """
+        existing = set(templates_data.list_template_ids())
+        seeded: list[str] = []
+        kept: list[str] = []
+        for template_id in templates_data.list_shipped_master_ids():
+            if template_id in existing:
+                kept.append(template_id)
+                continue
+            data = templates_data.read_shipped_master_json(template_id)
+            self._to_template(template_id, data)
+            templates_data.write_template_json(template_id, data)
+            seeded.append(template_id)
+        return {"seeded": seeded, "kept": kept}
+
     def get_by_id(self, template_id: str) -> Template | None:
         """None (never raises) if the id doesn't exist or its
         Template.json is malformed."""
