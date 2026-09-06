@@ -5568,3 +5568,50 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   CHANGELOG entry on every push, per operator instruction, 2026-09-03.
   Everything above this line, accumulated before a version number
   existed, is retroactively version 0.1.0.
+
+## 2026-09-05 — Memory reorganisation: build records recovered from `MEMORY.md`
+
+These entries were recorded in `MEMORY.md` as if they were standing rules. They
+are build records and belong here. Each line is a summary; the full original
+text is preserved verbatim in `Archive/2026-09-05/MEMORY-to-dev-record.md`,
+findable by the entry number in brackets.
+
+- Backend became fully agentic - every competing in-process orchestration mechanism (the `/mcp` tool server, the skill-dispatch registry, the default-schedules cron dispatcher, the LangGraph orchestration graph) deleted rather than disconnected; Hermes now owns all scheduling and dispatch. _[entry 113]_
+- `SectionManager` built - the first `business/core/` entity taken from stub to real. _[entry 114]_
+- `AgentManager` read and write sides built on existing `HermesClient`/`HermesProfiles` primitives that had had zero callers. _[entry 117]_
+- `agents_router.py` migrated onto `AgentManager` - a partial swap, since `AgentManager` deliberately does not cover Pipelines. _[entry 118]_
+- `PipelineManager` built read-only; `agents_map_adapter.py` fully migrated onto it. _[entry 119]_
+- `SectionManager` finished - the `GET /sections` empty-`agent_ids` bug fixed once `AgentManager` existed to compose against, and the dead assignments path removed. _[entry 120]_
+- `AgentManager.regenerate_specialists_section()` built - the generic form of a specialist-routing fix previously applied by hand. _[entry 124]_
+- `preferred_index_ids` confirmed correct end to end - it had no UI, which is a different problem from being broken. _[entry 131]_
+- `SectionDetailPanel.tsx` audited - no broken controls, but real backend fields the panel never surfaced. _[entry 140]_
+- Vault Scope and Guardrails editing fixed at two stacked layers, after being live and non-functional for every agent. _[entry 130]_
+- `AgentDetailPanel.tsx` audited and extended - `tools`, `depends_on` and `preferred_index_ids` added to the wire response and the panel; two controls that looked functional were corrected. _[entry 141]_
+- `ProviderManager` seeding moved into `providers_data.seed_defaults()`; no raw settings or file access left in the Manager. _[entry 129]_
+- `files-manager` took ownership of Thread-attachment summarisation, not only standalone uploads. _[entry 002]_
+- `section_registry.py` began dual-writing into the Registry's own `Section.json`; `delete_section`'s blocking check now consults real agent placement. _[entry 008]_
+- Research Agent fallback narrowed - a zero-match among the brought-in roster now checks for a registered but not-yet-brought-in expert before falling back. _[entry 014]_
+- `moderator.py` routing given a standard English stopword set, not only the domain-specific one. _[entry 015]_
+- `Work/Entities.md` relocated to `.second-brain/Settings/Entities.md` - a coordinated cross-system move, not just a backend path change. _[entry 022]_
+- Vault structural index and Section fallback agents shipped, all five phases in one session. _[entry 026]_
+- Stray log-capture and index notes under several customer folders root-caused to an unguarded legacy endpoint router. _[entry 028]_
+- Template-trees rollout step 1 - `vault_manager.py` and all seven `Template.json` files migrated to the v2 schema. _[entry 029]_
+- Template-trees rollout step 2 - Opportunity became pure `Template.json`; `create_opportunity.py` shrank from 243 hand-rolled lines to none. _[entry 030]_
+- Template-trees rollout step 4 - Customers and Partners fully migrated. _[entry 031]_
+- The uncreated-Companies report closed out: the cause was never a broken cron job, there was no such job to break. _[entry 032]_
+- `ingest_meeting.py` and `create_companies_partners.py` call sites retrofitted to pass an explicit `caller=` identity. _[entry 042]_
+- `apply_thread_review.py`'s `## Summary` write and timestamp stamping migrated onto `modify_section`/`update`. _[entry 044]_
+- `ingest_email.py`'s Thread resolution could not find pre-migration Threads, which lacked the `id` frontmatter field it keys on. _[entry 153]_
+- The Entities relocation's redeploy pass was found to have missed the primary/default profile. _[entry 156]_
+- `create_companies_partners.py` Pass 2 affiliate resolution fixed - it only ever looked up parents among Pass 1's own entries. _[entry 162]_
+- `hermes_backup.py`/`hermes_restore.py` stopped hardcoding `<vault>/.second-brain` as the app data location. _[entry 165]_
+- `hermes_backup.py` corrected about what "Settings" meant to exclude - a near-miss for a laptop-migration backup. _[entry 167]_
+- `email_staging/` removed from the wholesale data-root walk after it caused a real restore failure. _[entry 168]_
+
+- chore(memory): `MEMORY.md` reduced from 330 KB / 187 mixed entries to 21 KB /
+  69 atomic rules. Nothing deleted - 51 entries staged for `Documentation/Framework/`,
+  45 for this file and `Learnings.md`, 16 seeded into instance memory, 7 retired
+  with reasons, and the original preserved in full at
+  `Archive/2026-09-05/MEMORY-original-2026-09-05.md`. Four growth rules added to
+  `MEMORY.md`'s own header: a 40 KB budget enforced at write time, one rule per
+  entry under 400 characters, never write while investigating, and ledger rotation.

@@ -1,0 +1,21 @@
+{
+  "id": "email-thread",
+  "note_name": "Threads",
+  "on_missing": "create",
+  "on_existing_title": "always_new",
+  "note_own_folder": true,
+  "note_filename_plain": true,
+  "sections": [
+    { "name": "Summary",        "access": "machine_write" },
+    { "name": "Messages",       "access": "machine_write" },
+    { "name": "Related",        "access": "machine_write" },
+    { "name": "Actions",        "access": "human_only" },
+    { "name": "Personal Notes", "access": "human_only" }
+  ],
+  "frontmatter_defaults": {
+    "kind": "thread",
+    "source": "email",
+    "participants": [],
+    "last_message_at": ""
+  }
+}
