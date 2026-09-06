@@ -12,6 +12,7 @@ import shutil
 from pathlib import Path
 
 from app.config import settings
+from app.data_access import skills as skills_data
 
 _INDEXES_SUBPATH = ("data", "Indexes")
 
@@ -107,12 +108,17 @@ def deploy_index_builder(profile_id: str | None) -> None:
     scripts/ dir -- always overwrites with the current checked-in source,
     so every real Index's own stub script stays on the same, current
     engine rather than an install-time snapshot. Raises FileNotFoundError
-    if the payload is missing, rather than deploying a half-set."""
+    if the payload is missing, rather than deploying a half-set.
+
+    vault_manager.py comes from the ONE canonical copy under
+    business/core/skills/managers/, not from a private copy beside the
+    index engine (2026-09-06). That private copy was the 16th in the repo,
+    across 5 versions -- the same drift that left this engine calling
+    rglob for weeks after the MAX_PATH fix landed elsewhere."""
     target_dir = scripts_dir(profile_id)
     target_dir.mkdir(parents=True, exist_ok=True)
-    for filename in ("index_builder_lib.py", "vault_manager.py"):
-        source = _INDEX_PAYLOAD_DIR / filename
-        shutil.copyfile(source, target_dir / filename)
+    shutil.copyfile(_INDEX_PAYLOAD_DIR / "index_builder_lib.py", target_dir / "index_builder_lib.py")
+    shutil.copyfile(skills_data.managers_root() / "vault_manager.py", target_dir / "vault_manager.py")
 
 
 def read_index_runner_template() -> str:

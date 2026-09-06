@@ -1,20 +1,40 @@
-"""Raw data access for Skill CONTENT -- Hermes-Provisioning/skills/
-<category>/<slug>/{SKILL.md, scripts/*} -- the checked-in "skills
-template repo" (operator, 2026-08-28: "we do a copy for all Skills
-inside our System"), the canonical source SkillManager authors into and
-deploys FROM. Distinct from a live Hermes profile's own deployed copy
-(app.hermes.skills.HermesSkills) and from a Skill's Registry metadata
-(data_access/tools.py). Zero business interpretation here -- tool
-grouping, deployment targets, and sync/import behaviour are all
-SkillManager's job.
+"""Raw data access for Skill CONTENT -- the catalog at
+business/core/skills/catalog/<tool>/<slug>/{SKILL.md, scripts/*}, the
+canonical source SkillManager authors into and deploys FROM. Distinct
+from a live Hermes profile's own deployed copy (app.hermes.skills.
+HermesSkills) and from a Skill's Registry metadata (data_access/tools.py).
+Zero business interpretation here -- tool grouping, deployment targets,
+and sync/import behaviour are all SkillManager's job.
+
+Moved here 2026-09-06 from Hermes-Provisioning/skills/, a folder held
+outside the checkout, which meant `GET /skills` silently returned `[]`
+whenever it was absent -- an empty Skills list read as "no Skills exist"
+rather than "the source is not here". Skills are backend-owned framework
+content and now live with the rest of it.
+
+The grouping folder is the **Tool** (vault / outlook / pricing), not the
+old free-form category. It is derived from what each Skill actually
+depends on, not from the Registry's own grouping, which had six of our
+own Skills mis-filed under the catch-all `jarvis` Tool.
+
+`vault_manager.py` is deliberately NOT stored per skill. One canonical
+copy lives in ../managers/ and is materialised into each profile at
+deploy time -- the repo previously carried 12 copies of it plus 4 more
+elsewhere, in 5 different versions.
 """
 from __future__ import annotations
 
 import shutil
 from pathlib import Path
 
-_REPO_ROOT = Path(__file__).resolve().parents[4]
-_SKILLS_ROOT = _REPO_ROOT / "Hermes-Provisioning" / "skills"
+_SKILLS_ROOT = Path(__file__).resolve().parents[1] / "business" / "core" / "skills" / "catalog"
+_MANAGERS_ROOT = Path(__file__).resolve().parents[1] / "business" / "core" / "skills" / "managers"
+
+
+def managers_root() -> Path:
+    """Shared libraries materialised into a skill's own folder at deploy
+    time rather than duplicated into it in the repo."""
+    return _MANAGERS_ROOT
 
 
 def list_categories() -> list[str]:
@@ -103,3 +123,12 @@ def delete_skill_dir(skill_id: str) -> None:
     skill_dir = _find_skill_dir(skill_id)
     if skill_dir is not None:
         shutil.rmtree(skill_dir, ignore_errors=True)
+
+def read_manager_source(filename: str) -> str:
+    """One shared library's canonical source, for materialising into a
+    skill at deploy time. Raises if absent -- a skill that imports a
+    manager we cannot supply must fail loudly, not deploy half-formed."""
+    path = _MANAGERS_ROOT / filename
+    if not path.is_file():
+        raise FileNotFoundError(f"No shared manager named {filename!r}")
+    return path.read_text(encoding="utf-8")

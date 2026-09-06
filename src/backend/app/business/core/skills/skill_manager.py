@@ -2,7 +2,7 @@
 Agent/.../Tool Manager's own "one real gateway" rule).
 
 A Skill's real CONTENT (SKILL.md + scripts/) lives in the checked-in
-"skills template repo" -- Hermes-Provisioning/skills/<category>/<slug>/
+"skills template repo" -- business/core/skills/catalog/<tool>/<slug>/
 (data_access/skills.py) -- our own canonical copy, per operator (2026-
 08-28): "we do a copy for all Skills inside our System". Its real
 METADATA (name/description/tool grouping/deployment list/mutates/origin)
@@ -166,6 +166,29 @@ class SkillManager:
         self._write_meta(skill)
         return skill
 
+    # Shared libraries a skill sibling-imports but does not carry. The repo
+    # holds ONE copy; deploy materialises it. Before 2026-09-06 there were
+    # 16 copies of vault_manager.py in 5 different versions, which is how
+    # the index engine stayed on rglob for weeks after the MAX_PATH fix
+    # landed in a different copy.
+    _MATERIALISED_MANAGERS = ("vault_manager.py",)
+
+    def _with_managers(self, scripts: dict[str, str]) -> dict[str, str]:
+        """Adds each shared manager this skill actually imports. Detected
+        from the scripts' own import statements rather than declared: the
+        imports ARE the dependency, and a declaration could disagree with
+        them silently."""
+        merged = dict(scripts)
+        for filename in self._MATERIALISED_MANAGERS:
+            module = filename.removesuffix(".py")
+            imported = any(
+                f"import {module}" in text or f"from {module} import" in text
+                for text in scripts.values()
+            )
+            if imported and filename not in merged:
+                merged[filename] = skills_data.read_manager_source(filename)
+        return merged
+
     def deploy(self, skill_id: str, profile_id: str) -> Skill | None:
         """Pushes this Skill's current real content to one more real
         Hermes profile."""
@@ -173,7 +196,7 @@ class SkillManager:
         if skill is None or profile_id in skill.deployed_to:
             return skill
         skill_md = skills_data.read_skill_md(skill_id) or ""
-        scripts = skills_data.list_scripts(skill_id)
+        scripts = self._with_managers(skills_data.list_scripts(skill_id))
         get_client().skills.create(profile_id, skill.category, skill_id, skill_md, scripts)
         skill.deployed_to.append(profile_id)
         skill.updated_at = datetime.now(timezone.utc).isoformat()

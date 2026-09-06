@@ -11,8 +11,13 @@ from pathlib import Path
 
 import pytest
 
-_SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "app" / "business" / "core" / "index" / "scripts"
-sys.path.insert(0, str(_SCRIPTS_DIR))
+_APP = Path(__file__).resolve().parents[1] / "app"
+_SCRIPTS_DIR = _APP / "business" / "core" / "index" / "scripts"
+# vault_manager is no longer carried beside the engine -- one canonical copy
+# is materialised at deploy time, so the test has to supply it the same way.
+_MANAGERS_DIR = _APP / "business" / "core" / "skills" / "managers"
+for _path in (_SCRIPTS_DIR, _MANAGERS_DIR):
+    sys.path.insert(0, str(_path))
 
 import index_builder_lib  # noqa: E402
 

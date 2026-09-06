@@ -16,7 +16,7 @@ _vault_manager = VaultManager()
 
 def rebuild_vault_index() -> dict:
     """Triggers both the backend's own fast in-process rebuild AND the
-    separate, disk-persisted agent-facing index (Hermes-Provisioning/
+    separate, disk-persisted agent-facing index (business/core/skills/
     skills/vault-rebuild/vault-index) via the SAME real
     `vault-index-rebuild` cron job the recurring schedule fires -- so
     there is exactly one real rebuild path for agents, never a second

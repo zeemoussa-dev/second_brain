@@ -21,7 +21,7 @@ silently broke when the operator split config out of the vault.
 Everything else here still only LOOKS: nothing creates a profile, deploys a
 Skill, writes a cron job, or restarts anything. That leaves applying real
 config as the operator's own action, matching
-`Hermes-Provisioning/README.md`'s own standing discipline.
+the Skill catalog's own standing discipline.
 """
 from __future__ import annotations
 

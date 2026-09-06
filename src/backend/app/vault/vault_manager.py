@@ -15,7 +15,7 @@ only, no Second Brain backend dependency -- a vault-writing Skill must
 keep working even if the backend is down) and gets PHYSICALLY COPIED into
 whichever Skill's own scripts/ folder needs it, same "prepare here, apply
 to a real Hermes install" workflow this repo already uses for everything
-else under Hermes-Provisioning/. Editing the engine happens in exactly
+else under business/core/skills/managers/. Editing the engine happens in exactly
 ONE place (this file, then re-copy); extending what it can write happens
 by adding a Template.json, never by writing a new script ("we don't need
 to edit 2000 places, max is 2" -- operator, 2026-08-25).
@@ -85,7 +85,7 @@ _BODY_SECTION_HEADER_PATTERN = re.compile(r"^## .+$", re.MULTILINE)
 # -- "Notes" as the TOP-LEVEL root was this module's own assumption from
 # an illustrative example, not the vault's actual structure.
 _NOTES_ROOT = "Work"
-# DELIBERATE DIVERGENCE FROM THE CANONICAL Hermes-Provisioning/shared/
+# DELIBERATE DIVERGENCE FROM THE CANONICAL business/core/skills/managers/
 # vault_manager.py source (System settings page, 2026-08-27): every OTHER
 # copy of this file (every Hermes Skill's own scripts/ folder) keeps
 # `(".second-brain", "data", "Templates")` and is always called with the
