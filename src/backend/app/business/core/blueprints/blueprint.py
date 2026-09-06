@@ -15,6 +15,12 @@ class BlueprintAgent:
     reasoning_effort: str | None = None
     clone_from: str = "default"
     soul: str | None = None  # relative path within the Blueprint
+    # A PEER is reachable from the Primary profile: installing it appends
+    # `primary_routing_snippet` to this machine's Primary SOUL.md, which is
+    # what makes Primary relay to it at all. Without that the Agent exists,
+    # runs, and is simply never reached.
+    peer: bool = False
+    primary_routing_snippet: str | None = None
 
 
 @dataclass

@@ -51,6 +51,8 @@ class BlueprintManager:
                     model=agent.get("model"), reasoning_effort=agent.get("reasoning_effort"),
                     clone_from=agent.get("clone_from") or "default",
                     soul=agent.get("soul"),
+                    peer=bool(agent.get("peer")),
+                    primary_routing_snippet=agent.get("primary_routing_snippet"),
                 )
                 for agent in (data.get("agents") or [])
             ],
@@ -108,6 +110,8 @@ class BlueprintManager:
             templates.update(entry["template"] for entry in declared)
 
         for agent in blueprint.agents:
+            if agent.peer and not (agent.primary_routing_snippet or "").strip():
+                problems.append(agent.id + ": marked peer but carries no primary_routing_snippet")
             if agent.soul and blueprints_data.read_blueprint_asset(blueprint_id, agent.soul) is None:
                 problems.append(agent.id + ": soul file " + repr(agent.soul) + " missing from the Blueprint")
 
@@ -118,6 +122,7 @@ class BlueprintManager:
             "ok": not problems,
             "problems": problems,
             "skills": blueprint.skill_ids,
+            "peers": [a.id for a in blueprint.agents if a.peer],
             "templates": sorted(templates),
             # Skills with no writes: declaration -- the Template check could not
             # cover them. Not a failure, but the check is partial, and saying
@@ -130,7 +135,7 @@ class BlueprintManager:
             },
         }
 
-    def install(self, blueprint_id: str) -> dict:
+    def install(self, blueprint_id: str, *, wire_peers: bool = True) -> dict:
         """Creates the Section and its Agents and deploys each Agent's
         declared Skills. Refuses unless preflight passes -- nothing is
         created when a precondition fails, so a refusal never leaves a
@@ -152,6 +157,7 @@ class BlueprintManager:
         agent_manager = AgentManager()
         agents: dict[str, str] = {}
         skills: dict[str, dict] = {}
+        peers: dict[str, str] = {}
         for spec in blueprint.agents:
             if agent_manager.get_by_id(spec.id) is not None:
                 agents[spec.id] = "already"
@@ -170,8 +176,29 @@ class BlueprintManager:
             agents[spec.id] = "created"
             skills[spec.id] = dict.fromkeys(spec.skill_ids, "deployed")
 
+        if wire_peers:
+            # A peer is only REACHABLE once Primary knows to relay to it.
+            # Without this the Agent exists, runs, and is simply never
+            # reached -- which looks like a working install and is not.
+            # apply_primary_routing_snippet is marker-guarded, so re-running
+            # is a no-op and an operator's own edit is never overwritten.
+            from app.business.logic import artifact_import
+            for spec in blueprint.agents:
+                if not spec.peer or not spec.primary_routing_snippet:
+                    continue
+                try:
+                    outcome = artifact_import.apply_primary_routing_snippet(
+                        spec.id, spec.primary_routing_snippet,
+                    )
+                    peers[spec.id] = "wired" if outcome["applied"] else outcome["detail"]
+                except FileNotFoundError as exc:
+                    # No Primary SOUL.md on this machine. The Section is
+                    # still real and usable directly; say so rather than
+                    # failing an otherwise-good install.
+                    peers[spec.id] = "not wired: " + str(exc)
+
         return {
             "installed": True, "blueprint_id": blueprint_id, "section_id": section.id,
-            "agents": agents, "skills": skills,
+            "agents": agents, "skills": skills, "peers": peers,
             "templates": checks["templates"], "problems": [],
         }

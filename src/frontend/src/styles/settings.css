@@ -496,3 +496,58 @@
   gap: var(--space-3);
   flex-wrap: wrap;
 }
+
+/* Settings > Blueprints -------------------------------------------------- */
+
+.blueprint-row {
+  padding: var(--space-4, 1rem) 0;
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+}
+.blueprint-row:last-child { border-bottom: none; }
+
+.blueprint-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3, 0.75rem);
+}
+.blueprint-head > div { flex: 1; }
+.blueprint-head p { margin: 0.15rem 0 0; }
+
+.blueprint-agents {
+  list-style: none;
+  margin: var(--space-3, 0.75rem) 0 0;
+  padding: 0;
+}
+.blueprint-agents li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0;
+}
+
+.blueprint-preflight { margin-top: var(--space-3, 0.75rem); }
+
+.blueprint-problems {
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 1.1rem;
+  color: var(--color-danger, #b91c1c);
+}
+
+/* Two columns so a long skill list wraps under its own label rather than
+   pushing the label around. */
+.blueprint-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.2rem 0.75rem;
+  margin: 0.5rem 0;
+}
+.blueprint-facts dt { color: var(--color-text-muted, #6b7280); }
+.blueprint-facts dd { margin: 0; }
+
+.blueprint-result {
+  margin-top: var(--space-3, 0.75rem);
+  padding: var(--space-3, 0.75rem);
+  border-radius: var(--radius-2, 6px);
+  background: var(--color-surface-2, #f6f7f9);
+}
+.blueprint-result ul { margin: 0.25rem 0 0; padding-left: 1.1rem; }

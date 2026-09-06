@@ -15,6 +15,7 @@ const SETTINGS_SECTIONS = [
   { key: 'vault', icon: 'folder_open', label: 'Vault', desc: 'Your Obsidian vault path and status.', href: '/settings/vault' },
   { key: 'config', icon: 'settings', label: 'Config', desc: 'App configuration.', href: '/settings/config' },
   { key: 'ui', icon: 'palette', label: 'UI', desc: 'Display and appearance preferences.', href: '/settings/ui' },
+  { key: 'blueprints', icon: 'dashboard_customize', label: 'Blueprints', desc: 'Pull a ready-made Section — its agents and their skills — onto this install.', href: '/settings/blueprints' },
   { key: 'artifacts', icon: 'inventory_2', label: 'Artifacts', desc: 'Export or import Skills, Templates, Agents, and Pipelines as a portable bundle.', href: '/settings/artifacts' },
   { key: 'export-data', icon: 'ios_share', label: 'Export Data', desc: 'Browse your real vault and export a chosen slice of notes/files as a portable archive.', href: '/settings/export-data' },
   { key: 'backup', icon: 'backup', label: 'Backup & Restore', desc: 'Full Hermes structural backup — Agents/Profiles, Cron, Skills — for moving this deployment to a new machine.', href: '/settings/backup' },

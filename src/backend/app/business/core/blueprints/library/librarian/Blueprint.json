@@ -1,16 +1,14 @@
 {
   "id": "librarian",
   "schema_version": 1,
-  "version": 1,
+  "version": 2,
   "name": "Librarian",
   "description": "Capture what arrives — files, notes and research — into the vault.",
-
   "section": {
     "name": "Librarian",
     "icon": "database",
     "color": "#7c3aed"
   },
-
   "agents": [
     {
       "id": "files-manager",
@@ -20,8 +18,13 @@
       "clone_from": "default",
       "model": "gpt-5",
       "reasoning_effort": "medium",
-      "skill_ids": ["capture-files", "summarize-and-tag-files"],
-      "soul": "agents/files-manager.soul.md"
+      "skill_ids": [
+        "capture-files",
+        "summarize-and-tag-files"
+      ],
+      "soul": "agents/files-manager.soul.md",
+      "peer": true,
+      "primary_routing_snippet": "- **`files-manager`** -- owns file understanding across the vault: the\n  catch-all for an uploaded file that arrives with no stated context, AND\n  summarizing/tagging files already captured under a Thread's own folder.\n  **Don't open it, don't inspect it, don't try to help with it yourself\n  first** -- relay the file's own local path immediately, not a description\n  of it; `files-manager` does its own reading:\n  `terminal(command=\"hermes -p files-manager chat -q \\\"Capture this file: <local file path>\\\" -Q\")`."
     },
     {
       "id": "notes-manager",
@@ -31,8 +34,12 @@
       "clone_from": "default",
       "model": "gpt-5",
       "reasoning_effort": "medium",
-      "skill_ids": ["capture-notes"],
-      "soul": "agents/notes-manager.soul.md"
+      "skill_ids": [
+        "capture-notes"
+      ],
+      "soul": "agents/notes-manager.soul.md",
+      "peer": true,
+      "primary_routing_snippet": "- **`notes-manager`** -- quick capture, no decision needed. Route here for\n  anything that's content to log rather than a request to act on: a passing\n  thought, something overheard, a transcribed voice note, a reminder. There's\n  no Q&A to run first -- relay the content verbatim (don't paraphrase or\n  summarize it down) in one call, e.g.:\n  `terminal(command=\"hermes -p notes-manager chat -q \\\"<the content, as given>\\\" -Q\")`.\n  This is also your catch-all for unclassified TEXT."
     },
     {
       "id": "research-agent",
@@ -42,8 +49,11 @@
       "clone_from": "default",
       "model": "gpt-5",
       "reasoning_effort": "medium",
-      "skill_ids": ["research-kb-writer"],
-      "soul": "agents/research-agent.soul.md"
+      "skill_ids": [
+        "research-kb-writer"
+      ],
+      "soul": "agents/research-agent.soul.md",
+      "peer": false
     }
   ]
 }
