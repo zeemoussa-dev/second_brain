@@ -42,7 +42,7 @@ is a thin status mirror of the index table below.
 | BUG-053 | Deleting any Agent makes a phantom Agent called `.deleted` appear in the Agents list and on the Agents Map — Hermes tombstones deleted profiles into `profiles/.deleted/` and the profile enumeration treats that dot-directory as a profile | Logic | Major | Closed | 2026-09-07 | direct fix, 2026-09-07 |
 | BUG-054 | `DELETE /agents/{id}` returns a bare 500 when Hermes refuses the profile delete, so the operator sees "The server failed handling this request" and the real reason stays in the server log | Logic | Minor | Closed | 2026-09-07 | direct fix, 2026-09-07 |
 | BUG-055 | The BUG-052 fix does not migrate a SOUL that already has pre-fix routing blocks: the peer heading is appended BELOW the existing bullets and the marker guard stops them ever moving under it, leaving a section that announces peers and lists none | Logic | Major | Closed | 2026-09-07 | direct fix, 2026-09-07 |
-| BUG-056 | Deleting an Agent leaves its Skills' `deployed_to` records behind, so recreating it skips every deployment as "already" — the install reports success and the Agent comes up with NO Skills at all | Logic | Blocker | Open | 2026-09-07 | — |
+| BUG-056 | Deleting an Agent leaves its Skills' `deployed_to` records behind, so recreating it skips every deployment as "already" — the install reports success and the Agent comes up with NO Skills at all | Logic | Blocker | Closed | 2026-09-07 | direct fix, 2026-09-07 |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest

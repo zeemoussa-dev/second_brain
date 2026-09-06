@@ -472,7 +472,14 @@ class AgentManager:
             if skill is None:
                 results[skill_id] = "no such Skill in the catalog"
                 continue
-            if agent_id in skill.deployed_to:
+            # Reality, not the record (BUG-056). `deployed_to` is persisted
+            # metadata that deleting an Agent never cleared, so after a
+            # delete-and-reinstall it still named the Agent, this said
+            # "already", the deploy was skipped, and the install reported
+            # success while the profile had no Skills on disk at all --
+            # silent and total. The filesystem cannot drift from itself.
+            deployed_here = {s.slug for s in get_client().skills.get_all(agent_id)}
+            if skill_id in deployed_here:
                 results[skill_id] = "already"
                 continue
             try:
@@ -684,5 +691,11 @@ class AgentManager:
         agent_dir = registry_loader.agent_data_dir(agent_id)
         get_client().delete_profile(agent_id)
         registry_writer.delete_dir(agent_dir)
+        # Deleting the profile invalidates every Skill record naming it, and
+        # nothing used to prune them (BUG-056). ensure_skills no longer
+        # trusts `deployed_to`, so this is no longer load-bearing -- but a
+        # record that outlives what it describes will mislead something else
+        # eventually, and `deployed_to` is read by the drift check too.
+        pruned = SkillManager().forget_deployment(agent_id)
         self._reload_registry()
-        return {"deleted": True}
+        return {"deleted": True, "skill_records_pruned": pruned}

@@ -187,6 +187,25 @@ class SkillManager:
         named = [agent.id for agent in get_client().profiles.get_all()]
         return ["default"] + [p for p in named if p != "default"]
 
+    def forget_deployment(self, profile_id: str) -> list[str]:
+        """Drops `profile_id` from every Skill's `deployed_to`. Returns the
+        Skills changed.
+
+        Called when a profile is deleted: the record describes something that
+        no longer exists, and a stale one made a delete-and-reinstall come
+        back with no Skills at all (BUG-056)."""
+        changed: list[str] = []
+        for skill in self.get_all():
+            if profile_id not in skill.deployed_to:
+                continue
+            skill.deployed_to = [p for p in skill.deployed_to if p != profile_id]
+            skill.updated_at = datetime.now(timezone.utc).isoformat()
+            self._write_meta(skill)
+            changed.append(skill.id)
+        if changed:
+            self.publish_section_access_map()
+        return changed
+
     def reconcile_deployed_to(self, *, dry_run: bool = True) -> dict:
         """Sets each Skill's `deployed_to` to what is ACTUALLY on disk.
 

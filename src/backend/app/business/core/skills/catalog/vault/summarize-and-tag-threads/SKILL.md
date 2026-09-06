@@ -1,7 +1,7 @@
 ---
 name: summarize-and-tag-threads
 description: One-time, long-running Thread summarization and company wiki-tagging pass.
-version: 0.2.0
+version: 0.3.0
 author: second-brain
 license: MIT
 platforms: [windows]
