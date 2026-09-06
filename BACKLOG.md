@@ -227,7 +227,7 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 | BUG-048 | A test asserts equality against live machine state while its own docstring says subset | Logic | Open | — |
 | BUG-049 | `boot-status` reports ready while `hermes_reachable` is false, and never re-checks | Logic | Open | — |
 | BUG-050 | A dropped Hermes WebSocket ends the chat stream as HTTP 200 with an empty body | Logic | Open | — |
-| BUG-051 | The shipped `librarian` Blueprint hard-codes another operator's vault path into every Agent SOUL | Logic | Open | — |
+| BUG-051 | The shipped `librarian` Blueprint hard-codes another operator's vault path into every Agent SOUL | Logic | Closed | direct fix, 2026-09-07 |
 | BUG-052 | Primary is never told it HAS peers; routing snippets land as orphan bullets | Logic | Open | — |
 
 > **Emptied 2026-09-06** with `BUGS.md`, which this mirrors — 42 rows.

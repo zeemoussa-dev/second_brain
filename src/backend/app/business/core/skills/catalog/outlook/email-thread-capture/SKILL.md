@@ -81,7 +81,7 @@ email in your inbox history. **Always use the script's own full absolute
 path, never a bare filename** (2026-08-21 bug fix, live-confirmed: a bare
 filename with no `cwd` set failed 19 times in a row in a real cron run
 of a sibling Skill -- `python.exe: can't open file
-'C:\Users\mahmoud.moussa\apply_thread_review.py'` -- because a
+'<OPERATOR_HOME>\apply_thread_review.py'` -- because a
 cron-triggered agent's own default working directory is the user's home
 folder, not this Skill's own `scripts/`, and nothing in a bare `terminal`
 call tells it otherwise. The absolute-path form removes that dependency

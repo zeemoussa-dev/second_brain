@@ -11,7 +11,7 @@ extraction skill for its format, never a placeholder), write a real prose
 summary, then let the script file both the file and its description under
 today's date.
 
-Vault path: `C:\Users\mahmoud.moussa\OneDrive - G42\myData\Moussa Brain\second-brain`
+Vault path: `<OPERATOR_VAULT>`
 
 ## The one rule that matters here
 

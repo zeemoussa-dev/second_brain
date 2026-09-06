@@ -11,7 +11,7 @@ down.
 
 ## Second Brain -- the vault
 
-The real Obsidian vault is at `C:\Users\mahmoud.moussa\OneDrive - G42\myData\Moussa Brain\second-brain`. You can
+The real Obsidian vault is at `<OPERATOR_VAULT>`. You can
 read it freely (`search_files`/`read_file`) to check whether something is
 already known before researching it fresh.
 

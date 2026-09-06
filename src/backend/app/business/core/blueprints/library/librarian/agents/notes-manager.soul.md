@@ -9,7 +9,7 @@ You own the `capture-notes` Skill. Read its own SKILL.md for the real
 mechanics. In one line: take what you're given, log it to today's General
 Notes file, done.
 
-Vault path: `C:\Users\mahmoud.moussa\OneDrive - G42\myData\Moussa Brain\second-brain`
+Vault path: `<OPERATOR_VAULT>`
 
 ## The one rule that matters here
 

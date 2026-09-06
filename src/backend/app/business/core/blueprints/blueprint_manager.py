@@ -22,12 +22,21 @@ from `Template.json`.
 """
 from __future__ import annotations
 
+import re
+
 from app.business.core.agents.agent_manager import AgentManager
 from app.business.core.blueprints.blueprint import Blueprint, BlueprintAgent
 from app.business.core.sections.section_manager import SectionManager
 from app.business.core.skills.skill_manager import SkillManager
 from app.data_access import blueprints as blueprints_data
 from app.obsidian.tags import tag_slug
+
+# A drive-letter or UNC path in a SHIPPED asset is always wrong.
+# A drive-letter path in a SHIPPED asset is always wrong. Built from
+# chr(92) because a lone backslash inside a character class escapes the
+# closing bracket and silently makes the class unterminated.
+_SEP = "(?:/|" + chr(92) + chr(92) + ")"
+_ABSOLUTE_PATH = re.compile("[A-Za-z]:" + _SEP, re.MULTILINE)
 
 
 class BlueprintManager:
@@ -114,6 +123,14 @@ class BlueprintManager:
                 problems.append(agent.id + ": marked peer but carries no primary_routing_snippet")
             if agent.soul and blueprints_data.read_blueprint_asset(blueprint_id, agent.soul) is None:
                 problems.append(agent.id + ": soul file " + repr(agent.soul) + " missing from the Blueprint")
+            elif agent.soul:
+                asset = blueprints_data.read_blueprint_asset(blueprint_id, agent.soul) or ""
+                if _ABSOLUTE_PATH.search(asset):
+                    problems.append(
+                        agent.id + ": its soul carries a literal absolute path -- a shipped "
+                        "Blueprint must use <OPERATOR_VAULT>, or every install writes into "
+                        "one machine's folders (BUG-051)"
+                    )
 
         agent_manager = AgentManager()
         section_id = tag_slug(blueprint.section_name)
@@ -134,6 +151,21 @@ class BlueprintManager:
                 "agents": [a.id for a in blueprint.agents if agent_manager.get_by_id(a.id) is not None],
             },
         }
+
+    # A shipped Blueprint must never carry one machine's paths -- BUG-051:
+    # the librarian souls hard-coded the harvesting operator's absolute vault
+    # path, install() copied it verbatim into every profile, and the agents
+    # wrote into a vault that was not theirs. It failed loudly here only
+    # because that path was unwritable; on a host where a similarly-named one
+    # exists it would silently misplace real notes.
+    _PLACEHOLDERS = {"<OPERATOR_VAULT>": "vault_path", "<OPERATOR_DATA>": "second_brain_data_path"}
+
+    def _resolve_placeholders(self, text: str) -> str:
+        """Substitutes this install's own real paths into a Blueprint asset."""
+        from app.config import settings
+        for token, setting_name in self._PLACEHOLDERS.items():
+            text = text.replace(token, str(getattr(settings, setting_name, "") or ""))
+        return text
 
     def _primary_already_describes(self, agent_id: str) -> bool:
         """Whether this machine's Primary SOUL.md already mentions the agent
@@ -177,6 +209,8 @@ class BlueprintManager:
                 skills[spec.id] = agent_manager.ensure_skills(spec.id, spec.skill_ids)
                 continue
             soul = blueprints_data.read_blueprint_asset(blueprint_id, spec.soul) if spec.soul else None
+            if soul is not None:
+                soul = self._resolve_placeholders(soul)
             agent_manager.create(
                 spec.id, name=spec.name, section_id=section.id, type=spec.type,
                 prompt=soul, skill_ids=spec.skill_ids, clone_from=spec.clone_from,

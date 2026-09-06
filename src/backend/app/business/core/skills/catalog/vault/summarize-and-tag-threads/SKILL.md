@@ -123,7 +123,7 @@ terminal(command="python \"${HERMES_SKILL_DIR}\scripts\apply_thread_review.py\" 
 **2026-08-21 bug fix, live-confirmed:** a bare `apply_thread_review.py`
 filename (no `cwd`, no full path) live-failed 19 times in a row in one
 real cron run -- `python.exe: can't open file
-'C:\Users\mahmoud.moussa\apply_thread_review.py'` -- because a
+'<OPERATOR_HOME>\apply_thread_review.py'` -- because a
 cron-triggered agent's own default working directory is the user's home
 folder, not this Skill's own `scripts/` folder, and nothing in the
 `terminal` call told it otherwise. The run eventually self-corrected and
