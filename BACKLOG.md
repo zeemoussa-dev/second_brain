@@ -224,6 +224,7 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 | BUG-045 | An unhandled 500 reaches the browser as `TypeError: Failed to fetch`, hiding every server error from the UI | Logic | Open | — |
 | BUG-046 | Blueprint install never asks which Section to install into | Logic | Open | — |
 | BUG-047 | The `librarian` Blueprint bundles three concerns into one all-or-nothing Section | Logic | Open | — |
+| BUG-048 | A test asserts equality against live machine state while its own docstring says subset | Logic | Open | — |
 
 > **Emptied 2026-09-06** with `BUGS.md`, which this mirrors — 42 rows.
 > History: `git show d64dcb4:BACKLOG.md`. Next id is **`BUG-043`**.

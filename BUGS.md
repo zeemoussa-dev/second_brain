@@ -34,6 +34,7 @@ is a thin status mirror of the index table below.
 | BUG-045 | An unhandled 500 reaches the browser as `TypeError: Failed to fetch`, hiding every server error from the UI | Logic | Major | Open | 2026-09-07 | — |
 | BUG-046 | Blueprint install never asks which Section to install into — the Section is baked into the Blueprint and is not a parameter anywhere in the chain | Logic | Major | Open | 2026-09-07 | — |
 | BUG-047 | The `librarian` Blueprint ships a whole Section covering three concerns; files and notes should be separate, independently installable Blueprints | Logic | Major | Open | 2026-09-07 | — |
+| BUG-048 | `test_the_thread_mapping_still_matches_what_the_template_used_to_declare` asserts equality against LIVE machine state while its own docstring says subset, so it fails on every install that has not deployed all six thread-writing Skills | Logic | Minor | Open | 2026-09-07 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -247,3 +248,36 @@ is a thin status mirror of the index table below.
   capture producer, and may warrant its own. Keep each Blueprint's peer routing
   snippet with its own Agent so `wire_peers` stays correct per-install.
 - **Related:** blocked by [[BUG-046]].
+
+### BUG-048 — a test asserts equality against live machine state while its own docstring says subset
+
+- **Area:** Logic
+- **Severity:** Minor
+- **Status:** Open
+- **Found:** 2026-09-07, running the suite after the `librarian` Blueprint
+  install. Deploying four Skills took the suite from 3 failures to 1; this is the
+  one that survives, and it will survive on any install short of a complete one.
+- **The contradiction is inside the test itself.** Its docstring
+  (`test_skill_writes_declaration.py:21`) states: *"Asserted as a SUBSET, not
+  equality: the map legitimately grows as more Skills declare `writes:`, and
+  pinning the whole map would fail every time coverage improves, which is the
+  opposite of what this should reward."* The next line then asserts `==` against
+  a hard-coded dict of six Actions.
+- **Why it fails, and why that is the environment:** `build_section_access_map()`
+  counts **only deployed** Skills — by design. This machine has
+  `summarize-and-tag-files` deployed, giving `thread → Files →
+  ["apply_file_review"]`; the other five Actions belong to Skills no profile here
+  has. So the test is really asserting *"this machine has deployed every
+  thread-writing Skill"*, which is a deployment fact, not a code property.
+- **Expected:** the assertion matches the stated intent — the hard-coded mapping
+  is a **subset** of the derived map, so improving coverage never breaks it and a
+  partially-deployed install does not report a false failure.
+- **Actual:** `assert ... == {...}` at `test_skill_writes_declaration.py:25`.
+- **Fix direction:** assert per-section containment rather than dict equality, or
+  build the map from a fixture set of Skills instead of live state. Prefer the
+  second if the point is to guard the `allowed_callers` migration — that is a
+  property of the declarations, and should not depend on what happens to be
+  deployed on the machine running the suite.
+- **Note for whoever picks this up:** this is the residue of a known class,
+  already recorded in framework `MEMORY.md` — an empty access map on an
+  undeployed machine is *correct*. Do not "fix" it by deploying more Skills.

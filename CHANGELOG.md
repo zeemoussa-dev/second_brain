@@ -18,6 +18,9 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- docs: `BUG-048` — a test's assertion (`==`) contradicts its own docstring
+  ("subset") and depends on what the running machine has deployed.
+
 - fix: `BUG-043` — `HermesCLI` resolves `hermes.exe` at `<home>/bin/`, with a
   PATH fallback. Every Hermes CLI operation was failing on a healthy install.
 
