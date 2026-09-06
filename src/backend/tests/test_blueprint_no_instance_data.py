@@ -27,7 +27,7 @@ def test_no_shipped_blueprint_asset_carries_an_absolute_path(path: Path) -> None
 
 
 def test_the_placeholder_resolves_to_this_installs_own_vault() -> None:
-    soul = blueprints_data.read_blueprint_asset("librarian", "agents/notes-manager.soul.md")
+    soul = blueprints_data.read_blueprint_asset("notes-capture", "agents/notes-manager.soul.md")
 
     assert "<OPERATOR_VAULT>" in soul, "the shipped soul must stay machine-neutral"
     resolved = BlueprintManager()._resolve_placeholders(soul)
@@ -43,7 +43,7 @@ def test_preflight_refuses_a_soul_carrying_a_literal_path(monkeypatch) -> None:
         lambda bid, rel: "Vault path: " + "C:" + chr(92) + "Users" + chr(92) + "someone",
     )
 
-    result = BlueprintManager().preflight("librarian")
+    result = BlueprintManager().preflight("notes-capture")
 
     assert result["ok"] is False
     assert any("literal absolute path" in p for p in result["problems"])

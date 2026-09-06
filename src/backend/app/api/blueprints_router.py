@@ -30,21 +30,21 @@ def list_blueprints() -> list[Blueprint]:
 
 
 @router.get("/{blueprint_id}/preflight")
-def preflight(blueprint_id: str) -> dict:
+def preflight(blueprint_id: str, section_id: str | None = None) -> dict:
     """What would happen, and what would stop it. Creates nothing.
 
     404 only when the id is unknown; an id that exists but cannot be
     installed is a 200 carrying `ok: false` and its `problems` — that is a
     real answer about a real Blueprint, not a missing resource.
     """
-    result = _manager.preflight(blueprint_id)
+    result = _manager.preflight(blueprint_id, section_id)
     if _manager.get_by_id(blueprint_id) is None:
         raise HTTPException(status_code=404, detail=f"no Blueprint {blueprint_id!r}")
     return result
 
 
 @router.post("/{blueprint_id}/install")
-def install(blueprint_id: str, wire_peers: bool = True) -> dict:
+def install(blueprint_id: str, section_id: str | None = None, wire_peers: bool = True) -> dict:
     """Installs the Section, its Agents and their Skills.
 
     Refuses with 409 when preconditions fail, and creates NOTHING in that
@@ -52,10 +52,14 @@ def install(blueprint_id: str, wire_peers: bool = True) -> dict:
     appends each peer Agent's routing snippet to this machine's Primary
     SOUL.md, which is what makes Primary relay to it at all; without it the
     Agent exists, runs, and is never reached.
+
+    `section_id` chooses which Section the Agents join. Omitted, the
+    Blueprint's own suggestion is used -- a suggestion, never an imposition,
+    so an operator with existing Sections is not forced into a new one.
     """
     if _manager.get_by_id(blueprint_id) is None:
         raise HTTPException(status_code=404, detail=f"no Blueprint {blueprint_id!r}")
-    result = _manager.install(blueprint_id, wire_peers=wire_peers)
+    result = _manager.install(blueprint_id, section_id=section_id, wire_peers=wire_peers)
     if not result["installed"]:
         raise HTTPException(status_code=409, detail=result)
     return result

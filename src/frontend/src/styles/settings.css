@@ -551,3 +551,12 @@
   background: var(--color-surface-2, #f6f7f9);
 }
 .blueprint-result ul { margin: 0.25rem 0 0; padding-left: 1.1rem; }
+
+.blueprint-section-picker {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: var(--space-3, 0.75rem) 0;
+  color: var(--color-text-muted, #6b7280);
+}
+.blueprint-section-picker select { max-width: 22rem; }

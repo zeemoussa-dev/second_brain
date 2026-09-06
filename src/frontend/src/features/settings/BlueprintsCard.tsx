@@ -59,19 +59,20 @@ export function BlueprintsCard() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [check, setCheck] = useState<BlueprintPreflight | null>(null);
   const [busy, setBusy] = useState(false);
+  const [sectionId, setSectionId] = useState<string>('');
   const [result, setResult] = useState<BlueprintInstallResult | null>(null);
 
   useEffect(() => {
     fetchBlueprints().then(setBlueprints).catch((e) => setError(String(e)));
   }, []);
 
-  async function open(id: string) {
+  async function open(id: string, section?: string) {
     setOpenId(id);
     setCheck(null);
     setResult(null);
     setError(null);
     try {
-      setCheck(await preflightBlueprint(id));
+      setCheck(await preflightBlueprint(id, section || undefined));
     } catch (e) {
       setError(String(e));
     }
@@ -81,8 +82,8 @@ export function BlueprintsCard() {
     setBusy(true);
     setError(null);
     try {
-      setResult(await installBlueprint(id));
-      setCheck(await preflightBlueprint(id));
+      setResult(await installBlueprint(id, sectionId || undefined));
+      setCheck(await preflightBlueprint(id, sectionId || undefined));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -100,7 +101,7 @@ export function BlueprintsCard() {
         <div key={blueprint.id} className="blueprint-row">
           <div className="blueprint-head">
             <span className="material-symbols-outlined" aria-hidden="true">
-              {blueprint.section_icon || 'dashboard_customize'}
+              {blueprint.suggested_section_icon || 'dashboard_customize'}
             </span>
             <div>
               <strong>{blueprint.name}</strong> <span className="text-muted">v{blueprint.version}</span>
@@ -129,6 +130,21 @@ export function BlueprintsCard() {
           {openId === blueprint.id && check && (
             <>
               <PreflightDetail check={check} />
+
+              <label className="blueprint-section-picker">
+                Install into section
+                <select
+                  value={sectionId}
+                  onChange={(e) => { setSectionId(e.target.value); open(blueprint.id, e.target.value); }}
+                >
+                  {/* The Blueprint suggests; the operator decides (BUG-046). */}
+                  <option value="">New section — “{check.suggested_section}”</option>
+                  {check.available_sections.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </label>
+
               <button
                 type="button"
                 className="btn btn-primary"
@@ -149,6 +165,14 @@ export function BlueprintsCard() {
               {Object.keys(result.peers).length > 0 && (
                 <p className="text-muted">
                   Primary routing: {Object.entries(result.peers).map(([id, s]) => `${id} — ${s}`).join('; ')}
+                </p>
+              )}
+              {result.primary_session_reset_required && (
+                // Hermes injects a session's prompt once and never re-reads it,
+                // so a conversation already in progress cannot see the new peers.
+                <p className="error-text">
+                  Start a new conversation with your Primary agent for this to take effect —
+                  a running session will not pick up the new peers.
                 </p>
               )}
             </div>

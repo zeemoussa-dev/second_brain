@@ -22,9 +22,9 @@ export interface Blueprint {
   name: string;
   description: string;
   version: number;
-  section_name: string;
-  section_icon: string | null;
-  section_color: string | null;
+  suggested_section_name: string;
+  suggested_section_icon: string | null;
+  suggested_section_color: string | null;
   agents: BlueprintAgent[];
   // Set only when the Blueprint itself failed to parse. Such a Blueprint is
   // still listed, carrying this, rather than silently dropped.
@@ -42,6 +42,11 @@ export interface BlueprintPreflight {
   unchecked_skills: string[];
   peers: string[];
   section_id: string;
+  // The Blueprint SUGGESTS a Section; the operator chooses. available_sections
+  // is what this install already has, so the picker offers real options rather
+  // than forcing a new Section on a machine that has five.
+  suggested_section: string;
+  available_sections: { id: string; name: string }[];
   already: { section: boolean; agents: string[] };
 }
 
@@ -53,18 +58,26 @@ export interface BlueprintInstallResult {
   peers: Record<string, string>;
   templates: string[];
   problems: string[];
+  rolled_back?: Record<string, string>;
+  // A running Hermes session is given its prompt once and never re-reads it,
+  // so Primary cannot see peers wired mid-conversation.
+  primary_session_reset_required?: boolean;
 }
 
 export function fetchBlueprints(): Promise<Blueprint[]> {
   return apiFetch('/blueprints');
 }
 
-export function preflightBlueprint(id: string): Promise<BlueprintPreflight> {
-  return apiFetch(`/blueprints/${encodeURIComponent(id)}/preflight`);
+export function preflightBlueprint(id: string, sectionId?: string): Promise<BlueprintPreflight> {
+  const query = sectionId ? `?section_id=${encodeURIComponent(sectionId)}` : '';
+  return apiFetch(`/blueprints/${encodeURIComponent(id)}/preflight${query}`);
 }
 
-export function installBlueprint(id: string, wirePeers = true): Promise<BlueprintInstallResult> {
-  return apiFetch(`/blueprints/${encodeURIComponent(id)}/install?wire_peers=${wirePeers}`, {
+export function installBlueprint(
+  id: string, sectionId?: string, wirePeers = true,
+): Promise<BlueprintInstallResult> {
+  const section = sectionId ? `&section_id=${encodeURIComponent(sectionId)}` : '';
+  return apiFetch(`/blueprints/${encodeURIComponent(id)}/install?wire_peers=${wirePeers}${section}`, {
     method: 'POST',
   });
 }

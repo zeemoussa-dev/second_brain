@@ -1,0 +1,28 @@
+{
+  "id": "research-writer",
+  "schema_version": 1,
+  "version": 1,
+  "name": "Research Writer",
+  "description": "Write researched findings into the vault as knowledge-base notes.",
+  "suggested_section": {
+    "name": "Librarian",
+    "icon": "database",
+    "color": "#7c3aed"
+  },
+  "agents": [
+    {
+      "id": "research-agent",
+      "name": "Research Agent",
+      "type": "expert",
+      "icon": "smart_toy",
+      "clone_from": "default",
+      "model": "gpt-5",
+      "reasoning_effort": "medium",
+      "skill_ids": [
+        "research-kb-writer"
+      ],
+      "soul": "agents/research-agent.soul.md",
+      "peer": false
+    }
+  ]
+}

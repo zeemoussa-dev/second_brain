@@ -32,9 +32,12 @@ class Blueprint:
     schema_version: int
     # This Blueprint's own content -- bump when the Section's shape changes.
     version: int
-    section_name: str
-    section_icon: str | None = None
-    section_color: str | None = None
+    # A SUGGESTION only (BUG-046). The operator chooses the real Section at
+    # install time; a Blueprint that imposed one could not be installed into
+    # an existing Section, which is the normal case on a running machine.
+    suggested_section_name: str
+    suggested_section_icon: str | None = None
+    suggested_section_color: str | None = None
     agents: list[BlueprintAgent] = field(default_factory=list)
     # Set only when the Blueprint failed to parse -- still returned rather
     # than silently dropped, so a broken Blueprint is visible in the library

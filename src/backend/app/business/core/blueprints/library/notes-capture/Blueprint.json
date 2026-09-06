@@ -1,0 +1,29 @@
+{
+  "id": "notes-capture",
+  "schema_version": 1,
+  "version": 1,
+  "name": "Notes Capture",
+  "description": "Capture passing notes, thoughts and voice notes into the vault.",
+  "suggested_section": {
+    "name": "Librarian",
+    "icon": "database",
+    "color": "#7c3aed"
+  },
+  "agents": [
+    {
+      "id": "notes-manager",
+      "name": "Notes Manager",
+      "type": "producer",
+      "icon": "description",
+      "clone_from": "default",
+      "model": "gpt-5",
+      "reasoning_effort": "medium",
+      "skill_ids": [
+        "capture-notes"
+      ],
+      "soul": "agents/notes-manager.soul.md",
+      "peer": true,
+      "primary_routing_snippet": "- **`notes-manager`** -- quick capture, no decision needed. Route here for\n  anything that's content to log rather than a request to act on: a passing\n  thought, something overheard, a transcribed voice note, a reminder. There's\n  no Q&A to run first -- relay the content verbatim (don't paraphrase or\n  summarize it down) in one call, e.g.:\n  `terminal(command=\"hermes -p notes-manager chat -q \\\"<the content, as given>\\\" -Q\")`.\n  This is also your catch-all for unclassified TEXT."
+    }
+  ]
+}

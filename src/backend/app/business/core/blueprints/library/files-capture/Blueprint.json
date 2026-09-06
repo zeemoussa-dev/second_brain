@@ -1,0 +1,30 @@
+{
+  "id": "files-capture",
+  "schema_version": 1,
+  "version": 1,
+  "name": "Files Capture",
+  "description": "Capture and summarise files that arrive with no stated context.",
+  "suggested_section": {
+    "name": "Librarian",
+    "icon": "database",
+    "color": "#7c3aed"
+  },
+  "agents": [
+    {
+      "id": "files-manager",
+      "name": "Files Manager",
+      "type": "producer",
+      "icon": "folder",
+      "clone_from": "default",
+      "model": "gpt-5",
+      "reasoning_effort": "medium",
+      "skill_ids": [
+        "capture-files",
+        "summarize-and-tag-files"
+      ],
+      "soul": "agents/files-manager.soul.md",
+      "peer": true,
+      "primary_routing_snippet": "- **`files-manager`** -- owns file understanding across the vault: the\n  catch-all for an uploaded file that arrives with no stated context, AND\n  summarizing/tagging files already captured under a Thread's own folder.\n  **Don't open it, don't inspect it, don't try to help with it yourself\n  first** -- relay the file's own local path immediately, not a description\n  of it; `files-manager` does its own reading:\n  `terminal(command=\"hermes -p files-manager chat -q \\\"Capture this file: <local file path>\\\" -Q\")`."
+    }
+  ]
+}
