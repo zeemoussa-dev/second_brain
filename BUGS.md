@@ -42,6 +42,7 @@ is a thin status mirror of the index table below.
 | BUG-053 | Deleting any Agent makes a phantom Agent called `.deleted` appear in the Agents list and on the Agents Map — Hermes tombstones deleted profiles into `profiles/.deleted/` and the profile enumeration treats that dot-directory as a profile | Logic | Major | Closed | 2026-09-07 | direct fix, 2026-09-07 |
 | BUG-054 | `DELETE /agents/{id}` returns a bare 500 when Hermes refuses the profile delete, so the operator sees "The server failed handling this request" and the real reason stays in the server log | Logic | Minor | Closed | 2026-09-07 | direct fix, 2026-09-07 |
 | BUG-055 | The BUG-052 fix does not migrate a SOUL that already has pre-fix routing blocks: the peer heading is appended BELOW the existing bullets and the marker guard stops them ever moving under it, leaving a section that announces peers and lists none | Logic | Major | Closed | 2026-09-07 | direct fix, 2026-09-07 |
+| BUG-056 | Deleting an Agent leaves its Skills' `deployed_to` records behind, so recreating it skips every deployment as "already" — the install reports success and the Agent comes up with NO Skills at all | Logic | Blocker | Open | 2026-09-07 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -617,3 +618,61 @@ is a thin status mirror of the index table below.
   this passed.
 - **Note:** BUG-052 is `Closed` and its fix is right for the case it was tested
   on; this is the migration case, not a regression of the original reasoning.
+
+### BUG-056 — delete an Agent, reinstall it, and it comes back with no Skills while the install reports success
+
+- **Area:** Logic
+- **Severity:** Blocker
+- **Status:** Open
+- **Found:** 2026-09-07, redeploying the split Blueprints after deleting the
+  three librarian Agents to pick up the BUG-051 fix. All three installs returned
+  `"installed": true` with `"problems": []`. The Agents came up with **no Skills
+  on disk at all** — no `skills/vault/` directory in any of the three profiles,
+  where the pre-delete install had `capture-notes`, `capture-files`,
+  `summarize-and-tag-files` and `research-kb-writer`.
+- **Repro:**
+  1. Install a Blueprint. Confirm `profiles/<agent>/skills/vault/<skill>` exists.
+  2. Delete the Agent (`DELETE /agents/<id>`).
+  3. Install the Blueprint again.
+  4. The install returns `installed: true`; the skills directory is not recreated.
+- **Three independent confirmations that it really is absent:**
+
+      filesystem   profiles/<agent>/skills/  has no `vault` directory
+      drift        check_deployment_drift() -> all four "missing",
+                   deployed_version: null
+      reconcile    reconcile_deployed_to(dry_run=True) -> every Skill
+                   "removed": [<the agent>], was 1, now 0
+
+- **Root cause:** `AgentManager.ensure_skills` decides whether to deploy from a
+  *record*, not from reality:
+
+      if agent_id in skill.deployed_to:
+          results[skill_id] = "already"
+          continue
+
+  `deployed_to` is persisted metadata (`skill_manager.py:72`,
+  `deployed_to=list(meta.get("deployed_to") or [])`). **Deleting an Agent never
+  clears it.** So the record still named the deleted Agent, `ensure_skills`
+  believed the Skill was present, skipped the deploy, and reported `"already"` —
+  which the install then reported as success.
+- **The codebase already knows this record drifts.**
+  `SkillManager.reconcile_deployed_to` exists precisely to reset `deployed_to` to
+  what is on disk, and its own docstring says it is needed because *"deployed_to
+  had drifted badly"*. The reconciler is the workaround; the missing piece is
+  that nothing calls it, and that `AgentManager.delete` does not prune the
+  Agent from every Skill's `deployed_to` on the way out.
+- **Expected:** either the delete prunes the record, or `ensure_skills` verifies
+  the Skill is actually on the profile before declaring "already".
+- **Why Blocker:** the failure is **silent and total**. The Agent exists, has the
+  right SOUL, chats, and is simply incapable — every declared Action missing —
+  while the API says `installed: true, problems: []`. It is the same shape as the
+  bug `wire_peers` was written to prevent: *"the Agent exists, runs, and is
+  simply never reached — which looks like a working install and is not."* And
+  delete-then-reinstall is the normal way to pick up a corrected Blueprint, so
+  any Blueprint fix shipped from here on lands on installs that hit this.
+- **Fix direction:** prune `deployed_to` in `AgentManager.delete` (the record is
+  owned by the deployment, so removing the deployment must remove the record),
+  and make `ensure_skills` trust the profile's own filesystem rather than the
+  record — belt and braces, since the record can drift for other reasons too.
+  A regression test that deletes and reinstalls, then asserts the Skill is on
+  disk, would have caught this; the existing tests cover a first install only.
