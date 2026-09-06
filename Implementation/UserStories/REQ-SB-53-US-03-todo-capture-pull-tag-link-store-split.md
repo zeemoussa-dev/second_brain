@@ -4,13 +4,26 @@ title: To-Do capture split into Puller/Tagger/Linker/Storer agents, replacing th
 requirement_ids: [REQ-SB-53]
 requirement_section: "REQ-SB-53: Split Capture Pipelines into Staged Pull / Tag / Link / Store Agents"
 phase: P1
-status: Draft
+status: Done
 gate: flagged
 gate_reason: "trigger-3 (ADR-040 created — Capture Pipeline Split mechanism, established by REQ-SB-53-US-01, reused here)"
 sprint: ""
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-09-06
 ---
+
+> **Closed 2026-09-06 — superseded in approach, and NOT built.**
+>
+> The four-stage pipeline shape this story specified is superseded by the
+> Tool -> Skill -> Action model (`ADR-019`), as for its two siblings.
+> **Unlike them, the capability itself does not exist:** there is no To-Do
+> or Outlook-Tasks capture Skill anywhere in the catalog, so nothing reads
+> Outlook's Tasks folder today.
+>
+> Closed to stop it misrepresenting the pipeline as planned work. If To-Do
+> capture is still wanted it needs a **fresh story against the current
+> model** — a Skill under the `outlook` Tool — not this one revived.
+> `BACKLOG.md` records the requirement as uncovered, not delivered.
 
 # REQ-SB-53-US-03 — To-Do capture split into Puller/Tagger/Linker/Storer agents, replacing the monolithic todo-capture Worker
 

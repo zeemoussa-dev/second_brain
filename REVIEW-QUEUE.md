@@ -11,7 +11,7 @@ resolution involved a backward step.
   → `Implementation/UserStories/<file>.md` or `Implementation/Sprints/<file>.md`
 -->
 
-- [ ] 2026-08-10 · **SPRINT-001** · skim the sprint retrospective and harvest learnings
+- [x] 2026-08-10 · **SPRINT-001** · skim the sprint retrospective and harvest learnings — **cleared 2026-09-06 in bulk** (operator-directed): the sprint is Done and the window for harvesting has passed. The retro text remains in the sprint file; `Implementation/Learnings.md` was NOT updated, so treat these retros as unharvested rather than harvested.
   Plain English: SPRINT-001 (REQ-SB-07, scheduled recurring email capture) is
   Done — all 4 tasks built and verified live. The coder drafted a
   Retrospective (sizing accuracy, what worked/didn't, patterns/antipatterns,
@@ -22,7 +22,7 @@ resolution involved a backward step.
   to avoid" entries into `Implementation/Learnings.md`.
   → `Implementation/Sprints/SPRINT-001-scheduled-recurring-capture.md`
 
-- [ ] 2026-08-11 · **SPRINT-002** · skim the sprint retrospective and harvest learnings
+- [x] 2026-08-11 · **SPRINT-002** · skim the sprint retrospective and harvest learnings — **cleared 2026-09-06 in bulk** (operator-directed): the sprint is Done and the window for harvesting has passed. The retro text remains in the sprint file; `Implementation/Learnings.md` was NOT updated, so treat these retros as unharvested rather than harvested.
   Plain English: SPRINT-002 (REQ-SB-14, vault graph connectivity) is Done —
   all 4 tasks built and verified live (customer hub notes now exist,
   existing and new notes carry wikilinks to them, manual hub-note content
@@ -33,7 +33,7 @@ resolution involved a backward step.
   `Implementation/Learnings.md` (no new antipatterns this sprint).
   → `Implementation/Sprints/SPRINT-002-vault-graph-connectivity.md`
 
-- [ ] 2026-08-11 · **SPRINT-003** · skim the sprint retrospective and harvest learnings
+- [x] 2026-08-11 · **SPRINT-003** · skim the sprint retrospective and harvest learnings — **cleared 2026-09-06 in bulk** (operator-directed): the sprint is Done and the window for harvesting has passed. The retro text remains in the sprint file; `Implementation/Learnings.md` was NOT updated, so treat these retros as unharvested rather than harvested.
   Plain English: SPRINT-003 (REQ-SB-15, Obsidian manual-entry templates +
   in-vault guide) is Done — both tasks built and verified (four templates,
   one guide note, all matching the resolved schema). The coder drafted a
@@ -77,7 +77,7 @@ resolution involved a backward step.
   the story's `status:` to redo `/plan-tasks` if you change the ADR.
   → `Implementation/UserStories/REQ-SB-69-US-01-decoupled-email-pull-and-human-readable-thread-notes.md`
 
-- [ ] 2026-08-11 · **SPRINT-004** · skim the sprint retrospective and harvest learnings
+- [x] 2026-08-11 · **SPRINT-004** · skim the sprint retrospective and harvest learnings — **cleared 2026-09-06 in bulk** (operator-directed): the sprint is Done and the window for harvesting has passed. The retro text remains in the sprint file; `Implementation/Learnings.md` was NOT updated, so treat these retros as unharvested rather than harvested.
   Plain English: SPRINT-004 (REQ-SB-10, Person notes from email capture) is
   Done — all 4 tasks built and verified live against the real inbox and
   vault (20 real Person notes now exist, correctly tagged/linked by
@@ -114,7 +114,7 @@ resolution involved a backward step.
   blank line, so this can't silently recur on any other hand-edited note.
   → `ESCALATIONS.md`
 
-- [ ] 2026-08-11 · **SPRINT-007** · skim the sprint retrospective and harvest learnings
+- [x] 2026-08-11 · **SPRINT-007** · skim the sprint retrospective and harvest learnings — **cleared 2026-09-06 in bulk** (operator-directed): the sprint is Done and the window for harvesting has passed. The retro text remains in the sprint file; `Implementation/Learnings.md` was NOT updated, so treat these retros as unharvested rather than harvested.
   Plain English: SPRINT-007 (`REQ-SB-16`, Partner hub notes + Microsoft
   migration; `REQ-SB-17`, Research notes template + guide) is Done — both
   stories' every locked AC verified live against the real vault, including
@@ -128,7 +128,7 @@ resolution involved a backward step.
   to avoid" entries into `Implementation/Learnings.md`.
   → `Implementation/Sprints/SPRINT-007-partner-hub-notes-and-research-notes.md`
 
-- [ ] 2026-08-11 · **SPRINT-008** · skim the sprint retrospective and harvest learnings
+- [x] 2026-08-11 · **SPRINT-008** · skim the sprint retrospective and harvest learnings — **cleared 2026-09-06 in bulk** (operator-directed): the sprint is Done and the window for harvesting has passed. The retro text remains in the sprint file; `Implementation/Learnings.md` was NOT updated, so treat these retros as unharvested rather than harvested.
   Plain English: SPRINT-008 (REQ-SB-12-US-01, app shell + Agents Map +
   Settings reachability — the first frontend build in this project) is
   Done — all 4 tasks built and verified live in a real browser (headless
@@ -147,7 +147,7 @@ resolution involved a backward step.
   to avoid" entries into `Implementation/Learnings.md`.
   → `Implementation/Sprints/SPRINT-008-app-shell-agents-map-and-settings.md`
 
-- [ ] 2026-08-11 · **SPRINT-005** · skim the sprint retrospective and harvest learnings
+- [x] 2026-08-11 · **SPRINT-005** · skim the sprint retrospective and harvest learnings — **cleared 2026-09-06 in bulk** (operator-directed): the sprint is Done and the window for harvesting has passed. The retro text remains in the sprint file; `Implementation/Learnings.md` was NOT updated, so treat these retros as unharvested rather than harvested.
   Plain English: SPRINT-005 (`BUGFIX-01-US-01`, closes `BUG-001` — Email
   notes wikilink to their sender's Person note) is Done — both tasks
   built and verified live against the real inbox and vault (the
@@ -222,7 +222,7 @@ resolution involved a backward step.
   hardcoded ports.
   → `Implementation/Tasks/REQ-SB-12-US-02-T03-my-day-router.md`
 
-- [ ] 2026-08-11 · **SPRINT-009** · skim the sprint retrospective and harvest learnings
+- [x] 2026-08-11 · **SPRINT-009** · skim the sprint retrospective and harvest learnings — **cleared 2026-09-06 in bulk** (operator-directed): the sprint is Done and the window for harvesting has passed. The retro text remains in the sprint file; `Implementation/Learnings.md` was NOT updated, so treat these retros as unharvested rather than harvested.
   Plain English: SPRINT-009 (`REQ-SB-12-US-02`, My Day dashboard + Emails/
   Calendar/To-Do drill-down pages) is Done — all 7 tasks built and
   verified live (backend smoke-checked against the real vault; frontend
@@ -246,7 +246,7 @@ resolution involved a backward step.
   concurrent session's own verification was disrupted around 2026-08-11.
   → `Implementation/Sprints/SPRINT-009-my-day-dashboard-and-drilldowns.md`
 
-- [ ] 2026-08-11 · **SPRINT-006** · skim the sprint retrospective and harvest learnings
+- [x] 2026-08-11 · **SPRINT-006** · skim the sprint retrospective and harvest learnings — **cleared 2026-09-06 in bulk** (operator-directed): the sprint is Done and the window for harvesting has passed. The retro text remains in the sprint file; `Implementation/Learnings.md` was NOT updated, so treat these retros as unharvested rather than harvested.
   Plain English: SPRINT-006 (REQ-SB-08, meeting notes from calendar
   capture) is Done — all 5 tasks built and verified live against the real
   Outlook calendar and vault (38 real Meeting notes captured correctly,
@@ -261,7 +261,7 @@ resolution involved a backward step.
   to avoid" entries into `Implementation/Learnings.md`.
   → `Implementation/Sprints/SPRINT-006-meeting-notes-from-calendar-capture.md`
 
-- [ ] 2026-08-11 · **SPRINT-010** · skim the sprint retrospective and harvest learnings
+- [x] 2026-08-11 · **SPRINT-010** · skim the sprint retrospective and harvest learnings — **cleared 2026-09-06 in bulk** (operator-directed): the sprint is Done and the window for harvesting has passed. The retro text remains in the sprint file; `Implementation/Learnings.md` was NOT updated, so treat these retros as unharvested rather than harvested.
   Plain English: SPRINT-010 (`REQ-SB-13-US-01`, embedded agent detail
   panel — settings, actions, chat, and unified communication history) is
   Done — all 8 tasks built and verified live. All 8 locked ACs pass,
@@ -437,7 +437,7 @@ resolution involved a backward step.
   → `Implementation/UserStories/REQ-SB-20-US-01-section-hub-intelligence-and-cross-section-routing.md`
   → `Implementation/UserStories/REQ-SB-21-US-01-agent-working-modes.md`
 
-- [ ] 2026-08-11 · **SPRINT-011** · skim the sprint retrospective and harvest learnings
+- [x] 2026-08-11 · **SPRINT-011** · skim the sprint retrospective and harvest learnings — **cleared 2026-09-06 in bulk** (operator-directed): the sprint is Done and the window for harvesting has passed. The retro text remains in the sprint file; `Implementation/Learnings.md` was NOT updated, so treat these retros as unharvested rather than harvested.
   Plain English: SPRINT-011 (`REQ-SB-18-US-01`, dynamic agent Sections —
   CRUD, per-agent assignment, N-generic Agents Map layout) is Done — all 8
   tasks built and verified live (real `.second-brain/agent_sections.json`
@@ -549,7 +549,7 @@ resolution involved a backward step.
   card, remains superseded per the entry above — not covered by this
   approval, still needs its own fresh `/design REQ-SB-23` pass.)
 
-- [ ] 2026-08-11 · **SPRINT-013** · skim the sprint retrospective and harvest learnings
+- [x] 2026-08-11 · **SPRINT-013** · skim the sprint retrospective and harvest learnings — **cleared 2026-09-06 in bulk** (operator-directed): the sprint is Done and the window for harvesting has passed. The retro text remains in the sprint file; `Implementation/Learnings.md` was NOT updated, so treat these retros as unharvested rather than harvested.
   Plain English: SPRINT-013 (`REQ-SB-22-US-01`, My Day drill-downs and
   dashboard counts scoped to a rolling 7-day window) is Done — both tasks
   built and verified live against the real vault (179 Email notes, 39
@@ -644,7 +644,7 @@ resolution involved a backward step.
   → `Implementation/UserStories/REQ-SB-23-US-01-my-day-intake-agent.md`
   → `ESCALATIONS.md`
 
-- [ ] 2026-08-11 · **SPRINT-012** · skim the sprint retrospective and harvest learnings
+- [x] 2026-08-11 · **SPRINT-012** · skim the sprint retrospective and harvest learnings — **cleared 2026-09-06 in bulk** (operator-directed): the sprint is Done and the window for harvesting has passed. The retro text remains in the sprint file; `Implementation/Learnings.md` was NOT updated, so treat these retros as unharvested rather than harvested.
   Plain English: SPRINT-012 (`REQ-SB-19-US-01`, global LLM Provider CRUD in
   Settings + a per-agent Provider picker defaulting to Compass) is Done —
   all 6 tasks built and verified live (real backend on `:8001`, real
@@ -4622,7 +4622,7 @@ resolution involved a backward step.
   reads as intended — no action needed if so.
   → `Implementation/Tasks/REQ-SB-43-US-01-T08-cockpit-shared-component.md`
 
-- [ ] 2026-08-14 · **SPRINT-040** · skim the sprint retrospective and harvest learnings
+- [x] 2026-08-14 · **SPRINT-040** · skim the sprint retrospective and harvest learnings — **cleared 2026-09-06 in bulk** (operator-directed): the sprint is Done and the window for harvesting has passed. The retro text remains in the sprint file; `Implementation/Learnings.md` was NOT updated, so treat these retros as unharvested rather than harvested.
   Plain English: SPRINT-040 (`REQ-SB-43-US-01`, Meeting Cockpit — shared
   `app/business/cockpit/` module + shared `Cockpit.tsx` 3-panel component)
   is Done — all 9 tasks built and verified live end-to-end: a real click
@@ -4688,7 +4688,7 @@ resolution involved a backward step.
   no-slugification shortcut would need revisiting.
   → `Implementation/Tasks/REQ-SB-44-US-01-T03-cockpit-attachments-module.md`
 
-- [ ] 2026-08-14 · **SPRINT-041** · skim the sprint retrospective and harvest learnings
+- [x] 2026-08-14 · **SPRINT-041** · skim the sprint retrospective and harvest learnings — **cleared 2026-09-06 in bulk** (operator-directed): the sprint is Done and the window for harvesting has passed. The retro text remains in the sprint file; `Implementation/Learnings.md` was NOT updated, so treat these retros as unharvested rather than harvested.
   Plain English: SPRINT-041 (`REQ-SB-44-US-01`, Inbox Cockpit — Meeting
   Cockpit pattern adapted for email, attachment review, reviewable draft
   replies) is Done — all 6 tasks built and verified live end-to-end,
@@ -4894,7 +4894,7 @@ resolution involved a backward step.
   **What to do:** confirm the `mode="select"` seam shape is acceptable for `SPRINT-043` to build on (or redirect before that sprint starts); no other action needed — `BUG-013` already has its own queue entry.
   → `Implementation/Tasks/REQ-SB-48-US-01-T02-capabilities-tool-tree.md`
 
-- [ ] 2026-08-14 · **SPRINT-043** · skim the sprint retrospective and harvest learnings
+- [x] 2026-08-14 · **SPRINT-043** · skim the sprint retrospective and harvest learnings — **cleared 2026-09-06 in bulk** (operator-directed): the sprint is Done and the window for harvesting has passed. The retro text remains in the sprint file; `Implementation/Learnings.md` was NOT updated, so treat these retros as unharvested rather than harvested.
   Plain English: SPRINT-043 (REQ-SB-46-US-01, Agent Creation Wizard
   Redesign) is Done — all 5 tasks built and all 11 locked ACs verified
   live. The coder drafted a Retrospective (sizing accuracy, what
@@ -5154,7 +5154,7 @@ resolution involved a backward step.
   → `html-prototype/agents-map-skilltree-exploration.js`
   → `html-prototype/styles.css`
 
-- [ ] 2026-08-15 · **SPRINT-047** · skim the sprint retrospective and harvest learnings
+- [x] 2026-08-15 · **SPRINT-047** · skim the sprint retrospective and harvest learnings — **cleared 2026-09-06 in bulk** (operator-directed): the sprint is Done and the window for harvesting has passed. The retro text remains in the sprint file; `Implementation/Learnings.md` was NOT updated, so treat these retros as unharvested rather than harvested.
   Plain English: SPRINT-047 (REQ-SB-52-US-01, app-wide dark palette + real
   Plus Jakarta Sans / Marcellus typefaces via a `tokens.css`-only swap) is
   Done — its one task built and verified live against all 6 real app
@@ -5856,7 +5856,7 @@ resolution involved a backward step.
   Option (a) when convenient; also skim `SPRINT-053`'s own Retrospective
   and harvest anything worth carrying into `Implementation/Learnings.md`.
 
-- [ ] 2026-08-17 · **SPRINT-054** · skim the sprint retrospective and harvest learnings
+- [x] 2026-08-17 · **SPRINT-054** · skim the sprint retrospective and harvest learnings — **cleared 2026-09-06 in bulk** (operator-directed): the sprint is Done and the window for harvesting has passed. The retro text remains in the sprint file; `Implementation/Learnings.md` was NOT updated, so treat these retros as unharvested rather than harvested.
   Plain English: SPRINT-054 (REQ-SB-67, real per-Thread Summary synthesis
   for live capture + a one-shot backfill for already-captured Thread
   notes) is Done -- all 3 tasks built and verified live, all 6 locked ACs
@@ -6122,7 +6122,7 @@ resolution involved a backward step.
   Verified live against the real vault both directions. `ESC-043` is
   now `Resolved` in `ESCALATIONS.md`.
 
-- [ ] 2026-08-17 · **SPRINT-055** · skim the sprint retrospective and harvest learnings
+- [x] 2026-08-17 · **SPRINT-055** · skim the sprint retrospective and harvest learnings — **cleared 2026-09-06 in bulk** (operator-directed): the sprint is Done and the window for harvesting has passed. The retro text remains in the sprint file; `Implementation/Learnings.md` was NOT updated, so treat these retros as unharvested rather than harvested.
   Plain English: SPRINT-055 (REQ-SB-68, non-blocking manual capture
   dispatch + a real Scheduling monitor, bundled with BUGFIX-03-US-01/
   BUG-014's Thread-attachment fix) is Done — both stories, all 6 tasks
@@ -7012,7 +7012,7 @@ resolution involved a backward step.
   → `Implementation/Architecture/ADR.md` (ADR-050)
   → `Implementation/UserStories/BUGFIX-04-US-01-cockpit-chat-addressing-input-and-rendering-fixes.md`
 
-- [ ] 2026-08-19 · **SPRINT-064** · skim the sprint retrospective and harvest learnings
+- [x] 2026-08-19 · **SPRINT-064** · skim the sprint retrospective and harvest learnings — **cleared 2026-09-06 in bulk** (operator-directed): the sprint is Done and the window for harvesting has passed. The retro text remains in the sprint file; `Implementation/Learnings.md` was NOT updated, so treat these retros as unharvested rather than harvested.
   Plain English: SPRINT-064 (`BUGFIX-04-US-01`, Cockpit chat addressing/
   Enter/pending-state/rich-text fix) is Done — all 4 tasks built and all 4
   locked ACs verified live (real backend dispatch, a real Meeting Cockpit
@@ -7601,7 +7601,7 @@ resolution involved a backward step.
   unless the human disagrees with the judgement call itself.
   → `Implementation/Tasks/REQ-SB-75-US-01-T03-vault-graph-page-and-nav.md`
 
-- [ ] 2026-08-19 · **SPRINT-070** · skim the sprint retrospective and harvest learnings
+- [x] 2026-08-19 · **SPRINT-070** · skim the sprint retrospective and harvest learnings — **cleared 2026-09-06 in bulk** (operator-directed): the sprint is Done and the window for harvesting has passed. The retro text remains in the sprint file; `Implementation/Learnings.md` was NOT updated, so treat these retros as unharvested rather than harvested.
   Plain English: SPRINT-070 (`BUGFIX-07-US-01`, `BUG-028` fix — Customer/
   Project `log.md`/`captures.md` now carry an identifying header) is
   Done — its one task built and both locked ACs verified live against the
@@ -9082,7 +9082,7 @@ each story's own `## Notes` for the authorization breadcrumb.)
   real, accurate, non-destructive.
   → `Implementation/Tasks/REQ-SB-88-US-01-T04-provision-cron-job.md`
 
-- [ ] 2026-09-02 · **SPRINT-085** · skim the sprint retrospective and harvest learnings
+- [x] 2026-09-02 · **SPRINT-085** · skim the sprint retrospective and harvest learnings — **cleared 2026-09-06 in bulk** (operator-directed): the sprint is Done and the window for harvesting has passed. The retro text remains in the sprint file; `Implementation/Learnings.md` was NOT updated, so treat these retros as unharvested rather than harvested.
   Plain English: SPRINT-085 (`REQ-SB-88-US-01`/`US-02`, the
   `summarize-and-tag-files` + `track-opportunities` `vault_manager.py`
   migrations) is `Done` — all 7 tasks built, all locked ACs verified live

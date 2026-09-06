@@ -4,13 +4,30 @@ title: Meeting capture split into Puller/Tagger/Linker/Storer agents, replacing 
 requirement_ids: [REQ-SB-53]
 requirement_section: "REQ-SB-53: Split Capture Pipelines into Staged Pull / Tag / Link / Store Agents"
 phase: P1
-status: Draft
+status: Done
 gate: flagged
 gate_reason: "trigger-3 (ADR-040 created — Capture Pipeline Split mechanism, established by REQ-SB-53-US-01, reused here)"
 sprint: ""
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-09-06
 ---
+
+> **Closed 2026-09-06 — superseded by the Tool -> Skill -> Action model (`ADR-019`).**
+>
+> This story asked for the capture pipeline's internal steps to run as four
+> separately-runnable stages. That decomposition exists, but as **Skill
+> Actions** rather than pipeline stages — each is its own CLI entry point in
+> the Skill's `scripts/`, invokable on its own:
+>
+> | step | Action |
+> |---|---|
+> | pull | `list_recent_meetings` |
+> | tag | attendee-majority customer derivation, inside `ingest_meeting` |
+> | link | `link_meeting_to_thread` |
+> | store | `ingest_meeting` |
+>
+> The outcome this story wanted is therefore met; the four-pipeline-stage
+> shape it specified is not, and is not planned.
 
 # REQ-SB-53-US-02 — Meeting capture split into Puller/Tagger/Linker/Storer agents, replacing the monolithic meeting-capture Worker
 
