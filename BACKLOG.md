@@ -225,6 +225,9 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 | BUG-046 | Blueprint install never asks which Section to install into | Logic | Open | — |
 | BUG-047 | The `librarian` Blueprint bundles three concerns into one all-or-nothing Section | Logic | Open | — |
 | BUG-048 | A test asserts equality against live machine state while its own docstring says subset | Logic | Open | — |
+| BUG-049 | `boot-status` reports ready while `hermes_reachable` is false, and never re-checks | Logic | Open | — |
+| BUG-050 | A dropped Hermes WebSocket ends the chat stream as HTTP 200 with an empty body | Logic | Open | — |
+| BUG-051 | The shipped `librarian` Blueprint hard-codes another operator's vault path into every Agent SOUL | Logic | Open | — |
 
 > **Emptied 2026-09-06** with `BUGS.md`, which this mirrors — 42 rows.
 > History: `git show d64dcb4:BACKLOG.md`. Next id is **`BUG-043`**.

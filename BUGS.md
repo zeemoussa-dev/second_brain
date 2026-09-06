@@ -35,6 +35,9 @@ is a thin status mirror of the index table below.
 | BUG-046 | Blueprint install never asks which Section to install into — the Section is baked into the Blueprint and is not a parameter anywhere in the chain | Logic | Major | Open | 2026-09-07 | — |
 | BUG-047 | The `librarian` Blueprint ships a whole Section covering three concerns; files and notes should be separate, independently installable Blueprints | Logic | Major | Open | 2026-09-07 | — |
 | BUG-048 | `test_the_thread_mapping_still_matches_what_the_template_used_to_declare` asserts equality against LIVE machine state while its own docstring says subset, so it fails on every install that has not deployed all six thread-writing Skills | Logic | Minor | Open | 2026-09-07 | — |
+| BUG-049 | `boot-status` reports `state: ready` with `checking_hermes: done` and `error: null` while `hermes_reachable` is `false`, and never re-checks — the app looks healthy while every agent chat is impossible | Logic | Major | Open | 2026-09-07 | — |
+| BUG-050 | A Hermes WebSocket that closes mid-turn raises `ConnectionClosedError`, which the chat stream does not catch — the SSE response ends with HTTP 200 and an EMPTY body, and the dead session is never evicted so every later message fails the same way | Logic | Major | Open | 2026-09-07 | — |
+| BUG-051 | The shipped `librarian` Blueprint hard-codes ANOTHER OPERATOR'S absolute vault path into all three Agent SOULs, so every fresh install's agents are pointed at a vault that is not theirs | Logic | Blocker | Open | 2026-09-07 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -281,3 +284,128 @@ is a thin status mirror of the index table below.
 - **Note for whoever picks this up:** this is the residue of a known class,
   already recorded in framework `MEMORY.md` — an empty access map on an
   undeployed machine is *correct*. Do not "fix" it by deploying more Skills.
+
+### BUG-049 — `boot-status` reports ready while `hermes_reachable` is false, and never re-checks
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-09-07, after the operator's first chat with the Notes Manager
+  failed. The app had been reporting itself healthy the whole time.
+- **Repro:** stop `hermes serve` (Hermes' backend server, port 9119), start the
+  Second Brain backend, `GET /boot-status`:
+
+      {"state":"ready", "stages":[{"id":"checking_hermes","status":"done"}, ...],
+       "hermes_reachable":false, "error":null}
+
+- **Expected:** a failed reachability check is visible — the stage does not read
+  `done`, or `state` is not `ready`, or the UI surfaces the flag. Agent chat is
+  the product's core function and it cannot work in this state.
+- **Actual, two compounding faults** in `data_access/registry/loader.py`:
+  1. **The check is computed and then ignored.** `_set_stage("checking_hermes",
+     "done")` runs unconditionally after `_status["hermes_reachable"] =
+     reachable`, so a failed check is indistinguishable from a passed one.
+     `state` goes `ready` and `error` stays `null`.
+  2. **It is a one-shot boot-time value that never refreshes.** Observed in both
+     directions: it stayed `false` for minutes after Hermes came up, and only
+     turned `true` on a full backend restart. A flag that lies in both directions
+     is worse than no flag.
+- **And nothing surfaces it.** `hermes_reachable` is declared in
+  `frontend/src/features/boot/bootApiClient.ts:16` and referenced **nowhere else
+  in the frontend** — the value crosses the wire and is dropped.
+- **Fix direction:** fail (or warn) the stage when the check fails, re-check on a
+  timer or on demand rather than once at boot, and render it — the operator
+  should learn Hermes is down from the app, not from a chat that dies.
+
+### BUG-050 — a dropped Hermes WebSocket ends the chat stream as HTTP 200 with an empty body
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-09-07, chatting with `notes-manager`. Reproduced against
+  `default` too, so it is not agent-specific.
+- **Repro:** have the Hermes WS drop between session creation and the prompt
+  (starting `hermes serve` after the backend has already tried to reach it does
+  it), then `POST /agents/<id>/chat/stream`. Observed:
+
+      HTTP 200  time=0.127s  bytes=0
+
+  Server-side the traceback ends at
+  `chat_session.py:129 send_prompt` -> `_call` -> `self._ws.send(...)` ->
+  `websockets.exceptions.ConnectionClosedError: no close frame received or sent`.
+- **Expected:** the same clean `{"type": "error", ...}` SSE frame the *other*
+  Hermes failure already produces. When Hermes was simply down, the stream
+  correctly yielded
+  `{"type":"error","detail":"Hermes call failed (GET /, fetching session token):
+  [WinError 10061] ..."}` — that path works.
+- **Actual:** nothing at all. An empty 200 is the worst possible shape: the UI
+  cannot tell it from an empty answer, and the operator sees a chat that returns
+  silence.
+- **Root cause — the wrapping is one line short.**
+  `agent_chat_stream.stream_chat_turn:255` catches **`HermesUnavailableError`
+  only**. `HermesChatSession.connect()` wraps its own failure (`except OSError`
+  -> `HermesUnavailableError`), and `_recv_loop`'s `finally` wraps pending calls
+  (`HermesUnavailableError("Hermes WS closed mid-call")`) — so the design clearly
+  intends closed-mid-call to arrive as `HermesUnavailableError`. But `_call()`'s
+  own `await self._ws.send(...)` sits outside any wrapper, and
+  `ConnectionClosedError` is not an `OSError`, so that one path escapes uncaught,
+  out of the generator, after the 200 headers have already been sent.
+- **Second-order fault: the dead session is never evicted.**
+  `chat_sessions.get_or_create_session` returns a cached session **without
+  checking that its socket is still open** (`if session is not None: return
+  session`). Eviction lives in the `except HermesUnavailableError` branch that
+  never fires here, so the same dead WS is handed back to every later message —
+  which is why this reproduced identically on every retry until the backend was
+  restarted. `discard_session`'s own docstring names this exact scenario ("a
+  socket that's already gone"), so the intent is there and only the trigger is
+  missing.
+- **Fix direction:** wrap the `send` in `_call` the way the rest of the class is
+  wrapped, and have `get_or_create_session` verify the connection is open before
+  handing a cached session back.
+
+### BUG-051 — the shipped `librarian` Blueprint hard-codes another operator's vault path into every Agent SOUL
+
+- **Area:** Logic
+- **Severity:** Blocker
+- **Status:** Open
+- **Found:** 2026-09-07, on the first successful chat with `notes-manager` on
+  this clean install. The agent reported success and the turn's own file-mutation
+  verifier contradicted it:
+
+      Captured to today's General Notes.
+      WARNING File-mutation verifier: 1 file(s) were NOT modified this turn
+        - `C:/Users/<other-operator>/OneDrive - <org>/.../second-brain/Work/Notes/2026-09-07/....md`
+          [write_file] Failed to write file: mkdir: cannot create directory - Permission denied
+
+  This machine's vault is not that path. The agent was writing into a **different
+  operator's** vault location.
+- **Root cause:** the Blueprint's own Agent SOULs carry a literal absolute path:
+
+      blueprints/library/librarian/agents/notes-manager.soul.md:12
+      blueprints/library/librarian/agents/files-manager.soul.md:14
+      blueprints/library/librarian/agents/research-agent.soul.md:14
+
+  each stating ``Vault path: `C:\Users\<other-operator>\OneDrive - <org>\...` ``.
+  `install()` copies the SOUL verbatim into each Hermes profile, so **every**
+  install gets it. Confirmed present in the deployed
+  `profiles/notes-manager/SOUL.md` on this machine.
+- **Expected:** a shipped master never contains one machine's paths. The SOUL
+  should carry a placeholder resolved per-install from `vault_path` — the rule
+  the repo already states: *"Never put a real vault path, mailbox, key or machine
+  name in a repo file. Use `<OPERATOR_VAULT>` / `<operator>` placeholders —
+  mixing instance detail into shared docs is what caused one install to act on
+  another install's assumptions."*
+- **Why Blocker:** the only reason this failed loudly here is that the foreign
+  path is not writable on this machine. On any host where a similarly-named path
+  *does* exist, the agent writes real notes into the wrong vault and reports
+  success — silent data misplacement, far worse than an error. It also means
+  every Agent this Blueprint installs is misconfigured from its first turn.
+- **Also leaked, lower severity** (illustrative text, not live instructions, but
+  the same rule): `skills/catalog/outlook/email-thread-capture/SKILL.md:84`,
+  `skills/catalog/vault/summarize-and-tag-threads/SKILL.md:126`, and
+  `skills/catalog/outlook/email-thread-capture/scripts/derive_noise_definition.py:36`
+  each carry an operator-specific absolute path in an example.
+- **Fix direction:** replace the SOUL line with a placeholder the installer
+  substitutes from this install's configured `vault_path`, and scrub the three
+  example paths. Worth a guard test that fails if any shipped master contains a
+  literal `C:\Users\` path.

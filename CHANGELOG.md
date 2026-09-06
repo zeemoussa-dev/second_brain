@@ -18,6 +18,11 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- docs: `BUG-049` / `BUG-050` / `BUG-051` logged from the first agent chat on a
+  clean install — a boot check that reports ready while Hermes is unreachable, a
+  dropped WebSocket that ends the chat stream as an empty 200, and shipped
+  Blueprint SOULs carrying another operator's absolute vault path.
+
 - docs: `BUG-048` — a test's assertion (`==`) contradicts its own docstring
   ("subset") and depends on what the running machine has deployed.
 
