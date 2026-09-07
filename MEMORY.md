@@ -79,6 +79,8 @@ Where a rule does not belong here:
 
 ## Capture pipelines
 
+- **[2026-09-07] The email capture pipeline is READ-ONLY, and stays read-only even when the token would permit more.** A tenant may consent an app to a broader set than was asked for -- one live grant came back with `Mail.ReadWrite`, `Mail.Send`, `Files.Read.All` and `Sites.Read.All` attached to a request for `Mail.Read`/`Mail.Read.Shared` alone. The scopes on the token are not a licence to use them: capture reads mail and writes only to the vault, never back to the mailbox. Concretely, no `sendMail`, no flag/move/delete, no draft creation -- every Graph call stays a GET. Verified 2026-09-07: the Skill's only Graph URLs are `/users/<mailbox>/mailFolders/<folder>/messages` and `/users/<mailbox>/messages/`, and its only POST is the token request. Keep it that way; an agent that can send mail as the operator is a different risk class from one that files notes, and nothing in this product needs it.
+
 - **A capture watermark may never advance past an item that failed to write.** Advancing past a failure converts a transient error into permanent data loss, because the next run treats those items as already captured. Re-ingesting an already-written email is idempotent; skipping one is not recoverable. Never write `if code == 0:` with no `else` around a subprocess whose failure means data was dropped.
 
 - **A dedup-by-id scan only sees duplicates in the shape it knows.** Changing a note's directory shape makes every note captured under the old shape invisible to the new scan, so the next pass creates a second copy instead of topping up the first. Plan a migration pass alongside any shape change.
