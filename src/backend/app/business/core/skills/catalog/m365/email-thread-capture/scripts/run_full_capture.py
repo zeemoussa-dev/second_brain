@@ -167,6 +167,16 @@ def main() -> int:
     parser.add_argument("--since", default="",
                         help="stop once the pull reaches this date (YYYY-MM-DD); "
                              "emails older than it are not captured")
+    # A multi-day backfill WILL be interrupted -- a reboot, a lost session, a
+    # revoked token. Without a resume point the only option is to start from
+    # the newest message again: every already-captured conversation is skipped
+    # correctly (ingest is idempotent), but the run still pays to page it all
+    # back through Graph and spawn a subprocess per email. Resuming from the
+    # oldest message already in the vault skips that entirely.
+    parser.add_argument("--before", default="",
+                        help="resume: start from this timestamp instead of the "
+                             "newest message. Use the oldest `received` already "
+                             "captured, e.g. 2026-08-26 20:01:00.000000+00:00")
     args_ns = parser.parse_args()
     max_emails = max(0, args_ns.max_emails)
     # Compared against `received` as a plain STRING, like every other watermark
@@ -177,6 +187,9 @@ def main() -> int:
     since_stamp = f"{args_ns.since} 00:00:00.000000+00:00" if args_ns.since else ""
     if since_stamp:
         print(f"BACKFILL WINDOW: capturing back to {args_ns.since} and no further")
+    if args_ns.before:
+        print(f"RESUMING: starting from {args_ns.before}, "
+              "skipping everything already captured after it")
 
     _require_vault_path()
     # Graph needs no COM (2026-09-09) -- but outlook_lib.py is still the right
@@ -198,7 +211,7 @@ def main() -> int:
     total_skipped_as_noise = 0
 
     page_num = 0
-    before_ts: str | None = None
+    before_ts: str | None = args_ns.before or None
     oldest_seen: str | None = None
     newest_seen: str | None = None
 
