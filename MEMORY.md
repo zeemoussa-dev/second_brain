@@ -221,6 +221,8 @@ Where a rule does not belong here:
 
 ## Working discipline
 
+- **[2026-09-10] Do not leave backup copies behind. Deleting is the default; ASK before keeping a backup.** Operator rule, with a concrete reason: stray copies "generate lots of errors later". A `.bak` or a dated copy dropped next to the file it copies sits in a folder something SCANS -- `Settings/Entities.md` is read by the company pipeline, a Template folder is read by the seeder, a Skill's `scripts/` is deployed wholesale -- so the copy eventually gets parsed as real data, or deployed, or picked up by a glob. The safety a backup buys is already provided properly by git for anything in the repo, and by re-running the generator for anything derived. When a backup genuinely is warranted, ask first and put it OUTSIDE any tree the app reads.
+
 - **Before adding a delete action over data that a separate discovery or dedup process also reads, check what that process's "already seen" check keys on.** Removing the record it looks for silently un-suppresses whatever the record was suppressing - soft-delete with a flag instead.
 
 - **The Entities file format has two independent implementations of `parse_entities`/`render_entities`/`_KNOWN_FIELDS`, in `find_new_entities.py` and `create_companies_partners.py`.** A schema change needs both edited and both redeployed.
