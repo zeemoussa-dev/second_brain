@@ -18,6 +18,14 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: `summarize-and-tag-threads` reads Threads through a new `read_thread.py`
+  instead of opening the message notes. It returns the messages in TIME order,
+  each marked SENT/RECEIVED, with the HTML stripped to text. Measured across 119
+  real Threads: **83% reduction**, 6.66 M chars to 1.14 M -- about 2,400 input
+  tokens per Thread instead of 14,000, or ~6 M instead of ~38 M over a full pass.
+  Stripping happens at READ, never at capture: an email's real body IS the HTML,
+  and capture's job is to preserve the evidence faithfully.
+
 - feat: `retrofit_conversation_index.py` backfills the `## Conversation` section
   onto Threads captured before it existed and strips the owner's own participant
   links. Rebuilds from the message notes already in the vault rather than

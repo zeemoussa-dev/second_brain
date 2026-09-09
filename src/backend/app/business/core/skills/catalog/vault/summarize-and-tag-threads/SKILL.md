@@ -1,7 +1,7 @@
 ---
 name: summarize-and-tag-threads
 description: One-time, long-running Thread summarization and company wiki-tagging pass.
-version: 0.3.0
+version: 0.4.0
 author: second-brain
 license: MIT
 platforms: [windows]
@@ -85,7 +85,29 @@ context mid-Thread and leaving a half-applied state.
 
 For each Thread (`Work/Threads/<Name>/<Name>.md` + its `messages/*.md`):
 
-1. **Read the whole Thread** -- every message, not just the first one.
+1. **Read the whole Thread with `read_thread.py`, never by opening the
+   message notes yourself:**
+
+   ```
+   terminal(command="python \"${HERMES_SKILL_DIR}/scripts/read_thread.py\" --thread-dir \"<vault>/Work/Threads/<Name>\"")
+   ```
+
+   It returns every message in TIME order (message filenames are
+   subject-based and say nothing about when a message arrived), each
+   marked `SENT` or `RECEIVED` so the exchange reads as a conversation,
+   with the HTML stripped to text.
+
+   That last part is not a nicety. Capture stores each body exactly as it
+   arrived, and **83% of a stored Outlook body is tags and entities** --
+   measured across 119 real Threads here, 6.66 M raw chars reducing to
+   1.14 M. Reading the notes raw costs about **14,000 tokens per Thread
+   instead of 2,400**, for identical content. Over a full pass that is the
+   difference between ~38 M tokens and ~6 M.
+
+   Pass `--max-chars N` on a Thread big enough to threaten your context.
+   Truncation announces itself in the output; when you see it, say the
+   Thread was truncated rather than writing a summary that implies it was
+   complete.
 2. **Write a real summary** -- what was actually discussed, decided, or
    asked. Not a restatement of the subject line. This becomes the
    Thread's own `## Summary`.
