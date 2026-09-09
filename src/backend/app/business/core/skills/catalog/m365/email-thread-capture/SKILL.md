@@ -13,6 +13,10 @@ writes:
     template: thread
     requires: 1
     sections: [Conversation]
+  - action: retrofit_conversation_index
+    template: thread
+    requires: 1
+    sections: [Conversation, Related]
   - action: link_person_to_thread
     template: thread
     requires: 1

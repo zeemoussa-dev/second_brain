@@ -18,6 +18,14 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: `retrofit_conversation_index.py` backfills the `## Conversation` section
+  onto Threads captured before it existed and strips the owner's own participant
+  links. Rebuilds from the message notes already in the vault rather than
+  re-capturing -- a re-capture would re-spend one classifier relay per Thread and
+  re-download every attachment to reproduce data already held. Idempotent, with
+  `--dry-run`. Declared as a real Action rather than borrowing another's identity,
+  since `Related` is access-restricted to `link_person_to_thread`.
+
 - feat: a Thread now has a **`## Conversation`** section -- one line per message,
   time-ordered, with a direction arrow and the sender, so a Thread reads as the
   exchange it is. Sent Items were always captured; nothing on the Thread let you
