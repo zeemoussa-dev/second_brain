@@ -12,12 +12,29 @@ needs no change beyond its import line:
     GraphUnavailable          (also exported as OutlookUnavailable)
     list_recent_mail(limit, since, before) -> list[dict]
 
-Auth: app-only (client credentials). Reads GRAPH_TENANT_ID / GRAPH_CLIENT_ID /
-GRAPH_CLIENT_SECRET from the environment, which Hermes' own .env supplies to
-every Skill subprocess. App-only is deliberate over delegated: a cron run has
-no human present to complete an interactive sign-in or refresh a token. The
-tenant grant MUST be narrowed by an Application Access Policy scoped to the
-one mailbox -- app-only Mail.Read is otherwise tenant-wide.
+Auth: DELEGATED, via a stored refresh token (changed 2026-09-09; this module
+was written for app-only and that turned out to be impossible here).
+
+App-only would have been the natural choice for cron -- no human present to
+sign in -- but this tenant grants permissions as **Delegated only, as policy**.
+A client-credentials token IS issued with the configured secret, and arrives
+carrying ZERO `roles`, so it can read no mailbox at all. That failure is silent
+in the worst way: the credentials look correct because a token comes back.
+
+So the flow is: one interactive device-code sign-in (`authorize_graph.py`),
+which yields a refresh token that is stored OUTSIDE the repo; every run after
+that redeems it silently. A daily run keeps it alive indefinitely -- but
+Conditional Access, a password change, or ~90 days idle will revoke it, and
+then capture stops until someone signs in again. That is a real operational
+mode, not an edge case: the failure must stay loud.
+
+Reads GRAPH_TENANT_ID / GRAPH_CLIENT_ID from Hermes' own .env, plus
+SECOND_BRAIN_DATA_PATH (or GRAPH_TOKEN_STORE) to locate the token store.
+GRAPH_CLIENT_SECRET is no longer used -- a device-code public client flow
+does not take one.
+
+The mailbox is reachable because the signed-in account has Full Access to it;
+`Mail.Read.Shared` is what lets this app use that access.
 
 stdlib only (urllib), matching this Skill's own "stdlib plus pywin32" rule --
 Graph is plain HTTPS and needs no SDK.
@@ -189,30 +206,203 @@ def _require_env(name: str) -> str:
     value = (os.environ.get(name) or "").strip()
     if not value:
         raise GraphUnavailable(
-            f"{name} is not set. app-only Graph auth needs GRAPH_TENANT_ID, "
-            "GRAPH_CLIENT_ID and GRAPH_CLIENT_SECRET in Hermes' own .env."
+            f"{name} is not set. Delegated Graph auth needs GRAPH_TENANT_ID and "
+            "GRAPH_CLIENT_ID in Hermes' own .env (no client secret -- a "
+            "device-code public client does not use one)."
         )
     return value
 
 
-def _access_token() -> str:
-    tenant = _require_env("GRAPH_TENANT_ID")
-    payload = urllib.parse.urlencode({
-        "client_id": _require_env("GRAPH_CLIENT_ID"),
-        "client_secret": _require_env("GRAPH_CLIENT_SECRET"),
-        "scope": "https://graph.microsoft.com/.default",
-        "grant_type": "client_credentials",
-    }).encode()
-    request = urllib.request.Request(f"{_AUTHORITY}/{tenant}/oauth2/v2.0/token", data=payload)
+# ── delegated auth (device code + refresh token) ──────────────────────
+
+# `offline_access` is what makes unattended running possible at all -- it is
+# the scope that yields a refresh token. Mail.Read covers the signed-in
+# account's own mailbox; Mail.Read.Shared covers a mailbox shared with it,
+# which is the one this deployment actually reads.
+_SCOPES = "offline_access User.Read Mail.Read Mail.Read.Shared"
+
+_TOKEN_STORE_ENV = "GRAPH_TOKEN_STORE"
+_TOKEN_STORE_FILENAME = "graph-delegated-token.json"
+
+# One access token per process. Every script here is its own subprocess, so
+# this saves a round trip only within a single run -- deliberately NOT
+# persisted: an access token is a live credential with an hour's life and
+# writing it to disk would widen the blast radius for no real gain, while the
+# refresh token (which must persist) is written once and read once per run.
+_cached_access_token: str | None = None
+
+
+def _token_store_path():
+    """Where the refresh token lives. INSTANCE state, never the repo."""
+    from pathlib import Path
+    override = (os.environ.get(_TOKEN_STORE_ENV) or "").strip()
+    if override:
+        return Path(override)
+    data_root = (os.environ.get("SECOND_BRAIN_DATA_PATH") or "").strip()
+    if not data_root:
+        raise GraphUnavailable(
+            "neither GRAPH_TOKEN_STORE nor SECOND_BRAIN_DATA_PATH is set, so "
+            "there is nowhere to read the Graph refresh token from."
+        )
+    return Path(data_root) / _TOKEN_STORE_FILENAME
+
+
+def _read_refresh_token() -> str:
+    path = _token_store_path()
+    if not path.is_file():
+        raise GraphUnavailable(
+            f"no Graph refresh token at {path}. This deployment uses DELEGATED "
+            "auth (the tenant refuses application permissions), which needs a "
+            "one-time interactive sign-in: run `python authorize_graph.py` and "
+            "follow the device-code prompt."
+        )
     try:
-        token = _urlopen_retrying(request).get("access_token", "")
-    except GraphUnavailable:
-        raise
-    except Exception as exc:  # urllib raises a wide family; all mean "no token"
-        raise GraphUnavailable(f"could not obtain a Graph token: {exc}") from exc
+        stored = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise GraphUnavailable(f"the Graph token store at {path} is unreadable: {exc}") from exc
+    token = (stored.get("refresh_token") or "").strip()
+    if not token:
+        raise GraphUnavailable(f"the Graph token store at {path} holds no refresh_token")
+    return token
+
+
+def _write_refresh_token(refresh_token: str, *, signed_in_as: str = "") -> None:
+    """Persists the CURRENT refresh token, replacing the previous one.
+
+    Entra rotates the refresh token on every redemption and invalidates the
+    one just used, so failing to write the new value here would make the very
+    next run fail with invalid_grant -- an unattended pipeline that works
+    exactly once. Written atomically: a half-written store would be as bad as
+    a missing one, and it is only ever rewritten while a working token is in
+    hand."""
+    path = _token_store_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "refresh_token": refresh_token,
+        "signed_in_as": signed_in_as,
+        "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ"),
+    }
+    scratch = path.with_suffix(".tmp")
+    scratch.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    try:
+        # Best effort on Windows, where the real protection is the ACL on the
+        # containing folder -- worth setting anyway so a POSIX host is right.
+        os.chmod(scratch, 0o600)
+    except OSError:
+        pass
+    os.replace(scratch, path)
+
+
+def _redeem(form: dict) -> dict:
+    """One POST to the token endpoint. Surfaces Entra's own error code, which
+    is the difference between "sign in again" and "something else broke"."""
+    tenant = _require_env("GRAPH_TENANT_ID")
+    request = urllib.request.Request(
+        f"{_AUTHORITY}/{tenant}/oauth2/v2.0/token",
+        data=urllib.parse.urlencode(form).encode(),
+    )
+    try:
+        return _urlopen_retrying(request)
+    except urllib.error.HTTPError as exc:
+        detail = ""
+        try:
+            body = json.loads(exc.read().decode("utf-8", "replace"))
+            detail = f"{body.get('error')}: {(body.get('error_description') or '').splitlines()[0]}"
+        except Exception:
+            detail = f"HTTP {exc.code}"
+        raise GraphUnavailable(f"Graph token request refused ({detail})") from exc
+
+
+def _access_token() -> str:
+    """A delegated access token, obtained by redeeming the stored refresh token.
+
+    Delegated rather than app-only (changed 2026-09-09): this tenant grants
+    permissions as Delegated only, as a matter of policy -- a client-credentials
+    token is issued but arrives with ZERO roles and can read no mailbox at all.
+    The mailbox itself is reached because the signed-in account has Full Access
+    to it, which is what `Mail.Read.Shared` then lets this app use."""
+    global _cached_access_token
+    if _cached_access_token:
+        return _cached_access_token
+    refresh_token = _read_refresh_token()
+    payload = _redeem({
+        "client_id": _require_env("GRAPH_CLIENT_ID"),
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "scope": _SCOPES,
+    })
+    token = (payload.get("access_token") or "").strip()
     if not token:
         raise GraphUnavailable("Graph returned no access_token")
+    rotated = (payload.get("refresh_token") or "").strip()
+    if rotated and rotated != refresh_token:
+        _write_refresh_token(rotated)
+    _cached_access_token = token
     return token
+
+
+def begin_device_code() -> dict:
+    """Starts an interactive sign-in. Returns Entra's own response, including
+    `user_code` and `verification_uri` for the operator, and the `device_code`
+    the poll below redeems. No credential is handled here: the operator
+    authenticates with Microsoft directly."""
+    tenant = _require_env("GRAPH_TENANT_ID")
+    request = urllib.request.Request(
+        f"{_AUTHORITY}/{tenant}/oauth2/v2.0/devicecode",
+        data=urllib.parse.urlencode({
+            "client_id": _require_env("GRAPH_CLIENT_ID"),
+            "scope": _SCOPES,
+        }).encode(),
+    )
+    return _urlopen_retrying(request)
+
+
+def complete_device_code(device_code: str, *, interval: int = 5, expires_in: int = 900) -> dict:
+    """Waits for the operator to finish signing in, then stores the refresh
+    token. Returns the token payload; the caller should not log it."""
+    deadline = time.time() + expires_in
+    wait = max(int(interval), 5)
+    form = {
+        "client_id": _require_env("GRAPH_CLIENT_ID"),
+        "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+        "device_code": device_code,
+    }
+    while time.time() < deadline:
+        try:
+            payload = _redeem(form)
+        except GraphUnavailable as exc:
+            message = str(exc)
+            if "authorization_pending" in message:
+                time.sleep(wait)
+                continue
+            if "slow_down" in message:
+                wait += 5
+                time.sleep(wait)
+                continue
+            raise
+        refresh_token = (payload.get("refresh_token") or "").strip()
+        if not refresh_token:
+            raise GraphUnavailable(
+                "sign-in succeeded but Entra returned no refresh_token -- the "
+                "`offline_access` scope was not granted, so unattended running "
+                "is impossible. Check the app's consented delegated scopes."
+            )
+        _write_refresh_token(refresh_token, signed_in_as=_signed_in_as(payload.get("access_token") or ""))
+        return payload
+    raise GraphUnavailable("the device code expired before the sign-in completed")
+
+
+def _signed_in_as(access_token: str) -> str:
+    """The upn from an access token, for the store's own audit line. Returns ""
+    rather than raising -- a decoding failure must not lose a good token."""
+    import base64
+    try:
+        segment = access_token.split(".")[1]
+        segment += "=" * (-len(segment) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(segment))
+        return claims.get("upn") or claims.get("preferred_username") or ""
+    except Exception:
+        return ""
 
 
 def _get(url: str, token: str) -> dict:

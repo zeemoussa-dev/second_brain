@@ -18,6 +18,14 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: `email-thread-capture` Graph auth moves from app-only to **delegated**
+  (`graph_lib._access_token`) -- this tenant grants permissions as Delegated only,
+  so a client-credentials token was issued carrying zero roles and could read no
+  mailbox. New `authorize_graph.py` does the one-time device-code sign-in and
+  stores the refresh token outside the repo; every later run is unattended.
+  10 new tests (48 passing). Verified live: 50 messages pulled from the target
+  mailbox, record shape and watermark format intact.
+
 - docs: `BUG-056` — deleting an Agent leaves its Skills' `deployed_to` records
   behind, so a reinstall skips every deployment as "already" and the Agent comes
   back with no Skills while the install reports success.
