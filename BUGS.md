@@ -43,6 +43,8 @@ is a thin status mirror of the index table below.
 | BUG-054 | `DELETE /agents/{id}` returns a bare 500 when Hermes refuses the profile delete, so the operator sees "The server failed handling this request" and the real reason stays in the server log | Logic | Minor | Closed | 2026-09-07 | direct fix, 2026-09-07 |
 | BUG-055 | The BUG-052 fix does not migrate a SOUL that already has pre-fix routing blocks: the peer heading is appended BELOW the existing bullets and the marker guard stops them ever moving under it, leaving a section that announces peers and lists none | Logic | Major | Closed | 2026-09-07 | direct fix, 2026-09-07 |
 | BUG-056 | Deleting an Agent leaves its Skills' `deployed_to` records behind, so recreating it skips every deployment as "already" — the install reports success and the Agent comes up with NO Skills at all | Logic | Blocker | Closed | 2026-09-07 | direct fix, 2026-09-07 |
+| BUG-057 | `email-thread-capture` cannot be provisioned on a fresh install from the repo alone: it needs a `email-capture-classifier` Hermes profile that exists only as prose in a task file, and a noise-definition artifact, neither of which the Skill creates or documents | Logic | Blocker | Open | 2026-09-09 | — |
+| BUG-058 | `run_full_capture.py` swallows a non-zero exit from every per-email step, so a capture where 100% of ingests failed reports `processed=50` with no error anywhere | Logic | Major | Open | 2026-09-09 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -692,3 +694,98 @@ is a thin status mirror of the index table below.
   record — belt and braces, since the record can drift for other reasons too.
   A regression test that deletes and reinstalls, then asserts the Skill is on
   disk, would have caught this; the existing tests cover a first install only.
+
+### BUG-057 — the email capture Skill cannot be provisioned on a fresh install from the repo alone
+
+- **Area:** Logic
+- **Severity:** Blocker
+- **Status:** Open
+- **Found:** 2026-09-09, deploying `email-thread-capture` (now under the `m365`
+  Tool) to a Hermes profile on this clean install and running it for the first
+  time. It deployed cleanly, reported success, and captured nothing.
+- **Two prerequisites exist only as live state on the machine that built them:**
+
+  1. **A `email-capture-classifier` Hermes profile.** `ingest_email.py:135`
+     hardcodes `_CLASSIFIER_PROFILE = "email-capture-classifier"` and relays
+     every email to it. On a fresh install it does not exist:
+
+         RuntimeError: classify-or-skip relay failed (code 1):
+           Error: Profile 'email-capture-classifier' does not exist.
+
+     Its definition lives **only in prose**, in
+     `Implementation/Tasks/REQ-SB-87-US-03-T02-classifier-hermes-profile.md`,
+     which states plainly that it was built as *"real, live Hermes-side
+     infrastructure, no repo file"*. Its SOUL.md, its emptied
+     `platform_toolsets.cli`, and its deleted `skills/` directory — all three
+     load-bearing — have to be reconstructed by reading that task file.
+  2. **A noise-definition artifact** at
+     `<data>/data/EmailCapture/noise_definition.json`. `_read_noise_definition`
+     (`ingest_email.py:153`) reads it with no existence check, so a fresh
+     install dies with `FileNotFoundError` on the very first email.
+     `derive_noise_definition.py` generates it, but nothing runs it and SKILL.md
+     never mentions it.
+
+- **SKILL.md documents neither.** An operator following the Skill's own
+  instructions to the letter gets a capture that processes every email and
+  writes nothing.
+- **Expected:** deploying the Skill either provisions what it needs, or refuses
+  with a precondition naming exactly what is missing. The framework already has
+  the concept — `SkillManager.validate_declared_writes` refuses a deploy whose
+  Template contract is unmet; this is the same kind of unmet precondition and
+  is not checked.
+- **Why Blocker:** it is the difference between a Skill that ships and a Skill
+  that only works on the machine it was born on. Every Blueprint carrying this
+  Skill inherits the same hole.
+- **Fix direction:** make both prerequisites part of the shipped artifact rather
+  than of one machine's history. The classifier is an **Agent** in this
+  framework's own vocabulary — it has a SOUL, a model and a deliberate absence
+  of Skills — so it belongs in a Blueprint alongside the capture Agent, not in a
+  task file. The noise definition is first-run state: have the Skill derive it
+  on demand when absent, or make its absence a named precondition rather than a
+  raw `FileNotFoundError`.
+- **Reconstructed by hand on this install (2026-09-09)** from the T02 task file:
+  profile cloned from `default`, SOUL.md rewritten to the documented contract,
+  `skills/` deleted (120 inherited skills), `platform_toolsets.cli: []`. Capture
+  then produced real Threads. That reconstruction is exactly what should not be
+  necessary.
+
+### BUG-058 — a capture where every ingest failed reports total success
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-09-09, alongside BUG-057 — and it is the reason BUG-057 took
+  three separate investigations to see. Two consecutive 50-email runs printed:
+
+      PAGE 1 done: emails=50 processed=50 threads+=0 messages+=0 attachments+=0
+      {"status": "stopped_at_limit", "total_emails": 50, "threads_created": 0, ...}
+
+  Every single `ingest_email.py` call had exited non-zero with a traceback. None
+  of it appeared anywhere.
+- **Root cause:** `run_full_capture.py` runs each per-email step through
+  `run_script()` and discards the failure:
+
+      code, out, err = run_script(["ingest_email.py", ...])
+      if code == 0:
+          ...
+      else:
+          # log and continue
+          pass
+
+  The comment says "log and continue"; the code only continues. `page_processed`
+  and `total_emails` increment regardless, so a total failure is indistinguishable
+  from a run where every email was already captured. The sibling steps
+  (`link_person_to_thread`, `rename_thread`, `capture_attachments`) discard their
+  exit codes even more directly — `_ = run_script([...])`.
+- **Expected:** a per-email failure is counted and surfaced. The summary already
+  has the right shape for it — it reports `skipped_as_noise` precisely so a low
+  count can be explained — and a `failed` count with the first error text belongs
+  beside it.
+- **Why it matters beyond tidiness:** this is the same silent-success shape the
+  repo has been bitten by repeatedly (`wire_peers`, BUG-056). A capture that
+  reports `processed=50, threads_created=0` and exit code 0 will pass any
+  automated check built on it, and on a schedule it would report healthy runs
+  forever while the vault stayed empty.
+- **Fix direction:** count failures, put `failed` and a first-error sample in the
+  summary JSON, and return non-zero when every email in a page failed — a page
+  that captured nothing is not a successful page.
