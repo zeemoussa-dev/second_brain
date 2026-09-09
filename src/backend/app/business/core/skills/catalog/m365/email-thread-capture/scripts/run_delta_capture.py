@@ -181,10 +181,15 @@ def next_watermark(
 
 def main() -> int:
     _require_vault_path()
+    # The Graph path needs no COM (2026-09-09). This was FATAL, which made the
+    # recurring job impossible to run under Hermes' own uv-managed Python: that
+    # interpreter refuses `pip install` ("externally managed environment"), so
+    # a dependency this code path never uses stopped the capture outright.
+    # Kept as a warning rather than deleted -- outlook_lib is still the right
+    # answer on a host that reads a local mail profile.
     ok, msg = ensure_pywin32()
     if not ok:
-        print(f"FATAL: pywin32 unavailable: {msg}")
-        return 3
+        print(f"NOTE: pywin32 unavailable ({msg}); the Graph path does not need it.")
 
     watermark = load_watermark()
 

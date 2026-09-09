@@ -18,6 +18,11 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix: `run_delta_capture.py` no longer treats a missing `pywin32` as FATAL. The
+  Graph path never uses COM, and Hermes' own uv-managed Python refuses
+  `pip install` ("externally managed environment"), so a dependency this code path
+  does not use made the recurring job impossible to run at all.
+
 - docs: `BUG-057`..`BUG-060` logged from the first real email capture on a clean
   install -- the Skill's classifier profile and noise definition exist only as live
   state on the machine that built them, per-email failures are swallowed by the
