@@ -180,6 +180,33 @@ _LABELLED = {
 }
 
 
+# Windows rejects these outright in a filename, and a real attachment name
+# carries them regularly: a Salesforce ref (`ref:!00D...:ref`) brings colons, a
+# forwarded subject brings `/`. Unsanitised, the colon crashed a whole capture
+# run with `OSError: [Errno 22] Invalid argument` (2026-09-09) and a `/`
+# silently truncated a saved attachment and lost its extension (BUG-059).
+_UNSAFE_IN_FILENAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+# NTFS caps a single path component at 255 chars; leave room for the uuid
+# prefix and the vault's own dated folder naming on top.
+_MAX_FILENAME_CHARS = 120
+
+
+def _safe_filename(name: str) -> str:
+    """A filename that survives Windows, WITHOUT losing the extension.
+
+    The extension is preserved deliberately: truncating a long name from the
+    right is what produced an attachment saved as `Fw` with no type at all, and
+    a file whose type is unrecoverable is not evidence, it is a mystery."""
+    cleaned = _UNSAFE_IN_FILENAME.sub("-", (name or "").strip()) or "attachment"
+    # Windows also refuses a trailing dot or space on a component.
+    cleaned = cleaned.rstrip(". ")
+    stem, dot, extension = cleaned.rpartition(".")
+    if not dot or len(extension) > 12:      # no real extension to protect
+        return cleaned[:_MAX_FILENAME_CHARS] or "attachment"
+    room = _MAX_FILENAME_CHARS - len(extension) - 1
+    return f"{stem[:room].rstrip('. ')}.{extension}" if room > 0 else cleaned[:_MAX_FILENAME_CHARS]
+
+
 def parse_signature_fields(body: str) -> dict:
     """Best-effort department / job title / company from a signature block.
 
@@ -470,7 +497,7 @@ def _attachment_records(attachments: list[dict], fetch=None) -> list[dict]:
         if content is None:
             results.append({"filename": filename, "temp_path": None, "size": size})
             continue
-        temp_path = os.path.join(tempfile.gettempdir(), f"{uuid.uuid4().hex}-{filename}")
+        temp_path = os.path.join(tempfile.gettempdir(), f"{uuid.uuid4().hex}-{_safe_filename(filename)}")
         with open(temp_path, "wb") as handle:
             handle.write(content)
         results.append({"filename": filename, "temp_path": temp_path, "size": size})

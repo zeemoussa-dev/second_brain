@@ -161,8 +161,22 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Full-history capture into the vault.")
     parser.add_argument("--max-emails", type=int, default=0,
                         help="stop after this many emails (0 = no limit, the default)")
+    # A dated backfill is the normal real request ("bring in the last three
+    # months"), and it is not the same as a message count: what matters is how
+    # far back the vault should reach, not how many messages that happens to be.
+    parser.add_argument("--since", default="",
+                        help="stop once the pull reaches this date (YYYY-MM-DD); "
+                             "emails older than it are not captured")
     args_ns = parser.parse_args()
     max_emails = max(0, args_ns.max_emails)
+    # Compared against `received` as a plain STRING, like every other watermark
+    # comparison in this pipeline -- so it has to be padded into the same
+    # "%Y-%m-%d %H:%M:%S.%f+00:00" shape. A bare "2026-06-11" would still sort
+    # correctly against it, but only by accident of prefix ordering; being
+    # explicit here keeps it correct if the format ever changes.
+    since_stamp = f"{args_ns.since} 00:00:00.000000+00:00" if args_ns.since else ""
+    if since_stamp:
+        print(f"BACKFILL WINDOW: capturing back to {args_ns.since} and no further")
 
     _require_vault_path()
     # Graph needs no COM (2026-09-09) -- but outlook_lib.py is still the right

@@ -42,6 +42,7 @@ import json
 import os
 from pathlib import Path
 
+import graph_lib
 import vault_lib
 import vault_manager
 
@@ -74,7 +75,12 @@ def capture_attachments(vault_path: Path, data: dict) -> dict:
             continue
         content = Path(temp_path).read_bytes()
         message_hash = hashlib.sha256(message_id.encode("utf-8")).hexdigest()[:8]
-        file_slug = f"{received[:10]} {message_hash}-{filename}"
+        # Sanitised for the vault path; `original_filename` below keeps the
+        # real name verbatim. Before this, a `/` in an attachment name split
+        # the slug into two path components -- the folder stopped mid-word and
+        # the bytes landed in a file with no extension (BUG-059), while a `:`
+        # from a Salesforce ref crashed the run outright.
+        file_slug = f"{received[:10]} {message_hash}-{graph_lib._safe_filename(filename)}"
         result = vault_lib.write_file_companion(
             vault_path,
             subfolder=directory,

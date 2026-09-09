@@ -121,6 +121,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -146,6 +147,17 @@ _NOISE_DEFINITION_RELATIVE_PATH = Path("data") / "EmailCapture" / "noise_definit
 # assumption 2) -- the only classification values ever written to a
 # Thread's frontmatter.
 _VALID_CLASSIFICATIONS = {"internal", "partner", "customer"}
+
+# This script's own self-declared identity for section access checks
+# (ADR-017), matching link_person_to_thread.py's own convention.
+_CALLER = "ingest_email"
+
+
+def _self_email() -> str:
+    """The mailbox owner's own address, case-folded. "" when unset, which
+    disables the self-exclusion rather than guessing at an identity."""
+    return (os.environ.get("SECOND_BRAIN_SELF_EMAIL")
+            or os.environ.get("SELF_EMAIL") or "").strip().lower()
 
 
 def _read_noise_definition(vault_path: Path) -> dict:
@@ -219,6 +231,57 @@ def _classify_or_skip(vault_path: Path, data: dict, direction: str, recipients: 
     if "is_noise" not in verdict:
         raise RuntimeError(f"classify-or-skip relay returned no 'is_noise' field: {raw_response[:500]!r}")
     return verdict
+
+
+def _index_message_in_conversation(
+    vault_path: Path, thread_template, thread_path: Path, message_path: Path, *,
+    conversation_id: str, received: str, direction: str,
+    sender_name: str, sender_email: str, subject: str,
+) -> None:
+    """Adds one line to the Thread's `## Conversation` section, in time order.
+
+    A Thread already holds both halves of the exchange -- Sent Items are
+    captured alongside the Inbox and every message note carries `direction` --
+    but nothing on the Thread itself let you READ it as a conversation
+    (operator, 2026-09-09: "Threads should include Sent Items and mark the
+    thread to be able to see the Conversation"). The message notes sort by
+    filename, which is subject-based, so who-said-what-when was only
+    recoverable by opening each one.
+
+    Rebuilt-and-sorted rather than appended, because capture walks history
+    BACKWARDS (newest page first) -- appending would produce a conversation
+    listed in reverse, and a delta run would then interleave new messages into
+    the middle of it. Sorting on the real `received` stamp is the only ordering
+    that is right regardless of the order capture happens to see messages in.
+
+    Idempotent by the message's own wikilink: a re-ingest of the same message
+    replaces its line rather than adding a second.
+    """
+    arrow = "->" if direction == "sent" else "<-"
+    who = sender_name or sender_email or "unknown"
+    when = (received or "")[:16]
+    line = f"- `{when}` {arrow} **{who}** — [[{message_path.stem}|{subject or '(no subject)'}]]"
+
+    existing = vault_manager.get_section_content(thread_path, "Conversation") or ""
+    # Key on the link target, not the whole line: a re-ingest may legitimately
+    # produce a different display label (a corrected subject) for the same note.
+    link_key = f"[[{message_path.stem}|"
+    lines = [
+        row for row in existing.splitlines()
+        if row.strip() and link_key not in row
+    ]
+    lines.append(line)
+
+    def sort_key(row: str) -> str:
+        stamp = re.search(r"`([^`]*)`", row)
+        return stamp.group(1) if stamp else ""
+
+    lines.sort(key=sort_key)
+    vault_manager.modify_section(
+        vault_path, thread_template, section="Conversation",
+        content="\n".join(lines), mode="replace",
+        note_id=conversation_id, note_name="Threads", caller=_CALLER,
+    )
 
 
 def ingest_email(vault_path: Path, data: dict) -> dict:
@@ -376,6 +439,15 @@ def ingest_email(vault_path: Path, data: dict) -> dict:
         if not email or email in seen_emails:
             continue
         seen_emails.add(email)
+        # The mailbox owner is not a contact in their own vault (operator,
+        # 2026-09-09). They are a participant in essentially every Thread, so a
+        # Person note for them says nothing, and their wikilink on every
+        # message and in every Related section is pure noise that buries the
+        # people who DO matter. Compared case-folded against
+        # SECOND_BRAIN_SELF_EMAIL -- the same value the capture reads the
+        # mailbox from, so the two can never disagree about who "self" is.
+        if email == _self_email():
+            continue
         person_result = vault_lib.ensure_bare_person_note(
             vault_path, participant.get("name") or email, participant["email"],
             department=participant.get("department") or "",
@@ -410,6 +482,13 @@ def ingest_email(vault_path: Path, data: dict) -> dict:
     )
     message_created = message_result["created"]
     message_path = Path(message_result["path"])
+
+    if message_created:
+        _index_message_in_conversation(
+            vault_path, thread_template, thread_path, message_path,
+            conversation_id=conversation_id, received=received, direction=direction,
+            sender_name=sender_name, sender_email=sender_email, subject=subject,
+        )
 
     # 2026-08-21, operator: Threads need a "last message" timestamp so a
     # recurring job can tell "already summarized, nothing new since" apart

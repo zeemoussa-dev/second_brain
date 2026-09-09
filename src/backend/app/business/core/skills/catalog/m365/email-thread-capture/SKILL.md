@@ -1,7 +1,7 @@
 ---
 name: email-thread-capture
 description: Full-history (one-time) or incremental (recurring) Microsoft 365 mail capture (Graph) into Second Brain's vault via standalone scripts.
-version: 0.6.0
+version: 0.7.0
 author: second-brain
 license: MIT
 platforms: [windows]
@@ -9,6 +9,10 @@ metadata:
   hermes:
     tags: [second-brain, email, vault, capture, recurring]
 writes:
+  - action: ingest_email
+    template: thread
+    requires: 1
+    sections: [Conversation]
   - action: link_person_to_thread
     template: thread
     requires: 1

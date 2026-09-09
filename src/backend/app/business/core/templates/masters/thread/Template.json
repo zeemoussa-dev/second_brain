@@ -33,6 +33,10 @@
         "access": "machine_write"
       },
       {
+        "name": "Conversation",
+        "access": "machine_write"
+      },
+      {
         "name": "Related",
         "access": "machine_write"
       },

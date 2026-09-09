@@ -18,6 +18,26 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: a Thread now has a **`## Conversation`** section -- one line per message,
+  time-ordered, with a direction arrow and the sender, so a Thread reads as the
+  exchange it is. Sent Items were always captured; nothing on the Thread let you
+  see them next to the received half. Added to the shipped `thread` master
+  (additive, so `version` stays 1) and written by `ingest_email`.
+
+- fix: the mailbox owner is no longer given a Person note or a participant
+  wikilink. They are in essentially every Thread, so their link on every message
+  and in every Related section buried the people who matter. Keyed on
+  `SECOND_BRAIN_SELF_EMAIL`, the same value capture reads the mailbox from.
+
+- fix: attachment filenames are sanitised for path-reserved characters
+  (`BUG-059`). A `:` from a Salesforce ref crashed an entire capture run with
+  `OSError: [Errno 22]`, and a `/` silently truncated a saved attachment and lost
+  its extension. The extension is preserved explicitly rather than left to
+  survive truncation.
+
+- feat: `run_full_capture.py --since YYYY-MM-DD` bounds a backfill by date, which
+  is how the real request is actually shaped ("the last three months").
+
 - fix: `run_delta_capture.py` no longer treats a missing `pywin32` as FATAL. The
   Graph path never uses COM, and Hermes' own uv-managed Python refuses
   `pip install` ("externally managed environment"), so a dependency this code path
