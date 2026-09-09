@@ -1,7 +1,7 @@
 ---
 name: email-thread-capture
-description: Full-history (one-time) or incremental (recurring) Outlook capture into Second Brain's vault via standalone scripts.
-version: 0.5.0
+description: Full-history (one-time) or incremental (recurring) Microsoft 365 mail capture (Graph) into Second Brain's vault via standalone scripts.
+version: 0.6.0
 author: second-brain
 license: MIT
 platforms: [windows]
@@ -25,7 +25,7 @@ writes:
 
 # Email Thread Capture
 
-Pulls email from the Outlook inbox into Second Brain's vault, structuring
+Pulls email from a Microsoft 365 mailbox (via Graph) into Second Brain's vault, structuring
 it into Threads -- either the initial **one-time, full-history** rebuild
 (`run_full_capture.py`) or the **recurring, incremental** delta pass
 (`run_delta_capture.py`, 2026-08-22) that keeps the vault current after
@@ -44,23 +44,43 @@ server vs. Hermes-native Skill scripts," for why.
 
 ## Prerequisites
 
-- **Windows only** -- these scripts use `pywin32` COM automation against
-  Outlook desktop.
-- Outlook desktop must be running and signed in on this machine.
-- `pywin32` must be importable. **Do not check this with an inline
-  `python -c "..."` command, and never wrap ANY script call in this Skill
-  in `bash -lc "..."` either** -- Hermes' own `terminal` tool
-  categorically requires human approval for any `-c`/`-lc` shell-string
-  invocation (confirmed live 2026-08-21: `hermes approvals test`,
-  rule `shell command via -c/-lc flag`), which stalls a cron-triggered
-  run with no one there to approve it. Every script call in this Skill
-  must be a PLAIN, direct `terminal` call (`command` starting with
-  `python` itself, no shell wrapper at all). Just try
-  `list_recent_emails.py` (step 1 below) directly -- if it fails with an
-  import error, THEN run
-  `terminal(command="python -m pip install pywin32")` (a real `.py`/
-  module-args invocation, not `-c`/`-lc`, so it runs without a prompt) and
-  retry.
+**Transport: Microsoft Graph (2026-09-09).** This Skill moved from Outlook
+desktop COM to Graph and now lives under the **`m365`** Tool. No Outlook,
+no `pywin32`, no mail profile on the host -- which is the point: the agent
+runs as one account and reads a mailbox belonging to another, which COM
+cannot do. (`outlook/meeting-capture` is still the COM path and is
+unaffected.)
+
+- **A one-time sign-in, then unattended.** Auth is **delegated**, not
+  app-only: this tenant grants Graph permissions as Delegated only, so a
+  client-credentials token comes back carrying zero `roles` and can read no
+  mailbox at all -- a failure that looks like success. Run
+  `terminal(command="python authorize_graph.py")` once per machine; it
+  prints a code to enter at Microsoft's own page and stores a refresh
+  token. `python authorize_graph.py --status` reports what is stored
+  without signing in.
+- **When capture starts failing with `invalid_grant`, the refresh token was
+  revoked** (Conditional Access, a password change, or ~90 days idle) and
+  someone must run `authorize_graph.py` again. This is a real operating
+  mode, not an edge case -- a silent stop here means mail quietly stops
+  reaching the vault.
+- **Environment** (Hermes' own `.env` supplies these to every script):
+  `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `SECOND_BRAIN_SELF_EMAIL` (the
+  mailbox to read), `SECOND_BRAIN_DATA_PATH` (where the refresh token is
+  stored -- **never** inside the repo), and `SECOND_BRAIN_VAULT_PATH`.
+  There is no `GRAPH_CLIENT_SECRET`: a device-code public client has none.
+- **Mailbox access is granted in Exchange, not in the app registration.**
+  The signed-in account needs Full Access (or at minimum Read on the
+  Inbox) to `SECOND_BRAIN_SELF_EMAIL`. Without it Graph answers **404
+  "Default folder Inbox not found"** -- *not* 403 -- because an
+  undelegated folder is invisible rather than forbidden. Do not read that
+  404 as "wrong address".
+- **Never wrap a script call in `-c` or `bash -lc`.** Hermes' `terminal`
+  tool categorically requires human approval for any `-c`/`-lc`
+  shell-string invocation (confirmed live 2026-08-21: `hermes approvals
+  test`, rule `shell command via -c/-lc flag`), which stalls a
+  cron-triggered run with no one there to approve it. Every call must be a
+  PLAIN, direct `terminal` call starting with `python` itself.
 - Vault path: the scripts read `SECOND_BRAIN_VAULT_PATH` from Hermes' own
   `.env` themselves (written there by Second Brain's setup wizard), so
   `--vault-path` only needs passing to override it. Never hardcode an

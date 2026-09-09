@@ -18,6 +18,18 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- refactor: `email-thread-capture` moves from the `outlook` Tool to a new **`m365`**
+  Tool. The Tool boundary is now the transport: `outlook` = Outlook desktop COM
+  (`meeting-capture`, unchanged), `m365` = Microsoft Graph. `list_recent_emails.py`
+  imports `graph_lib` instead of `outlook_lib`, and the COM library is dropped from
+  this Skill (it remains under `outlook/meeting-capture`). SKILL.md rewritten for
+  the Graph/delegated prerequisites. `version: 0.6.0`.
+
+- feat: `run_full_capture.py --max-emails N` bounds a full-history run. It paged
+  until the mailbox was exhausted, which against the real target (23,359 messages)
+  made a reviewable first run impossible. Stops on a page boundary, never mid-page,
+  so no gap is left for the watermark to step over.
+
 - feat: `email-thread-capture` Graph auth moves from app-only to **delegated**
   (`graph_lib._access_token`) -- this tenant grants permissions as Delegated only,
   so a client-credentials token was issued carrying zero roles and could read no
