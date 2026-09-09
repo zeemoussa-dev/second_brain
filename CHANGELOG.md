@@ -18,6 +18,12 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- docs: `BUG-057`..`BUG-060` logged from the first real email capture on a clean
+  install -- the Skill's classifier profile and noise definition exist only as live
+  state on the machine that built them, per-email failures are swallowed by the
+  driver, an attachment name containing a path separator loses its extension, and a
+  Thread's `title` stays the raw conversation id.
+
 - refactor: `email-thread-capture` moves from the `outlook` Tool to a new **`m365`**
   Tool. The Tool boundary is now the transport: `outlook` = Outlook desktop COM
   (`meeting-capture`, unchanged), `m365` = Microsoft Graph. `list_recent_emails.py`

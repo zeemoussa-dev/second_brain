@@ -235,6 +235,8 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 | BUG-056 | Delete an Agent, reinstall it, and it comes back with no Skills while the install reports success | Logic | Closed | direct fix, 2026-09-07 |
 | BUG-057 | Email capture cannot be provisioned on a fresh install from the repo alone | Logic | Open | — |
 | BUG-058 | A capture where every ingest failed reports total success | Logic | Open | — |
+| BUG-059 | An attachment filename containing a path separator is truncated and loses its extension | Logic | Open | — |
+| BUG-060 | A Thread note's `title` is the raw conversation id | UI | Open | — |
 
 > **Emptied 2026-09-06** with `BUGS.md`, which this mirrors — 42 rows.
 > History: `git show d64dcb4:BACKLOG.md`. Next id is **`BUG-043`**.

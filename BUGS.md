@@ -45,6 +45,8 @@ is a thin status mirror of the index table below.
 | BUG-056 | Deleting an Agent leaves its Skills' `deployed_to` records behind, so recreating it skips every deployment as "already" — the install reports success and the Agent comes up with NO Skills at all | Logic | Blocker | Closed | 2026-09-07 | direct fix, 2026-09-07 |
 | BUG-057 | `email-thread-capture` cannot be provisioned on a fresh install from the repo alone: it needs a `email-capture-classifier` Hermes profile that exists only as prose in a task file, and a noise-definition artifact, neither of which the Skill creates or documents | Logic | Blocker | Open | 2026-09-09 | — |
 | BUG-058 | `run_full_capture.py` swallows a non-zero exit from every per-email step, so a capture where 100% of ingests failed reports `processed=50` with no error anywhere | Logic | Major | Open | 2026-09-09 | — |
+| BUG-059 | An attachment whose filename contains a path separator is saved under a TRUNCATED name with its extension lost — the bytes land in a file called `Fw` with no extension, and the Thread's Files link points at the truncated name | Logic | Major | Open | 2026-09-09 | — |
+| BUG-060 | A Thread note's `title` frontmatter is the raw base64 conversation id while its filename and `thread_name` are readable, so Obsidian displays the id | UI | Minor | Open | 2026-09-09 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -789,3 +791,56 @@ is a thin status mirror of the index table below.
 - **Fix direction:** count failures, put `failed` and a first-error sample in the
   summary JSON, and return non-zero when every email in a page failed — a page
   that captured nothing is not a successful page.
+
+### BUG-059 — an attachment filename containing a path separator is truncated and loses its extension
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-09-09, first real 50-email capture. Four of five attachments
+  saved correctly. The fifth did not:
+
+      Work/Threads/2026-09-09 MIC-Invest AD Opportunity extension/files/
+        2026-09-09 69f67b57-Fw- AD Invest(Mubadala) Extension of Migration project(12109/
+          2026-09-09 69f67b57-...project(12109.md
+          Fw                      <- the attachment bytes, no extension
+
+  The attachment's own name carried a path separator. Everything after it became
+  a nested path, so the folder name stops mid-word at `(12109` and the file
+  itself is called `Fw`.
+- **Repro:** capture an email whose attachment filename contains `/` (or `\`).
+- **Expected:** the separator is replaced, the name is preserved as far as the
+  filesystem allows, and the extension survives.
+- **Actual:** the name is silently truncated at the separator and the extension
+  is gone, so the file cannot be opened by double-click and its type is
+  unrecoverable from the name. The Thread's `## Files` wikilink points at the
+  truncated name, so the vault reference is wrong too.
+- **Why Major rather than cosmetic:** this is the capture step's one job for
+  attachments -- preserve the evidence. A file saved under a name that loses its
+  type is not preserved in any useful sense, and nothing reports a problem: the
+  run counted it among `attachments_captured: 5`.
+- **Fix direction:** sanitise the attachment name for every path-reserved
+  character (`/ \ : * ? " < > |`) before it is used as a folder or file name,
+  not just for length. Keep the extension explicitly rather than relying on
+  whatever survives the truncation. Worth checking the same path in
+  `capture_attachments.py` and in the meeting-capture sibling.
+
+### BUG-060 — a Thread note's `title` is the raw conversation id
+
+- **Area:** UI
+- **Severity:** Minor
+- **Status:** Open
+- **Found:** 2026-09-09, reviewing the first captured Threads.
+
+      thread_name: "ADNOC"
+      title: "AAQkAGM0Yzg5ZDFkLTQxNmItNGM4OS04NWM3LWNmZTdlMzg1MjE0Mw..."
+
+  The folder and file are both named `2026-09-09 ADNOC`, and `thread_name`
+  carries the readable name, but `title` keeps the base64 conversation id.
+- **Expected:** `title` matches what the note is actually called.
+- **Actual:** Obsidian and anything else keying off `title` shows a 76-character
+  base64 blob instead of the subject. `rename_thread.py` updates the filename and
+  `thread_name` and leaves `title` behind.
+- **Note:** `id` legitimately stays the conversation id -- that is the identity
+  the engine dedupes on, and it must not change. This is only about the display
+  field.
