@@ -30,8 +30,11 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   `kind/captures` and `kind/kb-doc`. File notes were losing the `file`
   template's `kind/file` entirely -- they are written directly rather than
   through the template, so they carried only `type/<ext>` and were invisible
-  to a "find every File" query. Now both. `retrofit_conversation_index.py`
-  backfills all three onto already-captured notes.
+  to a "find every File" query. Email attachments get **`kind/attachment`**
+  rather than `kind/file` -- an attachment and a file the operator uploaded are
+  different things, and only the latter goes through the `file` template. A
+  captured external link gets `kind/file-link`, since nothing was downloaded.
+  `retrofit_conversation_index.py` backfills them onto already-captured notes.
 
 - feat: `summarize-and-tag-threads` reads Threads through a new `read_thread.py`
   instead of opening the message notes. It returns the messages in TIME order,

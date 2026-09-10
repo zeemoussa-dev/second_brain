@@ -61,7 +61,7 @@ def retrofit(vault_path: Path, *, dry_run: bool) -> dict:
     threads_seen = 0
     kind_tags_added = 0
     email_tags_added = 0
-    file_tags_added = 0
+    attachment_tags_added = 0
 
     for thread_dir in sorted(p for p in threads_root.iterdir() if p.is_dir()):
         thread_note = thread_dir / f"{thread_dir.name}.md"
@@ -115,15 +115,16 @@ def retrofit(vault_path: Path, *, dry_run: bool) -> dict:
         if content:
             conversations_written += 1
 
-        # `kind/file` on each attachment's companion note. These are written
-        # directly rather than through the `file` template, so the template's
-        # own default never reached them -- they carried `type/<ext>` alone.
+        # `kind/attachment` on each attachment's companion note. These are
+        # written directly rather than through the `file` template, so no kind
+        # tag ever reached them -- they carried `type/<ext>` alone. NOT
+        # `kind/file`: that is a standalone upload, a different thing.
         for companion in (thread_dir / "files").glob("*/*.md"):
             companion_frontmatter, _ = vault_manager.read_note(companion)
-            if "kind/file" not in (companion_frontmatter.get("tags") or []):
-                file_tags_added += 1
+            if "kind/attachment" not in (companion_frontmatter.get("tags") or []):
+                attachment_tags_added += 1
                 if not dry_run:
-                    vault_manager.merge_tags(companion, ["kind/file"])
+                    vault_manager.merge_tags(companion, ["kind/attachment"])
 
         related = vault_manager.get_section_content(thread_note, "Related") or ""
         kept_rows = [row for row in related.splitlines()
@@ -147,7 +148,7 @@ def retrofit(vault_path: Path, *, dry_run: bool) -> dict:
         "message_notes_cleaned": messages_cleaned,
         "kind_tags_added": kind_tags_added,
         "email_tags_added": email_tags_added,
-        "file_tags_added": file_tags_added,
+        "attachment_tags_added": attachment_tags_added,
     }
 
 
