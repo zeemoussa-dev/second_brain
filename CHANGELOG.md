@@ -18,6 +18,34 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: `reconcile_entities.py` — makes the vault's folders agree with `Entities.md`.
+  Reclassify between Customers and Partners, re-parent an Affiliate under its parent,
+  remove a folder marked `Deleted` (moving its People back to `Work/People` first).
+  One atomic directory rename, so an interrupted run cannot leave an entity in two
+  places. Wired into the nightly pass between `hubs` and `people`.
+
+- feat: the Metadata pipeline is scheduled — `SB hubs create` every 30 minutes
+  (create-if-not-exist only) and `SB metadata nightly` at 03:00. Both `--no-agent`
+  and `--quiet`: a job with nothing to report prints nothing, so its stdout reaches
+  the operator only when something happened or failed.
+
+- fix: `upsert_namespaced_tag` appended the tag value WITHOUT its namespace, writing
+  `internal` instead of `engagement/internal`. A bare tag never matched the
+  `namespace/` strip, so every run appended another copy — 1,897 Threads carried
+  `["internal", "internal", "internal"]` and the engagement step reported them all as
+  updated on every pass. Repaired in place.
+
+- fix: hub creation resurrected an entity marked `Deleted: Yes`. It gated on
+  `Ignore: Yes` alone, safe only because the Settings UI sets both together — a hand
+  edit does not, and hand-editing is the documented way to curate the file.
+
+- fix: `reconcile_people` scanned `*/People/*.md` only, leaving every Affiliate's
+  people permanently duplicated.
+
+- perf: `retag_people_by_domain` walked the whole vault once per hub — 195 × 12,722 =
+  2.4M reads, over 25 minutes without finishing. One domain index, one walk: the full
+  five-step pass now runs in 39 seconds.
+
 - feat: Customer/Partner/Opportunity templates gained `Summary`, `Personal Notes`,
   `Actions` and `Related` — a hub previously had only `Affiliates` and its children
   index, so the entity that matters most had nowhere to put a summary or an open

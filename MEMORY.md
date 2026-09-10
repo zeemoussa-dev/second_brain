@@ -83,6 +83,16 @@ Where a rule does not belong here:
 
 - **[2026-09-11] Section order on an existing note is not self-correcting.** A backfill that inserts missing sections appends them, so a hub repaired after a template change ends up with `Summary` below `Affiliates` while a freshly-created one is correct. Two notes of the same type reading differently is the mess. Reorder against the template's declared order, moving each block WITH its content, and keep any unrecognised heading after the known ones — it is far more likely to be something a human added than something safe to drop.
 
+- **[2026-09-11] A recurring `--no-agent` cron delivers its stdout verbatim, so a job with nothing to report must print NOTHING.** Reason: the 30-minute hub job printed the ~200 entity names it had correctly done nothing about, which would have reached the operator 48 times a day. Silence is the "nothing happened" signal. The rule has one hard exception: a FAILURE always prints, because silence has to mean "healthy", never "did not run".
+
+- **[2026-09-11] A cron script must set `PYTHONPATH` and the `SECOND_BRAIN_*` paths itself, not inherit them.** Hermes writes them into its own `.env`, but that only reaches a job after a gateway restart. The failure is silent: `ModuleNotFoundError` inside a `--no-agent` job whose stdout nobody reads when it is quiet.
+
+- **[2026-09-11] A helper taking `namespace` and `tag` as SEPARATE arguments must compose them.** `upsert_namespaced_tag(path, "engagement", "internal")` appended the bare value, and because a bare tag never matched the `namespace/` strip the function does first, every run appended one more copy — 1,897 real Threads carried `["internal", "internal", "internal"]`, and the caller's own idempotency check looked for a tag that was never written. A split signature makes the bare form the natural call; if a helper wants the qualified form it should not take the namespace separately.
+
+- **[2026-09-11] An invariant that holds on only one of two write paths is not an invariant.** Hub creation gated on `Ignore: Yes` alone, documented as safe because the Settings UI sets `Deleted` alongside it. A hand edit does not — and hand-editing is the documented way to curate `Entities.md` — so creation rebuilt the folder of a deleted entity every 30 minutes and the nightly reconcile deleted it again, forever.
+
+- **[2026-09-11] Never nest a full-vault walk inside a per-entity loop.** Every entity asks the same question of the same files: build the index once, then walk once. `retag_people_by_domain` did 195 hubs x 12,722 notes = 2.4M reads and did not finish in 25 minutes; inverted, the whole five-step pass takes 39 seconds.
+
 ## Capture pipelines
 
 - **[2026-09-10] Strip HTML at READ, never at capture -- 83% of a stored Outlook body is markup.** Measured on 119 real Threads: 6.66 M raw chars reduce to 1.14 M of text, i.e. ~14,000 input tokens per Thread become ~2,400 for identical content. An agent reading captured message notes raw pays for every `<div style="font-family:Aptos,...">` and learns nothing from it. But convert on the way OUT, not on the way in: an email's real body IS the HTML, capture's job is to preserve the evidence faithfully, and if a summary ever looks wrong the original is what you check it against. `summarize-and-tag-threads/scripts/read_thread.py` is the converter.
