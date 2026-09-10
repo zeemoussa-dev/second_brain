@@ -74,6 +74,25 @@ def _run(label: str, args: list[str], cwd: Path) -> dict:
     return {"step": label, "ok": True, "seconds": seconds, "result": payload}
 
 
+# Counters that only ever report inventory, never work performed -- a hub the
+# pass correctly skipped is not a change, and treating it as one would make the
+# quiet mode print every single night.
+_INVENTORY_KEYS = {"skipped_ignored", "skipped_already", "skipped_unresolved",
+                   "flat_people", "hubs_seen", "status", "hubs_only"}
+
+
+def _did_something(steps: list[dict]) -> bool:
+    for step in steps:
+        for key, value in (step.get("result") or {}).items():
+            if key in _INVENTORY_KEYS:
+                continue
+            if isinstance(value, list) and value:
+                return True
+            if isinstance(value, int) and value:
+                return True
+    return False
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Nightly mechanical metadata pass.")
     parser.add_argument("--vault-path", default=os.environ.get("SECOND_BRAIN_VAULT_PATH", ""))
@@ -82,6 +101,9 @@ def main() -> int:
                              "marked Deleted in Entities.md. Off by default: every "
                              "other step is additive or a move, and a move can be "
                              "moved back.")
+    parser.add_argument("--quiet", action="store_true",
+                        help="Print nothing on a night with no failures and no "
+                             "changes. Failures always print.")
     parser.add_argument("--skip-discovery", action="store_true",
                         help="Do not re-run company discovery. Discovery REWRITES "
                              "Entities.md, which carries the operator's own curation.")
@@ -119,6 +141,13 @@ def main() -> int:
                                 "--retag-only"], SCRIPTS_DIR))
 
     failed = [s["step"] for s in steps if not s["ok"]]
+
+    # A --no-agent cron delivers stdout verbatim, so a night where the pass
+    # correctly found nothing to do should say nothing at all. A FAILURE always
+    # prints -- silence has to mean "healthy", never "did not run".
+    if args.quiet and not failed and not _did_something(steps):
+        return 0
+
     print(json.dumps({
         "status": "complete" if not failed else "completed_with_failures",
         "failed_steps": failed,

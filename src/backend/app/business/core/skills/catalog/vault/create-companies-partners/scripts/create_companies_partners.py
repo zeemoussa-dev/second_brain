@@ -895,7 +895,24 @@ def tag_engagement_type(vault_path: Path) -> dict:
         return "internal"
 
     def _already_classified(tags: list[str], classification: str) -> bool:
-        return f"engagement/{classification}" in tags
+        return (f"engagement/{classification}" in tags
+                and not _bare_classification_tags(tags))
+
+    def _bare_classification_tags(tags: list[str]) -> list[str]:
+        """The wreckage of the un-namespaced write (2026-09-11): before
+        `upsert_namespaced_tag` composed its namespace, this wrote `internal`
+        rather than `engagement/internal`, and since a bare tag never matched
+        the `engagement/` strip, every run appended another copy -- real
+        Threads carried `["internal", "internal", "internal"]`.
+
+        Matched by exact value against the three classifications only, never by
+        prefix, so a tag a human wrote is not swept up with them."""
+        return [t for t in tags if t in ("customer", "partner", "internal")]
+
+    def _strip_bare(note_path: Path, tags: list[str]) -> None:
+        frontmatter, body = vm.read_note(note_path)
+        frontmatter["tags"] = [t for t in tags if t not in ("customer", "partner", "internal")]
+        vm.write_note(note_path, frontmatter, body)
 
     threads_updated: list[str] = []
     for thread_md in _iter_thread_notes(vault_path):
@@ -906,6 +923,8 @@ def tag_engagement_type(vault_path: Path) -> dict:
         classification = classify(tags)
         if _already_classified(tags, classification):
             continue  # vm.upsert_namespaced_tag has no idempotency check of its own -- skip a real no-op write
+        if _bare_classification_tags(tags):
+            _strip_bare(thread_md, tags)
         vm.upsert_namespaced_tag(thread_md, "engagement", classification)
         threads_updated.append(str(thread_md))
 
@@ -918,6 +937,8 @@ def tag_engagement_type(vault_path: Path) -> dict:
         classification = classify(tags)
         if _already_classified(tags, classification):
             continue
+        if _bare_classification_tags(tags):
+            _strip_bare(meeting_path, tags)
         vm.upsert_namespaced_tag(meeting_path, "engagement", classification)
         meetings_updated.append(str(meeting_path))
 
@@ -1160,6 +1181,12 @@ def main() -> int:
     )
     parser.add_argument("--entities-name", default="Entities.md")
     parser.add_argument(
+        "--quiet", action="store_true",
+        help="Print nothing when there was nothing to create, and only the names "
+             "created otherwise. For the recurring cron, whose stdout is delivered "
+             "verbatim.",
+    )
+    parser.add_argument(
         "--reconcile-people", action="store_true",
         help="Repair pass: where a Person exists BOTH flat and under a hub, merge any "
              "newer flat values into the hub copy and remove the flat duplicate. Capture "
@@ -1219,6 +1246,15 @@ def main() -> int:
         return 1
 
     result = build(vault_path, entities_path, move_people=not args.hubs_only)
+    if args.quiet and not (result.get("created") or result.get("auto_created_parents")):
+        # Silence, not an empty summary. A --no-agent cron job delivers its
+        # stdout verbatim, and this runs every 30 minutes: printing the ~200
+        # names it correctly did nothing about would put that list in the
+        # operator's chat 48 times a day. Empty stdout = the job stays quiet.
+        return 0
+    if args.quiet:
+        result = {"created": result.get("created"),
+                  "auto_created_parents": result.get("auto_created_parents")}
     print(json.dumps(result, ensure_ascii=False))
     return 0
 

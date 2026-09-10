@@ -823,6 +823,28 @@ def test_upsert_namespaced_tag_replaces_same_namespace_only(vault):
     assert frontmatter["tags"] == ["kind/thread", "engagement/customer"]
 
 
+def test_upsert_namespaced_tag_composes_a_bare_value(vault):
+    """The signature takes the namespace and the value separately, so passing
+    the value bare is the natural call -- and it was writing `internal` instead
+    of `engagement/internal` onto 1,895 real Threads."""
+    path = vault / "Work" / "Threads" / "t.md"
+    vm.write_note(path, {"type": "Thread", "tags": ["kind/thread"]}, "\n")
+    vm.upsert_namespaced_tag(path, "engagement", "internal")
+    frontmatter, _ = vm.read_note(path)
+    assert frontmatter["tags"] == ["kind/thread", "engagement/internal"]
+
+
+def test_upsert_namespaced_tag_does_not_accumulate_across_runs(vault):
+    """The un-namespaced tag never matched the `namespace/` strip, so each run
+    appended one more copy. Three runs must still leave exactly one."""
+    path = vault / "Work" / "Threads" / "t.md"
+    vm.write_note(path, {"type": "Thread", "tags": ["kind/thread"]}, "\n")
+    for _ in range(3):
+        vm.upsert_namespaced_tag(path, "engagement", "internal")
+    frontmatter, _ = vm.read_note(path)
+    assert frontmatter["tags"] == ["kind/thread", "engagement/internal"]
+
+
 def test_insert_body_line_if_missing_is_idempotent(vault):
     path = vault / "Work" / "People" / "jane.md"
     vm.write_note(path, {"type": "Person"}, "\nExisting content.\n")
