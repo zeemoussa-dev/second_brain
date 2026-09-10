@@ -223,10 +223,9 @@ def _render_entry(lines: list[str], entry: dict) -> None:
     lines.append("")
     # Deleted: Yes -- soft-delete field (2026-08-27, see the matching
     # comment in find_new_entities.py's own _render_entry for the full
-    # reasoning). A Deleted: Yes row also always carries Ignore: Yes
-    # (set together by the app's own Settings > Vault > Entities UI), so
-    # the existing Ignore: Yes checks in Pass 1/Pass 2 above already skip
-    # it -- no separate Deleted check needed in the hub-creation logic.
+    # reasoning). Checked explicitly by _is_excluded_from_creation: the
+    # Settings UI sets Ignore alongside it, but a hand edit does not, and
+    # hand-editing is how this file is meant to be curated.
     lines.append(f"\tDeleted: {f.get('Deleted', 'No')}")
     lines.append("")
     lines.append("")
@@ -236,6 +235,20 @@ def _render_entry(lines: list[str], entry: dict) -> None:
 
 def _entry_name(entry: dict) -> str:
     return (entry["fields"].get("Company Name") or entry["heading"]).strip()
+
+
+def _is_excluded_from_creation(entry: dict) -> bool:
+    """`Ignore: Yes` OR `Deleted: Yes` -- both must be checked here.
+
+    This used to check `Ignore` alone, on the reasoning that the Settings UI
+    sets the two together. It does; a HAND edit does not, and hand-editing is
+    the documented way to curate this file. The result was a resurrection loop:
+    hub creation (every 30 minutes) rebuilt the folder of an entity marked
+    Deleted, and the nightly reconcile deleted it again, forever. An invariant
+    that only holds on one of two write paths is not an invariant."""
+    fields = entry["fields"]
+    return (fields.get("Ignore", "No").strip().lower() == "yes"
+            or fields.get("Deleted", "No").strip().lower().startswith("y"))
 
 
 def _hub_root(section: str) -> str:
@@ -385,8 +398,13 @@ def reconcile_people(vault_path: Path, *, dry_run: bool = False) -> dict:
     for root in ("Customers", "Partners"):
         base = vault_path / "Work" / root
         if base.is_dir():
-            for person in base.glob("*/People/*.md"):
-                hub_people.setdefault(person.name.lower(), person)
+            # Both depths: an Affiliate's People folder sits one level deeper
+            # (Partners/G42/Affiliates/M42/People). Scanning only the top level
+            # left every affiliate's people permanently duplicated, since the
+            # flat copy was never recognised as having a hub copy at all.
+            for pattern in ("*/People/*.md", "*/Affiliates/*/People/*.md"):
+                for person in base.glob(pattern):
+                    hub_people.setdefault(person.name.lower(), person)
 
     resolved, merged = 0, 0
     for flat in sorted(flat_dir.glob("*.md")):
@@ -930,7 +948,7 @@ def build(vault_path: Path, entities_path: Path, *, move_people: bool = True) ->
         if (entry["fields"].get("Affiliate of") or "").strip():
             continue  # handled in pass 2
         name = _entry_name(entry)
-        if entry["fields"].get("Ignore", "No").strip().lower() == "yes":
+        if _is_excluded_from_creation(entry):
             skipped_ignored.append(name)
             continue
         section = entry["section"]
@@ -993,7 +1011,7 @@ def build(vault_path: Path, entities_path: Path, *, move_people: bool = True) ->
             return top_level_paths[key]
         if key in resolving:
             return None  # real cycle -- refuse to recurse forever
-        if entry["fields"].get("Ignore", "No").strip().lower() == "yes":
+        if _is_excluded_from_creation(entry):
             return None  # same precedent Pass 1 already sets: an ignored entry is never a usable parent
         resolving.add(key)
         try:
@@ -1079,7 +1097,7 @@ def build(vault_path: Path, entities_path: Path, *, move_people: bool = True) ->
         if not affiliate_of:
             continue
         name = _entry_name(entry)
-        if entry["fields"].get("Ignore", "No").strip().lower() == "yes":
+        if _is_excluded_from_creation(entry):
             skipped_ignored.append(name)
             continue
         _resolve_affiliate_entry(entry, set())

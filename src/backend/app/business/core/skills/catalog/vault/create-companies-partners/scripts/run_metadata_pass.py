@@ -15,10 +15,19 @@ Steps, in dependency order:
 
   1. discover   new companies from newly-captured threads -> Entities.md
   2. hubs       create any hub note that does not exist yet
-  3. people     move People into their hub folder, and repair the duplicates
+  3. reconcile  make the folders agree with Entities.md -- reclassify between
+                Customers and Partners, re-parent an Affiliate under its parent,
+                remove a folder marked Deleted
+  4. people     move People into their hub folder, and repair the duplicates
                 capture continuously recreates
-  4. retag      company tags on Threads, Meetings and People, from domains
-  5. engagement engagement/<classification> on Threads and Meetings
+  5. retag      company tags on Threads, Meetings and People, from domains
+  6. engagement engagement/<classification> on Threads and Meetings
+
+Order is not arbitrary. `reconcile` runs AFTER `hubs` so an Affiliate whose
+parent was only created tonight can still be filed under it, and BEFORE
+`people`/`retag` so those two see every entity at its final path -- retagging a
+folder that is about to move would write the old company's tag and then have to
+be undone.
 
 Discovery is skippable because it REWRITES Entities.md, and that file carries
 the operator's own curation -- classification, Ignore flags, merged Aliases.
@@ -68,6 +77,11 @@ def _run(label: str, args: list[str], cwd: Path) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Nightly mechanical metadata pass.")
     parser.add_argument("--vault-path", default=os.environ.get("SECOND_BRAIN_VAULT_PATH", ""))
+    parser.add_argument("--allow-delete", action="store_true",
+                        help="Let the reconcile step REMOVE the folder of an entry "
+                             "marked Deleted in Entities.md. Off by default: every "
+                             "other step is additive or a move, and a move can be "
+                             "moved back.")
     parser.add_argument("--skip-discovery", action="store_true",
                         help="Do not re-run company discovery. Discovery REWRITES "
                              "Entities.md, which carries the operator's own curation.")
@@ -78,6 +92,7 @@ def main() -> int:
         return 2
 
     vault = args.vault_path
+    allow_delete = args.allow_delete
     steps: list[dict] = []
 
     if not args.skip_discovery:
@@ -91,6 +106,10 @@ def main() -> int:
 
     steps.append(_run("hubs", ["create_companies_partners.py", "--vault-path", vault,
                                "--hubs-only"], SCRIPTS_DIR))
+    reconcile_args = ["reconcile_entities.py", "--vault-path", vault]
+    if allow_delete:
+        reconcile_args.append("--allow-delete")
+    steps.append(_run("reconcile", reconcile_args, SCRIPTS_DIR))
     steps.append(_run("people", ["create_companies_partners.py", "--vault-path", vault,
                                  "--reconcile-people"], SCRIPTS_DIR))
     # retag-only covers People, Threads, Meetings and engagement in one call --
