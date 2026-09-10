@@ -18,6 +18,21 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: `meeting-capture` moves to Microsoft Graph and joins the **m365** Tool.
+  New `graph_calendar_lib.py` is a drop-in for `outlook_lib`'s calendar read;
+  `calendarView` expands recurring series into occurrences. Fixes two latent
+  bugs found porting: the driver was hardcoded to `--limit 200` against a
+  766-event window, and the fetch did not page -- both would have captured a
+  prefix and reported success. The `outlook` Tool is now empty and removed.
+
+- fix: **kind tags**, which only some note types had. Added `kind/thread`,
+  `kind/email` (message notes), `kind/customer`, `kind/partner`, `kind/log`,
+  `kind/captures` and `kind/kb-doc`. File notes were losing the `file`
+  template's `kind/file` entirely -- they are written directly rather than
+  through the template, so they carried only `type/<ext>` and were invisible
+  to a "find every File" query. Now both. `retrofit_conversation_index.py`
+  backfills all three onto already-captured notes.
+
 - feat: `summarize-and-tag-threads` reads Threads through a new `read_thread.py`
   instead of opening the message notes. It returns the messages in TIME order,
   each marked SENT/RECEIVED, with the HTML stripped to text. Measured across 119

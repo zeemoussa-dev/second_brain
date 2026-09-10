@@ -28,7 +28,10 @@
     "on_existing_title": "error",
     "frontmatter_defaults": {
       "type": "Customer",
-      "affiliate_of": ""
+      "affiliate_of": "",
+      "tags": [
+        "kind/customer"
+      ]
     },
     "sections": [
       {
@@ -45,7 +48,10 @@
       {
         "suffix": "log",
         "frontmatter_defaults": {
-          "type": "Log"
+          "type": "Log",
+          "tags": [
+            "kind/log"
+          ]
         },
         "name_template": "{title} Log",
         "display_label": "Log"
@@ -53,7 +59,10 @@
       {
         "suffix": "captures",
         "frontmatter_defaults": {
-          "type": "Captures"
+          "type": "Captures",
+          "tags": [
+            "kind/captures"
+          ]
         },
         "name_template": "{title} Captures",
         "display_label": "Captures"

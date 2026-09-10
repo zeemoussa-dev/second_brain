@@ -136,7 +136,10 @@
       {
         "suffix": "log",
         "frontmatter_defaults": {
-          "type": "Log"
+          "type": "Log",
+          "tags": [
+            "kind/log"
+          ]
         },
         "name_template": "{title} Log",
         "display_label": "Log"
@@ -144,7 +147,10 @@
       {
         "suffix": "captures",
         "frontmatter_defaults": {
-          "type": "Captures"
+          "type": "Captures",
+          "tags": [
+            "kind/captures"
+          ]
         },
         "name_template": "{title} Captures",
         "display_label": "Captures"

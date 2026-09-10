@@ -10,6 +10,7 @@ list_recent_meetings.py call covers the whole run, no cursor loop needed.
 from __future__ import annotations
 
 import json
+import argparse
 import os
 import subprocess
 import sys
@@ -61,12 +62,28 @@ def run_script(args: list[str]) -> tuple[int, str, str]:
 
 
 def main() -> int:
+    # CLI args added 2026-09-10 for the one-time 90-day backfill. The env vars
+    # stay as the defaults so the recurring job is unchanged; a flag overrides
+    # them for a deliberate historical pull.
+    parser = argparse.ArgumentParser(description="Full calendar capture into the vault.")
+    parser.add_argument("--days-back", type=int,
+                        default=int(os.environ.get("SECOND_BRAIN_MEETING_DAYS_BACK", "7")))
+    parser.add_argument("--days-ahead", type=int,
+                        default=int(os.environ.get("SECOND_BRAIN_MEETING_DAYS_AHEAD", "14")))
+    # Was hardcoded 200, which silently truncated: a 90-day window on this
+    # mailbox holds ~766 events, so the pull would have captured a prefix and
+    # reported success.
+    parser.add_argument("--limit", type=int, default=1000,
+                        help="max events to capture (the fetch pages until it has this many)")
+    args = parser.parse_args()
+    days_back, days_ahead = args.days_back, args.days_ahead
+
     _require_vault_path()
-    days_back = int(os.environ.get("SECOND_BRAIN_MEETING_DAYS_BACK", "7"))
-    days_ahead = int(os.environ.get("SECOND_BRAIN_MEETING_DAYS_AHEAD", "14"))
+    print(f"CALENDAR WINDOW: -{days_back}d .. +{days_ahead}d, limit {args.limit}")
 
     code, out, err = run_script([
-        "list_recent_meetings.py", "--days-back", str(days_back), "--days-ahead", str(days_ahead), "--limit", "200",
+        "list_recent_meetings.py", "--days-back", str(days_back),
+        "--days-ahead", str(days_ahead), "--limit", str(args.limit),
     ])
     if code != 0:
         err_msg = err.strip() or out.strip()

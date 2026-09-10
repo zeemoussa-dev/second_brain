@@ -59,6 +59,9 @@ def retrofit(vault_path: Path, *, dry_run: bool) -> dict:
     self_links_removed = 0
     messages_cleaned = 0
     threads_seen = 0
+    kind_tags_added = 0
+    email_tags_added = 0
+    file_tags_added = 0
 
     for thread_dir in sorted(p for p in threads_root.iterdir() if p.is_dir()):
         thread_note = thread_dir / f"{thread_dir.name}.md"
@@ -71,6 +74,13 @@ def retrofit(vault_path: Path, *, dry_run: bool) -> dict:
             frontmatter, _ = vault_manager.read_note(message)
             lines.append(((frontmatter.get("received") or ""),
                           _conversation_line(frontmatter, message)))
+            # `kind/email` on the message note (2026-09-10) -- the thread
+            # template's `messages` child carried no kind tag until then.
+            if "kind/email" not in (frontmatter.get("tags") or []):
+                email_tags_added += 1
+                if not dry_run:
+                    vault_manager.merge_tags(message, ["kind/email"])
+
             kept = _strip_self_links(frontmatter.get("participant_links"), self_email)
             if kept != list(frontmatter.get("participant_links") or []):
                 messages_cleaned += 1
@@ -85,6 +95,17 @@ def retrofit(vault_path: Path, *, dry_run: bool) -> dict:
 
         thread_frontmatter, _ = vault_manager.read_note(thread_note)
         conversation_id = thread_frontmatter.get("id") or ""
+
+        # `kind/thread` (2026-09-10). Every other note type already carried its
+        # own kind tag -- `kind/meeting`, `kind/notes`, `kind/file`,
+        # `kind/person` -- and the thread template alone was missing one, so
+        # "every Thread" was the one thing not answerable as a tag query.
+        # Threads captured before the template default was added need it merged
+        # in; `merge_tags` only adds what is absent, so this is idempotent.
+        if "kind/thread" not in (thread_frontmatter.get("tags") or []):
+            kind_tags_added += 1
+            if not dry_run:
+                vault_manager.merge_tags(thread_note, ["kind/thread"])
         if content and not dry_run:
             vault_manager.modify_section(
                 vault_path, template, section="Conversation", content=content,
@@ -93,6 +114,16 @@ def retrofit(vault_path: Path, *, dry_run: bool) -> dict:
             )
         if content:
             conversations_written += 1
+
+        # `kind/file` on each attachment's companion note. These are written
+        # directly rather than through the `file` template, so the template's
+        # own default never reached them -- they carried `type/<ext>` alone.
+        for companion in (thread_dir / "files").glob("*/*.md"):
+            companion_frontmatter, _ = vault_manager.read_note(companion)
+            if "kind/file" not in (companion_frontmatter.get("tags") or []):
+                file_tags_added += 1
+                if not dry_run:
+                    vault_manager.merge_tags(companion, ["kind/file"])
 
         related = vault_manager.get_section_content(thread_note, "Related") or ""
         kept_rows = [row for row in related.splitlines()
@@ -114,6 +145,9 @@ def retrofit(vault_path: Path, *, dry_run: bool) -> dict:
         "conversation_sections_written": conversations_written,
         "threads_with_self_link_removed": self_links_removed,
         "message_notes_cleaned": messages_cleaned,
+        "kind_tags_added": kind_tags_added,
+        "email_tags_added": email_tags_added,
+        "file_tags_added": file_tags_added,
     }
 
 

@@ -451,9 +451,16 @@ def write_file_companion(
         "file_slug": file_slug,
         "original_filename": original_filename,
     }
+    # `kind/file` ALONGSIDE `type/<ext>`, not instead of it (2026-09-10).
+    # This path writes the note directly rather than through the template, so
+    # the `file` template's own `kind/file` default never applied -- every
+    # captured attachment carried only `type/pptx` and was invisible to a
+    # "find every File note" query, which is exactly what kind tags are for.
+    tags = ["kind/file"]
     type_tag = _file_type_tag(original_filename)
     if type_tag:
-        frontmatter["tags"] = [type_tag]
+        tags.append(type_tag)
+    frontmatter["tags"] = tags
     if source_thread is not None:
         frontmatter["source_thread"] = source_thread
     if source_email is not None:

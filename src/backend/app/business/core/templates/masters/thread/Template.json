@@ -17,7 +17,10 @@
       "type": "Thread",
       "last_message_at": "",
       "last_summarized_at": "",
-      "classification": ""
+      "classification": "",
+      "tags": [
+        "kind/thread"
+      ]
     },
     "sections": [
       {
@@ -55,7 +58,10 @@
           "message_id"
         ],
         "frontmatter_defaults": {
-          "type": "RawMessage"
+          "type": "RawMessage",
+          "tags": [
+            "kind/email"
+          ]
         }
       }
     ]
