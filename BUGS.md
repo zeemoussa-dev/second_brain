@@ -47,6 +47,7 @@ is a thin status mirror of the index table below.
 | BUG-058 | `run_full_capture.py` swallows a non-zero exit from every per-email step, so a capture where 100% of ingests failed reports `processed=50` with no error anywhere | Logic | Major | Open | 2026-09-09 | — |
 | BUG-059 | An attachment whose filename contains a path separator is saved under a TRUNCATED name with its extension lost — the bytes land in a file called `Fw` with no extension, and the Thread's Files link points at the truncated name | Logic | Major | Open | 2026-09-09 | — |
 | BUG-060 | A Thread note's `title` frontmatter is the raw base64 conversation id while its filename and `thread_name` are readable, so Obsidian displays the id | UI | Minor | Open | 2026-09-09 | — |
+| BUG-061 | A Pipeline whose id matches an Agent id silently draws TWICE on the Agents Map — `GET /agents` concatenates agents and pipeline summaries with no collision check, so the same id appears as two nodes with different types | Logic | Minor | Open | 2026-09-10 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -844,3 +845,43 @@ is a thin status mirror of the index table below.
 - **Note:** `id` legitimately stays the conversation id -- that is the identity
   the engine dedupes on, and it must not change. This is only about the display
   field.
+
+### BUG-061 — a Pipeline sharing an Agent's id draws twice on the Agents Map
+
+- **Area:** Logic
+- **Severity:** Minor
+- **Status:** Open
+- **Found:** 2026-09-10. The operator asked why the meetings pipeline was not on
+  the Agents Map. It was missing for a plain reason (no definition had been
+  written yet), but listing the agents to check surfaced a second problem:
+
+      entries: 7 | duplicated: ['email-capture']
+        email-capture   type=producer  section=productivity
+        email-capture   type=worker    section=productivity
+
+- **Root cause:** `agents_router.list_agents` returns
+  `[agents] + agents_map_adapter.list_pipeline_summaries()` — Hermes agents and
+  Pipelines concatenated into one list, because a Pipeline is rendered as a
+  pseudo-agent node on the map. Nothing checks that the two id spaces are
+  disjoint. A Pipeline whose `id` equals an Agent's `id` therefore produces two
+  nodes carrying the same id and different `type` values.
+- **Repro:** create an Agent `X`, write `<data>/pipelines/X.json` with
+  `"id": "X"`, then `GET /agents`.
+- **Expected:** either the collision is refused when the Pipeline is written, or
+  the two id spaces are namespaced so they cannot collide.
+- **Actual:** two nodes, silently. The frontend keys nodes by id, so which one
+  wins for a click or a detail lookup is whichever the code happens to reach
+  first — `GET /agents/{id}` checks the Agent path first and falls through to
+  the Pipeline path only if that misses, so the Pipeline becomes unreachable
+  while still being drawn.
+- **Severity, honestly:** Minor. It needs an operator to name a Pipeline exactly
+  as an Agent, which is not a natural mistake in a UI-driven flow — this was hit
+  by writing the definition file by hand. But it fails silently and the
+  resulting map is quietly wrong, which is the part worth fixing.
+- **Fix direction:** validate at write/load time in `PipelineManager` that no
+  Agent holds the same id and refuse with a named reason; or prefix pipeline
+  node ids in the map adapter so the spaces cannot overlap. The first is
+  better — a Pipeline and an Agent sharing a name is confusing to a human
+  regardless of what the map does with it.
+- **Worked around on this install:** the pipelines are `m365-email-capture` and
+  `m365-meeting-capture`, distinct from the `email-capture` Agent that runs them.

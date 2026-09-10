@@ -18,6 +18,10 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- docs: `BUG-061` — a Pipeline whose id matches an Agent id draws twice on the
+  Agents Map; `GET /agents` concatenates agents and pipeline summaries with no
+  collision check.
+
 - feat: `meeting-capture` moves to Microsoft Graph and joins the **m365** Tool.
   New `graph_calendar_lib.py` is a drop-in for `outlook_lib`'s calendar read;
   `calendarView` expands recurring series into occurrences. Fixes two latent
