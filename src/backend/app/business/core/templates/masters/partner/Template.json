@@ -1,7 +1,7 @@
 {
   "id": "partner",
   "schema_version": 2,
-  "version": 1,
+  "version": 2,
   "identity": {
     "strategy": "id"
   },
@@ -35,26 +35,42 @@
     },
     "sections": [
       {
+        "name": "Summary",
+        "access": "machine_write"
+      },
+      {
+        "name": "Personal Notes",
+        "access": "human_only"
+      },
+      {
+        "name": "Actions",
+        "access": "machine_write"
+      },
+      {
+        "name": "Related",
+        "access": "machine_write"
+      },
+      {
         "name": "Affiliates",
         "access": "machine_write"
       },
       {
-        "name": "Log & Captures",
+        "name": "History & Captures",
         "access": "machine_write"
       }
     ],
-    "children_index_section": "Log & Captures",
+    "children_index_section": "History & Captures",
     "children": [
       {
-        "suffix": "log",
+        "suffix": "history",
         "frontmatter_defaults": {
-          "type": "Log",
+          "type": "History",
           "tags": [
-            "kind/log"
+            "kind/history"
           ]
         },
-        "name_template": "{title} Log",
-        "display_label": "Log"
+        "name_template": "{title} History",
+        "display_label": "History"
       },
       {
         "suffix": "captures",
