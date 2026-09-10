@@ -18,6 +18,31 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: Customer/Partner/Opportunity templates gained `Summary`, `Personal Notes`,
+  `Actions` and `Related` — a hub previously had only `Affiliates` and its children
+  index, so the entity that matters most had nowhere to put a summary or an open
+  item while an Opportunity nested under it always did. `Personal Notes` is
+  `human_only`. Template `version` bumped to 2 on all three.
+
+- feat: `Log` renamed to `History` throughout — section, child suffix, `type`,
+  `kind` tag, display label, and every writer that produced `<Name>-log.md`.
+  "Log" reads as machine output; the note holds relationship history a human also
+  writes.
+
+- feat: `migrate_hub_children.py` — brings hubs created before those template
+  changes up to the current shape: the rename, captures notes split into `## Notes`
+  (human) and `## Captured` (agent), and section order corrected. Idempotent.
+
+- feat: `run_metadata_pass.py` — the nightly Metadata pass (discover, hubs, people,
+  retag). Metadata is everything decidable without a model; a failed step is
+  reported and does not stop the others.
+
+- feat: `create_companies_partners.py` gained `--hubs-only` (create-if-absent, for
+  the 30-minute cron) and `--reconcile-people` (move People into their hub folder
+  and repair the leftovers and duplicates capture keeps recreating). History and
+  Captures notes now carry the company tag and their `kind` tag, so a tag search
+  for a company reaches them.
+
 - feat: `apply_thread_extract.py` — enrichment reads a Thread ONCE and emits one
   structured extraction (summary, people, actions, important info), which is then
   fanned out mechanically. Four separate model passes would cost four reads of the
