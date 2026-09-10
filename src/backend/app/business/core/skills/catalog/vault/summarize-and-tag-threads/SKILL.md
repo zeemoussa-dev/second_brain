@@ -1,7 +1,7 @@
 ---
 name: summarize-and-tag-threads
 description: One-time, long-running Thread summarization and company wiki-tagging pass.
-version: 0.4.0
+version: 0.5.0
 author: second-brain
 license: MIT
 platforms: [windows]
@@ -42,7 +42,7 @@ you already made -- it never decides anything itself.
 ## Before you start: build your own company list
 
 `search_files` or `read_file` every `Work/Customers/**/*.md` and
-`Work/Partners/**/*.md` EXCEPT the ones ending in `-log.md`/
+`Work/Partners/**/*.md` EXCEPT the ones ending in `-history.md`/
 `-captures.md` (those are logs, not company identities). For each,
 note its `name` and `aliases` frontmatter -- this is the real,
 authoritative list of what "a known company" means for this pass. Keep
@@ -183,7 +183,7 @@ The script handles everything mechanical from there: writes your summary
 onto the Thread, tags the Thread + every message under it with
 `customer/<slug>`/`partner/<slug>` (one tag per company you listed), and
 appends your short_summary as a dated log line to each company's own
-`<Name>-log.md` (it re-sorts the whole file newest-to-oldest itself --
+`<Name>-history.md` (it re-sorts the whole file newest-to-oldest itself --
 you never need to worry about ordering).
 
 **This never tags Person notes** (2026-08-21 bug fix -- an earlier
@@ -223,6 +223,6 @@ already read and understood the whole batch.
 - Track running totals: Threads summarized, distinct companies tagged,
   distinct unresolved company names seen.
 - Spot-check one real Thread's own `## Summary` (wikilinked correctly)
-  and one company's own `<Name>-log.md` (newest entry actually on top).
+  and one company's own `<Name>-history.md` (newest entry actually on top).
 - Report the final totals, and the full distinct `companies_unresolved`
   list if non-empty.

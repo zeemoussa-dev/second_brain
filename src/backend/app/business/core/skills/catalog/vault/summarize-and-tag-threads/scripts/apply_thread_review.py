@@ -176,7 +176,7 @@ def _iter_hub_notes(vault_path: Path):
         for md_path in root.rglob("*.md"):
             if not md_path.is_file():
                 continue
-            if md_path.stem.endswith("-log") or md_path.stem.endswith("-captures"):
+            if md_path.stem.endswith(("-log", "-history", "-captures")):
                 continue
             if md_path.parent.name != md_path.stem:
                 continue  # only <Name>/<Name>.md concept files, not stray same-level files
@@ -218,7 +218,7 @@ def resolve_companies(vault_path: Path, company_names: list[str]) -> tuple[list[
 # ── company log entries ─────────────────────────────────────────────────
 
 def append_log_entry(hub_md: Path, date: str, short_summary: str, thread_wikilink: str) -> None:
-    log_path = hub_md.parent / f"{hub_md.stem}-log.md"
+    log_path = hub_md.parent / f"{hub_md.stem}-history.md"
     if not log_path.exists():
         log_path.write_text(f"# {hub_md.stem}\n\n", encoding="utf-8")
     text = log_path.read_text(encoding="utf-8")

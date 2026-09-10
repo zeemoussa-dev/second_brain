@@ -1,7 +1,7 @@
 ---
 name: track-opportunities
 description: Creates, updates, links, and answers questions about sales Opportunities filed under a real Customer hub note. Use this whenever the operator's message is about creating a new opportunity/deal/opp (e.g. "create a new opp", "new opportunity for ADNOC"), adding an update/log entry/action/related link to an EXISTING one ("log that I spoke to procurement on the ADNOC HPC opp", "add an action item to renew the Aldar deal"), linking a Thread or Meeting to an existing one ("link this thread to the ADNOC HPC Expansion opp"), or asking what opportunities exist / their status / consumption for a Customer ("what opportunities do we have in ADNOC", "what's the forecasted consumption this month").
-version: 0.5.0
+version: 0.6.0
 author: second-brain
 license: MIT
 platforms: [windows]
@@ -50,11 +50,11 @@ plain template-driven create/update.
 ```
 Work/Customers/<Customer>/Opportunities/<Title>/
     <Title>.md           -- the Opportunity's own note: Summary/Actions/
-                             Related, plus a "## Log & Captures" index
+                             Related, plus a "## History & Captures" index
                              (auto-populated wikilinks to the two files
                              below -- same shape Customer/Partner hub
                              notes already use).
-    <Title>-log.md        -- dated, diary-style entries (2026-08-31,
+    <Title>-history.md        -- dated, diary-style entries (2026-08-31,
                              operator: "the Opp has one file it should
                              have Capture and log as well" -- split off
                              the root note the same way Customer/
@@ -76,12 +76,12 @@ imposed now, a later pass structures it once real patterns are visible),
 `technologies` (list), `created`, `tags` (`customer/<slug>`,
 `kind/opportunity`).
 
-Root body: `## Summary` / `## Actions` / `## Related` / `## Log &
+Root body: `## Summary` / `## Actions` / `## Related` / `## History &
 Captures` (the auto-populated index -- never edit this one directly,
 `vault_manager.py`'s own `create()` regenerates it). The real diary
 content (dated entries, e.g. "- 2026-08-22: Met [[Person X]] (Microsoft),
-asked about status, he gave feedback that ...") lives in `<Title>-log.md`'s
-own `## Log` section; a file-arrival note lives in `<Title>-captures.md`'s
+asked about status, he gave feedback that ...") lives in `<Title>-history.md`'s
+own `## History` section; a file-arrival note lives in `<Title>-captures.md`'s
 own `## Captures` section -- both reached via `modify-section`'s
 `child_suffix` field (Job 2 below), never by editing those files by hand
 with a bare `write_file`.
@@ -153,9 +153,9 @@ effect** -- if it doesn't already exist, say so and offer Job 1 instead.
 
 Map what the operator said onto ONE of the real sections (ask if it's
 genuinely unclear which one):
-- **Log** -- a dated diary entry, what happened / who you talked to.
-  Almost always `mode: "append"`. Lives on the `-log.md` child, not the
-  root -- pass `"child_suffix": "log"` in the payload.
+- **History** -- a dated diary entry, what happened / who you talked to.
+  Almost always `mode: "append"`. Lives on the `-history.md` child, not the
+  root -- pass `"child_suffix": "history"` in the payload.
 - **Actions** -- a follow-up/next-step. Almost always `append`. Root
   section, no `child_suffix`.
 - **Related** -- a link to something else relevant (a person, a
@@ -170,14 +170,14 @@ genuinely unclear which one):
   Lives on the `-captures.md` child -- pass `"child_suffix": "captures"`.
 
 ```
-terminal(command="python \"${HERMES_SKILL_DIR}\scripts\vault_manager.py\" modify-section --template-id opportunity --section \"<Log|Actions|Related|Summary|Captures>\" --mode append --input-file <scratch path>")
+terminal(command="python \"${HERMES_SKILL_DIR}\scripts\vault_manager.py\" modify-section --template-id opportunity --section \"<History|Actions|Related|Summary|Captures>\" --mode append --input-file <scratch path>")
 ```
 
 (`--mode replace` for a Summary rewrite -- everything else is `append`,
 the default the SKILL.md examples above already assume.)
 
 Payload: `{"content": str, "title": str, "parent_value": str, "child_suffix":
-str}` (`child_suffix` only for Log/Captures -- `"log"` or `"captures"`;
+str}` (`child_suffix` only for History/Captures -- `"history"` or `"captures"`;
 omit it entirely for Actions/Related/Summary, which stay on the root
 note). `parent_value` is matched the same way as Job 1 (real Customer
 name or a known alias); `title` is matched exactly against the
@@ -250,8 +250,8 @@ expect an exact number; don't fabricate false precision.
 
 - After a creation, confirm the returned `path` is real and the Customer
   hub's own `## Opportunities` section now lists it.
-- After an update, confirm the returned `path` is real (a Log/Captures
-  update returns the CHILD file's own path, `<Title>-log.md`/
+- After an update, confirm the returned `path` is real (a History/Captures
+  update returns the CHILD file's own path, `<Title>-history.md`/
   `<Title>-captures.md`, not the root's) and the section you targeted
   actually shows the new content (an append should sit below whatever
   was already there, not replace it).
