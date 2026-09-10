@@ -35,6 +35,9 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
   different things, and only the latter goes through the `file` template. A
   captured external link gets `kind/file-link`, since nothing was downloaded.
   `retrofit_conversation_index.py` backfills them onto already-captured notes.
+  `research-kb-doc`'s bare `research` tag became `kind/research`, so every
+  shipped template now uses the same namespace. No retrofit was needed -- zero
+  notes carried the old tag and `Work/Research/` does not exist on this install.
 
 - feat: `summarize-and-tag-threads` reads Threads through a new `read_thread.py`
   instead of opening the message notes. It returns the messages in TIME order,
