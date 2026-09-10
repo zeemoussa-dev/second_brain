@@ -18,6 +18,13 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: `apply_thread_extract.py` — enrichment reads a Thread ONCE and emits one
+  structured extraction (summary, people, actions, important info), which is then
+  fanned out mechanically. Four separate model passes would cost four reads of the
+  same content. The extraction is persisted under `<data>/data/ThreadExtracts/`
+  before anything is applied, so an applier bug is re-applied from disk rather
+  than re-read through a model. Person fields are filled, never overwritten.
+
 - docs: `BUG-061` — a Pipeline whose id matches an Agent id draws twice on the
   Agents Map; `GET /agents` concatenates agents and pipeline summaries with no
   collision check.

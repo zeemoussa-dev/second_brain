@@ -120,7 +120,14 @@ def main() -> int:
                 args += ["--self-email", SELF_EMAIL]
             code, out, err = run_script(args)
             if code != 0:
-                errors.append(f"{event.get('subject')!r}: {err.strip()[:300]}")
+                # The LAST lines, not the first: a Python traceback puts the
+                # useful part -- the exception type and message -- at the END,
+                # so truncating from the front produced ~60 errors that all
+                # read identically as the same generic header and said nothing
+                # about what actually failed (2026-09-10).
+                detail = err.strip().splitlines()
+                errors.append(f"{event.get('subject')!r}: "
+                              + " | ".join(line.strip() for line in detail[-3:]))
                 total_processed += 1
                 continue
             result = json.loads(out.strip() or "{}")
