@@ -304,7 +304,7 @@ def _iter_hub_notes(vault_path: Path):
     (`Work/Customers/<Customer>/Opportunities/<Title>/<Title>.md`) matches
     the SAME "folder named after itself" shape a Customer/Partner hub note
     has -- without a real `type` check, this wrongly caught every
-    Opportunity too (bogus self-tag, spurious blank -log/-captures
+    Opportunity too (bogus self-tag, spurious blank -history/-captures
     siblings), confirmed live against 10 of the operator's own real
     Opportunities. `type` is the one field that actually distinguishes a
     hub note from anything else nested under Work/Customers or
@@ -317,7 +317,7 @@ def _iter_hub_notes(vault_path: Path):
         for md_path in root.rglob("*.md"):
             if not md_path.is_file():
                 continue
-            if md_path.stem.endswith("-log") or md_path.stem.endswith("-captures"):
+            if md_path.stem.endswith(("-log", "-history", "-captures")):
                 continue
             if md_path.parent.name != md_path.stem:
                 continue
@@ -358,6 +358,58 @@ def move_people_for_domain(vault_path: Path, domain: str, target_people_dir: Pat
     return moved
 
 
+def reconcile_people(vault_path: Path, *, dry_run: bool = False) -> dict:
+    """Repairs the duplicate a moved Person note inevitably grows back.
+
+    `move_people_for_domain` skips when the target already exists ("already
+    moved on a prior run"), leaving the flat `Work/People/<email>.md` in place.
+    That is not a rare half-finished move -- it is the STEADY STATE, because
+    capture writes every Person note to the flat folder and does so again on the
+    next message from someone already moved. So the same person ends up in two
+    places, repeatedly, forever.
+
+    The hub copy wins: it carries the company wikilink and the company tag. But
+    the FLAT copy is often newer -- capture may have just filled a department or
+    job title from a fresh signature -- so its values are merged into the hub
+    copy before it is removed. Blank-fill only, never overwrite: the hub copy's
+    existing values are the ones a human or an earlier enrichment pass put
+    there.
+
+    Idempotent. Nothing to do on a vault with no duplicates.
+    """
+    flat_dir = vault_path / "Work" / "People"
+    if not flat_dir.is_dir():
+        return {"duplicates_resolved": 0, "fields_merged": 0, "flat_people": 0}
+
+    hub_people: dict[str, Path] = {}
+    for root in ("Customers", "Partners"):
+        base = vault_path / "Work" / root
+        if base.is_dir():
+            for person in base.glob("*/People/*.md"):
+                hub_people.setdefault(person.name.lower(), person)
+
+    resolved, merged = 0, 0
+    for flat in sorted(flat_dir.glob("*.md")):
+        hub = hub_people.get(flat.name.lower())
+        if hub is None or not hub.is_file():
+            continue
+        flat_frontmatter, _ = vm.read_note(flat)
+        hub_frontmatter, _ = vm.read_note(hub)
+        updates = {}
+        for key in ("department", "role", "company", "phone", "linkedin"):
+            value = (flat_frontmatter.get(key) or "").strip()
+            if value and not (hub_frontmatter.get(key) or "").strip():
+                updates[key] = value
+        if updates and not dry_run:
+            vm.update(vault_path, hub, frontmatter=updates)
+        merged += len(updates)
+        if not dry_run:
+            flat.unlink()
+        resolved += 1
+    return {"duplicates_resolved": resolved, "fields_merged": merged,
+            "flat_people": len(list(flat_dir.glob("*.md")))}
+
+
 def retag_people_by_domain(vault_path: Path) -> dict:
     """2026-08-21 bug fix: a Person note already moved into its own
     Customer/Partner/Affiliate People/ folder (by a prior run of THIS
@@ -384,9 +436,12 @@ def retag_people_by_domain(vault_path: Path) -> dict:
         tag = f"{kind}/{_tag_slug(hub_md.stem)}"
         link_label = "Customer" if kind == "customer" else "Partner"
         wikilink = f"[[{hub_md.stem}]]"
-        for person_path in vault_path.rglob("*.md"):
-            if not person_path.is_file():
-                continue
+        # iter_md_files, not rglob: rglob raises FileNotFoundError and abandons
+        # the whole scan when a directory disappears mid-iteration, which a
+        # concurrent capture does routinely (rename_thread.py renames a Thread
+        # folder off its raw conversation id). This pass is MEANT to run beside
+        # captures, so the walk has to tolerate the vault moving under it.
+        for person_path in vm.iter_md_files(vault_path):
             person_frontmatter, _ = vm.read_note(person_path)
             if person_frontmatter.get("type") != "Person":
                 continue
@@ -651,6 +706,12 @@ def retag_meetings_by_attendee_company(vault_path: Path) -> dict:
     return {"meetings_updated": meetings_updated}
 
 
+# Kept in template ORDER. A hub created before these existed gets them
+# appended, so the order will not match a freshly-created hub exactly -- but
+# the sections are present and writable, which is what every caller needs.
+_HUB_SECTIONS = ("Summary", "Personal Notes", "Actions", "Related")
+
+
 def backfill_hub_note_metadata(vault_path: Path) -> dict:
     """2026-08-21 bug fix: hub-note self-tagging and log/captures-
     frontmatter only applied at CREATION time in the pre-migration
@@ -667,21 +728,48 @@ def backfill_hub_note_metadata(vault_path: Path) -> dict:
     so a hub note's own body content (once someone starts adding real
     notes to it) is never touched."""
     self_tagged: list[str] = []
+    sections_added: list[str] = []
     log_captures_backfilled: list[str] = []
+    children_tagged: list[str] = []
     for hub_md, kind in _iter_hub_notes(vault_path):
         tag = f"{kind}/{_tag_slug(hub_md.stem)}"
         if vm.merge_tags(hub_md, [tag]):
             self_tagged.append(str(hub_md))
         frontmatter, _ = vm.read_note(hub_md)
         name = frontmatter.get("name") or hub_md.stem
-        log_path = hub_md.parent / f"{hub_md.stem}-log.md"
+        history_path = hub_md.parent / f"{hub_md.stem}-history.md"
         captures_path = hub_md.parent / f"{hub_md.stem}-captures.md"
-        before = (log_path.exists() and not log_path.read_text(encoding="utf-8").startswith("---\n"))
-        _ensure_frontmatter(log_path, {"type": "Log", "name": f"{name} Log", "parent": f"[[{hub_md.stem}]]"})
+        before = (history_path.exists() and not history_path.read_text(encoding="utf-8").startswith("---\n"))
+        _ensure_frontmatter(history_path, {"type": "History", "name": f"{name} History", "parent": f"[[{hub_md.stem}]]"})
         _ensure_frontmatter(captures_path, {"type": "Captures", "name": f"{name} Captures", "parent": f"[[{hub_md.stem}]]"})
+
+        # A child note has to be findable on its OWN (operator, 2026-09-11).
+        # `parent:` links it structurally, but a tag search for a company --
+        # the way anything actually looks the vault up -- returned the hub and
+        # skipped the two notes carrying its whole history. Both the company
+        # tag and the kind tag, so "everything about ADNOC" and "every captures
+        # note" each resolve. merge_tags is additive: an operator's own tags on
+        # these notes survive.
+        if vm.merge_tags(history_path, [tag, "kind/history"]):
+            children_tagged.append(str(history_path))
+        if vm.merge_tags(captures_path, [tag, "kind/captures"]):
+            children_tagged.append(str(captures_path))
+
+        # Sections a hub was created before its template declared (2026-09-10:
+        # Summary / Personal Notes / Actions / Related -- a Customer had none of
+        # them while an Opportunity always did, and the entity that matters most
+        # had nowhere to put a summary or an open item). Adding a section to a
+        # template only affects notes created AFTERWARDS, so an existing hub
+        # needs this. insert_body_section_if_missing appends only what is
+        # absent and never touches body content already there.
+        for section in _HUB_SECTIONS:
+            if insert_body_section_if_missing(hub_md, f"## {section}"):
+                sections_added.append(f"{hub_md.stem}: {section}")
         if before:
             log_captures_backfilled.append(str(hub_md))
-    return {"self_tagged": self_tagged, "log_captures_backfilled": log_captures_backfilled}
+    return {"self_tagged": self_tagged, "log_captures_backfilled": log_captures_backfilled,
+            "children_tagged": children_tagged,
+            "sections_added": sections_added}
 
 
 _ENGAGEMENT_CONFIG_FILE = "engagement_classification_config.json"
@@ -803,7 +891,7 @@ def tag_engagement_type(vault_path: Path) -> dict:
     return {"threads_updated": threads_updated, "meetings_updated": meetings_updated}
 
 
-def build(vault_path: Path, entities_path: Path) -> dict:
+def build(vault_path: Path, entities_path: Path, *, move_people: bool = True) -> dict:
     content = entities_path.read_text(encoding="utf-8-sig")
     entries = parse_entities(content)
 
@@ -843,8 +931,13 @@ def build(vault_path: Path, entities_path: Path) -> dict:
         if already:
             skipped_already.append(name)
             continue
-        moved = move_people_for_domain(vault_path, entry["fields"].get("Domain", ""), md_path.parent / "People", md_path, section)
-        people_moved_total += moved
+        # Moving Person notes is a Work/People write. `--hubs-only` skips it so
+        # hub CREATION -- which is pure create-if-absent -- can run on a short
+        # cycle without contending with a capture that is writing People
+        # continuously (2026-09-10).
+        if move_people:
+            people_moved_total += move_people_for_domain(
+                vault_path, entry["fields"].get("Domain", ""), md_path.parent / "People", md_path, section)
         entry["fields"]["Created"] = "Yes"
         created.append(name)
 
@@ -955,9 +1048,11 @@ def build(vault_path: Path, entities_path: Path) -> dict:
                 skipped_already.append(name)
             else:
                 nonlocal people_moved_total
-                people_moved_total += move_people_for_domain(
-                    vault_path, entry["fields"].get("Domain", ""), affiliate_md.parent / "People", affiliate_md, parent_section,
-                )
+                # Same gate as the top-level pass -- see --hubs-only.
+                if move_people:
+                    people_moved_total += move_people_for_domain(
+                        vault_path, entry["fields"].get("Domain", ""), affiliate_md.parent / "People", affiliate_md, parent_section,
+                    )
                 entry["fields"]["Created"] = "Yes"
                 created.append(name)
             return result
@@ -975,6 +1070,16 @@ def build(vault_path: Path, entities_path: Path) -> dict:
         _resolve_affiliate_entry(entry, set())
 
     entities_path.write_text(render_entities(entries), encoding="utf-8")
+
+    if not move_people:
+        # --hubs-only: create-if-absent and nothing else. The retag below is a
+        # full-vault WRITE pass and belongs to the Metadata pass's own retag
+        # step, which runs on its own schedule (2026-09-10).
+        return {
+            "created": created, "skipped_ignored": skipped_ignored,
+            "skipped_already": skipped_already, "skipped_unresolved": skipped_unresolved,
+            "auto_created_parents": auto_created_parents, "hubs_only": True,
+        }
 
     # Always retag/relink at the end -- catches BOTH people this run just
     # moved AND any already-placed people from an earlier run that never
@@ -1001,6 +1106,7 @@ def build(vault_path: Path, entities_path: Path) -> dict:
         "people_relinked": len(retag_result["linked"]),
         "hub_notes_self_tagged": len(backfill_result["self_tagged"]),
         "hub_notes_log_captures_backfilled": len(backfill_result["log_captures_backfilled"]),
+        "hub_children_tagged": len(backfill_result["children_tagged"]),
         "threads_related_updated": len(thread_result["threads_updated"]),
         "messages_company_linked": len(thread_result["messages_updated"]),
         "meetings_updated": len(meeting_result["meetings_updated"]),
@@ -1021,6 +1127,18 @@ def main() -> int:
     )
     parser.add_argument("--entities-name", default="Entities.md")
     parser.add_argument(
+        "--reconcile-people", action="store_true",
+        help="Repair pass: where a Person exists BOTH flat and under a hub, merge any "
+             "newer flat values into the hub copy and remove the flat duplicate. Capture "
+             "recreates flat notes continuously, so this is recurring maintenance.",
+    )
+    parser.add_argument(
+        "--hubs-only", action="store_true",
+        help="Create missing hub notes and nothing else -- skips moving Person notes "
+             "into hub folders. Pure create-if-absent, so it is safe to run on a short "
+             "schedule alongside a capture that is writing People.",
+    )
+    parser.add_argument(
         "--retag-only", action="store_true",
         help="Skip Entities.md entirely -- just re-run the domain-based Person tag/link pass "
              "against whatever Customer/Partner/Affiliate hub notes already exist.",
@@ -1036,6 +1154,10 @@ def main() -> int:
 
     vault_path = Path(args.vault_path)
 
+    if args.reconcile_people:
+        print(json.dumps(reconcile_people(vault_path), ensure_ascii=False))
+        return 0
+
     if args.retag_only:
         retag_result = retag_people_by_domain(vault_path)
         backfill_result = backfill_hub_note_metadata(vault_path)
@@ -1047,6 +1169,7 @@ def main() -> int:
             "people_linked": len(retag_result["linked"]),
             "hub_notes_self_tagged": len(backfill_result["self_tagged"]),
             "hub_notes_log_captures_backfilled": len(backfill_result["log_captures_backfilled"]),
+            "hub_children_tagged": len(backfill_result["children_tagged"]),
             "threads_related_updated": len(thread_result["threads_updated"]),
             "messages_company_linked": len(thread_result["messages_updated"]),
             "meetings_updated": len(meeting_result["meetings_updated"]),
@@ -1062,7 +1185,7 @@ def main() -> int:
         print(json.dumps({"error": f"{entities_path} does not exist -- run entity-domain-extraction first"}))
         return 1
 
-    result = build(vault_path, entities_path)
+    result = build(vault_path, entities_path, move_people=not args.hubs_only)
     print(json.dumps(result, ensure_ascii=False))
     return 0
 
