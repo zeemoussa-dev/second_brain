@@ -428,30 +428,47 @@ def retag_people_by_domain(vault_path: Path) -> dict:
     guess. Returns {"tagged": [...], "linked": [...]}."""
     tagged: list[str] = []
     linked: list[str] = []
+
+    # ONE domain index, then ONE walk. The obvious shape -- walk the vault
+    # inside the hub loop -- is quadratic and was measured at 195 hubs x 12,722
+    # notes = 2.4M reads, over 25 minutes without finishing (2026-09-11). Every
+    # hub asks the same question of the same files, so the answer is looked up,
+    # not rescanned.
+    domain_index: dict[str, tuple[str, str, str]] = {}
     for hub_md, kind in _iter_hub_notes(vault_path):
         frontmatter, _ = vm.read_note(hub_md)
-        domains = _split_domains(frontmatter.get("domain") or "")
-        if not domains:
+        for domain in _split_domains(frontmatter.get("domain") or ""):
+            # First hub claiming a domain keeps it. A domain shared by two hubs
+            # is an Entities.md curation error, not something to resolve by
+            # tagging the person with both.
+            domain_index.setdefault(domain, (
+                f"{kind}/{_tag_slug(hub_md.stem)}",
+                "Customer" if kind == "customer" else "Partner",
+                f"[[{hub_md.stem}]]",
+            ))
+    if not domain_index:
+        return {"tagged": tagged, "linked": linked}
+
+    # iter_md_files, not rglob: rglob raises FileNotFoundError and abandons
+    # the whole scan when a directory disappears mid-iteration, which a
+    # concurrent capture does routinely (rename_thread.py renames a Thread
+    # folder off its raw conversation id). This pass is MEANT to run beside
+    # captures, so the walk has to tolerate the vault moving under it.
+    for person_path in vm.iter_md_files(vault_path):
+        person_frontmatter, _ = vm.read_note(person_path)
+        if person_frontmatter.get("type") != "Person":
             continue
-        tag = f"{kind}/{_tag_slug(hub_md.stem)}"
-        link_label = "Customer" if kind == "customer" else "Partner"
-        wikilink = f"[[{hub_md.stem}]]"
-        # iter_md_files, not rglob: rglob raises FileNotFoundError and abandons
-        # the whole scan when a directory disappears mid-iteration, which a
-        # concurrent capture does routinely (rename_thread.py renames a Thread
-        # folder off its raw conversation id). This pass is MEANT to run beside
-        # captures, so the walk has to tolerate the vault moving under it.
-        for person_path in vm.iter_md_files(vault_path):
-            person_frontmatter, _ = vm.read_note(person_path)
-            if person_frontmatter.get("type") != "Person":
-                continue
-            email = (person_frontmatter.get("email") or "").strip().lower()
-            if not email or "@" not in email or email.rsplit("@", 1)[1] not in domains:
-                continue
-            if vm.merge_tags(person_path, [tag]):
-                tagged.append(str(person_path))
-            if vm.insert_body_line_if_missing(person_path, f"**{link_label}:** {wikilink}"):
-                linked.append(str(person_path))
+        email = (person_frontmatter.get("email") or "").strip().lower()
+        if not email or "@" not in email:
+            continue
+        match = domain_index.get(email.rsplit("@", 1)[1])
+        if match is None:
+            continue
+        tag, link_label, wikilink = match
+        if vm.merge_tags(person_path, [tag]):
+            tagged.append(str(person_path))
+        if vm.insert_body_line_if_missing(person_path, f"**{link_label}:** {wikilink}"):
+            linked.append(str(person_path))
     return {"tagged": tagged, "linked": linked}
 
 
@@ -497,9 +514,7 @@ def _build_person_email_index(vault_path: Path) -> dict[str, str]:
     -- built once so retag_threads_by_participant_company doesn't rescan
     the whole vault per participant_links entry."""
     index: dict[str, str] = {}
-    for path in vault_path.rglob("*.md"):
-        if not path.is_file():
-            continue
+    for path in vm.iter_md_files(vault_path):
         frontmatter, _ = vm.read_note(path)
         if frontmatter.get("type") != "Person":
             continue
