@@ -70,9 +70,9 @@ terminal(command="python \"${HERMES_SKILL_DIR}\scripts\read_thread.py\" --thread
 
 Always this, never the message notes directly. Capture stores each body
 exactly as it arrived, and **83% of a stored Outlook body is markup** --
-measured across 119 real Threads here, 6.66 M raw chars reducing to
-1.14 M. Reading the notes raw costs about **14,000 tokens per Thread
-instead of 2,400**.
+measured across 119 real Threads, 6.66 M raw chars reducing to 1.14 M.
+Stripped, a Thread averages **~5,000 tokens** (sampled across 2,282 real
+Threads, 2026-09-11); read raw it would be roughly six times that.
 
 Pass `--max-chars N` on a Thread big enough to threaten your context.
 Truncation announces itself in the output; when you see it, say the
