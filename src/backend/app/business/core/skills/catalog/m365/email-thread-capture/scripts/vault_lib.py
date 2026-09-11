@@ -26,8 +26,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from pathlib import Path
+
+from vault_manager import long_path
 
 _SLUG_INVALID_CHARS = re.compile(r'[\\/:*?"<>|]')
 _LEADING_RE_PREFIX = re.compile(r"^(?:re:\s*)+", re.IGNORECASE)
@@ -148,8 +151,9 @@ def _write_frontmatter_note(path: Path, frontmatter: dict, body: str) -> None:
     for key, value in frontmatter.items():
         frontmatter_lines.append(f"{key}: {_format_frontmatter_value(value)}")
     frontmatter_lines.append("---")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(frontmatter_lines) + "\n\n" + body, encoding="utf-8")
+    os.makedirs(long_path(path.parent), exist_ok=True)
+    Path(long_path(path)).write_text("\n".join(frontmatter_lines) + "\n\n" + body,
+                                     encoding="utf-8")
 
 
 def insert_frontmatter_key_if_missing(path: Path, key: str, value) -> bool:
@@ -442,10 +446,24 @@ def write_file_companion(
 ) -> dict:
     slug = _slugify(file_slug)
     files_dir = subfolder / "files" / slug
-    files_dir.mkdir(parents=True, exist_ok=True)
+    # Through long_path, never plain Path I/O. A Thread folder name, the slug and
+    # the original filename together routinely pass Windows' 260-character
+    # MAX_PATH. The folder -- just under the limit -- was created, then writing
+    # the file inside it failed: 256 attachments captured as EMPTY folders, with
+    # no file and no note, and nothing reported anywhere (2026-09-11).
+    os.makedirs(long_path(files_dir), exist_ok=True)
     file_path = files_dir / original_filename
-    file_path.write_bytes(content)
+    if not os.path.isfile(long_path(file_path)):
+        with open(long_path(file_path), "wb") as handle:
+            handle.write(content)
     companion_path = files_dir / f"{slug}.md"
+    # Never reset a companion note that already exists. Capture can meet the
+    # same attachment twice -- an overlapping backfill, a recovery re-fetch --
+    # and rewriting the note would blank a Summary File Enrichment has already
+    # written, and any Personal Notes the operator added.
+    if os.path.isfile(long_path(companion_path)):
+        return {"file_path": str(file_path), "companion_path": str(companion_path),
+                "already_captured": True}
     frontmatter = {
         "type": "File",
         "file_slug": file_slug,
