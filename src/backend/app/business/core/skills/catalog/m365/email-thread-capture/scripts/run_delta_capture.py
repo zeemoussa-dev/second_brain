@@ -3,35 +3,40 @@ capture loop (2026-08-22) -- the delta sibling of run_full_capture.py
 (which stays as-is: the proven, one-time, full-history tool). Same
 single-`terminal`-call, O(1)-LLM-calls design (see that script's own
 module docstring for why), same per-email steps (ingest, link sender,
-rename thread, attachments) -- the only real difference is WHERE the
-pagination stops.
+rename thread, attachments) -- the difference is which mail it walks.
 
-Full capture pages backward via `--before` until Outlook returns zero
-results (the true start of history). This script pages backward the
-same way, but stops as soon as a page's emails are no longer newer than
-the last run's own persisted watermark -- so a recurring cron run only
-ever re-walks the small sliver of NEW mail since it last ran, not the
-whole mailbox. The watermark lives in
-`.second-brain/email_capture_state.json` (real, accessible, persisted
-state -- never a hardcoded literal), holding the newest `received`
-timestamp this script has ever actually captured. Missing state (first
-ever delta run) seeds a conservative 2-day lookback rather than either a
-full-history redo (full_capture.py already did that once) or blindly
-trusting "now" (which could silently miss a real gap since that last
-full run).
+OLDEST FIRST, SAVING AS IT GOES (2026-09-11). It pages FORWARD from its own
+persisted watermark -- the `received` time of the last email it captured --
+and moves the watermark after every email it writes. The first version paged
+backward from "now" and saved the watermark once, at the very end. A backlog
+bigger than one run could clear never finished: Hermes killed the run at its
+3600s limit, nothing was saved, and the next run started again from the newest
+email and got exactly as far. The 18:04 run on 2026-09-11 did that with 2.5
+days of mail behind it, and from then on the delta would never have caught up.
 
-2026-09-02 (REQ-SB-87-US-03-T04): the per-page and final summary dicts
-gain a "skipped_as_noise" count, aggregated the SAME way threads_created/
-messages_created already are -- reads ingest_email.py's own T03-added
-"skipped_as_noise" field on each ingest result. Purely additive
-reporting; no other orchestration logic (paging, watermark, subprocess
-dispatch) changed.
+So now:
+  * a run that is cut off keeps everything it captured, and the next run
+    continues from there;
+  * it stops itself at --max-minutes (default 50), inside Hermes' hour, so a
+    long catch-up reads as progress rather than as a killed, failed run;
+  * an email already in the vault -- captured by the backfill, or by a run
+    that stopped part-way -- costs a lookup, not four scripts. Its attachments
+    still go through capture, which writes only what is missing.
+
+The watermark still never passes an email that was not written: the first
+failure freezes it for the rest of the run, and the next run retries from
+there (2026-09-04: 54 emails were lost to a watermark that advanced past
+failures). The watermark lives in the App Database Folder's
+`email_capture_state.json`; missing state seeds a conservative 2-day
+lookback rather than a full-history redo or blindly trusting "now".
 """
 from __future__ import annotations
+import argparse
 import os
 import sys
 import json
 import subprocess
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -66,7 +71,13 @@ _LEGACY_STATE_DIR = ".second-brain"
 STATE_FILE = "email_capture_state.json"
 BOOTSTRAP_LOOKBACK_DAYS = 2
 
+PAGE_SIZE = 50
+# Inside Hermes' 3600s script limit, with room for the page in flight.
+DEFAULT_MAX_MINUTES = 50
+
 PYTHON = sys.executable or "python"
+
+_clock = time.monotonic
 
 
 def ensure_pywin32():
@@ -152,34 +163,219 @@ def save_watermark(value: str) -> None:
     path.write_text(json.dumps({"last_captured_at": value}, indent=2), encoding="utf-8")
 
 
-def next_watermark(
-    watermark: str,
-    newest_seen: str,
-    failures: list[dict],
-    succeeded_receipts: list[str],
-) -> str:
-    """How far the watermark may safely advance.
+# ── paging forward ───────────────────────────────────────────────────────
 
-    The watermark may only pass emails that were genuinely written. Advancing
-    past a failure is what turns a transient or systemic ingest error into
-    permanent data loss: the next run treats those emails as already captured
-    and never looks at them again. That is exactly what happened between
-    2026-09-03 and 2026-09-04 -- 54 emails consumed, none written, watermark
-    advanced past all of them.
+def trim_page(emails: list[dict], limit: int) -> tuple[list[dict], list[dict], bool]:
+    """(emails to capture now, oldest first; emails held back; last page?).
 
-    So when anything failed, this stops just below the OLDEST failure, and
-    every email from there on is retried next run. Re-ingesting an
-    already-written email is idempotent (ingest_email.py keys off
-    conversation/message id); skipping one is not recoverable without a
-    manual rewind."""
-    if failures:
-        oldest_failure = min(f.get("received") or "" for f in failures)
-        safe = [ts for ts in succeeded_receipts if ts and ts < oldest_failure]
-        return max(safe) if safe else watermark
-    return newest_seen if (newest_seen and newest_seen > watermark) else watermark
+    A FULL page holds back its newest second. The next page asks for mail
+    strictly newer than the last email captured, so two emails received in the
+    same second -- a message and its Sent copy, a reply and a receipt -- must
+    never be split across a page boundary, or the second would be skipped.
+    Held back, they come first on the next page. A page whose every email
+    shares one second cannot hold any back and is captured whole."""
+    ordered = sorted(emails, key=lambda email: email.get("received") or "")
+    if len(emails) < limit:
+        return ordered, [], True
+    newest = ordered[-1].get("received") or ""
+    kept = [email for email in ordered if (email.get("received") or "") != newest]
+    if not kept:
+        return ordered, [], False
+    return kept, [email for email in ordered if (email.get("received") or "") == newest], False
 
 
-def main() -> int:
+def advance_points(kept: list[dict], last_is_safe: bool) -> list[bool]:
+    """Whether the watermark may move to each email's `received` once it is
+    written. Only when the NEXT email is strictly newer: a run stopped between
+    two emails of the same second must not record the second one as captured.
+    The last email is safe when nothing else can share its second -- the
+    listing was exhausted, or a newer second was held back. An email with no
+    timestamp never moves it: there is no way to place it in time."""
+    points: list[bool] = []
+    for index, email in enumerate(kept):
+        this = email.get("received") or ""
+        following = kept[index + 1].get("received") or "" if index + 1 < len(kept) else None
+        if not this:
+            points.append(False)
+        elif following is None:
+            points.append(last_is_safe)
+        else:
+            points.append(following > this)
+    return points
+
+
+def discard_downloads(emails: list[dict]) -> None:
+    """Deletes the attachment files the listing saved for emails this run will
+    not capture. capture_attachments.py deletes the ones it reads; these would
+    otherwise sit in %TEMP% forever, and are downloaded again next run."""
+    for email in emails:
+        for attachment in email.get("attachments") or []:
+            if attachment.get("temp_path"):
+                try:
+                    os.remove(attachment["temp_path"])
+                except OSError:
+                    pass
+
+
+# ── already in the vault ─────────────────────────────────────────────────
+
+def captured_threads(vault_path: Path) -> dict[str, Path]:
+    """Conversation id -> Thread folder, built ONCE per run. ingest_email.py's
+    own lookup scans every Thread note when a conversation is not in the
+    index -- tolerable once, ruinous for every email of a catch-up."""
+    threads: dict[str, Path] = {}
+    root = vault_path / "Work" / "Threads"
+    if not root.is_dir():
+        return threads
+    for thread_dir in root.iterdir():
+        note = thread_dir / f"{thread_dir.name}.md"
+        if not os.path.isfile(vault_manager.long_path(note)):
+            continue
+        frontmatter, _ = vault_manager.read_note(note)
+        for key in ("id", "conversation_id"):
+            value = str(frontmatter.get(key) or "").strip()
+            if value:
+                threads.setdefault(value, thread_dir)
+    return threads
+
+
+def already_captured(threads: dict[str, Path], conversation_id: str, message_id: str) -> Path | None:
+    """The message note already carrying this email, or None. Matched on the
+    same (conversation_id, message_id) natural key ingest_email.py writes."""
+    thread_dir = threads.get(conversation_id or "")
+    if thread_dir is None or not message_id:
+        return None
+    messages = vault_manager.long_path(thread_dir / "messages")
+    if not os.path.isdir(messages):
+        return None
+    for entry in os.scandir(messages):
+        if not entry.name.endswith(".md"):
+            continue
+        frontmatter, _ = vault_manager.read_note(Path(entry.path))
+        if (str(frontmatter.get("message_id", "")) == message_id
+                and str(frontmatter.get("conversation_id", "")) == conversation_id):
+            return thread_dir / "messages" / entry.name
+    return None
+
+
+# ── one email ────────────────────────────────────────────────────────────
+
+def _capture_attachments(email: dict, message_path: str, counts: dict) -> None:
+    payload = {
+        "conversation_id": email.get("conversation_id"),
+        "message_id": email.get("id"),
+        "received": email.get("received"),
+        "message_path": message_path,
+        "attachments": email.get("attachments") or [],
+    }
+    cap_path = os.path.join(SCRATCH_DIR, f"attach_{email.get('id')}.json")
+    with open(cap_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False)
+    code, out, err = run_script(["capture_attachments.py", "--vault-path", VAULT_PATH, "--input-file", cap_path])
+    if code == 0:
+        try:
+            counts["attachments_captured"] += len(json.loads(out.strip() or "{}").get("captured", []))
+        except Exception:
+            pass
+
+
+def capture_one(email: dict, threads: dict[str, Path], counts: dict, failures: list[dict]) -> bool:
+    """Ingest, link the sender, name the Thread, capture attachments. True when
+    the email is in the vault afterwards."""
+    conversation_id = email.get("conversation_id")
+    message_id = email.get("id")
+    received = email.get("received")
+    subject = email.get("subject")
+
+    existing = already_captured(threads, conversation_id or "", message_id or "")
+    if existing is not None:
+        counts["already_captured"] += 1
+        if email.get("attachments"):
+            _capture_attachments(email, str(existing), counts)
+        return True
+
+    try:
+        sender_name = email.get("sender_name")
+        sender_email = email.get("sender_email")
+        ingest_payload = {
+            "conversation_id": conversation_id,
+            "message_id": message_id,
+            "received": received,
+            "sender_name": sender_name,
+            "sender_email": sender_email,
+            "subject": subject,
+            "body": email.get("body") or "",
+            "recipients": email.get("recipients") or [],
+            "direction": email.get("direction") or "",
+            "sender_department": email.get("sender_department") or "",
+            "sender_job_title": email.get("sender_job_title") or "",
+            "sender_company_name": email.get("sender_company_name") or "",
+        }
+        ingest_path = os.path.join(SCRATCH_DIR, f"ingest_{message_id}.json")
+        with open(ingest_path, "w", encoding="utf-8") as f:
+            json.dump(ingest_payload, f, ensure_ascii=False)
+        code, out, err = run_script(["ingest_email.py", "--vault-path", VAULT_PATH, "--input-file", ingest_path])
+        written = False
+        message_path = None
+        # A failed ingest MUST be recorded, not swallowed. Until 2026-09-04 a
+        # non-zero exit here was counted as processed and the watermark moved
+        # past it -- how 54 real emails were consumed and permanently skipped
+        # without a single error surfacing anywhere.
+        if code != 0:
+            detail = (err or out or "").strip().splitlines()
+            failures.append({
+                "message_id": message_id, "received": received, "subject": subject,
+                "error": detail[-1][:300] if detail else f"ingest_email.py exited {code}",
+            })
+        else:
+            try:
+                result = json.loads(out.strip() or "{}")
+                if result.get("thread_created"):
+                    counts["threads_created"] += 1
+                if result.get("message_created"):
+                    counts["messages_created"] += 1
+                if result.get("skipped_as_noise"):
+                    counts["skipped_as_noise"] += 1
+                message_path = result.get("message_path")
+                written = True
+            except Exception as parse_error:
+                # An unparsable reply means we cannot tell what was written --
+                # treat it as a failure, never as a success.
+                failures.append({
+                    "message_id": message_id, "received": received, "subject": subject,
+                    "error": f"unparsable ingest_email.py output: {parse_error}",
+                })
+
+        if sender_email:
+            run_script([
+                "link_person_to_thread.py",
+                "--vault-path", VAULT_PATH,
+                "--conversation-id", conversation_id or "",
+                "--sender-name", sender_name or "",
+                "--sender-email", sender_email,
+            ])
+        run_script(["rename_thread.py", "--vault-path", VAULT_PATH, "--conversation-id", conversation_id or ""])
+        if email.get("attachments") and message_path:
+            _capture_attachments(email, message_path, counts)
+        return written
+    except Exception as ex:
+        print(f"email {message_id!r} failed: {ex}")
+        failures.append({"message_id": message_id, "received": received, "subject": subject,
+                         "error": str(ex)[:300]})
+        return False
+
+
+def _stop(summary: dict) -> int:
+    with open(SUMMARY_PATH, "w", encoding="utf-8") as f:
+        json.dump(summary, f, ensure_ascii=False, indent=2)
+    return 2
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Capture mail newer than the watermark, oldest first.")
+    parser.add_argument("--max-minutes", type=float, default=DEFAULT_MAX_MINUTES,
+                        help="Stop cleanly after this long; the next run continues from the watermark.")
+    args = parser.parse_args(argv)
     _require_vault_path()
     # The Graph path needs no COM (2026-09-09). This was FATAL, which made the
     # recurring job impossible to run under Hermes' own uv-managed Python: that
@@ -191,240 +387,92 @@ def main() -> int:
     if not ok:
         print(f"NOTE: pywin32 unavailable ({msg}); the Graph path does not need it.")
 
-    watermark = load_watermark()
-
-    total_emails = 0
-    # Populated per-email below; both drive the watermark decision at the end.
+    deadline = _clock() + args.max_minutes * 60
+    watermark_before = watermark = load_watermark()
+    cursor = watermark
+    threads = captured_threads(Path(VAULT_PATH))
+    counts = {"threads_created": 0, "messages_created": 0, "attachments_captured": 0,
+              "skipped_as_noise": 0, "already_captured": 0}
     failures: list[dict] = []
-    succeeded_receipts: list[str] = []
-    total_threads_created = 0
-    total_messages_created = 0
-    total_attachments_captured = 0
-    # REQ-SB-87-US-03-T04: same aggregation shape as threads_created/
-    # messages_created above -- reads ingest_email.py's own T03-added
-    # "skipped_as_noise" field so the operator can always tell why a
-    # captured-email count looks lower than the real mailbox.
-    total_skipped_as_noise = 0
-
-    page_num = 0
-    before_ts: str | None = None
-    newest_seen: str | None = None
-    reached_watermark = False
-
+    total_emails = 0
+    frozen = False
+    stopped_at_time_limit = False
     progress: list[dict] = []
+    page_num = 0
 
     while True:
+        if _clock() >= deadline:
+            stopped_at_time_limit = True
+            break
         page_num += 1
-        args = ["list_recent_emails.py", "--limit", "50"]
-        if before_ts:
-            args += ["--before", before_ts]
-        code, out, err = run_script(args)
+        code, out, err = run_script(["list_recent_emails.py", "--limit", str(PAGE_SIZE),
+                                     "--since", cursor, "--oldest-first"])
         if code != 0:
             err_msg = err.strip() or out.strip()
             print(f"PAGE {page_num}: list_recent_emails failed (code {code}): {err_msg}")
-            summary = {
-                "status": "blocked",
-                "reason": err_msg or "list_recent_emails failed",
-                "page": page_num,
-                "processed_emails": total_emails,
-            }
-            with open(SUMMARY_PATH, "w", encoding="utf-8") as f:
-                json.dump(summary, f, ensure_ascii=False, indent=2)
-            return 2
-
+            return _stop({"status": "blocked", "reason": err_msg or "list_recent_emails failed",
+                          "page": page_num, "processed_emails": total_emails,
+                          "watermark_before": watermark_before, "watermark_after": watermark})
         try:
             emails = json.loads(out or "[]")
         except json.JSONDecodeError as e:
             print(f"PAGE {page_num}: JSON decode error: {e}")
-            summary = {"status": "error", "reason": f"JSON decode error on page {page_num}", "raw_first_200": (out or "")[:200]}
-            with open(SUMMARY_PATH, "w", encoding="utf-8") as f:
-                json.dump(summary, f, ensure_ascii=False, indent=2)
-            return 2
+            return _stop({"status": "error", "reason": f"JSON decode error on page {page_num}",
+                          "raw_first_200": (out or "")[:200],
+                          "watermark_before": watermark_before, "watermark_after": watermark})
 
-        if not emails:
-            break  # genuinely no more mail (empty mailbox / true start of history)
-
-        rec_times = [e.get("received") for e in emails if e.get("received")]
-        page_oldest = min(rec_times) if rec_times else None
-        page_newest = max(rec_times) if rec_times else None
-        if newest_seen is None and page_newest:
-            newest_seen = page_newest
-
-        # Only emails strictly newer than the watermark are new -- a page
-        # can be a mix (the watermark boundary falls inside it), so filter
-        # per-email rather than an all-or-nothing page decision.
-        new_emails = [e for e in emails if (e.get("received") or "") > watermark]
-        if len(new_emails) < len(emails):
-            reached_watermark = True  # this page crosses into already-captured territory
-
-        page_processed = 0
-        page_threads_created = 0
-        page_messages_created = 0
-        page_attachments_captured = 0
-        page_skipped_as_noise = 0
-
-        for e in new_emails:
-            try:
-                conversation_id = e.get("conversation_id")
-                message_id = e.get("id")
-                received = e.get("received")
-                sender_name = e.get("sender_name")
-                sender_email = e.get("sender_email")
-                subject = e.get("subject")
-                body = e.get("body") or ""
-                recipients = e.get("recipients") or []
-
-                ingest_payload = {
-                    "conversation_id": conversation_id,
-                    "message_id": message_id,
-                    "received": received,
-                    "sender_name": sender_name,
-                    "sender_email": sender_email,
-                    "subject": subject,
-                    "body": body,
-                    "recipients": recipients,
-                    "direction": e.get("direction") or "",
-                    "sender_department": e.get("sender_department") or "",
-                    "sender_job_title": e.get("sender_job_title") or "",
-                    "sender_company_name": e.get("sender_company_name") or "",
-                }
-                ingest_path = os.path.join(SCRATCH_DIR, f"ingest_{message_id}.json")
-                with open(ingest_path, "w", encoding="utf-8") as f:
-                    json.dump(ingest_payload, f, ensure_ascii=False)
-                code, out, err = run_script(["ingest_email.py", "--vault-path", VAULT_PATH, "--input-file", ingest_path])
-                message_path = None
-                # A failed ingest MUST be recorded, not swallowed. Until
-                # 2026-09-04 a non-zero exit here fell through an `if code == 0`
-                # with no else: the email was counted as processed, the run
-                # reported "complete", and the watermark moved past it. That is
-                # how 54 real emails were consumed and permanently skipped
-                # without a single error surfacing anywhere.
-                if code != 0:
-                    detail = (err or out or "").strip().splitlines()
-                    failures.append({
-                        "message_id": message_id,
-                        "received": received,
-                        "subject": subject,
-                        "error": detail[-1][:300] if detail else f"ingest_email.py exited {code}",
-                    })
-                else:
-                    try:
-                        result = json.loads(out.strip() or "{}")
-                        if result.get("thread_created"):
-                            page_threads_created += 1
-                        if result.get("message_created"):
-                            page_messages_created += 1
-                        if result.get("skipped_as_noise"):
-                            page_skipped_as_noise += 1
-                        message_path = result.get("message_path")
-                        succeeded_receipts.append(received or "")
-                    except Exception as parse_error:
-                        # An unparsable reply means we cannot tell what was
-                        # written -- treat it as a failure, never as a success.
-                        failures.append({
-                            "message_id": message_id,
-                            "received": received,
-                            "subject": subject,
-                            "error": f"unparsable ingest_email.py output: {parse_error}",
-                        })
-
-                if sender_email:
-                    _ = run_script([
-                        "link_person_to_thread.py",
-                        "--vault-path", VAULT_PATH,
-                        "--conversation-id", conversation_id or "",
-                        "--sender-name", sender_name or "",
-                        "--sender-email", sender_email,
-                    ])
-
-                _ = run_script(["rename_thread.py", "--vault-path", VAULT_PATH, "--conversation-id", conversation_id or ""])
-
-                attachments = e.get("attachments") or []
-                if attachments and message_path:
-                    cap_payload = {
-                        "conversation_id": conversation_id,
-                        "message_id": message_id,
-                        "received": received,
-                        "message_path": message_path,
-                        "attachments": attachments,
-                    }
-                    cap_path = os.path.join(SCRATCH_DIR, f"attach_{message_id}.json")
-                    with open(cap_path, "w", encoding="utf-8") as f:
-                        json.dump(cap_payload, f, ensure_ascii=False)
-                    code, out, err = run_script(["capture_attachments.py", "--vault-path", VAULT_PATH, "--input-file", cap_path])
-                    if code == 0:
-                        try:
-                            r = json.loads(out.strip() or "{}")
-                            page_attachments_captured += len(r.get("captured", []))
-                        except Exception:
-                            pass
-
-                page_processed += 1
-                total_emails += 1
-            except Exception as ex:
-                print(f"PAGE {page_num}: email {e.get('id')!r} failed: {ex}")
-                failures.append({
-                    "message_id": e.get("id"),
-                    "received": e.get("received"),
-                    "subject": e.get("subject"),
-                    "error": str(ex)[:300],
-                })
-                page_processed += 1
-                total_emails += 1
-                continue
-
-        total_threads_created += page_threads_created
-        total_messages_created += page_messages_created
-        total_attachments_captured += page_attachments_captured
-        total_skipped_as_noise += page_skipped_as_noise
-
-        progress.append({
-            "page": page_num,
-            "emails_seen": len(emails),
-            "new_emails": len(new_emails),
-            "processed": page_processed,
-            "threads_created": page_threads_created,
-            "messages_created": page_messages_created,
-            "attachments_captured": page_attachments_captured,
-            "skipped_as_noise": page_skipped_as_noise,
-            "date_range": {"newest": page_newest, "oldest": page_oldest},
-        })
-
-        print(f"PAGE {page_num} done: seen={len(emails)} new={len(new_emails)} processed={page_processed} threads+={page_threads_created} messages+={page_messages_created} skipped_as_noise+={page_skipped_as_noise}")
-
-        if reached_watermark:
+        kept, held_back, is_final = trim_page(emails, PAGE_SIZE)
+        discard_downloads(held_back)
+        if not kept:
             break
-        before_ts = page_oldest
+        points = advance_points(kept, is_final or bool(held_back))
+        captured_on_page = 0
+        for index, email in enumerate(kept):
+            if _clock() >= deadline:
+                stopped_at_time_limit = True
+                discard_downloads(kept[index:])
+                break
+            written = capture_one(email, threads, counts, failures)
+            total_emails += 1
+            captured_on_page += 1
+            if not written:
+                frozen = True       # nothing after a failure may be passed
+            received = email.get("received") or ""
+            if written and not frozen and points[index] and received > watermark:
+                save_watermark(received)
+                watermark = received
 
-    # The watermark may only pass emails that were genuinely written. Advancing
-    # past a failure is what makes a transient or systemic ingest error
-    # permanent data loss: the next run treats those emails as already
-    # captured and never looks at them again. So when anything failed, the
-    # watermark stops just below the OLDEST failure, and every email from
-    # there on is retried next run -- re-ingesting an already-written email is
-    # idempotent (ingest_email.py keys off conversation/message id), whereas
-    # skipping one is not recoverable without a manual rewind.
-    new_watermark = next_watermark(watermark, newest_seen, failures, succeeded_receipts)
+        progress.append({"page": page_num, "emails_seen": len(emails), "processed": captured_on_page,
+                         "date_range": {"oldest": kept[0].get("received"), "newest": kept[-1].get("received")}})
+        print(f"PAGE {page_num} done: seen={len(emails)} processed={captured_on_page} "
+              f"watermark={watermark}")
+        if stopped_at_time_limit or is_final:
+            break
+        next_cursor = kept[-1].get("received") or ""
+        if not next_cursor or next_cursor <= cursor:
+            break           # cannot advance the listing; never loop on one page
+        cursor = next_cursor
 
-    if new_watermark > watermark:
-        save_watermark(new_watermark)
-
+    if failures:
+        status = "complete_with_errors"
+    elif stopped_at_time_limit:
+        status = "time_limit_reached"
+    else:
+        status = "complete"
     final = {
         # A distinct status so a run that dropped mail can never again read as
         # a clean "complete" in the cron report.
-        "status": "complete" if not failures else "complete_with_errors",
+        "status": status,
+        "more_to_capture": stopped_at_time_limit,
         "pages": page_num,
-        "watermark_before": watermark,
-        "watermark_after": new_watermark,
+        "watermark_before": watermark_before,
+        "watermark_after": watermark,
         "failed_emails": len(failures),
         # Capped: the point is to make the failure visible and diagnosable in
         # the cron output, not to dump a thousand identical tracebacks.
         "failures": failures[:10],
         "total_new_emails": total_emails,
-        "threads_created": total_threads_created,
-        "messages_created": total_messages_created,
-        "attachments_captured": total_attachments_captured,
-        "skipped_as_noise": total_skipped_as_noise,
+        **counts,
         "progress": progress,
     }
     with open(SUMMARY_PATH, "w", encoding="utf-8") as f:

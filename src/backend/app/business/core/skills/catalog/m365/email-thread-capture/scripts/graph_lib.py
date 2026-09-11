@@ -536,7 +536,8 @@ def message_to_record(message: dict, direction: str, attachments: list[dict] | N
 _SELECT = "id,subject,from,sender,toRecipients,ccRecipients,receivedDateTime,conversationId,body,hasAttachments"
 
 
-def _folder_url(mailbox: str, folder: str, limit: int, since: str | None, before: str | None) -> str:
+def _folder_url(mailbox: str, folder: str, limit: int, since: str | None, before: str | None,
+                oldest_first: bool = False) -> str:
     clauses = []
     since_filter = _outlook_stamp_to_graph_filter(since or "")
     before_filter = _outlook_stamp_to_graph_filter(before or "")
@@ -547,7 +548,7 @@ def _folder_url(mailbox: str, folder: str, limit: int, since: str | None, before
     params = {
         "$select": _SELECT,
         "$top": str(max(1, int(limit))),
-        "$orderby": "receivedDateTime desc",
+        "$orderby": "receivedDateTime asc" if oldest_first else "receivedDateTime desc",
     }
     if clauses:
         params["$filter"] = " and ".join(clauses)
@@ -555,13 +556,19 @@ def _folder_url(mailbox: str, folder: str, limit: int, since: str | None, before
             f"?{urllib.parse.urlencode(params, safe='$,() ')}")
 
 
-def list_recent_mail(limit: int = 10, since: str | None = None, before: str | None = None) -> list[dict]:
-    """Inbox + Sent, merged newest-first and trimmed to `limit`.
+def list_recent_mail(limit: int = 10, since: str | None = None, before: str | None = None,
+                     oldest_first: bool = False) -> list[dict]:
+    """Inbox + Sent, merged newest-first and trimmed to `limit` -- or, with
+    `oldest_first`, the oldest `limit` after `since`, which is how the delta
+    pages forward from its watermark.
 
     Queries each folder for up to `limit` on its own before merging, exactly
     as outlook_lib does: the real mix between received and sent in any given
     window is unknown ahead of time, so trimming per-folder first would
-    silently favour whichever side happened to be busier."""
+    silently favour whichever side happened to be busier.
+
+    A record trimmed off the merge has already had its attachments downloaded;
+    those files are deleted rather than left in %TEMP% for nobody to read."""
     mailbox = (os.environ.get("SECOND_BRAIN_SELF_EMAIL") or os.environ.get("SELF_EMAIL") or "").strip()
     if not mailbox:
         raise GraphUnavailable(
@@ -571,7 +578,7 @@ def list_recent_mail(limit: int = 10, since: str | None = None, before: str | No
     token = _access_token()
     merged: list[dict] = []
     for folder, direction in (("inbox", "received"), ("sentitems", "sent")):
-        payload = _get(_folder_url(mailbox, folder, limit, since, before), token)
+        payload = _get(_folder_url(mailbox, folder, limit, since, before, oldest_first), token)
         for message in payload.get("value") or []:
             attachments: list[dict] = []
             if message.get("hasAttachments"):
@@ -589,5 +596,12 @@ def list_recent_mail(limit: int = 10, since: str | None = None, before: str | No
                         if a.get("id") else None),
                 )
             merged.append(message_to_record(message, direction, attachments))
-    merged.sort(key=lambda record: record["received"], reverse=True)
+    merged.sort(key=lambda record: record["received"], reverse=not oldest_first)
+    for trimmed in merged[limit:]:
+        for attachment in trimmed.get("attachments") or []:
+            if attachment.get("temp_path"):
+                try:
+                    os.remove(attachment["temp_path"])
+                except OSError:
+                    pass
     return merged[:limit]

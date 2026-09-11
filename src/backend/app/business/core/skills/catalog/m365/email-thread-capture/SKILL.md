@@ -131,29 +131,31 @@ after checking back in.
 ## Recurring path (delta capture)
 
 **`run_delta_capture.py`** (2026-08-22) is the RECURRING sibling --
-same per-email steps, same single-process/O(1)-LLM-calls design, but
-pages backward only until it reaches its own persisted watermark
-(`.second-brain/email_capture_state.json`'s own `last_captured_at`,
-the newest `received` this script has ever actually captured) instead of
-walking the entire mailbox to true zero every run. A missing/first-run
-watermark seeds a conservative 2-day lookback -- never a full-history
-redo (that's `run_full_capture.py`'s own, separate, one-time job) and
-never blind trust in "now" (which could silently miss a real gap).
+same per-email steps, same single-process/O(1)-LLM-calls design. It pages
+FORWARD, oldest first, from its own persisted watermark (`last_captured_at`
+in the App Database Folder's `email_capture_state.json`, the `received` of
+the last email it captured) and saves the watermark after every email it
+writes (2026-09-11). A run that is cut off keeps everything it captured and
+the next run continues; paging backward and saving only at the end meant a
+backlog bigger than one run was killed by Hermes every hour with nothing
+saved. A missing/first-run watermark seeds a conservative 2-day lookback --
+never a full-history redo (that's `run_full_capture.py`'s own, separate,
+one-time job) and never blind trust in "now".
 
 ```
-terminal(command="python \"${HERMES_SKILL_DIR}\scripts\run_delta_capture.py\"")
+terminal(command="python \"${HERMES_SKILL_DIR}\scripts\run_delta_capture.py\" [--max-minutes 50]")
 ```
 
-Prints `{"status", "pages", "watermark_before", "watermark_after",
-"total_new_emails", "threads_created", "messages_created",
-"attachments_captured", "progress"}`. Intended for a recurring Hermes
-cron job (`hermes cron create ... --repeat 0` for indefinite, or omit
-`--repeat`) on an hourly-ish cadence -- new mail arrives continuously,
-unlike Meetings' own naturally-bounded calendar window. Idempotent and
-safe to run more often than needed: every per-email step it calls
-(`ingest_email.py`, `rename_thread.py`, etc.) already dedupes on its own,
-the watermark is just an efficiency optimization so a normal run only
-re-walks a handful of pages instead of the whole mailbox.
+Stops itself after `--max-minutes` (default 50, inside Hermes' 3600s
+script limit). Prints `{"status", "more_to_capture", "pages",
+"watermark_before", "watermark_after", "failed_emails", "total_new_emails",
+"threads_created", "messages_created", "attachments_captured",
+"skipped_as_noise", "already_captured", "progress"}`; `status` is
+`time_limit_reached` when it stopped with mail still to capture. An email
+already in the vault is recognised by its (conversation_id, message_id) and
+not ingested again; its attachments still pass through capture, which writes
+only what is missing. The first failed email freezes the watermark for the
+rest of the run, so it and everything after it are retried next run.
 
 **Fallback path** (only if `run_full_capture.py` itself fails to run, or
 you're debugging one specific step): every script also works standalone,
