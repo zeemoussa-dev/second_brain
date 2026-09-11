@@ -23,6 +23,11 @@ line capture adds -- is never deleted: it is reported for review instead. A
 Person whose domain matches no hub (internal staff, personal addresses, a
 company not yet created) stays where it is.
 
+A note another process has open is SKIPPED, never fatal. On Windows a rename
+or delete fails while any process holds the file, and capture opens Person
+notes constantly -- the first live run died on one busy file and left the
+rest unfiled. A skipped person is simply filed on the next run.
+
 Moves are one `os.replace`, so an interrupted run cannot leave a person in two
 places. Every path goes through `long_path`: a hub's `Affiliates/<name>/People/`
 folder is deep.
@@ -75,9 +80,17 @@ def _written_by_someone(body: str) -> bool:
                for line in body.splitlines())
 
 
-def _append_history(note: Path, entries: list[str]) -> None:
+def _change_key(entry: str) -> str:
+    """An entry minus its date, so the same change is recognised on a retry."""
+    return entry.split(" · ", 1)[-1].strip()
+
+
+def _append_history(note: Path, entries: list[str]) -> int:
     """Appends to the END of the note's `## History` section, creating it when
-    absent -- never into whatever section happens to come last."""
+    absent -- never into whatever section happens to come last. Skips an entry
+    already logged: a merge interrupted between logging and deleting the
+    duplicate is retried on the next run, and must not log the change twice.
+    Returns how many entries were actually written."""
     frontmatter, body = vm.read_note(note)
     lines = body.rstrip("\n").splitlines()
     try:
@@ -87,10 +100,15 @@ def _append_history(note: Path, entries: list[str]) -> None:
         start = len(lines) - 2
     end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")),
                len(lines))
+    already = {_change_key(line) for line in lines[start + 1:end] if line.strip()}
+    fresh = [e for e in entries if _change_key(e) not in already]
+    if not fresh:
+        return 0
     while end > start + 1 and not lines[end - 1].strip():
         end -= 1
-    lines[end:end] = entries
+    lines[end:end] = fresh
     vm.write_note(note, frontmatter, "\n".join(lines) + "\n")
+    return len(fresh)
 
 
 def run(vault_path: Path, *, dry_run: bool = False) -> dict:
@@ -99,10 +117,15 @@ def run(vault_path: Path, *, dry_run: bool = False) -> dict:
     flat_dir = vault_path / "Work" / "People"
     moved = duplicates_removed = fields_filled = changes_logged = left_flat = 0
     needs_review: list[str] = []
+    busy: list[str] = []
     changes_sample: list[str] = []
 
     for person in sorted(flat_dir.glob("*.md")) if flat_dir.is_dir() else []:
-        frontmatter, body = vm.read_note(person)
+        try:
+            frontmatter, body = vm.read_note(person)
+        except OSError:
+            busy.append(person.name)
+            continue
         if frontmatter.get("type") != "Person":
             continue
         email = _norm(frontmatter.get("email") or person.stem).lower()
@@ -117,10 +140,17 @@ def run(vault_path: Path, *, dry_run: bool = False) -> dict:
 
         if not os.path.isfile(vm.long_path(target)):
             if not dry_run:
-                os.makedirs(vm.long_path(target_dir), exist_ok=True)
-                os.replace(vm.long_path(person), vm.long_path(target))
-                vm.insert_body_line_if_missing(target, f"**{label}:** [[{hub_md.stem}]]")
-                vm.merge_tags(target, [f"{kind}/{ccp._tag_slug(hub_md.stem)}"])
+                try:
+                    os.makedirs(vm.long_path(target_dir), exist_ok=True)
+                    os.replace(vm.long_path(person), vm.long_path(target))
+                except OSError:
+                    busy.append(person.name)
+                    continue
+                try:
+                    vm.insert_body_line_if_missing(target, f"**{label}:** [[{hub_md.stem}]]")
+                    vm.merge_tags(target, [f"{kind}/{ccp._tag_slug(hub_md.stem)}"])
+                except OSError:
+                    pass  # the move landed; the nightly retag adds the link and tag
             moved += 1
             continue
 
@@ -140,18 +170,23 @@ def run(vault_path: Path, *, dry_run: bool = False) -> dict:
             elif newer.casefold() != kept.casefold():
                 changes.append(f'- {today} · {key}: "{kept}" → "{newer}" '
                                "(seen in a newer capture; the existing value was kept)")
+        logged = len(changes)
         if not dry_run:
-            if fills:
-                vm.update(vault_path, target, frontmatter=fills)
-            new_tags = [t for t in (frontmatter.get("tags") or []) if t not in (filed.get("tags") or [])]
-            if new_tags:
-                vm.merge_tags(target, new_tags)
-            if changes:
-                _append_history(target, changes)
-            os.remove(vm.long_path(person))
+            try:
+                if fills:
+                    vm.update(vault_path, target, frontmatter=fills)
+                new_tags = [t for t in (frontmatter.get("tags") or [])
+                            if t not in (filed.get("tags") or [])]
+                if new_tags:
+                    vm.merge_tags(target, new_tags)
+                logged = _append_history(target, changes) if changes else 0
+                os.remove(vm.long_path(person))
+            except OSError:
+                busy.append(person.name)
+                continue
         duplicates_removed += 1
         fields_filled += len(fills)
-        changes_logged += len(changes)
+        changes_logged += logged
         changes_sample.extend(f"{person.stem}: {c[2:]}" for c in changes[:1])
 
     return {
@@ -163,6 +198,9 @@ def run(vault_path: Path, *, dry_run: bool = False) -> dict:
         "changes_sample": changes_sample[:5],
         "needs_review": needs_review[:20],
         "needs_review_total": len(needs_review),
+        # Open in another process at the time; filed on the next run.
+        "busy_skipped": len(busy),
+        "busy_sample": busy[:5],
         "left_flat_no_hub": left_flat,
     }
 
@@ -178,6 +216,7 @@ def main() -> int:
         print(json.dumps({"error": "SECOND_BRAIN_VAULT_PATH is not set"}))
         return 2
     result = run(Path(args.vault_path), dry_run=args.dry_run)
+    # Busy alone stays quiet: it is transient and retried every hour.
     if args.quiet and not (result["moved_into_hubs"] or result["duplicates_removed"]
                            or result["needs_review_total"]):
         return 0
