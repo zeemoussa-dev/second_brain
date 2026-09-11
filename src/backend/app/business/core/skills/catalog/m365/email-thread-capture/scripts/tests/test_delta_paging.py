@@ -138,7 +138,6 @@ def delta(tmp_path, monkeypatch):
     monkeypatch.setattr(rdc, "_state_path", lambda: state)
     monkeypatch.setattr(rdc, "SUMMARY_PATH", str(tmp_path / "summary.json"))
     monkeypatch.setattr(rdc, "SCRATCH_DIR", str(tmp_path))
-    monkeypatch.setattr(rdc, "ensure_pywin32", lambda: (True, "ok"))
 
     def run(mailbox):
         monkeypatch.setattr(rdc, "run_script", mailbox.run_script)

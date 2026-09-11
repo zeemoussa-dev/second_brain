@@ -80,22 +80,6 @@ PYTHON = sys.executable or "python"
 _clock = time.monotonic
 
 
-def ensure_pywin32():
-    try:
-        import win32com  # type: ignore
-        return True, "ok"
-    except Exception as e:
-        install_cmd = [PYTHON, "-m", "pip", "install", "pywin32"]
-        proc = subprocess.run(install_cmd, capture_output=True, text=True)
-        if proc.returncode != 0:
-            return False, f"pip install pywin32 failed: code={proc.returncode} stderr={proc.stderr.strip()}"
-        try:
-            import win32com  # type: ignore
-            return True, "installed"
-        except Exception as e2:
-            return False, f"win32com import still failing after install: {e2}"
-
-
 def run_script(args: list[str]) -> tuple[int, str, str]:
     # encoding="utf-8" explicit on BOTH sides of this subprocess boundary
     # (list_recent_emails.py's own sys.stdout.reconfigure, 2026-08-24) --
@@ -377,15 +361,11 @@ def main(argv: list[str] | None = None) -> int:
                         help="Stop cleanly after this long; the next run continues from the watermark.")
     args = parser.parse_args(argv)
     _require_vault_path()
-    # The Graph path needs no COM (2026-09-09). This was FATAL, which made the
-    # recurring job impossible to run under Hermes' own uv-managed Python: that
-    # interpreter refuses `pip install` ("externally managed environment"), so
-    # a dependency this code path never uses stopped the capture outright.
-    # Kept as a warning rather than deleted -- outlook_lib is still the right
-    # answer on a host that reads a local mail profile.
-    ok, msg = ensure_pywin32()
-    if not ok:
-        print(f"NOTE: pywin32 unavailable ({msg}); the Graph path does not need it.")
+    # No pywin32 check (removed 2026-09-11). The delta reads mail through
+    # Graph and never touches COM; the check tried `pip install pywin32` on
+    # every run, which Hermes' uv-managed Python refuses, and its note landed
+    # in the hourly output. list_recent_emails.py imports graph_lib, not
+    # outlook_lib.
 
     deadline = _clock() + args.max_minutes * 60
     watermark_before = watermark = load_watermark()
