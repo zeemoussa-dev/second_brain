@@ -18,6 +18,12 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix: the email delta could never catch up a backlog bigger than one run. It
+  paged backward from "now" and saved its watermark only at the end, so Hermes'
+  one-hour limit killed every run with nothing saved. It now pages oldest first
+  from the watermark, saves after each email, stops itself at 50 minutes, and
+  skips mail already in the vault.
+
 - feat: Company pipeline -- hourly, no model. From each Thread's saved extraction
   it writes each named company's History, files the facts worth remembering under
   that company's Captures (`## Captured`; the operator's `## Notes` is never
