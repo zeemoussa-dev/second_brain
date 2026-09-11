@@ -18,6 +18,14 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix: thread enrichment never tagged the companies it named -- they fed only the
+  review list, dropping the "tag all companies" rule the applier it replaced
+  enforced. It now tags every named company that resolves to a hub, by name or
+  alias. Backfilled from the saved extractions without re-reading anything: 240
+  tags on 126 Threads, plus 8 on 5 attachments from their summaries' wikilinks.
+  `retag_threads_from_extracts.py` and `retag_files_from_summaries.py` are safe to
+  re-run after any alias or hub is added.
+
 - feat: People pipeline -- every Person filed under the company it belongs to, hourly.
   A duplicate capture recreates is folded into the filed note: blank fields filled,
   any value that differs logged to the note's History with the existing value kept,

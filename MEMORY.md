@@ -127,6 +127,8 @@ Where a rule does not belong here:
 
 - **[2026-09-11] Every lookup of a Person must search flat Work/People AND both hub roots at any depth (`Customers/**/People`, `Partners/**/People`).** People are filed under Partners and under Affiliates one level deeper. Capture's lookups already did; enrichment's and the backend's did not, and would have lost every filed partner contact.
 
+- **[2026-09-11] When one applier replaces another, carry over EVERY rule the old one enforced -- list them before deleting it.** The extraction applier replaced `apply_thread_review` and silently dropped its company tagging, the operator's own "tag all companies" rule: named companies fed only the review list, and 149 of 179 enriched Threads went untagged by content. Persisting each extraction before applying it is what made the repair cheap -- a backfill from disk, no model.
+
 ## Capture pipelines
 
 - **[2026-09-10] Strip HTML at READ, never at capture -- 83% of a stored Outlook body is markup.** Measured on 119 real Threads: 6.66 M raw chars reduce to 1.14 M of text, i.e. ~14,000 input tokens per Thread become ~2,400 for identical content. An agent reading captured message notes raw pays for every `<div style="font-family:Aptos,...">` and learns nothing from it. But convert on the way OUT, not on the way in: an email's real body IS the HTML, capture's job is to preserve the evidence faithfully, and if a summary ever looks wrong the original is what you check it against. `summarize-and-tag-threads/scripts/read_thread.py` is the converter.
