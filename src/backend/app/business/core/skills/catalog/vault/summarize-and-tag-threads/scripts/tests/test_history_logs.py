@@ -1,9 +1,9 @@
-"""Enrichment's Customer Logs: a dated line in each named company's History.
+"""Customer Logs: a dated line in each named company's History.
 
-The extraction applier wrote none -- not one company History in the vault had
-a single entry. These pin the entry's shape and placement, one entry per
-Thread, the fallback for extractions saved before `history_line` existed, and
-the backfill from those saved extractions.
+Written by the Company pipeline from each saved extraction, never by
+Enrichment itself -- one owner per note. These pin the entry's shape and
+placement, one entry per Thread, the fallback for extractions saved before
+`history_line` existed, and the pass over the saved extractions.
 """
 import shutil
 import sys
@@ -65,26 +65,42 @@ def entries(history: Path) -> list[str]:
     return [line for line in history.read_text(encoding="utf-8").splitlines() if line.startswith("- ")]
 
 
+def log(vault: Path, extraction_: dict) -> list[str]:
+    import apply_thread_extract as a
+    thread = vault / extraction_["thread_path"]
+    frontmatter, _ = vm.read_note(thread)
+    return a.write_history(vault, thread, frontmatter, extraction_)
+
+
+def test_enrichment_itself_writes_no_history(vault):
+    """The Company pipeline owns History. Enrichment writing it too puts two
+    writers on one note."""
+    import apply_thread_extract as a
+    history = hub(vault, "Partners", "G42")
+    result = a.apply_extract(vault, extraction(["G42"], history_line="Signed"))
+    assert entries(history) == [] and "history_entries" not in result
+
+
 def test_each_named_company_gets_a_dated_entry_linking_the_thread(vault):
     import apply_thread_extract as a
     adcb = hub(vault, "Customers", "Abu Dhabi Commercial Bank", aliases=["ADCB"])
     hub(vault, "Partners", "G42")
     khazna = hub(vault, "Partners", "Khazna Data Centres", aliases=["Khazna"], parent="G42")
 
-    result = a.apply_extract(vault, extraction(["ADCB", "Khazna", "Nowhere Holdings"],
-                                               history_line="Facility term sheet signed."))
+    written = log(vault, extraction(["ADCB", "Khazna", "Nowhere Holdings"],
+                                   history_line="Facility term sheet signed."))
 
     line = f"- 2026-06-18: Facility term sheet signed -- [[{_THREAD}]]"
     assert entries(adcb) == [line], "by alias, dated by the Thread's last message"
     assert entries(khazna) == [line], "an Affiliate gets its own entry"
-    assert sorted(result["history_entries"]) == ["Abu Dhabi Commercial Bank", "Khazna Data Centres"]
+    assert sorted(written) == ["Abu Dhabi Commercial Bank", "Khazna Data Centres"]
 
 
 def test_entries_are_newest_first_and_the_header_is_kept(vault):
     import apply_thread_extract as a
     history = hub(vault, "Partners", "G42",
                   history_entries=["2026-07-01: Later -- [[T2]]", "2026-05-01: Earlier -- [[T1]]"])
-    a.apply_extract(vault, extraction(["G42"], history_line="Middle"))
+    log(vault, extraction(["G42"], history_line="Middle"))
     assert [e[2:12] for e in entries(history)] == ["2026-07-01", "2026-06-18", "2026-05-01"]
     text = history.read_text(encoding="utf-8")
     assert text.startswith("---\ntype: \"History\"") and "# G42" in text
@@ -93,22 +109,22 @@ def test_entries_are_newest_first_and_the_header_is_kept(vault):
 def test_one_entry_per_thread_replaced_when_the_thread_is_read_again(vault):
     import apply_thread_extract as a
     history = hub(vault, "Partners", "G42")
-    a.apply_extract(vault, extraction(["G42"], history_line="First read"))
-    a.apply_extract(vault, extraction(["G42"], history_line="Second read after it grew"))
+    log(vault, extraction(["G42"], history_line="First read"))
+    log(vault, extraction(["G42"], history_line="Second read after it grew"))
     assert entries(history) == [f"- 2026-06-18: Second read after it grew -- [[{_THREAD}]]"]
 
 
 def test_without_a_history_line_the_first_sentence_of_the_summary_is_used(vault):
     import apply_thread_extract as a
     history = hub(vault, "Partners", "G42")
-    a.apply_extract(vault, extraction(["G42"]))
+    log(vault, extraction(["G42"]))
     assert entries(history) == [f"- 2026-06-18: They agreed the pilot -- [[{_THREAD}]]"]
 
 
 def test_a_long_line_is_cut_at_a_word(vault):
     import apply_thread_extract as a
     history = hub(vault, "Partners", "G42")
-    a.apply_extract(vault, extraction(["G42"], history_line="word " * 60))
+    log(vault, extraction(["G42"], history_line="word " * 60))
     text = entries(history)[0].split(": ", 1)[1].split(" -- ")[0]
     assert len(text) <= 161 and text.endswith("…")
 
@@ -116,7 +132,7 @@ def test_a_long_line_is_cut_at_a_word(vault):
 def test_an_opportunity_never_gets_a_history_entry(vault):
     import apply_thread_extract as a
     history = hub(vault, "Customers", "Pilot Deal", note_type="Opportunity")
-    a.apply_extract(vault, extraction(["Pilot Deal"], history_line="x"))
+    log(vault, extraction(["Pilot Deal"], history_line="x"))
     assert entries(history) == []
 
 

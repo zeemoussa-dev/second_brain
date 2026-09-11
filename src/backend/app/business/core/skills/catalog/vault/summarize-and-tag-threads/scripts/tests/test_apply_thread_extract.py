@@ -1,10 +1,9 @@
-"""The extraction applier, tested where fan-out makes a mistake expensive.
+"""The extraction applier: the contract checks that stop a half-understood
+shape being written at all, and the one-owner rule -- Enrichment writes only
+onto the Thread, and saves the read for everything else.
 
-One model read writes to several places, so a bad extraction no longer produces
-one bad summary -- it can put a hallucinated job title permanently onto a Person
-note that other threads reference. These tests pin the conservatism that
-prevents that, plus the contract checks that stop a half-understood shape being
-written at all.
+What one read then fans out to is tested with its owner: People details and
+each company's History and Captures in the Company pipeline's tests.
 """
 import json
 import sys
@@ -59,56 +58,20 @@ def extraction(**overrides):
     return base
 
 
-def test_a_blank_person_field_is_filled(vault, monkeypatch):
+def test_person_fields_are_saved_not_written(vault):
+    """People details belong to the Company pipeline, which files them from the
+    saved extraction. Two writers on one Person note is how they start
+    overwriting each other."""
     vault_path, _ = vault
-    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parent.parent))
     import apply_thread_extract as a
+    import vault_manager as vm
     p = person(vault_path, "someone@adnoc.ae", name="Someone")
-    a.apply_extract(vault_path, extraction(people=[
-        {"email": "someone@adnoc.ae", "job_title": "Head of Data", "department": "IT"}]))
-    import vault_manager as vm
-    fm, _ = vm.read_note(p)
-    assert fm["role"] == "Head of Data"
-    assert fm["department"] == "IT"
-
-
-def test_an_existing_person_value_is_never_overwritten(vault):
-    """The rule inherited from the regex parser this replaces: a false positive
-    writing a wrong job title onto a real Person note is worse than leaving it
-    blank -- and fan-out makes that permanent."""
-    vault_path, _ = vault
-    import apply_thread_extract as a
-    import vault_manager as vm
-    p = person(vault_path, "someone@adnoc.ae", role="Chief Data Officer")
     result = a.apply_extract(vault_path, extraction(people=[
-        {"email": "someone@adnoc.ae", "job_title": "Intern"}]))
-    fm, _ = vm.read_note(p)
-    assert fm["role"] == "Chief Data Officer", "an existing value must survive"
-    assert result["fields_left_alone"] >= 1
-
-
-def test_a_person_not_already_in_the_vault_is_not_created(vault):
-    """Capture owns Person creation, from real message headers. A person a model
-    inferred from a signature must not be conjured into existence here."""
-    vault_path, _ = vault
-    import apply_thread_extract as a
-    result = a.apply_extract(vault_path, extraction(people=[
-        {"email": "ghost@nowhere.com", "job_title": "VP"}]))
-    assert result["people_not_in_vault"] == 1
-    assert not (vault_path / "Work" / "People" / "ghost@nowhere.com.md").exists()
-
-
-def test_name_and_email_are_never_written_back(vault):
-    """They are the note's identity, set at capture. A model restating them is
-    an opportunity to corrupt them for no gain."""
-    vault_path, _ = vault
-    import apply_thread_extract as a
-    import vault_manager as vm
-    p = person(vault_path, "someone@adnoc.ae", name="Real Name")
-    a.apply_extract(vault_path, extraction(people=[
-        {"email": "someone@adnoc.ae", "name": "Wrong Name", "job_title": "Head"}]))
-    fm, _ = vm.read_note(p)
-    assert fm["name"] == "Real Name"
+        {"email": "someone@adnoc.ae", "job_title": "Head of Data"}]))
+    assert vm.read_note(p)[0]["role"] == ""
+    assert result["people_deferred"] == 1
+    saved = json.loads(Path(result["extraction_saved_to"]).read_text(encoding="utf-8"))
+    assert saved["people"][0]["job_title"] == "Head of Data", "it must survive in the saved read"
 
 
 def test_a_wrong_schema_version_is_refused(vault):
@@ -147,9 +110,8 @@ def test_actions_become_checkboxes_with_owner_and_due(vault):
 
 
 def test_important_info_is_deferred_not_written_here(vault):
-    """It belongs on a Customer hub's captures note, owned by
-    create-companies-partners. Two scripts writing one note is how they start
-    overwriting each other."""
+    """It belongs on a company's captures note, filed by the Company pipeline.
+    Two scripts writing one note is how they start overwriting each other."""
     vault_path, _ = vault
     import apply_thread_extract as a
     result = a.apply_extract(vault_path, extraction(important_info=[

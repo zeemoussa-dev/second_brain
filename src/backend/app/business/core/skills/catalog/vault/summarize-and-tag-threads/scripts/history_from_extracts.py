@@ -1,11 +1,9 @@
 """Writes each company's History from the SAVED extractions -- no model.
 
-Enrichment's Customer Logs, re-applied from disk. Until 2026-09-11 the
-extraction applier wrote no History at all, so every Thread enriched before
-then left its companies' History empty. Every extraction was persisted before
-it was applied, so the entries can be written now without re-reading a single
-Thread. An extraction saved before `history_line` existed uses the first
-sentence of its summary.
+The Company pipeline's History step. Every Thread a company is named in gets a
+dated line in that company's History, linking back to it. Enrichment saves each
+read before anything is applied, so this never needs the model; an extraction
+saved before `history_line` existed uses the first sentence of its summary.
 
 One entry per Thread per company, replaced rather than repeated, so this is
 idempotent and safe to re-run -- after a hub or alias is added, a company named
@@ -35,15 +33,10 @@ def run(vault_path: Path, *, dry_run: bool = False) -> dict:
         extraction = json.loads(path.read_text(encoding="utf-8"))
         if not extraction.get("companies"):
             continue
-        thread = Path(extraction.get("thread_path") or "")
-        if not thread.is_absolute():
-            thread = vault_path / thread
-        if not os.path.isfile(vm.long_path(thread)):
-            # Renamed since it was read. The extraction is keyed on the id.
-            thread = vm.find_by_id(vault_path, path.stem, note_name="Threads")
-            if thread is None:
-                missing += 1
-                continue
+        thread = ate.resolve_thread(vault_path, extraction, path.stem)
+        if thread is None:
+            missing += 1
+            continue
         frontmatter, _ = vm.read_note(thread)
         written = ate.write_history(vault_path, thread, frontmatter, extraction,
                                     hubs=hubs, dry_run=dry_run)

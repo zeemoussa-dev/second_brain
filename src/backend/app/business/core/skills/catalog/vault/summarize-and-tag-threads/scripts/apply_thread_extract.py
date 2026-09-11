@@ -9,6 +9,12 @@ cost four reads for the same content.
 This script decides NOTHING. It applies a judgment already made, exactly as
 `apply_thread_review.py` does; every value it writes comes from the extraction.
 
+It writes ONLY onto the Thread -- its Summary and Actions -- and saves the read.
+Everything else the read fans out to belongs to the pipeline that owns that
+note (operator, 2026-09-11): company tags to Tagging; each company's History
+and Captures, and the People fields, to the Company pipeline. Both work from the
+extraction persisted here, so neither needs the model again.
+
     python apply_thread_extract.py --vault-path P --input-file F
 
 F is the extraction JSON:
@@ -113,30 +119,6 @@ def _person_note(vault_path: Path, email: str) -> Path | None:
             for found in base.glob(pattern):
                 return found
     return None
-
-
-def fill_people(vault_path: Path, people: list[dict]) -> dict:
-    filled, skipped_missing, left_alone = 0, 0, 0
-    for person in people or []:
-        note = _person_note(vault_path, person.get("email") or "")
-        if note is None:
-            skipped_missing += 1
-            continue
-        frontmatter, _ = vm.read_note(note)
-        updates = {}
-        for source_key, note_key in _PERSON_FIELD_MAP.items():
-            value = (person.get(source_key) or "").strip()
-            if not value:
-                continue
-            if (frontmatter.get(note_key) or "").strip():
-                left_alone += 1      # a real value is already there; never overwrite
-                continue
-            updates[note_key] = value
-        if updates:
-            vm.update(vault_path, note, frontmatter=updates)
-            filled += 1
-    return {"people_filled": filled, "people_not_in_vault": skipped_missing,
-            "fields_left_alone": left_alone}
 
 
 def _render_actions(actions: list[dict]) -> str:
@@ -303,6 +285,17 @@ def write_history(vault_path: Path, thread_path: Path, thread_frontmatter: dict,
     return written
 
 
+def resolve_thread(vault_path: Path, extraction: dict, thread_id: str) -> Path | None:
+    """The Thread a saved extraction belongs to: its recorded path or, when the
+    Thread has been renamed since it was read, the note carrying its id."""
+    thread = Path(extraction.get("thread_path") or "")
+    if not thread.is_absolute():
+        thread = vault_path / thread
+    if os.path.isfile(vm.long_path(thread)):
+        return thread
+    return vm.find_by_id(vault_path, thread_id, note_name="Threads")
+
+
 def record_unknown_companies(vault_path: Path, companies: list[str],
                              thread_id: str, thread_name: str) -> list[str]:
     """Files any company the model named that has no hub, for the operator to
@@ -387,7 +380,10 @@ def apply_extract(vault_path: Path, extraction: dict) -> dict:
                           mode="replace", note_id=thread_id, caller=_VM_CALLER)
         result["actions_written"] = len(extraction.get("actions") or [])
 
-    result.update(fill_people(vault_path, extraction.get("people") or []))
+    # People fields are NOT written here. They belong to the Company pipeline,
+    # which reads the extraction saved above (operator, 2026-09-11: "The
+    # Company pipeline should pull the people as well").
+    result["people_deferred"] = len(extraction.get("people") or [])
     # `important_info` deliberately NOT applied here: it belongs on a Customer or
     # Partner hub's own captures note, and those hubs are owned by
     # create-companies-partners. Applying it from this side would put two
@@ -403,10 +399,6 @@ def apply_extract(vault_path: Path, extraction: dict) -> dict:
         frontmatter.get("thread_name") or thread_path.stem)
     if unknown:
         result["unknown_companies"] = unknown
-
-    logged = write_history(vault_path, thread_path, frontmatter, extraction)
-    if logged:
-        result["history_entries"] = logged
 
     # Freshness, stamped LAST so a crash mid-apply leaves the thread looking
     # unenriched and it is simply picked up again.
