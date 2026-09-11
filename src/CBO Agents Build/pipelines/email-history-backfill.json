@@ -1,0 +1,18 @@
+{
+  "id": "email-history-backfill",
+  "name": "Email History Backfill",
+  "reference": true,
+  "status": "reference only -- a one-time build run, never scheduled",
+  "description": "Pulls the mailbox's history -- Inbox and Sent Items -- back to a chosen date, through exactly the same per-message chain the hourly Email Capture delta uses, so a backfilled Thread is indistinguishable from a live one. Walks BACKWARDS from the newest message, which matters to everything downstream: it appends older messages to the oldest end of conversations that already exist.",
+  "script": "m365/email-thread-capture/scripts/run_full_capture.py",
+  "run": "python run_full_capture.py --vault-path <vault> [--before <oldest received already captured, to resume>]",
+  "steps": [
+    {"id": "page-backwards", "name": "Page backwards", "description": "Fetches a page of messages older than the last one seen, until the target date.", "depends_on": [], "type": "worker"},
+    {"id": "per-message-chain", "name": "Same chain as the delta", "description": "Classify, ingest, link the sender, rename the Thread, capture attachments -- per message.", "depends_on": ["page-backwards"], "type": "producer"}
+  ],
+  "notes": [
+    "The hourly delta must NOT run at the same time: both write the same People notes. The delta launcher detects a running backfill and defers.",
+    "Enrichment can start before this finishes: its selector compares message COUNTS, so a Thread that grows at the oldest end is re-read.",
+    "Resumable: pass --before with the oldest `received` already in the vault."
+  ]
+}
