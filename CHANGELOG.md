@@ -18,6 +18,15 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: Thread Enrichment runs as parallel jobs over disjoint shards of the
+  backlog (`select_threads.py --shard K --shards N`, CRC32 of the Thread id), with
+  a lock on the one file every job updates (`UnknownCompanies.json`). Five jobs of
+  twenty Threads, every 15 minutes, on the operator's instance.
+- fix: hub notes pick up later edits to Entities.md's Domain and Aliases (hub
+  upkeep copies them, adding only); People, Thread and Meeting company matching
+  reads a hub's aliases as well as its domain; the mailbox owner's own company is
+  left off Threads and Meetings, while its People are still filed under it.
+
 - fix: Enrichment names each Thread by its conversation id, never by a path. The
   agent had typed folder paths from Thread titles and got them wrong (a `|`, an
   80-character cut, a zero-width space the prompt strips), so those Threads failed
