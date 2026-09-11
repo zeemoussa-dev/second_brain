@@ -33,6 +33,7 @@ from pathlib import Path
 from vault_manager import long_path
 
 _SLUG_INVALID_CHARS = re.compile(r'[\\/:*?"<>|]')
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f]")
 _LEADING_RE_PREFIX = re.compile(r"^(?:re:\s*)+", re.IGNORECASE)
 _FRONTMATTER_LINE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*):\s?(.*)$")
 _LIST_ITEM_PATTERN = re.compile(r'"((?:[^"\\]|\\.)*)"')
@@ -95,8 +96,28 @@ def _is_header_allowed(caller: str, header: str) -> bool:
 # ── slugs / frontmatter formatting ─────────────────────────────────────
 
 def _slugify(text: str, max_len: int = 80) -> str:
-    slug = _SLUG_INVALID_CHARS.sub("-", text).strip()
-    return slug[:max_len] if slug else "untitled"
+    # Trimmed AFTER truncating, not before. A cut at 80 can land on a space,
+    # and Windows silently drops a trailing space or dot from a path component
+    # -- but only through the plain API. Through long_path's literal form the
+    # name is taken as written, so the folder capture made ("...Maiyas") and
+    # the one a re-fetch asked for ("...Maiyas ") were different (2026-09-11).
+    slug = _SLUG_INVALID_CHARS.sub("-", text).strip()[:max_len].rstrip(" .")
+    return slug or "untitled"
+
+
+def _disk_name(filename: str, max_len: int = 180) -> str:
+    """The name an attachment is WRITTEN under; the note's `original_filename`
+    keeps the real one verbatim. Many attachments are attached emails named
+    after their subject -- "FW: Invitation...", "To Send | Fw: ..." -- and `:`
+    and `|` are illegal in a Windows file name. Only the folder slug was ever
+    sanitized, so those writes failed and the attachment was lost. Capped below
+    NTFS's 255-character component limit, keeping the extension."""
+    name = _SLUG_INVALID_CHARS.sub("-", filename)
+    name = _CONTROL_CHARS.sub("", name).strip().rstrip(" .") or "attachment"
+    if len(name) > max_len:
+        stem, suffix = os.path.splitext(name)
+        name = stem[: max_len - len(suffix)].rstrip(" .") + suffix
+    return name
 
 
 def clean_subject(subject: str) -> str:
@@ -452,7 +473,7 @@ def write_file_companion(
     # the file inside it failed: 256 attachments captured as EMPTY folders, with
     # no file and no note, and nothing reported anywhere (2026-09-11).
     os.makedirs(long_path(files_dir), exist_ok=True)
-    file_path = files_dir / original_filename
+    file_path = files_dir / _disk_name(original_filename)
     if not os.path.isfile(long_path(file_path)):
         with open(long_path(file_path), "wb") as handle:
             handle.write(content)
