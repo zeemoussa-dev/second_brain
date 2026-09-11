@@ -1,7 +1,7 @@
 ---
 name: summarize-and-tag-threads
 description: Enrichment for email Threads. Reads a Thread once and emits ONE structured extraction -- summary, the people it reveals, the actions it contains, the facts worth remembering -- which is then fanned out to the Thread, the People notes and the company hubs. Use when asked to summarize, enrich or catch up on threads, and as the Enrichment pipeline's scheduled job.
-version: 0.6.1
+version: 0.7.0
 author: second-brain
 license: MIT
 platforms: [windows]
@@ -101,6 +101,7 @@ terminal(command="python \"${HERMES_SKILL_DIR}\apply_thread_extract.py\" --input
      "linkedin": "..."}
   ],
   "actions": [{"text": "...", "owner": "...", "due": "..."}],
+  "history_line": "Pilot scope agreed; pricing due Friday.",
   "important_info": [{"text": "...", "company": "Masdar"}]
 }
 ```
@@ -160,6 +161,17 @@ Real commitments and requests, with an owner and a due date when the
 Thread states one. Leave them out when it does not; an invented deadline
 is worse than a missing one. These become checkboxes in the Thread's
 `## Actions`.
+
+#### history_line
+
+One line for the History of every company in `companies` -- what happened
+with THEM in this Thread, the way someone reading that company's History
+wants it: "Pilot scope agreed; pricing due Friday", not the summary again.
+Each named company that has a hub gets it as a dated entry linking back to
+this Thread. One entry per Thread: if the Thread grows and is enriched again,
+its entry is replaced, not repeated. If you leave it out, the first sentence
+of your summary is used instead -- so write it; a summary's first sentence is
+rarely the line a History reader wants.
 
 #### important_info
 

@@ -21,6 +21,7 @@ F is the extraction JSON:
       "people":         [{"email", "name", "department", "job_title",
                           "company_name", "phone", "linkedin"}],
       "actions":        [{"text", "owner", "due"}],
+      "history_line":   str,              # optional: one line for each company's History
       "important_info": [{"text", "company"}]
     }
 
@@ -159,8 +160,9 @@ def _tag_slug(text: str) -> str:
     return slug or "untitled"
 
 
-def _company_index(vault_path: Path) -> dict[str, str]:
-    """Every real hub's name and aliases, lowercased -> that hub's company tag.
+def _company_hubs(vault_path: Path) -> list[tuple[str, Path, list[str]]]:
+    """(company tag, hub note, lowercased names) for every real hub -- its name
+    and aliases, Affiliates included.
 
     Read from the HUBS, not from Entities.md: a hub is what actually exists in
     the vault, and Entities.md carries rows deliberately marked Ignore or
@@ -169,8 +171,8 @@ def _company_index(vault_path: Path) -> dict[str, str]:
 
     Only notes whose `type` is Customer or Partner. An Opportunity nested under
     a Customer has the same own-folder shape, and must never be mistaken for a
-    company and tagged as one."""
-    index: dict[str, str] = {}
+    company -- tagged as one, or given a History entry."""
+    hubs: list[tuple[str, Path, list[str]]] = []
     for root_name, kind in (("Customers", "customer"), ("Partners", "partner")):
         base = vault_path / "Work" / root_name
         if not base.is_dir():
@@ -182,19 +184,123 @@ def _company_index(vault_path: Path) -> dict[str, str]:
             frontmatter, _ = vm.read_note(hub_md)
             if frontmatter.get("type") not in ("Customer", "Partner"):
                 continue
-            tag = f"{kind}/{_tag_slug(hub_dir.name)}"
             aliases = frontmatter.get("aliases") or []
             if isinstance(aliases, str):
                 aliases = [aliases]
-            for name in [frontmatter.get("name") or hub_dir.name, *aliases]:
-                key = str(name).strip().lower()
-                if key:
-                    index.setdefault(key, tag)
+            names = [str(n).strip().lower() for n in [frontmatter.get("name") or hub_dir.name, *aliases]]
+            hubs.append((f"{kind}/{_tag_slug(hub_dir.name)}", hub_md, [n for n in names if n]))
+    return hubs
+
+
+def _company_index(vault_path: Path) -> dict[str, str]:
+    """Every real hub's name and aliases, lowercased -> that hub's company tag."""
+    index: dict[str, str] = {}
+    for tag, _hub, names in _company_hubs(vault_path):
+        for name in names:
+            index.setdefault(name, tag)
     return index
+
+
+def _company_hub_notes(vault_path: Path) -> dict[str, Path]:
+    """Every real hub's name and aliases, lowercased -> the hub note itself."""
+    notes: dict[str, Path] = {}
+    for _tag, hub_md, names in _company_hubs(vault_path):
+        for name in names:
+            notes.setdefault(name, hub_md)
+    return notes
 
 
 def _known_company_names(vault_path: Path) -> set[str]:
     return set(_company_index(vault_path))
+
+
+# ── Customer Logs: a dated line in each named company's History ─────────────
+#
+# One of the four places the operator's design fans a single read out to
+# (2026-09-10: "{Summary, People Data, Thread Actions, Important Info} ... fill
+# more than just the Thread: People, Customer Logs, Important Captures"). The
+# applier this replaced wrote them; this one did not until 2026-09-11, and not
+# one company History in the vault had a single entry.
+
+_HISTORY_ENTRY = re.compile(r"^- (\d{4}-\d{2}-\d{2}): (.+)$")
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s")
+_WHITESPACE = re.compile(r"\s+")
+_HISTORY_LINE_MAX = 160
+
+
+def _history_line(extraction: dict) -> str:
+    """The one line a company's History gets for this Thread: the reader's own
+    `history_line` when it wrote one, otherwise the first sentence of its
+    summary -- which is all an extraction saved before the field existed has."""
+    line = _WHITESPACE.sub(" ", str(extraction.get("history_line") or "")).strip()
+    if not line:
+        summary = _WHITESPACE.sub(" ", str(extraction.get("summary") or "")).strip()
+        line = _SENTENCE_END.split(summary, 1)[0] if summary else ""
+    line = line.rstrip(". ")
+    if len(line) > _HISTORY_LINE_MAX:
+        line = line[:_HISTORY_LINE_MAX].rsplit(" ", 1)[0].rstrip(",;: ") + "…"
+    return line
+
+
+def _history_update(hub_md: Path, date: str, line: str, thread_link: str):
+    """(history note, frontmatter, new body) -- or None when nothing changes.
+
+    ONE entry per Thread: an entry already pointing at this Thread is replaced,
+    not joined by a second. A Thread enriched again after it grew gets its
+    latest line at its latest date, instead of the company's History reading
+    like a changelog of one conversation. Newest first; the note's header and
+    frontmatter are kept."""
+    history = hub_md.parent / f"{hub_md.stem}-history.md"
+    if os.path.isfile(vm.long_path(history)):
+        frontmatter, body = vm.read_note(history)
+    else:
+        frontmatter = {"type": "History", "name": f"{hub_md.stem} History",
+                       "parent": f"[[{hub_md.stem}]]", "tags": ["kind/history"]}
+        body = f"\n# {hub_md.stem}\n"
+    lines = body.splitlines()
+    kept = [line_ for line_ in lines if not _HISTORY_ENTRY.match(line_)]
+    entries = [m.groups() for line_ in lines if (m := _HISTORY_ENTRY.match(line_))]
+    suffix = f" -- {thread_link}"
+    updated = [(d, t) for d, t in entries if not t.endswith(suffix)]
+    updated.append((date, f"{line}{suffix}"))
+    if set(updated) == set(entries):
+        return None
+    updated.sort(key=lambda entry: entry[0], reverse=True)
+    while kept and not kept[-1].strip():
+        kept.pop()
+    new_body = "\n".join(kept) + "\n\n" + "\n".join(f"- {d}: {t}" for d, t in updated) + "\n"
+    return history, frontmatter, new_body
+
+
+def write_history(vault_path: Path, thread_path: Path, thread_frontmatter: dict,
+                  extraction: dict, *, hubs: dict[str, Path] | None = None,
+                  dry_run: bool = False) -> list[str]:
+    """A dated entry, linking back to this Thread, in the History of every
+    company the reader named that has a hub. Returns the hubs whose History
+    gained or changed an entry. Dated by the Thread's own last message -- when
+    it happened, not when it was read."""
+    companies = [c for c in (extraction.get("companies") or []) if c and str(c).strip()]
+    line = _history_line(extraction)
+    if not companies or not line:
+        return []
+    hubs = _company_hub_notes(vault_path) if hubs is None else hubs
+    date = (str(thread_frontmatter.get("last_message_at") or "")[:10]
+            or datetime.now(timezone.utc).date().isoformat())
+    link = f"[[{thread_path.stem}]]"
+    written: list[str] = []
+    seen: set[Path] = set()
+    for name in companies:
+        hub_md = hubs.get(str(name).strip().lower())
+        if hub_md is None or hub_md in seen:
+            continue
+        seen.add(hub_md)
+        update = _history_update(hub_md, date, line, link)
+        if update is None:
+            continue
+        if not dry_run:
+            vm.write_note(*update)
+        written.append(hub_md.stem)
+    return written
 
 
 def record_unknown_companies(vault_path: Path, companies: list[str],
@@ -297,6 +403,10 @@ def apply_extract(vault_path: Path, extraction: dict) -> dict:
         frontmatter.get("thread_name") or thread_path.stem)
     if unknown:
         result["unknown_companies"] = unknown
+
+    logged = write_history(vault_path, thread_path, frontmatter, extraction)
+    if logged:
+        result["history_entries"] = logged
 
     # Freshness, stamped LAST so a crash mid-apply leaves the thread looking
     # unenriched and it is simply picked up again.
