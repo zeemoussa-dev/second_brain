@@ -111,6 +111,10 @@ def main() -> int:
     if not (args.vault_path or "").strip():
         print(json.dumps({"error": "SECOND_BRAIN_VAULT_PATH is not set"}))
         return 2
+    # A Thread name can carry any character a subject line did -- a zero-width
+    # space among them -- and a piped stdout on Windows defaults to cp1252,
+    # which cannot encode it: the whole batch failed on one name.
+    sys.stdout.reconfigure(encoding="utf-8")
     print(json.dumps(select(Path(args.vault_path), limit=args.limit,
                             newest_first=args.newest_first,
                             include_noise=args.include_noise), ensure_ascii=False))
