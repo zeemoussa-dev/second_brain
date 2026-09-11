@@ -132,7 +132,8 @@ company not the parent"). The parent relationship already lives on
 Masdar's own `affiliate_of` and Mubadala's `## Affiliates` back-link.
 
 Every name here is also checked against the real hubs. One that matches a
-hub, by name or alias, is tagged on the Thread; one with no hub is
+hub, by name or alias, is tagged on the Thread by the separate Tagging
+pipeline, which reads your saved extraction; one with no hub is
 filed for the operator to review, never created and never written into
 `Entities.md` -- see **Companies nobody knew about** below. So name a
 company you are confident the Thread is about even when you suspect it

@@ -5,8 +5,8 @@ change can be re-applied from disk instead of re-reading thousands of Threads
 through a model. This is that re-apply, for company tags, and it is needed
 twice over:
 
-  - the extraction applier never tagged companies at all until 2026-09-11 --
-    every company a reader named fed only the review list; and
+  - enrichment does not tag. Tagging is its own pipeline, and this is its
+    content step for Threads; and
   - a company named before its hub or alias existed ("ADCB" before the alias
     was added) could not resolve at the time, and can now.
 
@@ -49,11 +49,10 @@ def run(vault_path: Path, *, dry_run: bool = False) -> dict:
                 missing += 1
                 continue
         unresolved.update(c for c in companies if c.strip().lower() not in index)
-        if dry_run:
-            wanted = {index[c.strip().lower()] for c in companies if c.strip().lower() in index}
-            new = wanted - set(vm.read_note(thread)[0].get("tags") or [])
-        else:
-            new = ate.tag_companies(vault_path, thread, companies, index=index)
+        wanted = {index[c.strip().lower()] for c in companies if c.strip().lower() in index}
+        new = sorted(wanted - set(vm.read_note(thread)[0].get("tags") or []))
+        if new and not dry_run:
+            vm.merge_tags(thread, new)
         if new:
             threads_tagged += 1
             tags_added += len(new)

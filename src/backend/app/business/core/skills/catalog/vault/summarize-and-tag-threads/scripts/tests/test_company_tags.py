@@ -1,12 +1,11 @@
-"""Thread enrichment tags every company it names that resolves to a hub.
+"""Enrichment reads and saves; the Tagging pipeline tags.
 
-It did not: the extraction applier fed named companies only to the review list,
-so a Thread was tagged by participant domain alone -- an internal thread about
-five customer accounts carried none of them. And a company named before its
-alias existed could never resolve later. Both are pinned here, plus the
-backfill that re-applies from the saved extractions without a model.
+Two pipelines (operator, 2026-09-11: "Enrich is different from Tagging, 2
+Pipelines now"). These pin the boundary -- the enrichment applier writes no
+company tag -- and the Tagging content step that tags from the saved
+extraction: by name, by alias, Affiliates included, never an Opportunity, and
+idempotently.
 """
-import json
 import shutil
 import sys
 from pathlib import Path
@@ -60,48 +59,55 @@ def extraction(companies):
             "people": [], "actions": [], "important_info": []}
 
 
-def test_named_companies_are_tagged_by_name_and_alias(vault):
+def test_enrichment_writes_no_company_tag(vault):
+    """The boundary itself: Enrichment reads and saves; Tagging tags."""
     import apply_thread_extract as a
     vault_path, note = vault
-    result = a.apply_extract(vault_path, extraction(["ADCB", "Khazna", "G42"]))
+    result = a.apply_extract(vault_path, extraction(["ADCB", "G42"]))
+    assert vm.read_note(note)[0]["tags"] == ["kind/thread"]
+    assert "company_tags_added" not in result
+    assert Path(result["extraction_saved_to"]).is_file(), "the read is saved for Tagging"
+
+
+def test_an_unknown_name_is_still_filed_for_review(vault):
+    import apply_thread_extract as a
+    vault_path, _ = vault
+    result = a.apply_extract(vault_path, extraction(["Nowhere Holdings"]))
+    assert result.get("unknown_companies") == ["Nowhere Holdings"]
+
+
+def test_tagging_tags_from_the_saved_read_by_name_alias_and_affiliate(vault):
+    import apply_thread_extract as a
+    import retag_threads_from_extracts as r
+    vault_path, note = vault
+    a.apply_extract(vault_path, extraction(["ADCB", "Khazna", "G42", "Nowhere Holdings"]))
+
+    result = r.run(vault_path)
+
     tags = vm.read_note(note)[0]["tags"]
-    assert "customer/abu-dhabi-commercial-bank" in tags
+    assert "customer/abu-dhabi-commercial-bank" in tags, "resolved by its alias"
     assert "partner/khazna-data-centres" in tags, "an Affiliate resolves too"
     assert "partner/g42" in tags
     assert "kind/thread" in tags, "existing tags survive"
-    assert sorted(result["company_tags_added"]) == sorted(
-        ["customer/abu-dhabi-commercial-bank", "partner/g42", "partner/khazna-data-centres"])
-
-
-def test_an_unknown_name_is_still_filed_for_review_not_tagged(vault):
-    import apply_thread_extract as a
-    vault_path, note = vault
-    result = a.apply_extract(vault_path, extraction(["Nowhere Holdings"]))
-    assert result.get("unknown_companies") == ["Nowhere Holdings"]
-    assert vm.read_note(note)[0]["tags"] == ["kind/thread"]
+    assert result["tags_added"] == 3 and result["names_still_unresolved"] == 1
 
 
 def test_an_opportunity_is_never_tagged_as_a_company(vault):
     import apply_thread_extract as a
+    import retag_threads_from_extracts as r
     vault_path, note = vault
     a.apply_extract(vault_path, extraction(["Pilot Deal"]))
+    r.run(vault_path)
     assert not any("pilot-deal" in t for t in vm.read_note(note)[0]["tags"])
 
 
-def test_the_backfill_reapplies_from_saved_extractions_idempotently(vault):
-    """A saved extraction naming a company that had no alias when it was read
-    resolves now -- without the model reading the Thread again."""
+def test_tagging_is_idempotent(vault):
     import apply_thread_extract as a
     import retag_threads_from_extracts as r
     vault_path, note = vault
-    a.persist(extraction(["ADCB"]), "conv-1")        # as saved before tagging existed
-
-    first = r.run(vault_path)
-    second = r.run(vault_path)
-
-    assert "customer/abu-dhabi-commercial-bank" in vm.read_note(note)[0]["tags"]
-    assert first["threads_tagged"] == 1 and first["tags_added"] == 1
-    assert second["tags_added"] == 0, "a second run must add nothing"
+    a.persist(extraction(["ADCB"]), "conv-1")
+    first, second = r.run(vault_path), r.run(vault_path)
+    assert first["tags_added"] == 1 and second["tags_added"] == 0
 
 
 def test_a_dry_run_changes_nothing(vault):
@@ -109,6 +115,5 @@ def test_a_dry_run_changes_nothing(vault):
     import retag_threads_from_extracts as r
     vault_path, note = vault
     a.persist(extraction(["ADCB"]), "conv-1")
-    result = r.run(vault_path, dry_run=True)
-    assert result["tags_added"] == 1
+    assert r.run(vault_path, dry_run=True)["tags_added"] == 1
     assert vm.read_note(note)[0]["tags"] == ["kind/thread"]

@@ -197,29 +197,6 @@ def _known_company_names(vault_path: Path) -> set[str]:
     return set(_company_index(vault_path))
 
 
-def tag_companies(vault_path: Path, note: Path, companies: list[str],
-                  index: dict[str, str] | None = None) -> list[str]:
-    """Tags `note` with every company the reader named that resolves to a real
-    hub, by name or alias (operator: "Sometimes Emails will contain more than
-    one Company, tag all companies"). Returns the tags it actually added.
-
-    The applier this replaced did this; the extraction applier silently did
-    not -- every company named in a Thread's content fed only the review list,
-    and the Thread was tagged by participant domain alone (found 2026-09-11,
-    149 of 179 saved extractions). Additive: merge_tags never removes a tag,
-    so a domain-derived one or one the operator added survives."""
-    if not companies:
-        return []
-    index = _company_index(vault_path) if index is None else index
-    wanted = sorted({index[c.strip().lower()] for c in companies
-                     if c and c.strip().lower() in index})
-    existing = set(vm.read_note(note)[0].get("tags") or [])
-    new = [tag for tag in wanted if tag not in existing]
-    if new:
-        vm.merge_tags(note, new)
-    return new
-
-
 def record_unknown_companies(vault_path: Path, companies: list[str],
                              thread_id: str, thread_name: str) -> list[str]:
     """Files any company the model named that has no hub, for the operator to
@@ -312,9 +289,9 @@ def apply_extract(vault_path: Path, extraction: dict) -> dict:
     # hub-side applier can consume it without re-reading the thread.
     result["important_info_deferred"] = len(extraction.get("important_info") or [])
 
-    tagged = tag_companies(vault_path, thread_path, extraction.get("companies") or [])
-    if tagged:
-        result["company_tags_added"] = tagged
+    # Company TAGS are not applied here. Tagging is its own pipeline, and it
+    # reads the extraction persisted above (operator, 2026-09-11: "Enrich is
+    # different from Tagging, 2 Pipelines now").
     unknown = record_unknown_companies(
         vault_path, extraction.get("companies") or [], thread_id,
         frontmatter.get("thread_name") or thread_path.stem)

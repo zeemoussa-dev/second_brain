@@ -1229,6 +1229,15 @@ def main() -> int:
         help="Skip Entities.md entirely -- just re-run the domain-based Person tag/link pass "
              "against whatever Customer/Partner/Affiliate hub notes already exist.",
     )
+    parser.add_argument("--hub-upkeep", action="store_true",
+                        help="Hub upkeep only -- missing sections, the hub's own tag, its "
+                             "children's tags. The Metadata pipeline's step.")
+    parser.add_argument("--domain-tags", action="store_true",
+                        help="Company tags on People, Threads and Meetings from email "
+                             "domains. The Tagging pipeline's first step.")
+    parser.add_argument("--engagement", action="store_true",
+                        help="engagement/<classification> on Threads and Meetings, from "
+                             "their company tags. The Tagging pipeline's last step.")
     args = parser.parse_args()
     if not (args.vault_path or "").strip():
         # An empty value would become Path("") -> the CWD, which is exactly the
@@ -1242,6 +1251,39 @@ def main() -> int:
 
     if args.reconcile_people:
         print(json.dumps(reconcile_people(vault_path), ensure_ascii=False))
+        return 0
+
+    # --retag-only's pieces, split so each lands in the pipeline it belongs to
+    # (operator, 2026-09-11: "Enrich is different from Tagging, 2 Pipelines
+    # now", then "All tagging"): hub upkeep is Metadata -- the hub's own shape;
+    # domain tags and engagement are Tagging. --retag-only still runs them all.
+    if args.hub_upkeep:
+        upkeep = backfill_hub_note_metadata(vault_path)
+        print(json.dumps({
+            "hub_notes_self_tagged": len(upkeep["self_tagged"]),
+            "hub_notes_log_captures_backfilled": len(upkeep["log_captures_backfilled"]),
+            "hub_children_tagged": len(upkeep["children_tagged"]),
+            "hub_sections_added": len(upkeep["sections_added"]),
+        }, ensure_ascii=False))
+        return 0
+    if args.domain_tags:
+        people = retag_people_by_domain(vault_path)
+        threads = retag_threads_by_participant_company(vault_path)
+        meetings = retag_meetings_by_attendee_company(vault_path)
+        print(json.dumps({
+            "people_tagged": len(people["tagged"]),
+            "people_linked": len(people["linked"]),
+            "threads_related_updated": len(threads["threads_updated"]),
+            "messages_company_linked": len(threads["messages_updated"]),
+            "meetings_updated": len(meetings["meetings_updated"]),
+        }, ensure_ascii=False))
+        return 0
+    if args.engagement:
+        engagement = tag_engagement_type(vault_path)
+        print(json.dumps({
+            "engagement_threads_tagged": len(engagement["threads_updated"]),
+            "engagement_meetings_tagged": len(engagement["meetings_updated"]),
+        }, ensure_ascii=False))
         return 0
 
     if args.retag_only:

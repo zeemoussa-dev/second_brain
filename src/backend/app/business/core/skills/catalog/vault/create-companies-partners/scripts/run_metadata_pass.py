@@ -21,8 +21,9 @@ Steps, in dependency order:
                 remove a folder marked Deleted
   4. (people)   no longer here -- People run as their own hourly pipeline,
                 people_pipeline.py, which files them AND folds duplicates
-  5. retag      company tags on Threads, Meetings and People, from domains
-  6. engagement engagement/<classification> on Threads and Meetings
+  5. hub-upkeep missing hub sections, the hub's own tag, its children's tags
+  6. (tagging)  no longer here -- company tags and engagement are the Tagging
+                pipeline, run_tagging_pass.py, at 03:30
   7. retrofit   Conversation index, kind/thread, kind/email, kind/attachment
                 and self-link removal on Threads -- writes only what changed
 
@@ -176,11 +177,13 @@ def main() -> int:
     # and folds the duplicates capture recreates (operator, 2026-09-11). This
     # step only ever did the second half -- and since hub creation stopped
     # moving people, nobody was filed at all.
-    # retag-only covers People, Threads, Meetings and engagement in one call --
-    # it builds its domain index once and reuses it, so splitting these apart
-    # would rescan the vault per step for no benefit.
-    steps.append(_run("retag", ["create_companies_partners.py", "--vault-path", vault,
-                                "--retag-only"], SCRIPTS_DIR))
+    # Hub upkeep only: missing sections, the hub's own tag, its children's tags.
+    # Company tagging of People, Threads and Meetings -- and the engagement
+    # label derived from it -- is the Tagging pipeline now (run_tagging_pass.py,
+    # 03:30), which runs after this so every tag points at where each company
+    # finally sits.
+    steps.append(_run("hub-upkeep", ["create_companies_partners.py", "--vault-path", vault,
+                                     "--hub-upkeep"], SCRIPTS_DIR))
 
     # Mechanical, so it belongs here rather than waiting for a one-off run: new
     # Threads arrive every hour and each needs the same Conversation index,
