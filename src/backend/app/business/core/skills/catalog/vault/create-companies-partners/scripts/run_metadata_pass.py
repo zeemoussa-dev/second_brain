@@ -23,6 +23,8 @@ Steps, in dependency order:
                 capture continuously recreates
   5. retag      company tags on Threads, Meetings and People, from domains
   6. engagement engagement/<classification> on Threads and Meetings
+  7. retrofit   Conversation index, kind/thread, kind/email, kind/attachment
+                and self-link removal on Threads -- writes only what changed
 
 Order is not arbitrary. `reconcile` runs AFTER `hubs` so an Affiliate whose
 parent was only created tonight can still be filed under it, and BEFORE
@@ -61,8 +63,11 @@ def _sibling_skill_scripts(skill_id: str) -> Path | None:
     path that exists only in a checkout -- it would have reported "not found"
     every night on the machine that actually runs it."""
     for candidate in (
-        SCRIPTS_DIR.parents[1] / skill_id / "scripts",   # repo
-        SCRIPTS_DIR.parent / skill_id,                   # deployed (flat)
+        SCRIPTS_DIR.parents[1] / skill_id / "scripts",          # repo, same tool
+        SCRIPTS_DIR.parent / skill_id,                          # deployed, same tool
+        # Another Tool: the retrofit lives under m365/, this Skill under vault/.
+        *SCRIPTS_DIR.parents[2].glob(f"*/{skill_id}/scripts"),  # repo
+        *SCRIPTS_DIR.parents[1].glob(f"*/{skill_id}"),          # deployed
     ):
         if candidate.is_dir():
             return candidate
@@ -97,7 +102,8 @@ def _run(label: str, args: list[str], cwd: Path) -> dict:
 # pass correctly skipped is not a change, and treating it as one would make the
 # quiet mode print every single night.
 _INVENTORY_KEYS = {"skipped_ignored", "skipped_already", "skipped_unresolved",
-                   "flat_people", "hubs_seen", "status", "hubs_only"}
+                   "flat_people", "hubs_seen", "status", "hubs_only",
+                   "threads_seen", "self_email", "total_threads"}
 
 
 def _did_something(steps: list[dict]) -> bool:
@@ -172,6 +178,18 @@ def main() -> int:
     # would rescan the vault per step for no benefit.
     steps.append(_run("retag", ["create_companies_partners.py", "--vault-path", vault,
                                 "--retag-only"], SCRIPTS_DIR))
+
+    # Mechanical, so it belongs here rather than waiting for a one-off run: new
+    # Threads arrive every hour and each needs the same Conversation index,
+    # kind tags and self-link removal the backlog got (2026-09-11).
+    retrofit_dir = _sibling_skill_scripts("email-thread-capture")
+    if retrofit_dir and (retrofit_dir / "retrofit_conversation_index.py").is_file():
+        steps.append(_run("retrofit", ["retrofit_conversation_index.py", "--vault-path", vault],
+                          retrofit_dir))
+    else:
+        steps.append({"step": "retrofit", "ok": False,
+                      "error": "retrofit_conversation_index.py not found -- is the "
+                               "email-thread-capture Skill deployed?"})
 
     failed = [s["step"] for s in steps if not s["ok"]]
 

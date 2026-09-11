@@ -106,14 +106,20 @@ def retrofit(vault_path: Path, *, dry_run: bool) -> dict:
             kind_tags_added += 1
             if not dry_run:
                 vault_manager.merge_tags(thread_note, ["kind/thread"])
-        if content and not dry_run:
-            vault_manager.modify_section(
-                vault_path, template, section="Conversation", content=content,
-                mode="replace", note_id=conversation_id, note_name="Threads",
-                caller="retrofit_conversation_index",
-            )
-        if content:
+        # Only when it CHANGED. The section is rebuilt from the message notes,
+        # so rewriting an identical one is a no-op in content but not in cost:
+        # as a nightly step that was ~2,400 pointless writes, and a counter that
+        # reported every thread as "written" every night -- which also defeats
+        # the pass's quiet mode.
+        existing = (vault_manager.get_section_content(thread_note, "Conversation") or "").strip()
+        if content and content.strip() != existing:
             conversations_written += 1
+            if not dry_run:
+                vault_manager.modify_section(
+                    vault_path, template, section="Conversation", content=content,
+                    mode="replace", note_id=conversation_id, note_name="Threads",
+                    caller="retrofit_conversation_index",
+                )
 
         # `kind/attachment` on each attachment's companion note. These are
         # written directly rather than through the `file` template, so no kind
