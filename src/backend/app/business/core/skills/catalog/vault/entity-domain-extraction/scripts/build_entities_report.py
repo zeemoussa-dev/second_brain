@@ -60,6 +60,15 @@ _PERSONAL_EMAIL_DOMAINS = frozenset({
     "msn.com", "yahoo.com", "ymail.com", "icloud.com", "me.com", "aol.com",
     "protonmail.com", "proton.me", "gmx.com", "mail.com", "yandex.com",
     "zoho.com",
+    # Regional and legacy Microsoft consumer domains. `live.com` was listed but
+    # its country variants were not, so `live.co.uk` was discovered as a company
+    # called "Live" -- and once discovery runs nightly, a missing denylist entry
+    # is not a one-off, it comes back every night after being removed.
+    "live.co.uk", "live.com.au", "live.ca", "live.fr", "live.de", "live.nl",
+    "hotmail.co.uk", "hotmail.fr", "hotmail.de", "hotmail.it", "hotmail.es",
+    "yahoo.co.uk", "yahoo.co.in", "yahoo.fr", "yahoo.de", "yahoo.ca",
+    "outlook.fr", "outlook.de", "outlook.es", "btinternet.com", "web.de",
+    "rediffmail.com", "qq.com", "163.com", "126.com", "naver.com",
 })
 
 # The operator's own organization -- every subdomain excluded too (e.g.

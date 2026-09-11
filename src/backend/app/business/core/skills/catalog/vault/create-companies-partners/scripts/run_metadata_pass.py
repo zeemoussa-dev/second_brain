@@ -13,7 +13,8 @@ Enrichment depends on Metadata. One direction only.
 
 Steps, in dependency order:
 
-  1. discover   new companies from newly-captured threads -> Entities.md
+  1. discover   new companies from newly-captured threads -> Entities.md,
+                appended as `Ignore: Yes` for a human to classify
   2. hubs       create any hub note that does not exist yet
   3. reconcile  make the folders agree with Entities.md -- reclassify between
                 Customers and Partners, re-parent an Affiliate under its parent,
@@ -29,9 +30,10 @@ parent was only created tonight can still be filed under it, and BEFORE
 folder that is about to move would write the old company's tag and then have to
 be undone.
 
-Discovery is skippable because it REWRITES Entities.md, and that file carries
-the operator's own curation -- classification, Ignore flags, merged Aliases.
-Everything else is additive.
+Discovery is APPEND-ONLY and runs by default: it adds an entry for a domain no
+existing entry covers, defaulted to `Ignore: Yes` so nothing is created until a
+human classifies it. `--skip-discovery` exists for a run that must not touch
+Entities.md at all, not because discovery is dangerous.
 
 Prints one JSON summary. A step that fails is reported and does NOT stop the
 others: a broken retag should not also cost the night's hub creation.
@@ -48,6 +50,23 @@ from pathlib import Path
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 PYTHON = sys.executable or "python"
+
+
+def _sibling_skill_scripts(skill_id: str) -> Path | None:
+    """Where another Skill's scripts live, in EITHER layout.
+
+    In the repo a Skill is `catalog/<tool>/<skill>/scripts/`; deployed, Hermes
+    flattens it to `<profile>/skills/<tool>/<skill>/` with no scripts/ level.
+    Hardcoding the repo shape is why the previous discovery step resolved to a
+    path that exists only in a checkout -- it would have reported "not found"
+    every night on the machine that actually runs it."""
+    for candidate in (
+        SCRIPTS_DIR.parents[1] / skill_id / "scripts",   # repo
+        SCRIPTS_DIR.parent / skill_id,                   # deployed (flat)
+    ):
+        if candidate.is_dir():
+            return candidate
+    return None
 
 
 def _run(label: str, args: list[str], cwd: Path) -> dict:
@@ -105,8 +124,9 @@ def main() -> int:
                         help="Print nothing on a night with no failures and no "
                              "changes. Failures always print.")
     parser.add_argument("--skip-discovery", action="store_true",
-                        help="Do not re-run company discovery. Discovery REWRITES "
-                             "Entities.md, which carries the operator's own curation.")
+                        help="Do not look for new companies. Discovery is append-only "
+                             "and safe to run nightly; this exists for a run that must "
+                             "not touch Entities.md at all.")
     args = parser.parse_args()
     if not (args.vault_path or "").strip():
         print(json.dumps({"error": "SECOND_BRAIN_VAULT_PATH is not set and "
@@ -118,13 +138,26 @@ def main() -> int:
     steps: list[dict] = []
 
     if not args.skip_discovery:
-        discovery_dir = SCRIPTS_DIR.parents[1] / "entity-domain-extraction" / "scripts"
-        if (discovery_dir / "build_entities_report.py").is_file():
-            steps.append(_run("discover", ["build_entities_report.py", "--vault-path", vault,
-                                           "--force"], discovery_dir))
+        # find_new_entities, NOT entity-domain-extraction's build_entities_report.
+        # The latter does a full destructive REWRITE of Entities.md -- correct for
+        # a one-time first build, catastrophic nightly, because that file is now
+        # the operator's own curation (classification, Ignore flags, merged
+        # Aliases). This one parses the current file, APPENDS only domains no
+        # existing entry covers, and defaults each to `Ignore: Yes` so nothing is
+        # created until a human classifies it. Nothing new means the file is not
+        # even re-rendered.
+        #
+        # Pointing at the destructive script is why discovery had to be skipped
+        # at all -- and while it was skipped, 93 real companies went unrecorded
+        # (2026-09-11).
+        discovery_dir = _sibling_skill_scripts("new-company-discovery")
+        if discovery_dir and (discovery_dir / "find_new_entities.py").is_file():
+            steps.append(_run("discover", ["find_new_entities.py", "--vault-path", vault],
+                              discovery_dir))
         else:
             steps.append({"step": "discover", "ok": False,
-                          "error": f"build_entities_report.py not found at {discovery_dir}"})
+                          "error": "find_new_entities.py not found -- is the "
+                                   "new-company-discovery Skill deployed?"})
 
     steps.append(_run("hubs", ["create_companies_partners.py", "--vault-path", vault,
                                "--hubs-only"], SCRIPTS_DIR))
