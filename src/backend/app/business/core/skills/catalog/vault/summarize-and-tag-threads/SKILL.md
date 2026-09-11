@@ -1,7 +1,7 @@
 ---
 name: summarize-and-tag-threads
 description: Enrichment for email Threads. Reads a Thread once and emits ONE structured extraction -- summary, the people it reveals, the actions it contains, the facts worth remembering -- which is then fanned out to the Thread, the People notes and the company hubs. Use when asked to summarize, enrich or catch up on threads, and as the Enrichment pipeline's scheduled job.
-version: 0.6.0
+version: 0.6.1
 author: second-brain
 license: MIT
 platforms: [windows]
@@ -45,10 +45,12 @@ conversation is *about*, and what it *reveals*.
 
 ## The loop
 
+A scheduled run's prompt header gives the EXACT interpreter and script folder -- use those verbatim. The deployed Skill is flat: there is no scripts\ subfolder, so a path copied from the repo layout does not exist on the machine that runs it.
+
 ### 1. Ask which Threads are due
 
 ```
-terminal(command="python \"${HERMES_SKILL_DIR}\scripts\select_threads.py\" --limit 25")
+terminal(command="python \"${HERMES_SKILL_DIR}\select_threads.py\" --limit 25")
 ```
 
 It returns the batch, oldest first. **Do not pick threads yourself** and
@@ -65,7 +67,7 @@ occasionally re-read one. That is the intended trade.
 ### 2. Read each Thread as text
 
 ```
-terminal(command="python \"${HERMES_SKILL_DIR}\scripts\read_thread.py\" --thread-dir \"<dir>\"")
+terminal(command="python \"${HERMES_SKILL_DIR}\read_thread.py\" --thread-dir \"<dir>\"")
 ```
 
 Always this, never the message notes directly. Capture stores each body
@@ -84,7 +86,7 @@ complete.
 Write the JSON to a scratch file, then apply it:
 
 ```
-terminal(command="python \"${HERMES_SKILL_DIR}\scripts\apply_thread_extract.py\" --input-file <scratch path>")
+terminal(command="python \"${HERMES_SKILL_DIR}\apply_thread_extract.py\" --input-file <scratch path>")
 ```
 
 ```json
