@@ -25,7 +25,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from note_frontmatter import parse_tags, read_note, write_tags_and_stamp
+import vault_manager as vm
+
 from topic_vocabulary import load_closed_topics, taxonomy_path
 
 _STAMP_FIELD = "topics_tagged_at"
@@ -89,16 +90,21 @@ def apply_entry(entry: dict, allowed: set[str], floor: float) -> dict:
         return {"note_path": note_path, "status": "error",
                 "detail": f"{len(topics)} topics given, maximum is {_MAX_TOPICS}"}
 
-    _, frontmatter_block, _ = read_note(note_path)
-    existing = parse_tags(frontmatter_block)
-    # Existing non-topic tags are preserved exactly; previous topic tags
-    # are replaced, so a re-run after new messages lands the current
-    # judgment rather than accumulating every topic ever guessed.
-    merged = [tag for tag in existing if not tag.startswith("topic/")] + topics
-    write_tags_and_stamp(
-        note_path, merged, _STAMP_FIELD,
-        datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00"),
-    )
+    frontmatter, body = vm.read_note(Path(note_path))
+    existing = [str(tag) for tag in (frontmatter.get("tags") or [])]
+    # Existing non-topic tags are preserved; previous topic tags are
+    # replaced, so a re-run after new messages lands the current judgment
+    # rather than accumulating every topic ever guessed. dict.fromkeys
+    # also de-duplicates in place: real notes in this vault carry the
+    # same bare tag repeated up to six times (one per attendee), and
+    # writing the line back without de-duplicating would preserve a
+    # defect on a line already being rewritten.
+    merged = list(dict.fromkeys(
+        [tag for tag in existing if not tag.startswith("topic/")] + topics
+    ))
+    frontmatter["tags"] = merged
+    frontmatter[_STAMP_FIELD] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+    vm.write_note(Path(note_path), frontmatter, body)
     return {"note_path": note_path, "status": "tagged", "topics": topics}
 
 
