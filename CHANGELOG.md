@@ -18,6 +18,17 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: Tagging is its own pipeline and owns every tag -- company tags from email
+  domains, from each Thread's saved extraction and from attachment summaries, then
+  the engagement label, nightly at 03:30. Enrichment reads and saves; it no longer
+  tags. Metadata is structure only: discover, hubs, reconcile, hub upkeep, thread
+  upkeep.
+
+- feat: Enrichment writes Customer Logs -- a dated line in the History of each
+  company a Thread names, one entry per Thread. Backfilled from the saved
+  extractions without a model: 240 entries across 59 company Histories, none of
+  which had a single entry before.
+
 - fix: thread enrichment never tagged the companies it named -- they fed only the
   review list, dropping the "tag all companies" rule the applier it replaced
   enforced. It now tags every named company that resolves to a hub, by name or

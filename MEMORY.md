@@ -129,6 +129,10 @@ Where a rule does not belong here:
 
 - **[2026-09-11] When one applier replaces another, carry over EVERY rule the old one enforced -- list them before deleting it.** The extraction applier replaced `apply_thread_review` and silently dropped its company tagging, the operator's own "tag all companies" rule: named companies fed only the review list, and 149 of 179 enriched Threads went untagged by content. Persisting each extraction before applying it is what made the repair cheap -- a backfill from disk, no model.
 
+- **[2026-09-11] Enrichment reads and saves; Tagging tags; Metadata is structure.** Three pipelines, split by the operator's own test -- "does it need a model to decide?" -- and then by what they write. Company tags from ANY source (domains, a Thread's saved extraction, an attachment summary's links) and the engagement label derived from them all belong to Tagging, which runs after Metadata so every tag points at where each company finally sits, and computes engagement last so it sees every source. Putting a tag write inside an enrichment applier is the mistake this rule exists to stop.
+
+- **[2026-09-11] The operator's enrichment design fans ONE read out to four places: the Thread, People, Customer Logs (each named company's History) and Important Captures.** Check a new applier against all four. The extraction applier shipped writing one and a half of them; company History and tagging were both silently dropped from the applier it replaced.
+
 ## Capture pipelines
 
 - **[2026-09-10] Strip HTML at READ, never at capture -- 83% of a stored Outlook body is markup.** Measured on 119 real Threads: 6.66 M raw chars reduce to 1.14 M of text, i.e. ~14,000 input tokens per Thread become ~2,400 for identical content. An agent reading captured message notes raw pays for every `<div style="font-family:Aptos,...">` and learns nothing from it. But convert on the way OUT, not on the way in: an email's real body IS the HTML, capture's job is to preserve the evidence faithfully, and if a summary ever looks wrong the original is what you check it against. `summarize-and-tag-threads/scripts/read_thread.py` is the converter.
