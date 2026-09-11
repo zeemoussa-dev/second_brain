@@ -172,7 +172,7 @@ def _iter_hub_notes(vault_path: Path):
         for md_path in root.rglob("*.md"):
             if not md_path.is_file():
                 continue
-            if md_path.stem.endswith("-log") or md_path.stem.endswith("-captures"):
+            if md_path.stem.endswith(("-log", "-history", "-captures")):
                 continue
             if md_path.parent.name != md_path.stem:
                 continue

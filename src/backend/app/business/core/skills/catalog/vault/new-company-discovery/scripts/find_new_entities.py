@@ -68,6 +68,15 @@ _PERSONAL_EMAIL_DOMAINS = frozenset({
     "msn.com", "yahoo.com", "ymail.com", "icloud.com", "me.com", "aol.com",
     "protonmail.com", "proton.me", "gmx.com", "mail.com", "yandex.com",
     "zoho.com",
+    # Regional and legacy Microsoft consumer domains. `live.com` was listed but
+    # its country variants were not, so `live.co.uk` was discovered as a company
+    # called "Live" -- and once discovery runs nightly, a missing denylist entry
+    # is not a one-off, it comes back every night after being removed.
+    "live.co.uk", "live.com.au", "live.ca", "live.fr", "live.de", "live.nl",
+    "hotmail.co.uk", "hotmail.fr", "hotmail.de", "hotmail.it", "hotmail.es",
+    "yahoo.co.uk", "yahoo.co.in", "yahoo.fr", "yahoo.de", "yahoo.ca",
+    "outlook.fr", "outlook.de", "outlook.es", "btinternet.com", "web.de",
+    "rediffmail.com", "qq.com", "163.com", "126.com", "naver.com",
 })
 _OWN_DOMAIN_SUFFIXES = ("core42.ai", "core42.ae")
 
@@ -291,9 +300,16 @@ def build_domain_evidence(vault_path: Path) -> dict[str, dict]:
 
 
 def _already_tracked_domains(entries: list[dict]) -> set[str]:
+    """Domain AND Aliases. Aliases is where the operator merges a second domain
+    into an entity that already exists -- `techsupport.microsoft.com` onto
+    Microsoft -- so reading only `Domain` re-discovers every merged domain as a
+    brand new company on the next run, undoing the merge in effect if not in
+    the file (2026-09-11: 93 appended entries, several of them domains already
+    merged by hand)."""
     tracked: set[str] = set()
     for entry in entries:
         tracked |= set(_split_domains(entry["fields"].get("Domain", "")))
+        tracked |= set(_split_domains(entry["fields"].get("Aliases", "")))
     return tracked
 
 

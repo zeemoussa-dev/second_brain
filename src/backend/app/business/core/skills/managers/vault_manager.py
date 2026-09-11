@@ -557,11 +557,21 @@ def upsert_namespaced_tag(note_path: Path, namespace: str, tag: str) -> None:
     `_upsert_namespaced_tag` ("engagement/customer vs. engagement/
     partner vs. engagement/internal ... doesn't end up wearing two
     contradictory tags forever"), generalized off any namespace, not
-    just "engagement"."""
+    just "engagement".
+
+    Takes the namespace and the VALUE separately and composes them. A caller
+    that already passed the full "engagement/customer" is honoured as-is, so
+    both spellings work -- the split signature made the bare form the natural
+    call, and writing it bare put `tags: ["internal", "internal", "internal"]`
+    on 1,895 real Threads: the un-namespaced tag never matched the
+    `namespace/` strip, so every run appended one more copy (2026-09-11)."""
+    qualified = str(tag) if str(tag).startswith(f"{namespace}/") else f"{namespace}/{tag}"
     frontmatter, body = read_note(note_path)
     tags = [t for t in (frontmatter.get("tags") or []) if not str(t).startswith(f"{namespace}/")]
-    tags.append(tag)
-    frontmatter["tags"] = tags
+    tags.append(qualified)
+    # dict.fromkeys, not set(): tag order is stable in the file, and shuffling
+    # it on every write turns a no-op into a diff.
+    frontmatter["tags"] = list(dict.fromkeys(tags))
     write_note(note_path, frontmatter, body)
 
 

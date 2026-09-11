@@ -1,7 +1,7 @@
 ---
 name: create-companies-partners
 description: One-time build of real Customer/Partner (and Affiliate) hub notes from the operator's curated Entities.md.
-version: 0.1.0
+version: 0.2.0
 author: second-brain
 license: MIT
 platforms: [windows]
@@ -49,13 +49,13 @@ Prints `{"created", "auto_created_parents", "skipped_ignored",
 ```
 Work/Customers/<Name>/
     <Name>.md              -- hub file. "## Affiliates" lists any
-                               Affiliates (wikilinks down); "## Log &
+                               Affiliates (wikilinks down); "## History &
                                Captures" links the two files below.
                                Deliberately NO People list here -- every
                                moved Person note carries a link UP
                                instead, and Obsidian's own backlinks
                                panel shows who belongs to it.
-    <Name>-log.md            -- identifying "# <Name>" header only, real
+    <Name>-history.md            -- identifying "# <Name>" header only, real
                                content is a later job's job. Name-prefixed
                                (not bare "log.md") so it's identifiable in
                                a flat file listing and never collides with
@@ -69,7 +69,7 @@ Work/Customers/<Name>/
     Affiliates/
         <Affiliate>/
             <Affiliate>.md   -- same shape one level deeper.
-            <Affiliate>-log.md
+            <Affiliate>-history.md
             <Affiliate>-captures.md
             People/
                 <person>.md

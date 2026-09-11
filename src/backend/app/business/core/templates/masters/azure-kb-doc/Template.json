@@ -13,7 +13,10 @@
     "plain_filename": false,
     "on_existing_title": "update_section",
     "frontmatter_defaults": {
-      "type": "AzureDoc"
+      "type": "AzureDoc",
+      "tags": [
+        "kind/kb-doc"
+      ]
     },
     "sections": [
       {

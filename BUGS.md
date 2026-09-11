@@ -43,6 +43,11 @@ is a thin status mirror of the index table below.
 | BUG-054 | `DELETE /agents/{id}` returns a bare 500 when Hermes refuses the profile delete, so the operator sees "The server failed handling this request" and the real reason stays in the server log | Logic | Minor | Closed | 2026-09-07 | direct fix, 2026-09-07 |
 | BUG-055 | The BUG-052 fix does not migrate a SOUL that already has pre-fix routing blocks: the peer heading is appended BELOW the existing bullets and the marker guard stops them ever moving under it, leaving a section that announces peers and lists none | Logic | Major | Closed | 2026-09-07 | direct fix, 2026-09-07 |
 | BUG-056 | Deleting an Agent leaves its Skills' `deployed_to` records behind, so recreating it skips every deployment as "already" — the install reports success and the Agent comes up with NO Skills at all | Logic | Blocker | Closed | 2026-09-07 | direct fix, 2026-09-07 |
+| BUG-057 | `email-thread-capture` cannot be provisioned on a fresh install from the repo alone: it needs a `email-capture-classifier` Hermes profile that exists only as prose in a task file, and a noise-definition artifact, neither of which the Skill creates or documents | Logic | Blocker | Open | 2026-09-09 | — |
+| BUG-058 | `run_full_capture.py` swallows a non-zero exit from every per-email step, so a capture where 100% of ingests failed reports `processed=50` with no error anywhere | Logic | Major | Open | 2026-09-09 | — |
+| BUG-059 | An attachment whose filename contains a path separator is saved under a TRUNCATED name with its extension lost — the bytes land in a file called `Fw` with no extension, and the Thread's Files link points at the truncated name | Logic | Major | Open | 2026-09-09 | — |
+| BUG-060 | A Thread note's `title` frontmatter is the raw base64 conversation id while its filename and `thread_name` are readable, so Obsidian displays the id | UI | Minor | Open | 2026-09-09 | — |
+| BUG-061 | A Pipeline whose id matches an Agent id silently draws TWICE on the Agents Map — `GET /agents` concatenates agents and pipeline summaries with no collision check, so the same id appears as two nodes with different types | Logic | Minor | Open | 2026-09-10 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -692,3 +697,191 @@ is a thin status mirror of the index table below.
   record — belt and braces, since the record can drift for other reasons too.
   A regression test that deletes and reinstalls, then asserts the Skill is on
   disk, would have caught this; the existing tests cover a first install only.
+
+### BUG-057 — the email capture Skill cannot be provisioned on a fresh install from the repo alone
+
+- **Area:** Logic
+- **Severity:** Blocker
+- **Status:** Open
+- **Found:** 2026-09-09, deploying `email-thread-capture` (now under the `m365`
+  Tool) to a Hermes profile on this clean install and running it for the first
+  time. It deployed cleanly, reported success, and captured nothing.
+- **Two prerequisites exist only as live state on the machine that built them:**
+
+  1. **A `email-capture-classifier` Hermes profile.** `ingest_email.py:135`
+     hardcodes `_CLASSIFIER_PROFILE = "email-capture-classifier"` and relays
+     every email to it. On a fresh install it does not exist:
+
+         RuntimeError: classify-or-skip relay failed (code 1):
+           Error: Profile 'email-capture-classifier' does not exist.
+
+     Its definition lives **only in prose**, in
+     `Implementation/Tasks/REQ-SB-87-US-03-T02-classifier-hermes-profile.md`,
+     which states plainly that it was built as *"real, live Hermes-side
+     infrastructure, no repo file"*. Its SOUL.md, its emptied
+     `platform_toolsets.cli`, and its deleted `skills/` directory — all three
+     load-bearing — have to be reconstructed by reading that task file.
+  2. **A noise-definition artifact** at
+     `<data>/data/EmailCapture/noise_definition.json`. `_read_noise_definition`
+     (`ingest_email.py:153`) reads it with no existence check, so a fresh
+     install dies with `FileNotFoundError` on the very first email.
+     `derive_noise_definition.py` generates it, but nothing runs it and SKILL.md
+     never mentions it.
+
+- **SKILL.md documents neither.** An operator following the Skill's own
+  instructions to the letter gets a capture that processes every email and
+  writes nothing.
+- **Expected:** deploying the Skill either provisions what it needs, or refuses
+  with a precondition naming exactly what is missing. The framework already has
+  the concept — `SkillManager.validate_declared_writes` refuses a deploy whose
+  Template contract is unmet; this is the same kind of unmet precondition and
+  is not checked.
+- **Why Blocker:** it is the difference between a Skill that ships and a Skill
+  that only works on the machine it was born on. Every Blueprint carrying this
+  Skill inherits the same hole.
+- **Fix direction:** make both prerequisites part of the shipped artifact rather
+  than of one machine's history. The classifier is an **Agent** in this
+  framework's own vocabulary — it has a SOUL, a model and a deliberate absence
+  of Skills — so it belongs in a Blueprint alongside the capture Agent, not in a
+  task file. The noise definition is first-run state: have the Skill derive it
+  on demand when absent, or make its absence a named precondition rather than a
+  raw `FileNotFoundError`.
+- **Reconstructed by hand on this install (2026-09-09)** from the T02 task file:
+  profile cloned from `default`, SOUL.md rewritten to the documented contract,
+  `skills/` deleted (120 inherited skills), `platform_toolsets.cli: []`. Capture
+  then produced real Threads. That reconstruction is exactly what should not be
+  necessary.
+
+### BUG-058 — a capture where every ingest failed reports total success
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-09-09, alongside BUG-057 — and it is the reason BUG-057 took
+  three separate investigations to see. Two consecutive 50-email runs printed:
+
+      PAGE 1 done: emails=50 processed=50 threads+=0 messages+=0 attachments+=0
+      {"status": "stopped_at_limit", "total_emails": 50, "threads_created": 0, ...}
+
+  Every single `ingest_email.py` call had exited non-zero with a traceback. None
+  of it appeared anywhere.
+- **Root cause:** `run_full_capture.py` runs each per-email step through
+  `run_script()` and discards the failure:
+
+      code, out, err = run_script(["ingest_email.py", ...])
+      if code == 0:
+          ...
+      else:
+          # log and continue
+          pass
+
+  The comment says "log and continue"; the code only continues. `page_processed`
+  and `total_emails` increment regardless, so a total failure is indistinguishable
+  from a run where every email was already captured. The sibling steps
+  (`link_person_to_thread`, `rename_thread`, `capture_attachments`) discard their
+  exit codes even more directly — `_ = run_script([...])`.
+- **Expected:** a per-email failure is counted and surfaced. The summary already
+  has the right shape for it — it reports `skipped_as_noise` precisely so a low
+  count can be explained — and a `failed` count with the first error text belongs
+  beside it.
+- **Why it matters beyond tidiness:** this is the same silent-success shape the
+  repo has been bitten by repeatedly (`wire_peers`, BUG-056). A capture that
+  reports `processed=50, threads_created=0` and exit code 0 will pass any
+  automated check built on it, and on a schedule it would report healthy runs
+  forever while the vault stayed empty.
+- **Fix direction:** count failures, put `failed` and a first-error sample in the
+  summary JSON, and return non-zero when every email in a page failed — a page
+  that captured nothing is not a successful page.
+
+### BUG-059 — an attachment filename containing a path separator is truncated and loses its extension
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-09-09, first real 50-email capture. Four of five attachments
+  saved correctly. The fifth did not:
+
+      Work/Threads/2026-09-09 MIC-Invest AD Opportunity extension/files/
+        2026-09-09 69f67b57-Fw- AD Invest(Mubadala) Extension of Migration project(12109/
+          2026-09-09 69f67b57-...project(12109.md
+          Fw                      <- the attachment bytes, no extension
+
+  The attachment's own name carried a path separator. Everything after it became
+  a nested path, so the folder name stops mid-word at `(12109` and the file
+  itself is called `Fw`.
+- **Repro:** capture an email whose attachment filename contains `/` (or `\`).
+- **Expected:** the separator is replaced, the name is preserved as far as the
+  filesystem allows, and the extension survives.
+- **Actual:** the name is silently truncated at the separator and the extension
+  is gone, so the file cannot be opened by double-click and its type is
+  unrecoverable from the name. The Thread's `## Files` wikilink points at the
+  truncated name, so the vault reference is wrong too.
+- **Why Major rather than cosmetic:** this is the capture step's one job for
+  attachments -- preserve the evidence. A file saved under a name that loses its
+  type is not preserved in any useful sense, and nothing reports a problem: the
+  run counted it among `attachments_captured: 5`.
+- **Fix direction:** sanitise the attachment name for every path-reserved
+  character (`/ \ : * ? " < > |`) before it is used as a folder or file name,
+  not just for length. Keep the extension explicitly rather than relying on
+  whatever survives the truncation. Worth checking the same path in
+  `capture_attachments.py` and in the meeting-capture sibling.
+
+### BUG-060 — a Thread note's `title` is the raw conversation id
+
+- **Area:** UI
+- **Severity:** Minor
+- **Status:** Open
+- **Found:** 2026-09-09, reviewing the first captured Threads.
+
+      thread_name: "ADNOC"
+      title: "AAQkAGM0Yzg5ZDFkLTQxNmItNGM4OS04NWM3LWNmZTdlMzg1MjE0Mw..."
+
+  The folder and file are both named `2026-09-09 ADNOC`, and `thread_name`
+  carries the readable name, but `title` keeps the base64 conversation id.
+- **Expected:** `title` matches what the note is actually called.
+- **Actual:** Obsidian and anything else keying off `title` shows a 76-character
+  base64 blob instead of the subject. `rename_thread.py` updates the filename and
+  `thread_name` and leaves `title` behind.
+- **Note:** `id` legitimately stays the conversation id -- that is the identity
+  the engine dedupes on, and it must not change. This is only about the display
+  field.
+
+### BUG-061 — a Pipeline sharing an Agent's id draws twice on the Agents Map
+
+- **Area:** Logic
+- **Severity:** Minor
+- **Status:** Open
+- **Found:** 2026-09-10. The operator asked why the meetings pipeline was not on
+  the Agents Map. It was missing for a plain reason (no definition had been
+  written yet), but listing the agents to check surfaced a second problem:
+
+      entries: 7 | duplicated: ['email-capture']
+        email-capture   type=producer  section=productivity
+        email-capture   type=worker    section=productivity
+
+- **Root cause:** `agents_router.list_agents` returns
+  `[agents] + agents_map_adapter.list_pipeline_summaries()` — Hermes agents and
+  Pipelines concatenated into one list, because a Pipeline is rendered as a
+  pseudo-agent node on the map. Nothing checks that the two id spaces are
+  disjoint. A Pipeline whose `id` equals an Agent's `id` therefore produces two
+  nodes carrying the same id and different `type` values.
+- **Repro:** create an Agent `X`, write `<data>/pipelines/X.json` with
+  `"id": "X"`, then `GET /agents`.
+- **Expected:** either the collision is refused when the Pipeline is written, or
+  the two id spaces are namespaced so they cannot collide.
+- **Actual:** two nodes, silently. The frontend keys nodes by id, so which one
+  wins for a click or a detail lookup is whichever the code happens to reach
+  first — `GET /agents/{id}` checks the Agent path first and falls through to
+  the Pipeline path only if that misses, so the Pipeline becomes unreachable
+  while still being drawn.
+- **Severity, honestly:** Minor. It needs an operator to name a Pipeline exactly
+  as an Agent, which is not a natural mistake in a UI-driven flow — this was hit
+  by writing the definition file by hand. But it fails silently and the
+  resulting map is quietly wrong, which is the part worth fixing.
+- **Fix direction:** validate at write/load time in `PipelineManager` that no
+  Agent holds the same id and refuse with a named reason; or prefix pipeline
+  node ids in the map adapter so the spaces cannot overlap. The first is
+  better — a Pipeline and an Agent sharing a name is confusing to a human
+  regardless of what the map does with it.
+- **Worked around on this install:** the pipelines are `m365-email-capture` and
+  `m365-meeting-capture`, distinct from the `email-capture` Agent that runs them.

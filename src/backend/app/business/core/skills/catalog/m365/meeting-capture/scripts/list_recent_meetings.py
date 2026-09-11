@@ -16,7 +16,13 @@ import argparse
 import json
 import sys
 
-from outlook_lib import OutlookUnavailable, list_calendar_events
+# Graph, not Outlook COM (2026-09-10). `graph_calendar_lib` is a deliberate
+# drop-in -- same public surface, same event record, same `start` format
+# (which is half the dedup key downstream). COM cannot read a mailbox
+# belonging to a different account than the one the agent runs as, which is
+# exactly this host's situation. `outlook_lib.py` stays beside this file as
+# the COM path for a host where that IS the right answer.
+from graph_calendar_lib import OutlookUnavailable, list_calendar_events
 
 # Same real crash as email-thread-capture's own list_recent_emails.py
 # (2026-08-24): a meeting subject/location/attendee name can carry a

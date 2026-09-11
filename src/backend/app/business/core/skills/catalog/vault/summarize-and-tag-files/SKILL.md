@@ -1,7 +1,7 @@
 ---
 name: summarize-and-tag-files
 description: One-time, long-running captured-file summarization and company wiki-tagging pass -- Job 5 of the company/partner discovery sequence.
-version: 0.3.0
+version: 0.4.0
 author: second-brain
 license: MIT
 platforms: [windows]
@@ -41,7 +41,7 @@ apply a decision you already made, never to decide anything itself.
 
 Same as `summarize-and-tag-threads`'s own Step 0 -- `search_files`/
 `read_file` every `Work/Customers/**/*.md` and `Work/Partners/**/*.md`
-except `-log.md`/`-captures.md`, note each one's own `name`/`aliases`.
+except `-history.md`/`-captures.md`, note each one's own `name`/`aliases`.
 This is the real, authoritative list; a company mentioned in a file that
 ISN'T on this list is not this Skill's job to add.
 

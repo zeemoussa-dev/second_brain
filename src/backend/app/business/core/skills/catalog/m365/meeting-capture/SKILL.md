@@ -1,7 +1,7 @@
 ---
 name: meeting-capture
-description: Captures calendar meetings into the vault -- one folder per meeting/series, one file per recurring occurrence -- mirroring email-thread-capture's own structure.
-version: 0.1.0
+description: Captures Microsoft 365 calendar meetings (Graph) into the vault -- one folder per meeting/series, one file per recurring occurrence -- mirroring email-thread-capture's own structure.
+version: 0.2.0
 author: second-brain
 license: MIT
 platforms: [windows]
@@ -12,8 +12,8 @@ metadata:
 
 # Meeting Capture
 
-Mechanical, no-judgment capture of Outlook calendar events into the
-vault -- the Meetings equivalent of `email-thread-capture`. Every event
+Mechanical, no-judgment capture of Microsoft 365 calendar events into
+the vault -- the Meetings equivalent of `email-thread-capture`. Every event
 in a bounded calendar window becomes a real Meeting note (or one
 occurrence of a recurring series), with attendees turned into bare
 Person notes and, where a confident match exists, linked to a related

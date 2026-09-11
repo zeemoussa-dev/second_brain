@@ -34,7 +34,14 @@ import argparse
 import json
 import sys
 
-from outlook_lib import OutlookUnavailable, list_recent_mail
+# Graph, not Outlook COM (2026-09-09). `graph_lib` is a deliberate drop-in --
+# same public surface, same 13-field record, and it still exports the Outlook
+# name for the exception, so nothing downstream of here changed. COM is not an
+# option on this host: the agent runs as one account and reads a mailbox
+# belonging to another, which Outlook desktop cannot do without a mail profile
+# for it. `outlook_lib.py` is kept beside this file as the COM path for hosts
+# where that IS the right answer.
+from graph_lib import OutlookUnavailable, list_recent_mail
 
 # A real email body/subject can carry a Unicode character (found live,
 # 2026-08-24: U+202F NARROW NO-BREAK SPACE, a real typographic space

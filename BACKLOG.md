@@ -233,6 +233,11 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 | BUG-054 | A refused Agent delete surfaces as a bare 500 with the reason only in the log | Logic | Closed | direct fix, 2026-09-07 |
 | BUG-055 | The BUG-052 fix leaves an upgraded SOUL with an empty peer section below orphaned bullets | Logic | Closed | direct fix, 2026-09-07 |
 | BUG-056 | Delete an Agent, reinstall it, and it comes back with no Skills while the install reports success | Logic | Closed | direct fix, 2026-09-07 |
+| BUG-057 | Email capture cannot be provisioned on a fresh install from the repo alone | Logic | Open | — |
+| BUG-058 | A capture where every ingest failed reports total success | Logic | Open | — |
+| BUG-059 | An attachment filename containing a path separator is truncated and loses its extension | Logic | Open | — |
+| BUG-060 | A Thread note's `title` is the raw conversation id | UI | Open | — |
+| BUG-061 | A Pipeline sharing an Agent's id draws twice on the Agents Map | Logic | Open | — |
 
 > **Emptied 2026-09-06** with `BUGS.md`, which this mirrors — 42 rows.
 > History: `git show d64dcb4:BACKLOG.md`. Next id is **`BUG-043`**.

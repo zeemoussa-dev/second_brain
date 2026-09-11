@@ -28,6 +28,7 @@ reporting; no other orchestration logic (paging, subprocess dispatch)
 changed.
 """
 from __future__ import annotations
+import argparse
 import os
 import sys
 import json
@@ -151,11 +152,53 @@ def extract_file_links(text: str, max_links: int = 3) -> list[tuple[str, str]]:
 
 
 def main() -> int:
+    # `--max-emails` exists because "run the full capture" against a real
+    # mailbox is not a reviewable first step: this loop pages until the mailbox
+    # is exhausted, and the target here holds 23,359 messages. A bounded first
+    # run is how you find out whether the Thread notes come out right BEFORE
+    # committing to the whole history -- and an unbounded default keeps the
+    # recurring behaviour unchanged.
+    parser = argparse.ArgumentParser(description="Full-history capture into the vault.")
+    parser.add_argument("--max-emails", type=int, default=0,
+                        help="stop after this many emails (0 = no limit, the default)")
+    # A dated backfill is the normal real request ("bring in the last three
+    # months"), and it is not the same as a message count: what matters is how
+    # far back the vault should reach, not how many messages that happens to be.
+    parser.add_argument("--since", default="",
+                        help="stop once the pull reaches this date (YYYY-MM-DD); "
+                             "emails older than it are not captured")
+    # A multi-day backfill WILL be interrupted -- a reboot, a lost session, a
+    # revoked token. Without a resume point the only option is to start from
+    # the newest message again: every already-captured conversation is skipped
+    # correctly (ingest is idempotent), but the run still pays to page it all
+    # back through Graph and spawn a subprocess per email. Resuming from the
+    # oldest message already in the vault skips that entirely.
+    parser.add_argument("--before", default="",
+                        help="resume: start from this timestamp instead of the "
+                             "newest message. Use the oldest `received` already "
+                             "captured, e.g. 2026-08-26 20:01:00.000000+00:00")
+    args_ns = parser.parse_args()
+    max_emails = max(0, args_ns.max_emails)
+    # Compared against `received` as a plain STRING, like every other watermark
+    # comparison in this pipeline -- so it has to be padded into the same
+    # "%Y-%m-%d %H:%M:%S.%f+00:00" shape. A bare "2026-06-11" would still sort
+    # correctly against it, but only by accident of prefix ordering; being
+    # explicit here keeps it correct if the format ever changes.
+    since_stamp = f"{args_ns.since} 00:00:00.000000+00:00" if args_ns.since else ""
+    if since_stamp:
+        print(f"BACKFILL WINDOW: capturing back to {args_ns.since} and no further")
+    if args_ns.before:
+        print(f"RESUMING: starting from {args_ns.before}, "
+              "skipping everything already captured after it")
+
     _require_vault_path()
+    # Graph needs no COM (2026-09-09) -- but outlook_lib.py is still the right
+    # answer on hosts that read a local profile, so this stays a WARNING rather
+    # than becoming a hard failure that would block the Graph path for a
+    # dependency it never uses.
     ok, msg = ensure_pywin32()
     if not ok:
-        print(f"FATAL: pywin32 unavailable: {msg}")
-        return 3
+        print(f"NOTE: pywin32 unavailable ({msg}); the Graph path does not need it.")
 
     total_emails = 0
     total_threads_created = 0
@@ -168,7 +211,7 @@ def main() -> int:
     total_skipped_as_noise = 0
 
     page_num = 0
-    before_ts: str | None = None
+    before_ts: str | None = args_ns.before or None
     oldest_seen: str | None = None
     newest_seen: str | None = None
 
@@ -365,6 +408,31 @@ def main() -> int:
         })
 
         print(f"PAGE {page_num} done: emails={len(emails)} processed={page_processed} threads+={page_threads_created} messages+={page_messages_created} attachments+={page_attachments_captured} skipped_as_noise+={page_skipped_as_noise} range=[{page_oldest} .. {page_newest}]")
+
+        # Stop on the page boundary, never mid-page: a page is processed
+        # newest-first and `before_ts` is the page's OLDEST timestamp, so
+        # cutting inside one would leave a gap the watermark would then step
+        # over -- the same class of silent skip the watermark rule exists to
+        # prevent.
+        if max_emails and total_emails >= max_emails:
+            final = {
+                "status": "stopped_at_limit",
+                "max_emails": max_emails,
+                "pages": page_num,
+                "total_emails": total_emails,
+                "threads_created": total_threads_created,
+                "messages_created": total_messages_created,
+                "attachments_captured": total_attachments_captured,
+                "skipped_as_noise": total_skipped_as_noise,
+                "date_range": {"newest": newest_seen, "oldest": oldest_seen},
+                "progress": progress,
+            }
+            with open(SUMMARY_PATH, "w", encoding="utf-8") as f:
+                json.dump(final, f, ensure_ascii=False, indent=2)
+            print(f"CAPTURE STOPPED AT LIMIT ({max_emails})")
+            print(json.dumps(final))
+            return 0
+
         # Prepare next page
         before_ts = page_oldest
 

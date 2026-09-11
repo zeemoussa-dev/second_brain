@@ -451,9 +451,20 @@ def write_file_companion(
         "file_slug": file_slug,
         "original_filename": original_filename,
     }
+    # `kind/attachment` ALONGSIDE `type/<ext>` (2026-09-10).
+    #
+    # NOT `kind/file`: an email attachment and a file the operator uploaded are
+    # different things, and collapsing them loses the distinction that matters
+    # for retrieval ("every attachment on an ADNOC thread" vs "files I filed").
+    # Standalone captures go through the `file` TEMPLATE and get `kind/file`
+    # from it; this path writes the note directly, which is why no kind tag
+    # reached it at all until now -- every captured attachment carried only
+    # `type/pptx`.
+    tags = ["kind/attachment"]
     type_tag = _file_type_tag(original_filename)
     if type_tag:
-        frontmatter["tags"] = [type_tag]
+        tags.append(type_tag)
+    frontmatter["tags"] = tags
     if source_thread is not None:
         frontmatter["source_thread"] = source_thread
     if source_email is not None:
@@ -495,7 +506,13 @@ def write_file_link_companion(
     files_dir = subfolder / "files" / slug
     files_dir.mkdir(parents=True, exist_ok=True)
     companion_path = files_dir / f"{slug}.md"
-    frontmatter = {"type": "File", "file_slug": file_slug, "url": url}
+    # A LINK, not a downloaded attachment -- nothing was fetched and there
+    # are no bytes in the vault, so it gets its own kind rather than being
+    # counted among real attachments (2026-09-10). This path is disabled by
+    # default (CAPTURE_EXTERNAL_FILE_LINKS) but tagged consistently so it is
+    # correct if it is ever turned on.
+    frontmatter = {"type": "File", "file_slug": file_slug, "url": url,
+                   "tags": ["kind/file-link"]}
     if source_thread is not None:
         frontmatter["source_thread"] = source_thread
     if source_email is not None:

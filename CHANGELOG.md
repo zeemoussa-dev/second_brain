@@ -18,6 +18,158 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: `reconcile_entities.py` — makes the vault's folders agree with `Entities.md`.
+  Reclassify between Customers and Partners, re-parent an Affiliate under its parent,
+  remove a folder marked `Deleted` (moving its People back to `Work/People` first).
+  One atomic directory rename, so an interrupted run cannot leave an entity in two
+  places. Wired into the nightly pass between `hubs` and `people`.
+
+- feat: the Metadata pipeline is scheduled — `SB hubs create` every 30 minutes
+  (create-if-not-exist only) and `SB metadata nightly` at 03:00. Both `--no-agent`
+  and `--quiet`: a job with nothing to report prints nothing, so its stdout reaches
+  the operator only when something happened or failed.
+
+- fix: `upsert_namespaced_tag` appended the tag value WITHOUT its namespace, writing
+  `internal` instead of `engagement/internal`. A bare tag never matched the
+  `namespace/` strip, so every run appended another copy — 1,897 Threads carried
+  `["internal", "internal", "internal"]` and the engagement step reported them all as
+  updated on every pass. Repaired in place.
+
+- fix: hub creation resurrected an entity marked `Deleted: Yes`. It gated on
+  `Ignore: Yes` alone, safe only because the Settings UI sets both together — a hand
+  edit does not, and hand-editing is the documented way to curate the file.
+
+- fix: `reconcile_people` scanned `*/People/*.md` only, leaving every Affiliate's
+  people permanently duplicated.
+
+- perf: `retag_people_by_domain` walked the whole vault once per hub — 195 × 12,722 =
+  2.4M reads, over 25 minutes without finishing. One domain index, one walk: the full
+  five-step pass now runs in 39 seconds.
+
+- feat: Customer/Partner/Opportunity templates gained `Summary`, `Personal Notes`,
+  `Actions` and `Related` — a hub previously had only `Affiliates` and its children
+  index, so the entity that matters most had nowhere to put a summary or an open
+  item while an Opportunity nested under it always did. `Personal Notes` is
+  `human_only`. Template `version` bumped to 2 on all three.
+
+- feat: `Log` renamed to `History` throughout — section, child suffix, `type`,
+  `kind` tag, display label, and every writer that produced `<Name>-log.md`.
+  "Log" reads as machine output; the note holds relationship history a human also
+  writes.
+
+- feat: `migrate_hub_children.py` — brings hubs created before those template
+  changes up to the current shape: the rename, captures notes split into `## Notes`
+  (human) and `## Captured` (agent), and section order corrected. Idempotent.
+
+- feat: `run_metadata_pass.py` — the nightly Metadata pass (discover, hubs, people,
+  retag). Metadata is everything decidable without a model; a failed step is
+  reported and does not stop the others.
+
+- feat: `create_companies_partners.py` gained `--hubs-only` (create-if-absent, for
+  the 30-minute cron) and `--reconcile-people` (move People into their hub folder
+  and repair the leftovers and duplicates capture keeps recreating). History and
+  Captures notes now carry the company tag and their `kind` tag, so a tag search
+  for a company reaches them.
+
+- feat: `apply_thread_extract.py` — enrichment reads a Thread ONCE and emits one
+  structured extraction (summary, people, actions, important info), which is then
+  fanned out mechanically. Four separate model passes would cost four reads of the
+  same content. The extraction is persisted under `<data>/data/ThreadExtracts/`
+  before anything is applied, so an applier bug is re-applied from disk rather
+  than re-read through a model. Person fields are filled, never overwritten.
+
+- docs: `BUG-061` — a Pipeline whose id matches an Agent id draws twice on the
+  Agents Map; `GET /agents` concatenates agents and pipeline summaries with no
+  collision check.
+
+- feat: `meeting-capture` moves to Microsoft Graph and joins the **m365** Tool.
+  New `graph_calendar_lib.py` is a drop-in for `outlook_lib`'s calendar read;
+  `calendarView` expands recurring series into occurrences. Fixes two latent
+  bugs found porting: the driver was hardcoded to `--limit 200` against a
+  766-event window, and the fetch did not page -- both would have captured a
+  prefix and reported success. The `outlook` Tool is now empty and removed.
+
+- fix: **kind tags**, which only some note types had. Added `kind/thread`,
+  `kind/email` (message notes), `kind/customer`, `kind/partner`, `kind/log`,
+  `kind/captures` and `kind/kb-doc`. File notes were losing the `file`
+  template's `kind/file` entirely -- they are written directly rather than
+  through the template, so they carried only `type/<ext>` and were invisible
+  to a "find every File" query. Email attachments get **`kind/attachment`**
+  rather than `kind/file` -- an attachment and a file the operator uploaded are
+  different things, and only the latter goes through the `file` template. A
+  captured external link gets `kind/file-link`, since nothing was downloaded.
+  `retrofit_conversation_index.py` backfills them onto already-captured notes.
+  `research-kb-doc`'s bare `research` tag became `kind/research`, so every
+  shipped template now uses the same namespace. No retrofit was needed -- zero
+  notes carried the old tag and `Work/Research/` does not exist on this install.
+
+- feat: `summarize-and-tag-threads` reads Threads through a new `read_thread.py`
+  instead of opening the message notes. It returns the messages in TIME order,
+  each marked SENT/RECEIVED, with the HTML stripped to text. Measured across 119
+  real Threads: **83% reduction**, 6.66 M chars to 1.14 M -- about 2,400 input
+  tokens per Thread instead of 14,000, or ~6 M instead of ~38 M over a full pass.
+  Stripping happens at READ, never at capture: an email's real body IS the HTML,
+  and capture's job is to preserve the evidence faithfully.
+
+- feat: `retrofit_conversation_index.py` backfills the `## Conversation` section
+  onto Threads captured before it existed and strips the owner's own participant
+  links. Rebuilds from the message notes already in the vault rather than
+  re-capturing -- a re-capture would re-spend one classifier relay per Thread and
+  re-download every attachment to reproduce data already held. Idempotent, with
+  `--dry-run`. Declared as a real Action rather than borrowing another's identity,
+  since `Related` is access-restricted to `link_person_to_thread`.
+
+- feat: a Thread now has a **`## Conversation`** section -- one line per message,
+  time-ordered, with a direction arrow and the sender, so a Thread reads as the
+  exchange it is. Sent Items were always captured; nothing on the Thread let you
+  see them next to the received half. Added to the shipped `thread` master
+  (additive, so `version` stays 1) and written by `ingest_email`.
+
+- fix: the mailbox owner is no longer given a Person note or a participant
+  wikilink. They are in essentially every Thread, so their link on every message
+  and in every Related section buried the people who matter. Keyed on
+  `SECOND_BRAIN_SELF_EMAIL`, the same value capture reads the mailbox from.
+
+- fix: attachment filenames are sanitised for path-reserved characters
+  (`BUG-059`). A `:` from a Salesforce ref crashed an entire capture run with
+  `OSError: [Errno 22]`, and a `/` silently truncated a saved attachment and lost
+  its extension. The extension is preserved explicitly rather than left to
+  survive truncation.
+
+- feat: `run_full_capture.py --since YYYY-MM-DD` bounds a backfill by date, which
+  is how the real request is actually shaped ("the last three months").
+
+- fix: `run_delta_capture.py` no longer treats a missing `pywin32` as FATAL. The
+  Graph path never uses COM, and Hermes' own uv-managed Python refuses
+  `pip install` ("externally managed environment"), so a dependency this code path
+  does not use made the recurring job impossible to run at all.
+
+- docs: `BUG-057`..`BUG-060` logged from the first real email capture on a clean
+  install -- the Skill's classifier profile and noise definition exist only as live
+  state on the machine that built them, per-email failures are swallowed by the
+  driver, an attachment name containing a path separator loses its extension, and a
+  Thread's `title` stays the raw conversation id.
+
+- refactor: `email-thread-capture` moves from the `outlook` Tool to a new **`m365`**
+  Tool. The Tool boundary is now the transport: `outlook` = Outlook desktop COM
+  (`meeting-capture`, unchanged), `m365` = Microsoft Graph. `list_recent_emails.py`
+  imports `graph_lib` instead of `outlook_lib`, and the COM library is dropped from
+  this Skill (it remains under `outlook/meeting-capture`). SKILL.md rewritten for
+  the Graph/delegated prerequisites. `version: 0.6.0`.
+
+- feat: `run_full_capture.py --max-emails N` bounds a full-history run. It paged
+  until the mailbox was exhausted, which against the real target (23,359 messages)
+  made a reviewable first run impossible. Stops on a page boundary, never mid-page,
+  so no gap is left for the watermark to step over.
+
+- feat: `email-thread-capture` Graph auth moves from app-only to **delegated**
+  (`graph_lib._access_token`) -- this tenant grants permissions as Delegated only,
+  so a client-credentials token was issued carrying zero roles and could read no
+  mailbox. New `authorize_graph.py` does the one-time device-code sign-in and
+  stores the refresh token outside the repo; every later run is unattended.
+  10 new tests (48 passing). Verified live: 50 messages pulled from the target
+  mailbox, record shape and watermark format intact.
+
 - docs: `BUG-056` — deleting an Agent leaves its Skills' `deployed_to` records
   behind, so a reinstall skips every deployment as "already" and the Agent comes
   back with no Skills while the install reports success.
