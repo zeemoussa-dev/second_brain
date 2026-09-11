@@ -46,6 +46,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -150,15 +151,27 @@ def _render_actions(actions: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _known_company_names(vault_path: Path) -> set[str]:
-    """Every real hub's own name and aliases, lowercased.
+def _tag_slug(text: str) -> str:
+    # The same slug create-companies-partners gives a hub's own tag, so a
+    # Thread tagged here from its content and one tagged by participant domain
+    # carry the SAME tag rather than two spellings of one company.
+    slug = re.sub(r"[^a-z0-9/]+", "-", text.lower()).strip("-")
+    return slug or "untitled"
+
+
+def _company_index(vault_path: Path) -> dict[str, str]:
+    """Every real hub's name and aliases, lowercased -> that hub's company tag.
 
     Read from the HUBS, not from Entities.md: a hub is what actually exists in
     the vault, and Entities.md carries rows deliberately marked Ignore or
     Deleted that must not count as known -- otherwise a company the operator
-    chose to ignore would be silently re-proposed forever."""
-    known: set[str] = set()
-    for root_name in ("Customers", "Partners"):
+    chose to ignore would be silently re-proposed forever.
+
+    Only notes whose `type` is Customer or Partner. An Opportunity nested under
+    a Customer has the same own-folder shape, and must never be mistaken for a
+    company and tagged as one."""
+    index: dict[str, str] = {}
+    for root_name, kind in (("Customers", "customer"), ("Partners", "partner")):
         base = vault_path / "Work" / root_name
         if not base.is_dir():
             continue
@@ -167,10 +180,44 @@ def _known_company_names(vault_path: Path) -> set[str]:
             if not hub_md.is_file():
                 continue
             frontmatter, _ = vm.read_note(hub_md)
-            known.add(str(frontmatter.get("name") or hub_dir.name).strip().lower())
-            for alias in (frontmatter.get("aliases") or []):
-                known.add(str(alias).strip().lower())
-    return {name for name in known if name}
+            if frontmatter.get("type") not in ("Customer", "Partner"):
+                continue
+            tag = f"{kind}/{_tag_slug(hub_dir.name)}"
+            aliases = frontmatter.get("aliases") or []
+            if isinstance(aliases, str):
+                aliases = [aliases]
+            for name in [frontmatter.get("name") or hub_dir.name, *aliases]:
+                key = str(name).strip().lower()
+                if key:
+                    index.setdefault(key, tag)
+    return index
+
+
+def _known_company_names(vault_path: Path) -> set[str]:
+    return set(_company_index(vault_path))
+
+
+def tag_companies(vault_path: Path, note: Path, companies: list[str],
+                  index: dict[str, str] | None = None) -> list[str]:
+    """Tags `note` with every company the reader named that resolves to a real
+    hub, by name or alias (operator: "Sometimes Emails will contain more than
+    one Company, tag all companies"). Returns the tags it actually added.
+
+    The applier this replaced did this; the extraction applier silently did
+    not -- every company named in a Thread's content fed only the review list,
+    and the Thread was tagged by participant domain alone (found 2026-09-11,
+    149 of 179 saved extractions). Additive: merge_tags never removes a tag,
+    so a domain-derived one or one the operator added survives."""
+    if not companies:
+        return []
+    index = _company_index(vault_path) if index is None else index
+    wanted = sorted({index[c.strip().lower()] for c in companies
+                     if c and c.strip().lower() in index})
+    existing = set(vm.read_note(note)[0].get("tags") or [])
+    new = [tag for tag in wanted if tag not in existing]
+    if new:
+        vm.merge_tags(note, new)
+    return new
 
 
 def record_unknown_companies(vault_path: Path, companies: list[str],
@@ -265,6 +312,9 @@ def apply_extract(vault_path: Path, extraction: dict) -> dict:
     # hub-side applier can consume it without re-reading the thread.
     result["important_info_deferred"] = len(extraction.get("important_info") or [])
 
+    tagged = tag_companies(vault_path, thread_path, extraction.get("companies") or [])
+    if tagged:
+        result["company_tags_added"] = tagged
     unknown = record_unknown_companies(
         vault_path, extraction.get("companies") or [], thread_id,
         frontmatter.get("thread_name") or thread_path.stem)
