@@ -21,7 +21,10 @@ F is the extraction JSON:
 
     {
       "schema_version": 1,
-      "thread_path":    str,
+      "thread_id":      str,              # the conversation id the batch gives;
+                                          # the Thread is found from it in code
+      "thread_path":    str,              # accepted instead of thread_id; the
+                                          # saved read always carries it
       "summary":        str,
       "companies":      [str],            # names, matched against real hubs
       "people":         [{"email", "name", "department", "job_title",
@@ -348,11 +351,27 @@ def apply_extract(vault_path: Path, extraction: dict) -> dict:
             "only partly understand."
         )
 
-    thread_path = Path(extraction["thread_path"])
-    if not thread_path.is_absolute():
-        thread_path = vault_path / thread_path
-    if not thread_path.is_file():
-        raise SystemExit(f"no Thread note at {thread_path}")
+    given_id = str(extraction.get("thread_id") or "").strip()
+    if given_id:
+        # Found in code, not typed (2026-09-11): an agent building a path from
+        # a Thread's title got it wrong -- a `|` Windows never allows, a name
+        # cut at 80 characters, an invisible character the prompt stripped --
+        # and those Threads failed on every run.
+        thread_path = vm.find_by_id(vault_path, given_id, note_name="Threads")
+        if thread_path is None:
+            raise SystemExit(f"no Thread with id {given_id!r}")
+        # The saved read keeps a path as well: Tagging and Company resolve it.
+        try:
+            saved_path = thread_path.relative_to(vault_path).as_posix()
+        except ValueError:
+            saved_path = str(thread_path)
+        extraction = {**extraction, "thread_path": saved_path}
+    else:
+        thread_path = Path(extraction["thread_path"])
+        if not thread_path.is_absolute():
+            thread_path = vault_path / thread_path
+        if not thread_path.is_file():
+            raise SystemExit(f"no Thread note at {thread_path}")
 
     template = vm.load_template(vault_path, _THREAD_TEMPLATE_ID)
     frontmatter, _ = vm.read_note(thread_path)

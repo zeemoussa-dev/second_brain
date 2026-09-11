@@ -116,3 +116,18 @@ def test_a_real_sized_body_actually_shrinks(tmp_path):
         f"expected a large reduction, got {len(text)} from {len(raw)}"
     )
     assert text.count("Some real content here.") == 40, "no content may be lost"
+
+
+def test_a_thread_is_found_by_its_id_not_a_typed_path(tmp_path, monkeypatch):
+    """The batch hands the agent an id. A path typed from a Thread's title
+    breaks on a `|`, an 80-character cut, or an invisible character the prompt
+    strips -- this folder carries one."""
+    monkeypatch.setenv("SECOND_BRAIN_DATA_PATH", str(tmp_path / "config"))
+    from read_thread import resolve_thread_dir
+    folder = tmp_path / "Work" / "Threads" / "2026-06-08 Task assigned to you​ in Board"
+    (folder / "messages").mkdir(parents=True)
+    (folder / f"{folder.name}.md").write_text('---\ntype: "Thread"\nid: "conv-9"\n---\n',
+                                             encoding="utf-8")
+    assert resolve_thread_dir(tmp_path, "conv-9") == folder
+    with pytest.raises(SystemExit, match="no Thread with id"):
+        resolve_thread_dir(tmp_path, "conv-missing")

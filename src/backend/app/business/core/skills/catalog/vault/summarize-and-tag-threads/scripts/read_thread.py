@@ -11,8 +11,14 @@ body IS the HTML, and capture's job is to preserve the evidence faithfully; if a
 summary ever looks wrong you want the original to check it against. Converting
 on the way out costs nothing next to the model call it feeds.
 
+    python read_thread.py --thread-id "<conversation id>" [--vault-path P]
     python read_thread.py --thread-dir "<vault>/Work/Threads/<Name>"
-    python read_thread.py --thread-dir ... --max-chars 40000
+    python read_thread.py ... --max-chars 40000
+
+`--thread-id` is how an agent names a Thread (2026-09-11): the folder is found
+in code. An agent typing a path from a Thread's title got it wrong -- a `|`
+Windows never allows, a name cut at 80 characters, an invisible character the
+prompt stripped -- and those Threads failed on every run.
 
 Prints a transcript: the Thread's own frontmatter facts, then each message in
 time order with its direction, sender and text.
@@ -53,7 +59,7 @@ def html_to_text(raw: str) -> str:
     text = html.unescape(text)
     # NBSP and the narrow no-break space real signatures use; left as literal
     # characters they read as ordinary spaces but tokenize as their own thing.
-    text = text.replace(" ", " ").replace(" ", " ")
+    text = text.replace(" ", " ").replace(" ", " ")
     text = _TRAILING_SPACE.sub("\n", text)
     text = _MANY_BLANKS.sub("\n\n", text)
     return "\n".join(line.rstrip() for line in text.splitlines()).strip()
@@ -76,6 +82,15 @@ def _split_note(path: Path) -> tuple[dict, str]:
                 frontmatter[key.strip()] = value.strip().strip('"')
             body = text[end + 4:]
     return frontmatter, body
+
+
+def resolve_thread_dir(vault_path: Path, thread_id: str) -> Path:
+    """The Thread folder for a conversation id, found in code."""
+    import vault_manager as vm      # only the id path needs the shared engine
+    note = vm.find_by_id(vault_path, thread_id, note_name="Threads")
+    if note is None:
+        raise SystemExit(f"no Thread with id {thread_id!r}")
+    return note.parent
 
 
 def read_thread(thread_dir: Path, *, max_chars: int = 0) -> str:
@@ -122,14 +137,22 @@ def read_thread(thread_dir: Path, *, max_chars: int = 0) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--thread-dir", required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--thread-id", help="the Thread's conversation id, exactly as the batch gives it")
+    source.add_argument("--thread-dir")
+    parser.add_argument("--vault-path", default=os.environ.get("SECOND_BRAIN_VAULT_PATH", ""))
     parser.add_argument("--max-chars", type=int, default=0,
                         help="truncate the transcript (0 = no limit, the default)")
     parser.add_argument("--stats", action="store_true",
                         help="report the reduction instead of printing the transcript")
     args = parser.parse_args()
 
-    thread_dir = Path(args.thread_dir)
+    if args.thread_id:
+        if not (args.vault_path or "").strip():
+            raise SystemExit("SECOND_BRAIN_VAULT_PATH is not set and --vault-path was not given")
+        thread_dir = resolve_thread_dir(Path(args.vault_path), args.thread_id)
+    else:
+        thread_dir = Path(args.thread_dir)
     transcript = read_thread(thread_dir, max_chars=args.max_chars)
 
     if args.stats:

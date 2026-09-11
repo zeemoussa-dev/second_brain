@@ -121,6 +121,28 @@ def test_important_info_is_deferred_not_written_here(vault):
     assert saved["important_info"], "it must survive in the persisted extraction"
 
 
+def test_a_thread_given_by_id_is_found_in_code_and_its_path_saved(vault):
+    """The agent names a Thread by id, never by a path it types. The saved read
+    still carries the path, because Tagging and Company resolve it."""
+    vault_path, _ = vault
+    import apply_thread_extract as a
+    data = extraction(thread_id="conv-1")
+    del data["thread_path"]
+    result = a.apply_extract(vault_path, data)
+    saved = json.loads(Path(result["extraction_saved_to"]).read_text(encoding="utf-8"))
+    assert saved["thread_path"] == "Work/Threads/2026-09-10 Example/2026-09-10 Example.md"
+    assert result["summary_written"]
+
+
+def test_an_unknown_thread_id_is_refused(vault):
+    vault_path, _ = vault
+    import apply_thread_extract as a
+    data = extraction(thread_id="conv-nope")
+    del data["thread_path"]
+    with pytest.raises(SystemExit, match="no Thread with id"):
+        a.apply_extract(vault_path, data)
+
+
 def test_a_thread_without_an_id_is_refused(vault):
     """The extraction is keyed on the id and section writes resolve through it.
     Minting one silently would file the extraction under a key nothing else

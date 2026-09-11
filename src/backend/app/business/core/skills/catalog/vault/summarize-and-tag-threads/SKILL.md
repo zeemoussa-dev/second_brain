@@ -1,7 +1,7 @@
 ---
 name: summarize-and-tag-threads
 description: Enrichment for email Threads. Reads a Thread once and emits ONE structured extraction -- summary, the people it reveals, the actions it contains, the facts worth remembering -- which is then fanned out to the Thread, the People notes and the company hubs. Use when asked to summarize, enrich or catch up on threads, and as the Enrichment pipeline's scheduled job.
-version: 0.8.0
+version: 0.9.0
 author: second-brain
 license: MIT
 platforms: [windows]
@@ -67,8 +67,14 @@ occasionally re-read one. That is the intended trade.
 ### 2. Read each Thread as text
 
 ```
-terminal(command="python \"${HERMES_SKILL_DIR}\read_thread.py\" --thread-dir \"<dir>\"")
+terminal(command="python \"${HERMES_SKILL_DIR}\read_thread.py\" --thread-id \"<thread_id>\"")
 ```
+
+**Name a Thread only by the `thread_id` the batch gives you** -- here and
+as `thread_id` in the extraction. Never type or build a folder path from
+its name: names carry a `|` Windows turns into something else, are cut at
+80 characters, and can hold invisible characters that do not survive into
+your prompt. A guessed path fails, and that Thread then fails on every run.
 
 Always this, never the message notes directly. Capture stores each body
 exactly as it arrived, and **83% of a stored Outlook body is markup** --
@@ -92,7 +98,7 @@ terminal(command="python \"${HERMES_SKILL_DIR}\apply_thread_extract.py\" --input
 ```json
 {
   "schema_version": 1,
-  "thread_path": "<the Thread's own concept .md path>",
+  "thread_id": "<the thread_id from the batch -- never a path>",
   "summary": "What was actually discussed, decided or asked.",
   "companies": ["Masdar"],
   "people": [

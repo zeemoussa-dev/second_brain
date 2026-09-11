@@ -25,7 +25,7 @@ of each thread that later grows, and buys starting weeks earlier.
     python select_threads.py [--vault-path P] [--limit 50] [--newest-first]
                              [--include-noise]
 
-Prints JSON: {"due": N, "selected": [{"thread_dir", "name", "messages",
+Prints JSON: {"due": N, "selected": [{"thread_id", "thread_dir", "name", "messages",
 "last_message_at", "reason"}], "total_threads": N}.
 """
 from __future__ import annotations
@@ -81,6 +81,8 @@ def select(vault_path: Path, *, limit: int = 50, newest_first: bool = False,
             continue
 
         due.append({
+            # How an agent names this Thread -- never by a path it types.
+            "thread_id": frontmatter.get("id") or "",
             "thread_dir": str(thread_dir),
             "name": frontmatter.get("thread_name") or thread_dir.name,
             "messages": messages,
