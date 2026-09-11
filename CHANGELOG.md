@@ -18,6 +18,16 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: People pipeline -- every Person filed under the company it belongs to, hourly.
+  A duplicate capture recreates is folded into the filed note: blank fields filled,
+  any value that differs logged to the note's History with the existing value kept,
+  then deleted. A duplicate someone wrote in is never deleted. First run filed 1,521
+  of the 1,537 people who belonged to a hub; none had ever been filed before.
+
+- fix: thread enrichment and the backend's Cockpit lookup searched only the flat
+  People folder / Customers, so filed people -- mostly under Partners -- would have
+  vanished from both.
+
 - fix: the Agents Map showed every pipeline with no schedule. The manager matched a
   Hermes job by NAME against a job ID, and looked in a profile's store while
   `hermes cron create` writes the shared one. Now by id or name, with a shared-store

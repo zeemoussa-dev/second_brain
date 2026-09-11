@@ -123,6 +123,10 @@ Where a rule does not belong here:
 
 - **[2026-09-11] Every capture process that writes People must exclude every other one** -- backfill, email delta and meeting capture alike. Deferring only to the backfill left the email delta at :04 and the meeting delta at :44 free to overlap on a long catch-up.
 
+- **[2026-09-11] On Windows a rename or delete FAILS while any other process holds the file open (WinError 32), and capture holds Person notes constantly.** A bulk pass that moves or deletes notes must skip a busy file and retry it next run -- never let one exception end the run. A check for "is a capture running" at start is not enough: a capture can begin mid-run. The first People run filed 1,521 people and then died on one busy file.
+
+- **[2026-09-11] Every lookup of a Person must search flat Work/People AND both hub roots at any depth (`Customers/**/People`, `Partners/**/People`).** People are filed under Partners and under Affiliates one level deeper. Capture's lookups already did; enrichment's and the backend's did not, and would have lost every filed partner contact.
+
 ## Capture pipelines
 
 - **[2026-09-10] Strip HTML at READ, never at capture -- 83% of a stored Outlook body is markup.** Measured on 119 real Threads: 6.66 M raw chars reduce to 1.14 M of text, i.e. ~14,000 input tokens per Thread become ~2,400 for identical content. An agent reading captured message notes raw pays for every `<div style="font-family:Aptos,...">` and learns nothing from it. But convert on the way OUT, not on the way in: an email's real body IS the HTML, capture's job is to preserve the evidence faithfully, and if a summary ever looks wrong the original is what you check it against. `summarize-and-tag-threads/scripts/read_thread.py` is the converter.
