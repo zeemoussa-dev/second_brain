@@ -428,6 +428,66 @@ def reconcile_people(vault_path: Path, *, dry_run: bool = False) -> dict:
             "flat_people": len(list(flat_dir.glob("*.md")))}
 
 
+def _hub_domains(frontmatter: dict) -> list[str]:
+    """A hub's email domains: its `domain` field AND its `aliases`.
+
+    Entities.md's Aliases column holds further domains -- taqa.com on TAQA,
+    sa.ey.com on EY -- and matching `domain` alone missed every person at one
+    (2026-09-11). A name alias such as "ADCB" yields a value no email domain
+    ever equals, so reading aliases as domains is harmless for those."""
+    aliases = frontmatter.get("aliases") or []
+    if isinstance(aliases, str):
+        aliases = [aliases]
+    return (_split_domains(frontmatter.get("domain") or "")
+            + _split_domains(",".join(str(a) for a in aliases)))
+
+
+def _owner_domain() -> str:
+    """The mailbox owner's own email domain, from SECOND_BRAIN_SELF_EMAIL --
+    empty when it is not set."""
+    email = (os.environ.get("SECOND_BRAIN_SELF_EMAIL") or "").strip().lower()
+    return email.rsplit("@", 1)[1] if "@" in email else ""
+
+
+def sync_hub_domains(vault_path: Path, entities_path: Path, *, dry_run: bool = False) -> list[str]:
+    """Copies each entry's Domain and Aliases from Entities.md onto its existing
+    hub note -- adding only, never removing.
+
+    A hub took them at creation and never again, so a domain or alias added
+    afterwards -- sa.ey.com on EY, taqa.com on TAQA, injazat.com on Core42 --
+    never reached the note People and Tagging actually read, and nobody at those
+    domains was ever filed (2026-09-11). A value on the hub that Entities.md no
+    longer lists is left alone: removing one is the operator's call, not a
+    guess this makes. Returns "Hub: +value" for every addition."""
+    hubs = {hub_md.stem: hub_md for hub_md, _kind in _iter_hub_notes(vault_path)}
+    added: list[str] = []
+    for entry in parse_entities(entities_path.read_text(encoding="utf-8-sig")):
+        if _is_excluded_from_creation(entry):
+            continue
+        hub_md = hubs.get(_slugify(_entry_name(entry)))
+        if hub_md is None:
+            continue
+        fields = entry["fields"]
+        frontmatter, _ = vm.read_note(hub_md)
+        have = _split_domains(frontmatter.get("domain") or "")
+        new_domains = [d for d in _split_domains(fields.get("Domain") or "") if d not in have]
+        existing_aliases = frontmatter.get("aliases") or []
+        if isinstance(existing_aliases, str):
+            existing_aliases = [existing_aliases]
+        new_aliases = [a.strip() for a in (fields.get("Aliases") or "").split(",")
+                       if a.strip() and a.strip() not in existing_aliases]
+        if not (new_domains or new_aliases):
+            continue
+        added += [f"{hub_md.stem}: +{value}" for value in new_domains + new_aliases]
+        if dry_run:
+            continue
+        if new_domains:
+            vm.update(vault_path, hub_md, frontmatter={"domain": ", ".join(have + new_domains)})
+        if new_aliases:
+            merge_list_field(hub_md, "aliases", new_aliases)
+    return added
+
+
 def retag_people_by_domain(vault_path: Path) -> dict:
     """2026-08-21 bug fix: a Person note already moved into its own
     Customer/Partner/Affiliate People/ folder (by a prior run of THIS
@@ -455,7 +515,7 @@ def retag_people_by_domain(vault_path: Path) -> dict:
     domain_index: dict[str, tuple[str, str, str]] = {}
     for hub_md, kind in _iter_hub_notes(vault_path):
         frontmatter, _ = vm.read_note(hub_md)
-        for domain in _split_domains(frontmatter.get("domain") or ""):
+        for domain in _hub_domains(frontmatter):
             # First hub claiming a domain keeps it. A domain shared by two hubs
             # is an Entities.md curation error, not something to resolve by
             # tagging the person with both.
@@ -547,11 +607,20 @@ def _build_domain_company_index(vault_path: Path) -> list[tuple[list[str], str, 
     domain. `kind` ("customer"/"partner") is carried so callers that need
     to build a `customer/<slug>`/`partner/<slug>` tag (not just a
     "## Related" wikilink, which doesn't care) don't have to re-derive it
-    themselves."""
+    themselves.
+
+    The mailbox owner's OWN company is left out (operator, 2026-09-11). Its
+    staff are on nearly every Thread -- 2,046 of 2,627 -- so its tag and
+    Related link would say nothing about any of them, the same reason the
+    owner's own Person links were removed. Its People are still filed under it;
+    only Threads and Meetings, which this index feeds, skip it."""
+    owner = _owner_domain()
     entries: list[tuple[list[str], str, str]] = []
     for hub_md, kind in _iter_hub_notes(vault_path):
         frontmatter, _ = vm.read_note(hub_md)
-        domains = _split_domains(frontmatter.get("domain") or "")
+        domains = _hub_domains(frontmatter)
+        if owner and owner in domains:
+            continue
         if domains:
             entries.append((domains, kind, hub_md.stem))
     return entries
@@ -578,11 +647,9 @@ def retag_threads_by_participant_company(vault_path: Path) -> dict:
         every message under it) -- alongside whatever Person wikilinks
         are already there, never removing them.
 
-    Every internal Core42 person is core42.ai or core42.ae, and Core42 is
-    now a real Partner hub note (2026-08-21) -- so yes, [[Core42]] will
-    show up in "## Related" on nearly every Thread. That's not a bug:
-    nearly every real Thread genuinely does have a Core42 participant
-    (whoever's mailbox this is, if no one else on the other side).
+    The mailbox owner's own company is never added (operator, 2026-09-11) --
+    its staff are on nearly every Thread, so the link would say nothing; see
+    _build_domain_company_index.
 
     Idempotent, re-runnable via --retag-only as new hub notes, domains,
     or messages show up. Returns {"threads_updated": [...],
@@ -1258,8 +1325,11 @@ def main() -> int:
     # now", then "All tagging"): hub upkeep is Metadata -- the hub's own shape;
     # domain tags and engagement are Tagging. --retag-only still runs them all.
     if args.hub_upkeep:
+        entities_path = vault_manager.data_root(vault_path) / "Settings" / args.entities_name
+        synced = sync_hub_domains(vault_path, entities_path) if entities_path.is_file() else []
         upkeep = backfill_hub_note_metadata(vault_path)
         print(json.dumps({
+            "hub_domains_synced": synced,
             "hub_notes_self_tagged": len(upkeep["self_tagged"]),
             "hub_notes_log_captures_backfilled": len(upkeep["log_captures_backfilled"]),
             "hub_children_tagged": len(upkeep["children_tagged"]),
