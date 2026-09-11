@@ -963,6 +963,14 @@ def build(vault_path: Path, entities_path: Path, *, move_people: bool = True) ->
     people_moved_total = 0
 
     top_level_paths: dict[str, tuple[Path, Path, str]] = {}  # name.lower() -> (folder, md_path, section)
+    # Every hub already in the vault, wherever it sits, by its folder name.
+    # Creation used to check only the exact path Entities.md implies, so an
+    # entity whose section or parent had just changed was created AGAIN at the
+    # new path beside the original -- and the nightly reconcile then refused to
+    # move the original onto it, so the duplicate was permanent (2026-09-11:
+    # AIQ, made an Affiliate of ADNOC, appeared twice).
+    existing_hubs: dict[str, Path] = {md.stem: md for md, _ in _iter_hub_notes(vault_path)}
+    waiting_to_move: list[str] = []
 
     # Pass 1: top-level entries (blank "Affiliate of")
     for entry in entries:
@@ -976,11 +984,18 @@ def build(vault_path: Path, entities_path: Path, *, move_people: bool = True) ->
         md_path = _hub_path(vault_path, name, section)
         already = entry["fields"].get("Created", "No").strip().lower() == "yes"
         if not md_path.exists():
-            vm.create(
-                vault_path, _template_for(section), title=name, note_name=_hub_root(section),
-                frontmatter=_hub_frontmatter(name, entry["fields"].get("Domain", ""), entry["fields"].get("Aliases", "")),
-                caller=_VM_CALLER,
-            )
+            elsewhere = existing_hubs.get(md_path.stem)
+            if elsewhere is not None:
+                # Exists, just not where Entities.md now says -- reclassified,
+                # or no longer an Affiliate. The nightly reconcile MOVES it.
+                md_path = elsewhere
+                waiting_to_move.append(name)
+            else:
+                vm.create(
+                    vault_path, _template_for(section), title=name, note_name=_hub_root(section),
+                    frontmatter=_hub_frontmatter(name, entry["fields"].get("Domain", ""), entry["fields"].get("Aliases", "")),
+                    caller=_VM_CALLER,
+                )
         top_level_paths[name.lower()] = (md_path.parent, md_path, section)
         if already:
             skipped_already.append(name)
@@ -1065,10 +1080,14 @@ def build(vault_path: Path, entities_path: Path, *, move_people: bool = True) ->
                     parent_section = entry["section"]
                     parent_md = _hub_path(vault_path, affiliate_of, parent_section)
                     if not parent_md.exists():
-                        vm.create(
-                            vault_path, _template_for(parent_section), title=affiliate_of, note_name=_hub_root(parent_section),
-                            caller=_VM_CALLER,
-                        )
+                        elsewhere = existing_hubs.get(parent_md.stem)
+                        if elsewhere is not None:
+                            parent_md = elsewhere
+                        else:
+                            vm.create(
+                                vault_path, _template_for(parent_section), title=affiliate_of, note_name=_hub_root(parent_section),
+                                caller=_VM_CALLER,
+                            )
                     placeholder_entry = {
                         "section": parent_section,
                         "heading": affiliate_of,
@@ -1083,7 +1102,13 @@ def build(vault_path: Path, entities_path: Path, *, move_people: bool = True) ->
             parent_folder, parent_md, parent_section = parent
             affiliate_md = _affiliate_path(parent_folder, name)
             already = entry["fields"].get("Created", "No").strip().lower() == "yes"
-            if not affiliate_md.exists():
+            elsewhere = None if affiliate_md.exists() else existing_hubs.get(affiliate_md.stem)
+            if elsewhere is not None:
+                # Exists elsewhere -- made an Affiliate after it was created, or
+                # given a new parent. Reconcile moves it; see pass 1.
+                affiliate_md = elsewhere
+                waiting_to_move.append(name)
+            elif not affiliate_md.exists():
                 # parent_value=affiliate_of -- the engine's own resolve_parent
                 # finds parent_md (already guaranteed to exist above), auto-
                 # derives note_name from it (_child_note_name), and writes
@@ -1133,6 +1158,7 @@ def build(vault_path: Path, entities_path: Path, *, move_people: bool = True) ->
             "created": created, "skipped_ignored": skipped_ignored,
             "skipped_already": skipped_already, "skipped_unresolved": skipped_unresolved,
             "auto_created_parents": auto_created_parents, "hubs_only": True,
+            "waiting_to_move": waiting_to_move,
         }
 
     # Always retag/relink at the end -- catches BOTH people this run just
