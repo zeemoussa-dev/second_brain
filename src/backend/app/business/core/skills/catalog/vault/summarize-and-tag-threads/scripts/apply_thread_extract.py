@@ -47,6 +47,7 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import vault_manager as vm
@@ -137,6 +138,72 @@ def _render_actions(actions: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _known_company_names(vault_path: Path) -> set[str]:
+    """Every real hub's own name and aliases, lowercased.
+
+    Read from the HUBS, not from Entities.md: a hub is what actually exists in
+    the vault, and Entities.md carries rows deliberately marked Ignore or
+    Deleted that must not count as known -- otherwise a company the operator
+    chose to ignore would be silently re-proposed forever."""
+    known: set[str] = set()
+    for root_name in ("Customers", "Partners"):
+        base = vault_path / "Work" / root_name
+        if not base.is_dir():
+            continue
+        for hub_dir in list(base.glob("*")) + list(base.glob("*/Affiliates/*")):
+            hub_md = hub_dir / f"{hub_dir.name}.md"
+            if not hub_md.is_file():
+                continue
+            frontmatter, _ = vm.read_note(hub_md)
+            known.add(str(frontmatter.get("name") or hub_dir.name).strip().lower())
+            for alias in (frontmatter.get("aliases") or []):
+                known.add(str(alias).strip().lower())
+    return {name for name in known if name}
+
+
+def record_unknown_companies(vault_path: Path, companies: list[str],
+                             thread_id: str, thread_name: str) -> list[str]:
+    """Files any company the model named that has no hub, for the operator to
+    review (operator, 2026-09-11: "When Enrichement Start Check Entities in the
+    new threads").
+
+    Domain-based discovery only ever finds a company someone EMAILED. A company
+    discussed in the body -- an account named in an internal forecast thread, a
+    competitor, a partner mentioned by a third party -- has no domain to be
+    found by, and enrichment is the only pass that reads prose. So this is the
+    one place those can surface at all.
+
+    Accumulates rather than deciding: never writes Entities.md, never creates a
+    hub. A model naming a company is a suggestion, and the classification that
+    follows (Customer vs Partner, and the real company name behind a
+    half-remembered one) is the operator's own call."""
+    if not companies:
+        return []
+    # Built ONCE, not per name: the comprehension form rebuilt the whole hub
+    # index for every company in the list.
+    known = _known_company_names(vault_path)
+    unknown_names = [c for c in companies if c and c.strip().lower() not in known]
+    if not unknown_names:
+        return []
+    path = _extracts_dir().parent / "UnknownCompanies.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        store = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        store = {}
+    for name in unknown_names:
+        entry = store.setdefault(name.strip(), {"seen": 0, "threads": []})
+        entry["seen"] += 1
+        # Capped: the point is to show the operator what it is, not to build a
+        # full index -- that is what the thread's own company tags are for.
+        if thread_id not in [t["id"] for t in entry["threads"]] and len(entry["threads"]) < 5:
+            entry["threads"].append({"id": thread_id, "name": thread_name})
+    scratch = path.with_suffix(".writing")
+    scratch.write_text(json.dumps(store, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(scratch, path)
+    return unknown_names
+
+
 def apply_extract(vault_path: Path, extraction: dict) -> dict:
     version = extraction.get("schema_version")
     if version != _SCHEMA_VERSION:
@@ -185,6 +252,28 @@ def apply_extract(vault_path: Path, extraction: dict) -> dict:
     # scripts in charge of one note. Carried in the persisted extraction so the
     # hub-side applier can consume it without re-reading the thread.
     result["important_info_deferred"] = len(extraction.get("important_info") or [])
+
+    unknown = record_unknown_companies(
+        vault_path, extraction.get("companies") or [], thread_id,
+        frontmatter.get("thread_name") or thread_path.stem)
+    if unknown:
+        result["unknown_companies"] = unknown
+
+    # Freshness, stamped LAST so a crash mid-apply leaves the thread looking
+    # unenriched and it is simply picked up again.
+    #
+    # The count matters as much as the timestamp. `last_summarized_at >=
+    # last_message_at` is the rule inherited from apply_thread_review, and it
+    # only catches a thread that grew at the NEWEST end. A history backfill adds
+    # messages at the OLDEST end without moving last_message_at at all, so a
+    # conversation whose earlier half arrives later would stay marked fresh
+    # against a summary that never saw it.
+    message_count = len(list((thread_path.parent / "messages").glob("*.md")))
+    vm.update(vault_path, thread_path, frontmatter={
+        "last_summarized_at": datetime.now(timezone.utc).isoformat(),
+        "summarized_message_count": str(message_count),
+    })
+    result["summarized_message_count"] = message_count
     return result
 
 
