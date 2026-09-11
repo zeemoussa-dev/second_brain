@@ -19,8 +19,8 @@ Steps, in dependency order:
   3. reconcile  make the folders agree with Entities.md -- reclassify between
                 Customers and Partners, re-parent an Affiliate under its parent,
                 remove a folder marked Deleted
-  4. people     move People into their hub folder, and repair the duplicates
-                capture continuously recreates
+  4. (people)   no longer here -- People run as their own hourly pipeline,
+                people_pipeline.py, which files them AND folds duplicates
   5. retag      company tags on Threads, Meetings and People, from domains
   6. engagement engagement/<classification> on Threads and Meetings
   7. retrofit   Conversation index, kind/thread, kind/email, kind/attachment
@@ -171,8 +171,11 @@ def main() -> int:
     if allow_delete:
         reconcile_args.append("--allow-delete")
     steps.append(_run("reconcile", reconcile_args, SCRIPTS_DIR))
-    steps.append(_run("people", ["create_companies_partners.py", "--vault-path", vault,
-                                 "--reconcile-people"], SCRIPTS_DIR))
+    # People are no longer a step here: they run as their own hourly People
+    # pipeline (people_pipeline.py), which both files them under their company
+    # and folds the duplicates capture recreates (operator, 2026-09-11). This
+    # step only ever did the second half -- and since hub creation stopped
+    # moving people, nobody was filed at all.
     # retag-only covers People, Threads, Meetings and engagement in one call --
     # it builds its domain index once and reuses it, so splitting these apart
     # would rescan the vault per step for no benefit.
