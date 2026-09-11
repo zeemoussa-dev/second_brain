@@ -18,6 +18,14 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: Company pipeline -- hourly, no model. From each Thread's saved extraction
+  it writes each named company's History, files the facts worth remembering under
+  that company's Captures (`## Captured`; the operator's `## Notes` is never
+  touched), and fills People details: blanks are filled, a differing value is
+  logged to the person's History and the existing one kept. Enrichment now writes
+  only onto the Thread and saves its read. Retrofit: 32 facts into 31 companies'
+  Captures, 1 field filled, 6 title changes logged; a second pass wrote nothing.
+
 - feat: Tagging is its own pipeline and owns every tag -- company tags from email
   domains, from each Thread's saved extraction and from attachment summaries, then
   the engagement label, nightly at 03:30. Enrichment reads and saves; it no longer

@@ -133,6 +133,12 @@ Where a rule does not belong here:
 
 - **[2026-09-11] The operator's enrichment design fans ONE read out to four places: the Thread, People, Customer Logs (each named company's History) and Important Captures.** Check a new applier against all four. The extraction applier shipped writing one and a half of them; company History and tagging were both silently dropped from the applier it replaced.
 
+- **[2026-09-11] A pipeline that reads with a model writes only the note it read; everything else that read feeds is filed from the SAVED read by the pipeline that owns that note.** Enrichment writes the Thread's Summary and Actions and saves the extraction; Tagging files company tags from it, Company files each company's History and Captures and each person's details. Two writers on one note is how they overwrite each other, and a filer working from saved reads is re-derivable: idempotent, healed on the next run, and a company or alias added later picks up everything already read about it.
+
+- **[2026-09-11] Every step of a Pipeline except its first must name a `depends_on`.** The Agents Map draws a pipeline as its steps, connected only by those edges: three steps with empty `depends_on` rendered as three unrelated agents, not one pipeline. Draw the order the steps actually run in; never invent a step only to connect the others -- an extra node reads as a new worker that does not exist.
+
+- **[2026-09-11] Test a frontmatter VALUE, never the presence of its key.** Every Thread carries `last_summarized_at: ""` from its template, so counting notes that contain the key reported 2,569 of 2,605 Threads enriched when 179 were -- nearly a wrong answer to the operator about how complete History was.
+
 ## Capture pipelines
 
 - **[2026-09-10] Strip HTML at READ, never at capture -- 83% of a stored Outlook body is markup.** Measured on 119 real Threads: 6.66 M raw chars reduce to 1.14 M of text, i.e. ~14,000 input tokens per Thread become ~2,400 for identical content. An agent reading captured message notes raw pays for every `<div style="font-family:Aptos,...">` and learns nothing from it. But convert on the way OUT, not on the way in: an email's real body IS the HTML, capture's job is to preserve the evidence faithfully, and if a summary ever looks wrong the original is what you check it against. `summarize-and-tag-threads/scripts/read_thread.py` is the converter.
