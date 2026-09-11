@@ -145,7 +145,10 @@ def _parse_frontmatter_value(raw: str):
 
 
 def read_note(path: Path) -> tuple[dict, str]:
-    text = path.read_text(encoding="utf-8")
+    # long_path: this local reader runs on the attachment note itself, which is
+    # often past MAX_PATH -- the engine's own read_note already handled that,
+    # this copy did not.
+    text = Path(vm.long_path(path)).read_text(encoding="utf-8")
     if not text.startswith("---\n"):
         return {}, text
     end = text.find("\n---\n", 4)
