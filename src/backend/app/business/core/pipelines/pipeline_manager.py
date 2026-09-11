@@ -58,13 +58,26 @@ class PipelineManager:
                 return section.id
         return self._section_manager.create(name or _FALLBACK_SECTION_NAME).id
 
+    @staticmethod
+    def _find_job(cron_job_id: str, cron_profile_id: str | None):
+        """The Hermes job a Pipeline names -- by ID, the opaque value `hermes
+        cron create` prints, or by NAME, which older definitions stored.
+
+        Matching on name alone meant no Pipeline linked by its printed job id
+        ever resolved, so the Agents Map showed every one of them unscheduled
+        (2026-09-11). And `hermes cron create` writes to the SHARED store, not
+        a profile's: a definition naming a profile falls back to the shared
+        store rather than silently finding nothing."""
+        for profile in ([cron_profile_id, None] if cron_profile_id else [None]):
+            for job in get_client().cron.list_cron_jobs(profile):
+                if cron_job_id in (job.id, job.name):
+                    return job
+        return None
+
     def _cron_status(self, cron_job_id: str | None, cron_profile_id: str | None) -> dict:
         if cron_job_id is None:
             return {}
-        job = next(
-            (j for j in get_client().cron.list_cron_jobs(cron_profile_id) if j.name == cron_job_id),
-            None,
-        )
+        job = self._find_job(cron_job_id, cron_profile_id)
         if job is None:
             return {}
         return {
@@ -133,10 +146,7 @@ class PipelineManager:
         pipeline = self.get_by_id(pipeline_id)
         if pipeline is None or pipeline.cron_job_id is None:
             return None
-        job = next(
-            (j for j in get_client().cron.list_cron_jobs(pipeline.cron_profile_id) if j.name == pipeline.cron_job_id),
-            None,
-        )
+        job = self._find_job(pipeline.cron_job_id, pipeline.cron_profile_id)
         if job is None or not job.skill:
             return None
         return job.skill.rsplit("/", 1)[-1]
