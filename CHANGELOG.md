@@ -18,6 +18,12 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix: Enrichment names each Thread by its conversation id, never by a path. The
+  agent had typed folder paths from Thread titles and got them wrong (a `|`, an
+  80-character cut, a zero-width space the prompt strips), so those Threads failed
+  at the head of every batch. The picker returns ids, the read and save scripts
+  resolve the folder in code, and the launcher shows the agent ids only.
+
 - fix: the email delta could never catch up a backlog bigger than one run. It
   paged backward from "now" and saved its watermark only at the end, so Hermes'
   one-hour limit killed every run with nothing saved. It now pages oldest first
