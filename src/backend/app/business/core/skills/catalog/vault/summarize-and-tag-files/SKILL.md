@@ -1,13 +1,13 @@
 ---
 name: summarize-and-tag-files
-description: One-time, long-running captured-file summarization and company wiki-tagging pass -- Job 5 of the company/partner discovery sequence.
-version: 0.4.0
+description: Enrichment for email attachments. Extracts each captured file's text in code (PDF, Word, Excel, PowerPoint, forwarded email), then the model writes one real summary, a one-line caption and the companies it is about -- applied to the File note, its company tags, and the parent Thread's Files section. Use when asked to summarize attachments or files, and as the File Enrichment pipeline's scheduled job.
+version: 0.5.0
 author: second-brain
 license: MIT
 platforms: [windows]
 metadata:
   hermes:
-    tags: [second-brain, company, files, summary, one-time]
+    tags: [second-brain, company, files, summary, enrichment]
 writes:
   - action: apply_file_review
     template: thread
@@ -19,150 +19,123 @@ writes:
     sections: [Summary, Details]
 ---
 
-# Summarize & Tag Files (Job 5)
+# Enrich Files
 
-Real work, not mechanical: read every captured File's own actual content
-(PDF/DOCX/PPTX/XLSX/image/etc.), understand what it actually is, write a
-real summary, and recognize which known Companies (Customers/Partners/
-Affiliates -- Step 3 already built their real hub notes) it's genuinely
-about. Same discipline as `summarize-and-tag-threads` -- this has to be
-YOUR OWN judgment every time; `apply_file_review.py` exists ONLY to
-apply a decision you already made, never to decide anything itself.
+Every attachment captured with an email gets a real summary: what the
+document actually contains, in your own words, plus a one-line caption
+for its Thread and the companies it is about. You do the reading and the
+judgment; the scripts do the extracting and the writing.
 
-## Prerequisites
+## What is yours and what is not
 
-- Run `entity-domain-extraction` then `create-companies-partners` first
-  -- this Skill needs real Customer/Partner/Affiliate hub notes to
-  recognize company names against.
-- Vault path (pass as `--vault-path` on every script call):
-  `$SECOND_BRAIN_VAULT_PATH`
+**Extraction is not your job.** `read_file.py` pulls the text out of the
+file in code. The first run of this Skill left 36 of 71 files with a
+"no extractable text" placeholder because the agent's own file reader
+cannot open Office binaries, and pointing it at other skills per
+extension did not fix that. So do not reach for another tool to open a
+file: read what `read_file.py` gives you.
 
-## Before you start: build your own company list
+**Metadata is not your job either.** Company tags from email domains,
+hubs, People -- all mechanical, all nightly. Yours is only what needs a
+reader.
 
-Same as `summarize-and-tag-threads`'s own Step 0 -- `search_files`/
-`read_file` every `Work/Customers/**/*.md` and `Work/Partners/**/*.md`
-except `-history.md`/`-captures.md`, note each one's own `name`/`aliases`.
-This is the real, authoritative list; a company mentioned in a file that
-ISN'T on this list is not this Skill's job to add.
+## The loop
 
-## Finding the files that need this
+A scheduled run hands you the batch and the EXACT commands at the top of
+the prompt -- the interpreter to use and the folder the scripts are in.
+Use them verbatim. The interpreter matters: it is the one with the
+document parsers installed.
 
-Every captured File note lives at `Work/Threads/<Thread>/files/<slug>/
-<slug>.md`, with the REAL file sitting alongside it in the same folder
-(same `<slug>` directory, original filename). **Skip any File whose own
-`## Summary` section is already non-empty** -- a captured file's content
-never changes after capture, so once summarized it never needs
-re-visiting (unlike Threads, which need a timestamp-based skip rule
-because new messages keep arriving -- Files don't have that problem).
+### 1. Take the batch you were given
 
-209 Threads produced roughly 80 captured files total -- small enough
-this Job likely doesn't need `summarize-and-tag-threads`'s own
-multi-session batching discipline, but still work through them in
-batches of 10-20 and stop/report progress if you're running low on
-context, rather than trying to force all of them into one sitting.
+Do not pick files yourself and do not widen the batch. The selector
+already knows which files are unsummarized, and the batch size is what
+keeps a run inside your context.
 
-## The real per-file judgment
-
-For each File:
-
-1. **Read the actual file**, not just its companion note's frontmatter.
-   **The plain `read_file` tool cannot extract real content from Office
-   binary formats -- live-confirmed 2026-08-22** (a first real run of
-   this Skill produced a placeholder "no extractable text; use filename
-   context only" fallback for 36 of 71 files, because `read_file` alone
-   reported them as unreadable binary and the agent gave up instead of
-   reaching for the right tool). **Use the dedicated skill for the
-   file's own extension, never fall back to a placeholder without
-   trying the real one first:**
-   - `.pdf` -- the `pdf`/`nano-pdf` skill (OCR the `ocr-and-documents`
-     skill if it's a scanned/image-only PDF with no text layer).
-   - `.docx` -- the `docx` skill.
-   - `.pptx` -- the `pptx` skill.
-   - `.xlsx` -- the `xlsx` skill.
-   - image formats (`.jpg`/`.png`/etc.) -- vision/image reading.
-   - a genuinely unreadable format (`.vcf`/`.pkpass`/`.ics`/`.zip`/no
-     extension) -- these are fine to summarize from their own real
-     metadata (filename, type) per point 6 below; that is a REAL summary
-     of what they are, not the same thing as giving up on a real
-     document.
-   A placeholder "no extractable text" summary is only acceptable after
-   you've actually tried the right dedicated skill for that extension
-   and it genuinely failed -- never as a first resort.
-2. **Write a real prose summary** -- what the document actually
-   contains/is about, in your own words. **Not a raw dump of extracted
-   table/slide text** (also live-confirmed 2026-08-22: one `.xlsx`'s own
-   "summary" was just the raw extracted cell contents pasted in,
-   unreadable as a summary) -- extract the content, then genuinely
-   summarize it, the same judgment you'd apply reading it yourself.
-3. **Wiki-tag every company you recognize IN the summary text itself**
-   -- same convention as Threads: `[[Masdar]]`, matched against your own
-   company list from the step above (name OR alias), not raw text.
-4. **List every company this file is genuinely about** -- can be more
-   than one; use the SPECIFIC entity, never its parent (a deck about
-   Masdar gets `Masdar`, not `Mubadala` -- identical rule to Threads).
-5. **Write one short, one-line summary too** -- this becomes the entry
-   in its own parent Thread's own `## Files` section (operator,
-   2026-08-22: "create a log in every thread with files and the summary
-   (shorter one)") -- keep it genuinely short, like a filename caption,
-   not the full summary repeated.
-6. **Some captured files are genuinely not documents** -- a `.vcf`
-   contact card, a `.pkpass` wallet pass, a `.ics` calendar invite, a
-   `.zip` archive, a no-extension inline-image blob. Don't force a deep
-   summary onto these -- one honest short line ("Contact card for X",
-   "Calendar invite for the Y kickoff") is a real, complete summary for
-   what they actually are. Never skip the file entirely just because
-   it's not a "real document" -- same "never skip for looking
-   unimportant" rule Threads already follow.
-
-## Applying it
-
-For each File you've just reasoned about, `write_file` a scratch JSON
-payload, then call the one script -- as a PLAIN, direct `terminal` call,
-using the script's own full absolute path:
+### 2. Read each file
 
 ```
-terminal(command="python \"${HERMES_SKILL_DIR}\scripts\apply_file_review.py\" --input-file <scratch path>")
+"<interpreter>" "<scripts folder>\read_file.py" --file-note "<file_note from the batch>"
 ```
 
-**Never wrap this in `bash -lc "..."`** (or any other `-c`/`-lc`
-shell-string form) -- the same categorical Hermes `terminal`-tool
-approval-block documented in every other Skill in this sequence, and
-**never a bare filename either** -- both are confirmed live-bug root
-causes elsewhere in this vault's own pipelines (see
-`summarize-and-tag-threads`'s own SKILL.md for the full incidents). The
-absolute-path, no-shell-wrapper form above is confirmed to run without a
-prompt and without depending on `cwd` being set correctly.
+It prints a header -- filename, type, size, parent Thread -- then the
+text. **Read the `NOTES:` line.** It tells you what the extractor could
+not do, and your summary must not pretend otherwise:
 
-Payload shape: `{"file_path": "<the File's own concept .md path>",
-"summary": "<full summary, with your own [[wikilinks]] already in
-it>", "short_summary": "<one line>", "companies": ["Name1", "Name2"]}`.
+- `no text layer` -- a scan or image-only PDF. Summarize from the
+  filename and the Thread, and say that is what you did.
+- `TRUNCATED` -- you saw only the start. Say the summary covers the
+  start of the document.
+- `extraction failed` -- corrupt or password-protected. Say so.
+- `not in the vault` -- capture skipped the file (size cap). Summarize
+  from the filename and Thread, and say the file was not available.
+- `an image` -- view it at the `PATH:` if you can read images. A
+  `small ... signature logo` note means one honest line is complete.
 
-The script handles everything mechanical from there: writes your summary
-onto the File's own `## Summary`, tags the File with `customer/<slug>`/
-`partner/<slug>` (one per company you listed), and updates the File's
-own parent Thread's `## Files` section -- the existing bare
-`- [[file-slug]]` line becomes `- [[file-slug]] -- <your short_summary>`,
-replaced in place (idempotent, never duplicated) rather than a separate
-log file, since Threads don't get their own Log/Captures companion
-files.
+### 3. Write one review per file
 
-## Pitfalls
+Write the JSON to a scratch file, then apply it:
 
-- **Never fabricate a company hub note.** Same rule as Threads -- an
-  unrecognized name stays unresolved, reported via
-  `companies_unresolved`, never invented.
-- **Never skip a file for looking unimportant, boring, or non-document.**
-  Every captured file gets a real summary line, even a one-line one.
-- **The short_summary is genuinely short** -- it's read inline as part
-  of a Thread's own file listing, not a separate detail view.
+```
+"<interpreter>" "<scripts folder>\apply_file_review.py" --input-file "<scratch path>"
+```
 
-## Verification
+```json
+{
+  "file_path": "<the file_note path from the batch>",
+  "summary": "What the document contains, in your own words, with [[Company]] wikilinks.",
+  "short_summary": "One-line caption for the Thread's Files list.",
+  "companies": ["Masdar"]
+}
+```
 
-- Track running totals: files summarized, distinct companies tagged,
-  distinct unresolved company names seen.
-- Spot-check one File's own `## Summary` (real content, correctly
-  wikilinked) and its own parent Thread's `## Files` section (short
-  summary now showing next to the right file, other files' own lines
-  untouched).
-- Report the final totals, and the full distinct `companies_unresolved`
-  list if non-empty.
+#### summary
+
+What the document actually is and says -- a proposal's scope and price,
+a deck's argument, a spreadsheet's purpose and headline numbers. **Not a
+dump of the extracted text**: a pasted table is not a summary. Wiki-tag
+every company you recognize in the prose (`[[ADNOC]]`), matched against
+a hub's real `name` or `aliases`.
+
+#### short_summary
+
+A caption, not a paragraph -- it is read inline in the Thread's list of
+files. "Core42 proposal to Dell for EHS Compass, v1.0", not the summary
+again.
+
+#### companies
+
+Every company the file is genuinely about. **The specific entity, never
+its parent**: a deck about Masdar gets `Masdar`, not `Mubadala`.
+
+Name a company you are confident about even if you suspect it has no hub
+yet. Anything that matches no real hub is filed for the operator to
+review -- never created. An attachment is often the only place a company
+appears at all: a proposal naming the end customer, a partner deck
+listing its clients.
+
+#### Not every file is a document
+
+A calendar invite, a contact card, a signature logo, an archive. One
+honest line is a complete summary for what they are. **Never skip a file
+for looking unimportant** -- every file gets a summary, even a short one.
+
+## Two rules that cost real runs to learn
+
+**Always the full path to both the interpreter and the script.** A bare
+script name failed 19 times in a row in one cron run, because a
+scheduled agent's working directory is the user's home folder.
+
+**Never wrap a call in `bash -lc "..."`** or any `-c`/`-lc` form. Hermes
+requires human approval for those, which stalls a scheduled run with
+nobody there. If a script will not run, **stop and report it** -- never
+edit a note by hand to work around it.
+
+## What the applier guarantees
+
+- **Skips a file that already has a summary**, so a re-picked file is
+  not overwritten.
+- **Never creates a company.** Unresolved names are reported and filed
+  in `<data>/data/UnknownCompanies.json` for review.
+- **Replaces the Thread's Files line in place** -- `- [[file]]` becomes
+  `- [[file]] -- <short_summary>`, never duplicated on a rerun.

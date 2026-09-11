@@ -344,6 +344,40 @@ def add_file_detail(vault_path: Path, file_path: str, details: str, images: list
 
 # ── main ─────────────────────────────────────────────────────────────────
 
+def _record_unknown_companies(vault_path: Path, names: list[str], file_id: str,
+                              file_name: str) -> None:
+    """Files unresolved company names in the same review store the thread
+    applier feeds (operator, 2026-09-11: "When Enrichement Start Check Entities
+    in the new threads"). An attachment is often the ONLY place a company
+    appears -- a proposal naming the end customer, a partner deck listing its
+    clients -- with no email from them for domain discovery to find. Recorded
+    for review, never created.
+
+    Two appliers write this one file. The replace is atomic, so it can lose a
+    concurrent run's additions but never corrupt the store -- acceptable for a
+    review list whose counts rebuild on the next sighting."""
+    import json
+    import os
+    path = vm.data_root(vault_path) / "data" / "UnknownCompanies.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        store = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        store = {}
+    for name in names:
+        name = (name or "").strip()
+        if not name:
+            continue
+        entry = store.setdefault(name, {"seen": 0, "threads": []})
+        entry["seen"] = entry.get("seen", 0) + 1
+        files = entry.setdefault("files", [])
+        if file_id not in [f["id"] for f in files] and len(files) < 5:
+            files.append({"id": file_id, "name": file_name})
+    scratch = path.with_suffix(".writing")
+    scratch.write_text(json.dumps(store, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(scratch, path)
+
+
 def apply_file_review(vault_path: Path, data: dict, force: bool = False) -> dict:
     file_path = Path(data["file_path"])
     if not file_path.is_absolute():
@@ -388,6 +422,8 @@ def apply_file_review(vault_path: Path, data: dict, force: bool = False) -> dict
     )
     if tags:
         vm.merge_tags(file_path, tags)
+    if unresolved:
+        _record_unknown_companies(vault_path, unresolved, file_id, file_path.stem)
 
     files_log_updated = False
     frontmatter, _ = read_note(file_path)
