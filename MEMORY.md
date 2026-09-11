@@ -213,6 +213,10 @@ Where a rule does not belong here:
 
 - **A command that succeeds in the agent's shell but fails in the operator's, on the same machine, is a network-path difference, not a flaky command.** Never build a theory on a result the operator's own shell has not reproduced.
 
+- **A Skill that writes only frontmatter or a note body declares no `writes:` block.** `writes:` is specifically the named-Entity-Template-section allow-list; `person-lookup`, `create-companies-partners` and `vault-index` all write real content and declare none.
+
+- **A vault writer must preserve each note's own line endings and body whitespace.** Python reads with universal newlines and writes `os.linesep`, silently converting an LF note to CRLF; the vault is 99% CRLF AND synced to git, so the default turns a one-line tag change into a whole-file diff.
+
 ## Working discipline
 
 - **Before adding a delete action over data that a separate discovery or dedup process also reads, check what that process's "already seen" check keys on.** Removing the record it looks for silently un-suppresses whatever the record was suppressing - soft-delete with a flag instead.

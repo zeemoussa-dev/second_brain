@@ -5654,3 +5654,13 @@ findable by the entry number in brackets.
   `Archive/2026-09-05/MEMORY-original-2026-09-05.md`. Four growth rules added to
   `MEMORY.md`'s own header: a 40 KB budget enforced at write time, one rule per
   entry under 400 characters, never write while investigating, and ledger rotation.
+
+- feat(pipelines): `topic-tagging` shipped - Skill, scripts and Pipeline definition.
+  Adds `topic/*` subject tags to Thread notes from their existing `## Summary`,
+  selecting only from the closed 32-value vocabulary in `Settings/Tag Taxonomy.md`.
+  Scoped to Threads: 207 of 208 Meeting notes have an empty `## Summary` and only
+  `## Related` populated, so there is nothing to classify them from until Meetings
+  get a summarization pass of their own. Undeclared topics are rejected and
+  sub-0.6-confidence ones quarantined to `Tag Taxonomy Review.md` rather than
+  written. Verified end-to-end against the live vault: 5 Threads tagged, watermark
+  advanced 278 -> 273 due, existing tags and CRLF line endings preserved.
