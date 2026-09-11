@@ -58,6 +58,8 @@ import json
 import os
 import re
 import sys
+import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -299,6 +301,41 @@ def resolve_thread(vault_path: Path, extraction: dict, thread_id: str) -> Path |
     return vm.find_by_id(vault_path, thread_id, note_name="Threads")
 
 
+@contextmanager
+def _exclusive(path: Path, *, timeout: float = 60.0, stale_after: float = 300.0):
+    """One writer at a time for a file every Enrichment job read-modify-writes.
+
+    Enrichment runs as parallel jobs (2026-09-11). Two of them updating
+    UnknownCompanies.json at once would each read it, each add their names,
+    and the later rename would silently drop the other's. A lock file created
+    with O_EXCL is atomic on every platform; one left behind by a crashed job
+    is broken after `stale_after` seconds rather than blocking every job
+    forever."""
+    lock = path.with_suffix(path.suffix + ".lock")
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            break
+        except FileExistsError:
+            try:
+                if time.time() - lock.stat().st_mtime > stale_after:
+                    lock.unlink()
+                    continue
+            except OSError:
+                pass
+            if time.monotonic() > deadline:
+                raise TimeoutError(f"{lock} has been held for over {timeout:.0f}s")
+            time.sleep(0.2)
+    try:
+        yield
+    finally:
+        try:
+            lock.unlink()
+        except OSError:
+            pass
+
+
 def record_unknown_companies(vault_path: Path, companies: list[str],
                              thread_id: str, thread_name: str) -> list[str]:
     """Files any company the model named that has no hub, for the operator to
@@ -325,20 +362,21 @@ def record_unknown_companies(vault_path: Path, companies: list[str],
         return []
     path = _extracts_dir().parent / "UnknownCompanies.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        store = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        store = {}
-    for name in unknown_names:
-        entry = store.setdefault(name.strip(), {"seen": 0, "threads": []})
-        entry["seen"] += 1
-        # Capped: the point is to show the operator what it is, not to build a
-        # full index -- that is what the thread's own company tags are for.
-        if thread_id not in [t["id"] for t in entry["threads"]] and len(entry["threads"]) < 5:
-            entry["threads"].append({"id": thread_id, "name": thread_name})
-    scratch = path.with_suffix(".writing")
-    scratch.write_text(json.dumps(store, indent=2, ensure_ascii=False), encoding="utf-8")
-    os.replace(scratch, path)
+    with _exclusive(path):
+        try:
+            store = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            store = {}
+        for name in unknown_names:
+            entry = store.setdefault(name.strip(), {"seen": 0, "threads": []})
+            entry["seen"] += 1
+            # Capped: the point is to show the operator what it is, not to build
+            # a full index -- that is what the thread's own company tags are for.
+            if thread_id not in [t["id"] for t in entry["threads"]] and len(entry["threads"]) < 5:
+                entry["threads"].append({"id": thread_id, "name": thread_name})
+        scratch = path.with_suffix(".writing")
+        scratch.write_text(json.dumps(store, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(scratch, path)
     return unknown_names
 
 

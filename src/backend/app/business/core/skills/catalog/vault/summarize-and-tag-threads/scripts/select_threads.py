@@ -34,6 +34,7 @@ import argparse
 import json
 import os
 import sys
+import zlib
 from pathlib import Path
 
 import vault_manager as vm
@@ -55,14 +56,27 @@ def _thread_notes(vault_path: Path):
             yield thread_dir, note
 
 
+def in_shard(thread_key: str, shard: int, shards: int) -> bool:
+    """Whether a Thread belongs to this job when Enrichment runs as `shards`
+    parallel jobs (operator, 2026-09-11). Every job asks the same question of
+    the same oldest-first backlog, so without a partition all of them would
+    read the same 20 Threads. CRC32, not hash(): Python salts hash() per
+    process, so two jobs would disagree about which Thread is whose."""
+    return shards <= 1 or zlib.crc32(thread_key.encode("utf-8")) % shards == shard
+
+
 def select(vault_path: Path, *, limit: int = 50, newest_first: bool = False,
-           include_noise: bool = False) -> dict:
+           include_noise: bool = False, shard: int = 0, shards: int = 1) -> dict:
+    if not 0 <= shard < max(shards, 1):
+        raise ValueError(f"shard {shard} is not one of 0..{shards - 1}")
     due: list[dict] = []
     total = 0
     for thread_dir, note in _thread_notes(vault_path):
         total += 1
         frontmatter, _ = vm.read_note(note)
         if frontmatter.get("type") != "Thread":
+            continue
+        if not in_shard(frontmatter.get("id") or thread_dir.name, shard, shards):
             continue
         if not include_noise and _NOISE_TAG in (frontmatter.get("tags") or []):
             continue
@@ -107,6 +121,10 @@ def main() -> int:
                         help="Most recent threads first, instead of oldest first.")
     parser.add_argument("--include-noise", action="store_true",
                         help="Also select threads capture classified as noise.")
+    parser.add_argument("--shard", type=int, default=0,
+                        help="This job's shard, 0-based, when Enrichment runs as --shards jobs.")
+    parser.add_argument("--shards", type=int, default=1,
+                        help="How many parallel Enrichment jobs share the backlog.")
     args = parser.parse_args()
     if not (args.vault_path or "").strip():
         print(json.dumps({"error": "SECOND_BRAIN_VAULT_PATH is not set"}))
@@ -117,7 +135,8 @@ def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
     print(json.dumps(select(Path(args.vault_path), limit=args.limit,
                             newest_first=args.newest_first,
-                            include_noise=args.include_noise), ensure_ascii=False))
+                            include_noise=args.include_noise,
+                            shard=args.shard, shards=args.shards), ensure_ascii=False))
     return 0
 
 
