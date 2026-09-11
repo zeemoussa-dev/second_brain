@@ -18,6 +18,28 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: File Enrichment pipeline -- every captured attachment gets a real summary,
+  a one-line caption on its Thread and its company tags. Text is extracted in code
+  (`read_file.py`: PDF, Word, Excel, PowerPoint, forwarded email) and the extractor
+  states what it could not read. Scheduled every 30 minutes, ten files a run.
+
+- fix: 256 attachments were lost to Windows MAX_PATH -- capture created the folder,
+  then failed writing the file inside it, silently. All attachment I/O now goes
+  through `vault_manager.long_path`. `recover_lost_attachments.py` re-fetches the
+  lost bytes from Graph, tracing each empty folder to its message by hash.
+
+- fix: re-capturing a message rewrote its attachment notes with an empty Summary.
+  Capture meets messages again routinely, so an existing attachment note is now
+  never rewritten.
+
+- feat: Meeting Capture runs as an hourly delta (2 days back, 14 ahead), deferring
+  while an email backfill runs. The thread retrofit is the nightly Metadata pass's
+  last step and writes only what changed.
+
+- docs: `src/CBO Agents Build/` -- the one-time build pipelines (backfills, first
+  company build, curation, migrations, retrofit), recorded as reference only. The
+  Agents Map now shows only the delta pipelines the CBO watches.
+
 - feat: `reconcile_entities.py` — makes the vault's folders agree with `Entities.md`.
   Reclassify between Customers and Partners, re-parent an Affiliate under its parent,
   remove a folder marked `Deleted` (moving its People back to `Work/People` first).

@@ -103,6 +103,18 @@ Where a rule does not belong here:
 
 - **[2026-09-11] Bound an agent batch by CONTEXT, not by cost.** When the operator says money is not the constraint, the limit that still matters is how much one agent session can read: a Thread transcript averages ~5,000 tokens, so a batch of 20 is ~100k tokens of reading before the agent writes anything.
 
+- **[2026-09-11] Attachment paths routinely pass Windows' 260-character MAX_PATH, so every attachment write AND scan goes through `vault_manager.long_path`.** A Thread folder name, the file slug and the original filename together exceed it often: capture created the folder (just under the limit) and then failed writing the file inside it, losing 256 attachments as empty folders with no error anywhere. The read side fails worse -- a plain `is_file`/`iterdir` past the limit returns nothing rather than raising, so an attachment that exists is reported as missing. A regression fixture must genuinely exceed 260 characters, or it passes against the bug.
+
+- **[2026-09-11] Capture meets the same message again -- an overlapping backfill page, a resumed run, the delta catching up -- and calls attachment capture every time.** Ingest returns the existing message path, so "has a message path" is not a gate. Anything capture writes that a later stage enriches must therefore be written only if absent: an attachment note carries File Enrichment's Summary and the operator's Personal Notes, and rewriting it blanked both.
+
+- **[2026-09-11] The uv-managed Hermes runtime refuses package installs ("externally managed"). Dependencies for Skill scripts go in a dedicated venv, and the job that needs them names that interpreter explicitly.** Forcing packages into the managed interpreter would be undone or conflict on the next Hermes update.
+
+- **[2026-09-11] A deployed Skill is FLAT: Hermes copies `scripts/` contents to the Skill root.** Instructions written against the repo layout (`<skill>/scripts/<name>.py`) name a path that does not exist on the machine running the job. A scheduled job's launcher should print the exact interpreter and script paths into the prompt.
+
+- **[2026-09-11] A script run outside Hermes does not have Hermes' `.env`.** Delegated Graph auth needs `GRAPH_TENANT_ID` and `GRAPH_CLIENT_ID`; a launcher that merely inherits them works only while the gateway happened to load that file. Launchers load the keys they need from `.env` themselves.
+
+- **[2026-09-11] The Agents Map shows only delta pipelines -- what happens to NEW data.** A one-time backfill or migration displayed beside them, with a stale last run and no schedule, reads as a broken pipeline. Build pipelines are recorded as reference only under `src/CBO Agents Build/`; their scripts stay in their Skills, since several are also live.
+
 ## Capture pipelines
 
 - **[2026-09-10] Strip HTML at READ, never at capture -- 83% of a stored Outlook body is markup.** Measured on 119 real Threads: 6.66 M raw chars reduce to 1.14 M of text, i.e. ~14,000 input tokens per Thread become ~2,400 for identical content. An agent reading captured message notes raw pays for every `<div style="font-family:Aptos,...">` and learns nothing from it. But convert on the way OUT, not on the way in: an email's real body IS the HTML, capture's job is to preserve the evidence faithfully, and if a summary ever looks wrong the original is what you check it against. `summarize-and-tag-threads/scripts/read_thread.py` is the converter.
