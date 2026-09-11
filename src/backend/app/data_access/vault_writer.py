@@ -530,11 +530,17 @@ def find_person_note_path(dedup_key: str) -> Path | None:
     People/<stem>.md first, then the flat Work/People/<stem>.md fallback.
     Purely read-only; never creates, writes, or renames anything."""
     stem = _slugify(dedup_key)
-    customers_root = settings.vault_path / _CUSTOMERS_SUBFOLDER
-    if customers_root.exists():
-        nested_matches = sorted(customers_root.glob(f"*/People/{stem}.md"))
-        if nested_matches:
-            return nested_matches[0]
+    # Both roots, any depth. The People pipeline files each person under their
+    # company -- a Partner's People/ folder, or an Affiliate's one level deeper
+    # -- and a search of Customers/*/People alone missed every one of those, so
+    # the Cockpit could not find most filed people (2026-09-11). Capture's own
+    # copy of this lookup got the same fix on 2026-08-21.
+    for root in (settings.vault_path / _CUSTOMERS_SUBFOLDER,
+                 settings.vault_path / _PARTNERS_SUBFOLDER):
+        if root.exists():
+            nested_matches = sorted(root.glob(f"**/People/{stem}.md"))
+            if nested_matches:
+                return nested_matches[0]
     flat_path = settings.vault_path / _PEOPLE_SUBFOLDER / f"{stem}.md"
     return flat_path if flat_path.exists() else None
 

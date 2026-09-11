@@ -97,8 +97,20 @@ def _person_note(vault_path: Path, email: str) -> Path | None:
     should not be conjured from a model's reading of a signature."""
     if not email:
         return None
-    candidate = vault_path / "Work" / "People" / f"{email.strip().lower()}.md"
-    return candidate if candidate.is_file() else None
+    name = f"{email.strip().lower()}.md"
+    # Flat first -- where capture writes -- then filed under a company. The
+    # People pipeline moves each person into their hub's People/ folder, and a
+    # lookup of the flat folder alone would report every filed person as "not
+    # in the vault" and silently stop filling their fields (2026-09-11).
+    candidate = vault_path / "Work" / "People" / name
+    if os.path.isfile(vm.long_path(candidate)):
+        return candidate
+    for root in ("Customers", "Partners"):
+        base = vault_path / "Work" / root
+        for pattern in (f"*/People/{name}", f"*/Affiliates/*/People/{name}"):
+            for found in base.glob(pattern):
+                return found
+    return None
 
 
 def fill_people(vault_path: Path, people: list[dict]) -> dict:
