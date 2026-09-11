@@ -97,6 +97,12 @@ Where a rule does not belong here:
 
 - **[2026-09-11] Two capture processes must never write the same Person notes concurrently.** A backward-walking backfill and a forward-walking delta never fight over a Thread, but they do read-modify-write the same People, which is how meeting capture lost ~60 events. Prefer a job that DETECTS the other and exits quietly over pausing a cron by hand: a paused cron depends on someone remembering to resume it.
 
+- **[2026-09-11] A cron agent resolves `--skill` from the SHARED skills hub (`<hermes>/skills/`), NOT from the profile a Skill is deployed to.** Attaching a Skill that lives only in a profile is skipped with a notice inside the prompt -- the job still "succeeds" having done nothing. Do not fix this by copying SKILL.md into the hub: that is a second copy to keep in sync, the same drift that once left 228 stale script copies across 41 profiles. Have the job's `--script` READ the deployed SKILL.md and print it, so the instructions injected into the prompt are by construction the ones deployed.
+
+- **[2026-09-11] `hermes cron create` takes the prompt as a POSITIONAL immediately after the schedule.** Placing it after the options makes argparse reject the whole command with "unrecognized arguments".
+
+- **[2026-09-11] Bound an agent batch by CONTEXT, not by cost.** When the operator says money is not the constraint, the limit that still matters is how much one agent session can read: a Thread transcript averages ~5,000 tokens, so a batch of 20 is ~100k tokens of reading before the agent writes anything.
+
 ## Capture pipelines
 
 - **[2026-09-10] Strip HTML at READ, never at capture -- 83% of a stored Outlook body is markup.** Measured on 119 real Threads: 6.66 M raw chars reduce to 1.14 M of text, i.e. ~14,000 input tokens per Thread become ~2,400 for identical content. An agent reading captured message notes raw pays for every `<div style="font-family:Aptos,...">` and learns nothing from it. But convert on the way OUT, not on the way in: an email's real body IS the HTML, capture's job is to preserve the evidence faithfully, and if a summary ever looks wrong the original is what you check it against. `summarize-and-tag-threads/scripts/read_thread.py` is the converter.
