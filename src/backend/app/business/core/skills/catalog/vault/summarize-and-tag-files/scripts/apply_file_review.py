@@ -219,7 +219,7 @@ def _resolve_thread_path(vault_path: Path, thread_wikilink: str) -> Path | None:
     if not threads_root.exists():
         return None
     candidate = threads_root / stem / f"{stem}.md"
-    return candidate if candidate.exists() else None
+    return candidate if os.path.isfile(vm.long_path(candidate)) else None
 
 
 def update_files_log_line(vault_path: Path, thread_path: Path, file_stem: str, short_summary: str) -> bool:
@@ -314,10 +314,10 @@ def add_file_detail(vault_path: Path, file_path: str, details: str, images: list
     real_file = Path(file_path)
     if not real_file.is_absolute():
         real_file = vault_path / real_file
-    if not real_file.is_file():
+    if not os.path.isfile(vm.long_path(real_file)):
         return {"error": f"file not found: {real_file}"}
     md_path = real_file.parent / f"{real_file.parent.name}.md"
-    if not md_path.is_file():
+    if not os.path.isfile(vm.long_path(md_path)):
         return {"error": f"File note not found: {md_path}"}
 
     attached_images = _attach_images(real_file.parent, images or [])
@@ -394,7 +394,7 @@ def apply_file_review(vault_path: Path, data: dict, force: bool = False) -> dict
     # agent's own judgment (found live, `REQ-SB-88-US-01-T04`: the real
     # cron job re-processed 4/15 already-summarized real Files despite
     # SKILL.md's documented skip rule).
-    if not force and file_path.is_file() and vm.get_section_content(file_path, "Summary"):
+    if not force and os.path.isfile(vm.long_path(file_path)) and vm.get_section_content(file_path, "Summary"):
         return {
             "skipped": True,
             "reason": "summary_already_present",

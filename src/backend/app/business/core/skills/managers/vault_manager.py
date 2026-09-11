@@ -362,8 +362,12 @@ def write_note(path: Path, frontmatter: dict, body: str) -> None:
     for key, value in frontmatter.items():
         frontmatter_lines.append(f"{key}: {_format_frontmatter_value(value)}")
     frontmatter_lines.append("---")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(frontmatter_lines) + "\n" + body, encoding="utf-8")
+    # Through long_path, as read_note already was. It was not -- so every
+    # engine write to a note past MAX_PATH failed, including the id an
+    # applier mints on first touch: File Enrichment could read and summarize
+    # a long-path attachment and then not save it (2026-09-11).
+    os.makedirs(long_path(path.parent), exist_ok=True)
+    Path(long_path(path)).write_text("\n".join(frontmatter_lines) + "\n" + body, encoding="utf-8")
 
 
 def _unique_dated_path(
@@ -806,7 +810,8 @@ def find_by_id(vault_path: Path, note_id: str, note_name: str | None = None) -> 
         for entry in indexed:
             if str(entry.get("id", "")) == str(note_id):
                 candidate = vault_path / entry["path"]
-                if candidate.is_file():
+                # long_path: a plain is_file() is silently False past MAX_PATH.
+                if os.path.isfile(long_path(candidate)):
                     return candidate
                 break  # stale index entry (moved/deleted since last rebuild) -- fall through to the real scan
     for md_path in _iter_real_md_files(vault_path, root):
@@ -829,7 +834,8 @@ def find_by_filename(vault_path: Path, filename: str, note_name: str | None = No
         for entry in indexed:
             if entry.get("filename") == name:
                 candidate = vault_path / entry["path"]
-                if candidate.is_file():
+                # long_path: a plain is_file() is silently False past MAX_PATH.
+                if os.path.isfile(long_path(candidate)):
                     return candidate
                 break
     for md_path in _iter_real_md_files(vault_path, root):
@@ -1092,7 +1098,7 @@ def create(
             f"folder {folder} does not exist and template {template['id']!r} "
             "does not allow auto-creating it (allow_create_folder: false)"
         )
-    folder.mkdir(parents=True, exist_ok=True)
+    os.makedirs(long_path(folder), exist_ok=True)
     today_str = datetime.now().strftime("%Y-%m-%d")
     note_path = _unique_dated_path(
         folder, folder_date or today_str, _slugify(title),
@@ -1254,7 +1260,7 @@ def create_dynamic_child(
                     "folder": str(child_folder), "id": existing_frontmatter.get("id"),
                 }
 
-    child_folder.mkdir(parents=True, exist_ok=True)
+    os.makedirs(long_path(child_folder), exist_ok=True)
     today_str = datetime.now().strftime("%Y-%m-%d")
     # No `title` concept for a dynamic child the way a root record has
     # one -- fall back to the identity values themselves so the filename
