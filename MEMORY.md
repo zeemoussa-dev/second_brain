@@ -115,6 +115,14 @@ Where a rule does not belong here:
 
 - **[2026-09-11] The Agents Map shows only delta pipelines -- what happens to NEW data.** A one-time backfill or migration displayed beside them, with a stale last run and no schedule, reads as a broken pipeline. Build pipelines are recorded as reference only under `src/CBO Agents Build/`; their scripts stay in their Skills, since several are also live.
 
+- **[2026-09-11] Hub creation looks for the entity ANYWHERE in the vault before creating it, never only at the path Entities.md implies.** When an entity's parent or section changes, the 30-minute creator runs before the nightly move: checking only the new path created a second copy, and the move then refused to merge onto it, so the duplicate became permanent. The creator leaves an entity that exists elsewhere where it is and reports it as waiting to move.
+
+- **[2026-09-11] A Pipeline's `cron_job_id` is the Hermes job ID, and `hermes cron create` writes the SHARED cron store, not a profile's.** The manager matched `job.name` against it and searched the named profile, so it resolved nothing and the Agents Map showed every pipeline unscheduled -- which made live delta pipelines read as abandoned one-off runs.
+
+- **[2026-09-11] An attachment's name on DISK is sanitized separately from its folder slug; the note's `original_filename` keeps the real name.** Many attachments are attached emails named after their subject, carrying `:` and `|`. And a slug must be trimmed AFTER truncation: the plain Windows API silently drops a trailing space or dot from a path component, the long-path form keeps it, so the two disagree about which folder is meant.
+
+- **[2026-09-11] Every capture process that writes People must exclude every other one** -- backfill, email delta and meeting capture alike. Deferring only to the backfill left the email delta at :04 and the meeting delta at :44 free to overlap on a long catch-up.
+
 ## Capture pipelines
 
 - **[2026-09-10] Strip HTML at READ, never at capture -- 83% of a stored Outlook body is markup.** Measured on 119 real Threads: 6.66 M raw chars reduce to 1.14 M of text, i.e. ~14,000 input tokens per Thread become ~2,400 for identical content. An agent reading captured message notes raw pays for every `<div style="font-family:Aptos,...">` and learns nothing from it. But convert on the way OUT, not on the way in: an email's real body IS the HTML, capture's job is to preserve the evidence faithfully, and if a summary ever looks wrong the original is what you check it against. `summarize-and-tag-threads/scripts/read_thread.py` is the converter.
@@ -266,3 +274,6 @@ Where a rule does not belong here:
 - **The Entities file format has two independent implementations of `parse_entities`/`render_entities`/`_KNOWN_FIELDS`, in `find_new_entities.py` and `create_companies_partners.py`.** A schema change needs both edited and both redeployed.
 
 - **Tokenized word-overlap matching against profile names and descriptions needs a stopword filter, including this domain's own boilerplate.** Without it a single coincidental shared word produces a confident false match.
+
+- **Never gate a deploy or commit on `pytest ... | tail -1`.** A pipeline reports the LAST command's exit status, so the gate is `tail`, which always succeeds: on 2026-09-11 a chain built that way deployed and committed with two failing tests, under a message claiming the fix worked. Use `set -o pipefail`, or pytest's own exit code.
+

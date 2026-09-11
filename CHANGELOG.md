@@ -18,6 +18,26 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix: the Agents Map showed every pipeline with no schedule. The manager matched a
+  Hermes job by NAME against a job ID, and looked in a profile's store while
+  `hermes cron create` writes the shared one. Now by id or name, with a shared-store
+  fallback.
+
+- fix: hub creation made a second copy of an entity whose parent or section had
+  changed (AIQ, made an Affiliate of ADNOC, appeared twice), and the nightly move
+  then refused to merge onto it. Creation now looks for the entity anywhere in the
+  vault and leaves the move to reconcile.
+
+- fix: `vault_manager.write_note` wrote with a plain path, so every engine write to a
+  note past MAX_PATH failed -- File Enrichment summarized long-path attachments and
+  could not save them. Fixed with the other plain-path spots it led to.
+
+- fix: attachments named after an email subject (`:`, `|`) and slugs cut on a space
+  still lost 37 files after the MAX_PATH fix. All 256 lost attachments are recovered.
+
+- fix: the email and meeting deltas defer to each other, not only to a backfill --
+  both write the same People notes.
+
 - feat: File Enrichment pipeline -- every captured attachment gets a real summary,
   a one-line caption on its Thread and its company tags. Text is extracted in code
   (`read_file.py`: PDF, Word, Excel, PowerPoint, forwarded email) and the extractor
