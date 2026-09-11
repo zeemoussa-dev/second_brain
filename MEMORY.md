@@ -93,6 +93,10 @@ Where a rule does not belong here:
 
 - **[2026-09-11] Never nest a full-vault walk inside a per-entity loop.** Every entity asks the same question of the same files: build the index once, then walk once. `retag_people_by_domain` did 195 hubs x 12,722 notes = 2.4M reads and did not finish in 25 minutes; inverted, the whole five-step pass takes 39 seconds.
 
+- **[2026-09-11] Hermes runs a `hermes cron --script` file AS PYTHON. Only `.sh`/`.bash` are handed to a shell -- a `.cmd` or `.bat` is read as Python and dies on its first `REM`.** Reason: two scheduled jobs failed on every single run while looking healthy in `hermes cron list`; a `--no-agent` failure is only a line in `hermes cron runs`, so a job can appear scheduled while doing nothing for hours. Write cron entry points as `.py`. And VERIFY THEM THROUGH `hermes cron run` + `hermes cron tick`, never by executing the file yourself -- running a `.cmd` in a shell proves the batch file works, not that the scheduler can run it.
+
+- **[2026-09-11] Two capture processes must never write the same Person notes concurrently.** A backward-walking backfill and a forward-walking delta never fight over a Thread, but they do read-modify-write the same People, which is how meeting capture lost ~60 events. Prefer a job that DETECTS the other and exits quietly over pausing a cron by hand: a paused cron depends on someone remembering to resume it.
+
 ## Capture pipelines
 
 - **[2026-09-10] Strip HTML at READ, never at capture -- 83% of a stored Outlook body is markup.** Measured on 119 real Threads: 6.66 M raw chars reduce to 1.14 M of text, i.e. ~14,000 input tokens per Thread become ~2,400 for identical content. An agent reading captured message notes raw pays for every `<div style="font-family:Aptos,...">` and learns nothing from it. But convert on the way OUT, not on the way in: an email's real body IS the HTML, capture's job is to preserve the evidence faithfully, and if a summary ever looks wrong the original is what you check it against. `summarize-and-tag-threads/scripts/read_thread.py` is the converter.
