@@ -134,6 +134,30 @@ def test_a_thread_given_by_id_is_found_in_code_and_its_path_saved(vault):
     assert result["summary_written"]
 
 
+def test_an_id_the_agent_shortened_still_resolves(vault):
+    """Thread ids are 80 characters of base64 and an agent retyping one
+    truncates it: 44 of 52 failures on 2026-09-12 were a unique tail."""
+    vault_path, _ = vault
+    import apply_thread_extract as a
+    data = extraction(thread_id="conv-1"[-4:])      # "nv-1", a tail of the real id
+    del data["thread_path"]
+    result = a.apply_extract(vault_path, data)
+    assert result["summary_written"]
+
+
+def test_a_fragment_matching_two_threads_is_refused(vault):
+    """Writing a summary onto the wrong Thread is worse than failing loudly."""
+    vault_path, _ = vault
+    second = vault_path / "Work" / "Threads" / "2026-09-11 Other"
+    (second / "messages").mkdir(parents=True)
+    (second / "2026-09-11 Other.md").write_text(
+        '---\ntype: "Thread"\nid: "other-conv-1"\n---\n\n## Summary\n\n', encoding="utf-8")
+    import apply_thread_extract as a
+    # "nv-1" is a tail of BOTH ids; an exact id would rightly match itself.
+    with pytest.raises(SystemExit, match="matches 2 Threads"):
+        a.resolve_thread_id(vault_path, "nv-1")
+
+
 def test_an_unknown_thread_id_is_refused(vault):
     vault_path, _ = vault
     import apply_thread_extract as a

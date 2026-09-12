@@ -86,8 +86,10 @@ def _split_note(path: Path) -> tuple[dict, str]:
 
 def resolve_thread_dir(vault_path: Path, thread_id: str) -> Path:
     """The Thread folder for a conversation id, found in code."""
-    import vault_manager as vm      # only the id path needs the shared engine
-    note = vm.find_by_id(vault_path, thread_id, note_name="Threads")
+    # Only the id path needs the shared engine, and the applier beside it owns
+    # the resolving rule -- including an id an agent shortened (2026-09-12).
+    from apply_thread_extract import resolve_thread_id
+    note = resolve_thread_id(vault_path, thread_id)
     if note is None:
         raise SystemExit(f"no Thread with id {thread_id!r}")
     return note.parent

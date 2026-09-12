@@ -290,6 +290,52 @@ def write_history(vault_path: Path, thread_path: Path, thread_frontmatter: dict,
     return written
 
 
+def _thread_ids(vault_path: Path) -> dict[str, Path]:
+    """Every Thread's id -> its note."""
+    ids: dict[str, Path] = {}
+    root = vault_path / "Work" / "Threads"
+    if not root.is_dir():
+        return ids
+    for thread_dir in root.iterdir():
+        note = thread_dir / f"{thread_dir.name}.md"
+        if not os.path.isfile(vm.long_path(note)):
+            continue
+        frontmatter, _ = vm.read_note(note)
+        thread_id = str(frontmatter.get("id") or "").strip()
+        if thread_id:
+            ids[thread_id] = note
+    return ids
+
+
+def resolve_thread_id(vault_path: Path, given: str) -> Path | None:
+    """The Thread note for an id, tolerating one the agent shortened.
+
+    Ids are 80 characters of base64 and an agent retyping one truncates it: on
+    2026-09-12, 44 of 52 failures were a unique TAIL of a real id, 8 matched
+    nothing, and none were ambiguous. A fragment that could mean two Threads is
+    refused rather than guessed -- writing a summary onto the wrong Thread is
+    worse than failing loudly."""
+    given = (given or "").strip()
+    if not given:
+        return None
+    exact = vm.find_by_id(vault_path, given, note_name="Threads")
+    if exact is not None:
+        return exact
+    ids = _thread_ids(vault_path)
+    for matches in (
+        [note for real, note in ids.items() if real.endswith(given)],
+        [note for real, note in ids.items() if real in given],
+        [note for real, note in ids.items() if real.startswith(given)],
+    ):
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise SystemExit(
+                f"thread id {given!r} matches {len(matches)} Threads -- pass the whole id"
+            )
+    return None
+
+
 def resolve_thread(vault_path: Path, extraction: dict, thread_id: str) -> Path | None:
     """The Thread a saved extraction belongs to: its recorded path or, when the
     Thread has been renamed since it was read, the note carrying its id."""
@@ -310,14 +356,19 @@ def _exclusive(path: Path, *, timeout: float = 60.0, stale_after: float = 300.0)
     and the later rename would silently drop the other's. A lock file created
     with O_EXCL is atomic on every platform; one left behind by a crashed job
     is broken after `stale_after` seconds rather than blocking every job
-    forever."""
+    forever.
+
+    PermissionError counts as "held", not as a failure: on Windows a file being
+    deleted by the job that held it is briefly neither present nor openable, and
+    a creating job gets access-denied rather than file-exists. Treating that as
+    fatal crashed a job whenever two overlapped on the handover (2026-09-12)."""
     lock = path.with_suffix(path.suffix + ".lock")
     deadline = time.monotonic() + timeout
     while True:
         try:
             os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
             break
-        except FileExistsError:
+        except (FileExistsError, PermissionError):
             try:
                 if time.time() - lock.stat().st_mtime > stale_after:
                     lock.unlink()
@@ -374,9 +425,21 @@ def record_unknown_companies(vault_path: Path, companies: list[str],
             # a full index -- that is what the thread's own company tags are for.
             if thread_id not in [t["id"] for t in entry["threads"]] and len(entry["threads"]) < 5:
                 entry["threads"].append({"id": thread_id, "name": thread_name})
-        scratch = path.with_suffix(".writing")
+        # Its own scratch name per writer, and a RETRIED rename: on Windows a
+        # file just written is briefly held open by the virus scanner, and
+        # os.replace then fails with access-denied even though the lock above
+        # means no other job is in here. Two of five parallel runs died on it
+        # (2026-09-12).
+        scratch = path.with_suffix(f".writing-{os.getpid()}-{time.monotonic_ns()}")
         scratch.write_text(json.dumps(store, indent=2, ensure_ascii=False), encoding="utf-8")
-        os.replace(scratch, path)
+        for attempt in range(20):
+            try:
+                os.replace(scratch, path)
+                break
+            except PermissionError:
+                if attempt == 19:
+                    raise
+                time.sleep(0.05)
     return unknown_names
 
 
@@ -395,7 +458,7 @@ def apply_extract(vault_path: Path, extraction: dict) -> dict:
         # a Thread's title got it wrong -- a `|` Windows never allows, a name
         # cut at 80 characters, an invisible character the prompt stripped --
         # and those Threads failed on every run.
-        thread_path = vm.find_by_id(vault_path, given_id, note_name="Threads")
+        thread_path = resolve_thread_id(vault_path, given_id)
         if thread_path is None:
             raise SystemExit(f"no Thread with id {given_id!r}")
         # The saved read keeps a path as well: Tagging and Company resolve it.

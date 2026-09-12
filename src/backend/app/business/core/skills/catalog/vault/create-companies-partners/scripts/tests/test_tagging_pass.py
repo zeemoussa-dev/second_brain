@@ -42,6 +42,21 @@ def test_the_creator_accepts_the_split_flags():
         assert flag in proc.stdout, flag
 
 
+def test_a_skill_deployed_to_another_profile_is_found(tmp_path, monkeypatch):
+    """summarize-and-tag-files is deployed under the files-manager profile while
+    the Tagging pass runs under email-capture. Searching only beside itself made
+    the attachment step fail every night."""
+    import run_metadata_pass as m
+    here = tmp_path / "profiles" / "email-capture" / "skills" / "vault" / "create-companies-partners"
+    there = tmp_path / "profiles" / "files-manager" / "skills" / "vault" / "summarize-and-tag-files"
+    here.mkdir(parents=True)
+    there.mkdir(parents=True)
+    (there / "retag_files_from_summaries.py").write_text("", encoding="utf-8")
+    monkeypatch.setattr(m, "SCRIPTS_DIR", here)
+    assert m._sibling_skill_scripts("summarize-and-tag-files") == there
+    assert m._sibling_skill_scripts("not-a-skill") is None
+
+
 def test_inventory_counters_do_not_count_as_work():
     import run_tagging_pass as t
     quiet_night = [{"step": "content-threads", "ok": True,

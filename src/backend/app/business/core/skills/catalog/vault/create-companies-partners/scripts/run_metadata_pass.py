@@ -62,13 +62,22 @@ def _sibling_skill_scripts(skill_id: str) -> Path | None:
     flattens it to `<profile>/skills/<tool>/<skill>/` with no scripts/ level.
     Hardcoding the repo shape is why the previous discovery step resolved to a
     path that exists only in a checkout -- it would have reported "not found"
-    every night on the machine that actually runs it."""
+    every night on the machine that actually runs it.
+
+    A Skill can also be deployed to ANOTHER PROFILE: summarize-and-tag-files
+    lives under `files-manager` while this one is under `email-capture`, and
+    Tagging's attachment step failed every night looking for it beside itself
+    (2026-09-12). Sibling profiles are searched too, rather than deploying a
+    second copy of that Skill -- two copies of one script is the drift that
+    once left 228 stale copies across 41 profiles."""
     for candidate in (
         SCRIPTS_DIR.parents[1] / skill_id / "scripts",          # repo, same tool
         SCRIPTS_DIR.parent / skill_id,                          # deployed, same tool
         # Another Tool: the retrofit lives under m365/, this Skill under vault/.
         *SCRIPTS_DIR.parents[2].glob(f"*/{skill_id}/scripts"),  # repo
         *SCRIPTS_DIR.parents[1].glob(f"*/{skill_id}"),          # deployed
+        # Another profile, deployed: <profiles>/<other>/skills/<tool>/<skill>.
+        *SCRIPTS_DIR.parents[3].glob(f"*/skills/*/{skill_id}"),
     ):
         if candidate.is_dir():
             return candidate
