@@ -20,7 +20,7 @@ so this Skill keeps watching for a real company domain the operator
 hasn't seen yet, and pings them about it -- it never guesses a
 classification itself.
 
-## Two scripts, two different jobs
+## Three scripts, three different jobs
 
 - **`find_new_entities.py`** -- mechanical, no judgment. Scans Threads
   (`participant_links`) and Meetings (`attendees`) for real email
@@ -35,6 +35,21 @@ classification itself.
   a rewrite would destroy that curation. If nothing new is found, the
   file isn't touched at all (not even re-rendered) -- returns an empty
   `new_entities` list.
+- **`find_mentioned_entities.py`** -- the other half of discovery, also
+  mechanical. A company can be discussed in thread after thread without
+  ever sending us mail, so it has no domain and `find_new_entities.py`
+  can never see it. The tagging pass records those names in
+  `UnknownCompanies.json` when it cannot resolve them; this reads that,
+  drops anything already tracked (by row, by alias, or by a hub's own
+  spellings -- so "LIMAD" is not offered when "L'IMAD" is already
+  filed), and appends the rest as `Ignore: Yes` / `Created: No` rows with
+  an EMPTY `Domain` -- which is what distinguishes a mention-derived row
+  from a domain-derived one. Most-mentioned first.
+  `--min-mentions N` sets how many rows the operator takes on; everything
+  below the threshold still appears, with the threads it came from, in
+  the `Settings/Unclassified-Companies.md` report this also writes. That
+  report is regenerated every run -- decisions are made in Entities.md,
+  never in it.
 - **`apply_entity_decision.py`** -- mechanical, no judgment. Given a
   company name/domain and ONE decision (`customer`/`partner`/
   `affiliate`/`ignore`), flips that one entry's own `Ignore` flag and

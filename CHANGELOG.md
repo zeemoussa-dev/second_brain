@@ -18,6 +18,19 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: `find_mentioned_entities.py` -- the other half of company discovery.
+  `find_new_entities.py` can only find a company that has sent us mail; a
+  company merely DISCUSSED in threads has no domain, so 736 such names had
+  accumulated in `UnknownCompanies.json` with no way for the operator to act on
+  them. This drops the ones already tracked (by row, alias, or a hub's own
+  spellings) and writes the rest into `Entities.md` as `Ignore: Yes` /
+  `Created: No` rows with an empty `Domain`, most-mentioned first -- inert
+  questions, not decisions. `--min-mentions` caps how many rows he takes on;
+  everything below the line still appears, with the threads it came from, in a
+  regenerated `Settings/Unclassified-Companies.md`.
+- fix: normalising a company name no longer treats an apostrophe as a word
+  separator, so "L'IMAD" and "LIMAD" resolve to each other.
+
 - fix: recurring meetings are tagged with the companies who attend them. Nothing
   about a recurring series had ever been tagged: its instances live in
   `Recurrences/<dated title>/`, which the tagger looked for as a flat
