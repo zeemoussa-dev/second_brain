@@ -158,13 +158,19 @@ _NAME_PUNCT = re.compile(r"[^\w\s&+]+")
 # "P.J.S.C" / "O.P.C" -- a dotted initialism, which stripping punctuation alone
 # would scatter into single letters no legal-form list can match.
 _DOTTED = re.compile(r"((?:\w\.){2,}\w?)")
+# An apostrophe sits INSIDE a word and separates nothing: replacing it with a
+# space split "L'IMAD" into "l imad" while the same company written "LIMAD"
+# gave "limad", so the two never matched (2026-09-12). Kept identical to
+# company_index.normalise_company -- this is the second copy of that rule, and
+# a fix applied to only one of them is how they drift.
+_APOSTROPHE = re.compile(r"[’']")
 
 
 def normalise_company(name: str) -> str:
     """A company name reduced to what identifies it: lowercased, punctuation
     dropped, and trailing legal forms removed."""
     text = _DOTTED.sub(lambda m: m.group(1).replace(".", ""), str(name or "").lower())
-    words = _NAME_PUNCT.sub(" ", text).split()
+    words = _NAME_PUNCT.sub(" ", _APOSTROPHE.sub("", text)).split()
     while words and words[-1] in _LEGAL_FORMS:
         words.pop()
     return " ".join(words)

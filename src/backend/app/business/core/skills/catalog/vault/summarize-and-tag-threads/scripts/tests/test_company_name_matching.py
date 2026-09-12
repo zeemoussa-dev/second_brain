@@ -41,6 +41,11 @@ def test_a_legal_form_is_not_part_of_the_name():
     assert a.normalise_company("Khazna Data Center Limited") == "khazna data center"
     assert a.normalise_company("BAYANAT G I Q - P.S.C - O.P.C") == "bayanat g i q"
     assert a.normalise_company("e&") == "e&", "a real name is never emptied"
+    # An apostrophe sits inside a word. Treating it like other punctuation gave
+    # "l imad" for one spelling and "limad" for the other, so the operator was
+    # asked to classify a company he had already filed.
+    assert a.normalise_company("L'IMAD") == a.normalise_company("LIMAD") == "limad"
+    assert a.normalise_company("L’IMAD") == "limad", "a curly apostrophe too"
 
 
 def test_an_affiliates_legal_name_resolves_to_the_affiliate(vault):

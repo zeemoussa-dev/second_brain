@@ -30,6 +30,13 @@ _LEGAL_FORMS = {"llc", "ltd", "limited", "plc", "pjsc", "psc", "opc", "inc",
                 "corp", "corporation", "fze", "fz", "gmbh", "sa", "nv", "bv",
                 "pte", "pvt", "co"}
 _NAME_PUNCT = re.compile(r"[^\w\s&+]+")
+# An apostrophe sits INSIDE a word -- it separates nothing. Replacing it with a
+# space the way other punctuation is replaced made "L'IMAD" normalise to
+# "l imad" while the same company written "LIMAD" gave "limad", so the two never
+# matched and the operator was asked to classify a company he had already filed
+# (2026-09-12). Both the straight and the curly form, since a mail client
+# substitutes one for the other freely.
+_APOSTROPHE = re.compile(r"[’']")
 # "P.J.S.C" / "O.P.C" -- stripping punctuation alone would scatter a dotted
 # initialism into single letters no legal-form list can match.
 _DOTTED = re.compile(r"((?:\w\.){2,}\w?)")
@@ -41,7 +48,7 @@ def normalise_company(name: str) -> str:
     """A company name reduced to what identifies it: lowercased, punctuation
     dropped, dotted initialisms collapsed, trailing legal forms removed."""
     text = _DOTTED.sub(lambda m: m.group(1).replace(".", ""), str(name or "").lower())
-    words = _NAME_PUNCT.sub(" ", text).split()
+    words = _NAME_PUNCT.sub(" ", _APOSTROPHE.sub("", text)).split()
     while words and words[-1] in _LEGAL_FORMS:
         words.pop()
     return " ".join(words)
