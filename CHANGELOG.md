@@ -18,6 +18,8 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix: company matching compares an identifying form of the name (legal forms such as LLC/Ltd/PJSC removed, dotted initialisms collapsed), so an affiliate's legal name resolves to the affiliate rather than to nothing -- and never to its parent.
+
 - fix: Tagging's attachment step could never find its Skill (deployed under a
   different Hermes profile), Enrichment now resolves a Thread id an agent
   shortened when it can only mean one Thread, and the review file parallel jobs
