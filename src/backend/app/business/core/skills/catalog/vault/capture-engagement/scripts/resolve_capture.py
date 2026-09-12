@@ -21,6 +21,7 @@ import re
 import sys
 from pathlib import Path
 
+
 def _add_engines_to_path() -> None:
     """Find the shared engines whatever layout this runs in.
 
@@ -42,10 +43,32 @@ _add_engines_to_path()
 import company_index as ci  # noqa: E402
 import vault_manager as vm  # noqa: E402
 
+_WORD = re.compile(r"[\w']+")
 
-def _person_records(vault_path: Path, folders: list[Path]) -> list[dict]:
+
+def _people_folders(vault_path: Path, match: dict | None) -> list[tuple[str, Path]]:
+    """(company, People folder) in the order worth searching.
+
+    A company's OWN people first, then its affiliates', then the flat folder.
+    The CBO says "I met Mir at TAQA" while Mir is filed under TAQA
+    Distribution: searching only the named company reports nobody, when the
+    useful answer is "he is at the affiliate -- did you mean that one?"."""
+    folders: list[tuple[str, Path]] = []
+    if match:
+        hub_dir = Path(match["path"]).parent
+        folders.append((match["name"], hub_dir / "People"))
+        affiliates = hub_dir / "Affiliates"
+        if affiliates.is_dir():
+            for child in sorted(affiliates.iterdir()):
+                if child.is_dir() and (child / f"{child.name}.md").is_file():
+                    folders.append((child.name, child / "People"))
+    folders.append(("", vault_path / "Work" / "People"))
+    return folders
+
+
+def _person_records(folders: list[tuple[str, Path]]) -> list[dict]:
     people: list[dict] = []
-    for folder in folders:
+    for company, folder in folders:
         if not folder.is_dir():
             continue
         for note in sorted(folder.glob("*.md")):
@@ -59,12 +82,10 @@ def _person_records(vault_path: Path, folders: list[Path]) -> list[dict]:
                 "name": str(frontmatter.get("name") or note.stem),
                 "email": str(frontmatter.get("email") or note.stem),
                 "role": str(frontmatter.get("role") or ""),
+                "company": company,
                 "path": str(note),
             })
     return people
-
-
-_WORD = re.compile(r"[\w']+")
 
 
 def _match_people(query: str, people: list[dict]) -> list[dict]:
@@ -104,20 +125,24 @@ def resolve(vault_path: Path, company: str, persons: list[str]) -> dict:
                            or ci.normalise_company(r["name"]) in wanted)
         )[:5]
 
-    folders: list[Path] = []
-    if len(matches) == 1:
-        folders.append(Path(matches[0]["path"]).parent / "People")
-    folders.append(vault_path / "Work" / "People")
-    known = _person_records(vault_path, folders)
+    resolved = matches[0] if len(matches) == 1 else None
+    known = _person_records(_people_folders(vault_path, resolved))
 
     people_blocks = []
     for person in persons:
         found = _match_people(person, known)
-        people_blocks.append({
+        block = {
             "query": person,
             "status": "one" if len(found) == 1 else ("ambiguous" if found else "none"),
             "matches": found[:6],
-        })
+        }
+        # The person is real but belongs to an affiliate of the company that was
+        # named -- so the capture probably belongs to the affiliate. Say so; the
+        # agent asks rather than filing it against the parent.
+        if resolved and len(found) == 1 and found[0]["company"] and found[0]["company"] != resolved["name"]:
+            block["note"] = (f"{found[0]['name']} is filed under {found[0]['company']}, "
+                             f"not {resolved['name']} -- confirm which company this capture is about")
+        people_blocks.append(block)
     return {"company": company_block, "people": people_blocks}
 
 

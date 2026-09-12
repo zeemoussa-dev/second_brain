@@ -108,6 +108,21 @@ def test_a_name_matches_whole_words_not_any_substring(vault):
     assert answer["people"][0]["matches"][0]["name"] == "Dawar Ali Mir"
 
 
+def test_a_person_at_an_affiliate_is_found_when_the_parent_is_named(vault):
+    """The CBO says "I met Mir at TAQA" while Mir is filed under TAQA
+    Distribution. Reporting nobody would be useless; the useful answer names
+    the affiliate so the agent can confirm which company this belongs to."""
+    import resolve_capture as r
+    person(vault / "Work" / "Customers" / "TAQA" / "Affiliates" / "TAQA Distribution" / "People",
+           "dawarali.mir@taqadistribution.com", "Dawar Ali Mir")
+    answer = r.resolve(vault, "TAQA", ["Mir"])
+    assert answer["company"]["matches"][0]["name"] == "TAQA"
+    found = answer["people"][0]
+    assert found["status"] == "one"
+    assert found["matches"][0]["company"] == "TAQA Distribution"
+    assert "TAQA Distribution" in found["note"]
+
+
 # ── applying ─────────────────────────────────────────────────────────────
 
 def test_the_event_lands_in_the_company_history_with_its_source(vault):

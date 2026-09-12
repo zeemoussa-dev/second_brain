@@ -18,6 +18,18 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: `capture-engagement` -- what the CBO says about a company, filed against
+  that company. One resolve step (which company, which people; ambiguity is
+  reported, never resolved by picking) and one applier: the event becomes a dated
+  line in the company's History, durable facts land under its Captures'
+  `## Captured`, commitments become checkboxes in the hub's Actions, people are
+  wiki-linked. Every line carries `-- CBO capture`; the operator's own `## Notes`
+  and `## Personal Notes` are never touched. Owned by the new `entity-manager`
+  agent in the Customers/Partners section.
+- refactor: `company_index.py` joins `vault_manager.py` as a shared engine, so
+  resolving a company name to its hub is one implementation -- and one that
+  refuses to resolve a parent to its affiliate or to choose between two matches.
+
 - fix: company matching compares an identifying form of the name (legal forms such as LLC/Ltd/PJSC removed, dotted initialisms collapsed), so an affiliate's legal name resolves to the affiliate rather than to nothing -- and never to its parent.
 
 - fix: Tagging's attachment step could never find its Skill (deployed under a
