@@ -18,6 +18,17 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: `company-lookup` -- the portfolio answered from the vault instead of
+  from whatever the agent happened to read. `company_counts.py` separates
+  companies we have CLASSIFIED from the ones we have actually ENGAGED with (305
+  and 262 today, and an affiliate is never counted as its own relationship);
+  `find_company.py` returns every company a name could mean, with how it
+  matched, and names the neighbours even on an exact hit; `company_brief.py`
+  gathers one relationship from the notes that own each part -- History for
+  events, `## Captured` for durable facts, the hub's unticked `## Actions` for
+  what we still owe. All three read only, and a name matching two companies
+  gets candidates rather than a brief. Attached to `entity-manager`.
+
 - feat: `capture-engagement` -- what the CBO says about a company, filed against
   that company. One resolve step (which company, which people; ambiguity is
   reported, never resolved by picking) and one applier: the event becomes a dated
