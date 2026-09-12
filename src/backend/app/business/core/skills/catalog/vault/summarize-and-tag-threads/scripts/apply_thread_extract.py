@@ -147,6 +147,29 @@ def _tag_slug(text: str) -> str:
     return slug or "untitled"
 
 
+# The legal form a formal document carries, never part of what identifies the
+# company. A reader quoting a contract wrote "Mubadala Health LLC" and it
+# matched no hub at all, while the same reader's plain "Mubadala" matched the
+# PARENT (2026-09-12).
+_LEGAL_FORMS = {"llc", "ltd", "limited", "plc", "pjsc", "psc", "opc", "inc",
+                "corp", "corporation", "fze", "fz", "gmbh", "sa", "nv", "bv",
+                "pte", "pvt", "co"}
+_NAME_PUNCT = re.compile(r"[^\w\s&+]+")
+# "P.J.S.C" / "O.P.C" -- a dotted initialism, which stripping punctuation alone
+# would scatter into single letters no legal-form list can match.
+_DOTTED = re.compile(r"((?:\w\.){2,}\w?)")
+
+
+def normalise_company(name: str) -> str:
+    """A company name reduced to what identifies it: lowercased, punctuation
+    dropped, and trailing legal forms removed."""
+    text = _DOTTED.sub(lambda m: m.group(1).replace(".", ""), str(name or "").lower())
+    words = _NAME_PUNCT.sub(" ", text).split()
+    while words and words[-1] in _LEGAL_FORMS:
+        words.pop()
+    return " ".join(words)
+
+
 def _company_hubs(vault_path: Path) -> list[tuple[str, Path, list[str]]]:
     """(company tag, hub note, lowercased names) for every real hub -- its name
     and aliases, Affiliates included.
@@ -175,7 +198,10 @@ def _company_hubs(vault_path: Path) -> list[tuple[str, Path, list[str]]]:
             if isinstance(aliases, str):
                 aliases = [aliases]
             names = [str(n).strip().lower() for n in [frontmatter.get("name") or hub_dir.name, *aliases]]
-            hubs.append((f"{kind}/{_tag_slug(hub_dir.name)}", hub_md, [n for n in names if n]))
+            # Both spellings: what the hub says, and the identifying form a
+            # reader's legal name reduces to.
+            names += [normalise_company(n) for n in names]
+            hubs.append((f"{kind}/{_tag_slug(hub_dir.name)}", hub_md, [n for n in dict.fromkeys(names) if n]))
     return hubs
 
 
@@ -277,7 +303,7 @@ def write_history(vault_path: Path, thread_path: Path, thread_frontmatter: dict,
     written: list[str] = []
     seen: set[Path] = set()
     for name in companies:
-        hub_md = hubs.get(str(name).strip().lower())
+        hub_md = hubs.get(str(name).strip().lower()) or hubs.get(normalise_company(name))
         if hub_md is None or hub_md in seen:
             continue
         seen.add(hub_md)
@@ -408,7 +434,8 @@ def record_unknown_companies(vault_path: Path, companies: list[str],
     # Built ONCE, not per name: the comprehension form rebuilt the whole hub
     # index for every company in the list.
     known = _known_company_names(vault_path)
-    unknown_names = [c for c in companies if c and c.strip().lower() not in known]
+    unknown_names = [c for c in companies
+                     if c and c.strip().lower() not in known and normalise_company(c) not in known]
     if not unknown_names:
         return []
     path = _extracts_dir().parent / "UnknownCompanies.json"

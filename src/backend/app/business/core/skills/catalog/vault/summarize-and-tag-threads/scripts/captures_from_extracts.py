@@ -100,7 +100,8 @@ def run(vault_path: Path, *, dry_run: bool = False) -> dict:
         date = str(frontmatter.get("last_message_at") or "")[:10] or today
         by_hub: dict[Path, list[str]] = {}
         for item in items:
-            hub_md = hubs.get(str(item.get("company") or "").strip().lower())
+            named = str(item.get("company") or "").strip()
+            hub_md = hubs.get(named.lower()) or hubs.get(ate.normalise_company(named))
             if hub_md is None:
                 facts_unresolved += 1
                 continue

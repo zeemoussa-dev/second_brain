@@ -48,8 +48,10 @@ def run(vault_path: Path, *, dry_run: bool = False) -> dict:
             if thread is None:
                 missing += 1
                 continue
-        unresolved.update(c for c in companies if c.strip().lower() not in index)
-        wanted = {index[c.strip().lower()] for c in companies if c.strip().lower() in index}
+        resolved = {c: index.get(c.strip().lower()) or index.get(ate.normalise_company(c))
+                    for c in companies}
+        unresolved.update(c for c, tag in resolved.items() if tag is None)
+        wanted = {tag for tag in resolved.values() if tag}
         new = sorted(wanted - set(vm.read_note(thread)[0].get("tags") or []))
         if new and not dry_run:
             vm.merge_tags(thread, new)
