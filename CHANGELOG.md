@@ -18,6 +18,11 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix: Tagging's attachment step could never find its Skill (deployed under a
+  different Hermes profile), Enrichment now resolves a Thread id an agent
+  shortened when it can only mean one Thread, and the review file parallel jobs
+  share survives Windows' lock and rename races.
+
 - feat: Thread Enrichment runs as parallel jobs over disjoint shards of the
   backlog (`select_threads.py --shard K --shards N`, CRC32 of the Thread id), with
   a lock on the one file every job updates (`UnknownCompanies.json`). Five jobs of
