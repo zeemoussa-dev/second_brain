@@ -18,6 +18,16 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix: recurring meetings are tagged with the companies who attend them. Nothing
+  about a recurring series had ever been tagged: its instances live in
+  `Recurrences/<dated title>/`, which the tagger looked for as a flat
+  `occurrences/`, and its concept note was rejected outright by a "folder name
+  == file stem" test that a date-prefixed series folder can never satisfy. A
+  meeting note is now identified by its own `type: "Meeting"` frontmatter, and
+  the series a given instance belongs to is found by walking up to the folder
+  that holds it rather than by rebuilding a filename. Retrofitted: 172 recurring
+  notes tagged (up from none), 433 given an engagement classification.
+
 - feat: `company-lookup` -- the portfolio answered from the vault instead of
   from whatever the agent happened to read. `company_counts.py` separates
   companies we have CLASSIFIED from the ones we have actually ENGAGED with (305

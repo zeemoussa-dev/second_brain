@@ -706,29 +706,90 @@ def retag_threads_by_participant_company(vault_path: Path) -> dict:
     return {"threads_updated": threads_updated, "messages_updated": messages_updated}
 
 
+# The folder a recurring series keeps its instances in, spelled the way the
+# only thing that CREATES it spells it -- meeting-capture's own
+# ingest_meeting.py `_RECURRENCES_SUBFOLDER`. This file looked for
+# "occurrences" instead, a leftover from the older pipeline that vault_lib.py's
+# own (now unused) occurrence_note_path() belongs to, so for 66 real series
+# every captured instance went untagged -- silently, because a glob that
+# matches nothing is not an error (2026-09-12).
+_RECURRENCES_SUBFOLDER = "Recurrences"
+
+
+def _recurrences_dir(series_directory: Path) -> Path | None:
+    """The series' own instances folder, matched without regard to case.
+
+    Two spellings of one folder name is what caused the silent miss above;
+    matching the real child rather than a literal means a capitalisation
+    change on either side cannot quietly zero this out again."""
+    if not series_directory.is_dir():
+        return None
+    wanted = _RECURRENCES_SUBFOLDER.casefold()
+    return next((child for child in series_directory.iterdir()
+                 if child.is_dir() and child.name.casefold() == wanted), None)
+
+
+def _series_concept_note(instance_path: Path) -> Path | None:
+    """The series concept note an instance belongs to, or None if it is not a
+    series instance at all.
+
+    Walks up to whichever ancestor holds the Recurrences folder rather than
+    counting path levels, because an instance sits either directly inside it or
+    in a folder of its own, and both shapes are real here. The concept note is
+    then found by its own frontmatter -- a series folder's name carries a date
+    prefix the note itself does not, so deriving the filename from the folder
+    name finds nothing."""
+    wanted = _RECURRENCES_SUBFOLDER.casefold()
+    for parent in instance_path.parents:
+        if parent.name.casefold() != wanted:
+            continue
+        for candidate in sorted(parent.parent.glob("*.md")):
+            frontmatter, _ = vm.read_note(candidate)
+            if frontmatter.get("type") == "Meeting" and frontmatter.get("recurrence"):
+                return candidate
+        return None
+    return None
+
+
 def _iter_meeting_notes(vault_path: Path):
-    """Yields (path, is_series_concept) for every real Meeting note --
-    a one-time meeting's own single file, a recurring series' own
-    concept file, and every occurrence file under its own occurrences/
-    (mirrors _iter_thread_notes' "directory name == file stem" concept-
-    file test, plus a second pass into occurrences/ for a series)."""
+    """Yields (path, is_series_concept) for every real Meeting note -- a
+    one-time meeting's own single file, a recurring series' own concept file,
+    and every captured instance under that series' own Recurrences/.
+
+    The note is identified by its own `type: "Meeting"` frontmatter, NOT by its
+    filename. The earlier "directory name == file stem" test (borrowed from
+    Threads, where it holds) rejected every recurring series in the vault: a
+    series folder carries a date prefix its own note does not
+    ("2026-06-24-TAQA x Core42 Weekly Cadence/TAQA x Core42 Weekly
+    Cadence.md"), so 66 series concept notes were skipped outright, along with
+    the one one-time meeting whose title ends in a dot Windows drops from the
+    folder name. Every meeting folder holds exactly one note of its own, so
+    reading the type is both simpler and correct (2026-09-12)."""
     meetings_root = vault_path / "Work" / "Meetings"
     if not meetings_root.exists():
         return
-    for concept_path in sorted(meetings_root.glob("*/*.md")):
-        if not concept_path.is_file() or concept_path.parent.name != concept_path.stem:
+    for folder in sorted(meetings_root.glob("*")):
+        if not folder.is_dir():
             continue
-        frontmatter, _ = vm.read_note(concept_path)
-        if frontmatter.get("type") != "Meeting":
-            continue
-        is_series = bool(frontmatter.get("recurrence"))
-        yield concept_path, is_series
-        if is_series:
-            occurrences_dir = concept_path.parent / "occurrences"
-            if occurrences_dir.exists():
-                for occurrence_path in sorted(occurrences_dir.glob("*.md")):
-                    if occurrence_path.is_file():
-                        yield occurrence_path, False
+        for concept_path in sorted(folder.glob("*.md")):
+            frontmatter, _ = vm.read_note(concept_path)
+            if frontmatter.get("type") != "Meeting":
+                continue
+            is_series = bool(frontmatter.get("recurrence"))
+            yield concept_path, is_series
+            if not is_series:
+                continue
+            recurrences_dir = _recurrences_dir(folder)
+            if recurrences_dir is None:
+                continue
+            # An instance gets its own folder ("Recurrences/<dated title>/<dated
+            # title>.md"), which is what meeting-capture writes today; the flat
+            # shape is what older captures left behind. Both are real in this
+            # vault's history, so read both rather than assuming one.
+            for instance_path in sorted(list(recurrences_dir.glob("*.md"))
+                                        + list(recurrences_dir.glob("*/*.md"))):
+                if instance_path.is_file():
+                    yield instance_path, False
 
 
 def _resolve_companies_for_wikilinks(wikilinks: list[str], person_emails: dict[str, str], domain_index) -> set[tuple[str, str]]:
@@ -747,7 +808,7 @@ def _resolve_companies_for_wikilinks(wikilinks: list[str], person_emails: dict[s
 def _apply_company_resolution(path: Path, resolved: set[tuple[str, str]], updated: list[str]) -> None:
     """Shared tag + "## Related" application, used both for a meeting's
     own real attendees and for a recurring series' concept note's own
-    rolled-up union across its occurrences."""
+    rolled-up union across its captured instances."""
     if not resolved:
         return
     tags = [f"{kind}/{_tag_slug(stem)}" for kind, stem in resolved]
@@ -794,11 +855,9 @@ def retag_meetings_by_attendee_company(vault_path: Path) -> dict:
         resolved = _resolve_companies_for_wikilinks(frontmatter.get("attendees") or [], person_emails, domain_index)
         _apply_company_resolution(meeting_path, resolved, meetings_updated)
 
-        if meeting_path.parent.name == "occurrences":
-            series_directory = meeting_path.parent.parent
-            concept_path = series_directory / f"{series_directory.name}.md"
-            if concept_path.exists():
-                series_rollup.setdefault(concept_path, set()).update(resolved)
+        concept_path = _series_concept_note(meeting_path)
+        if concept_path is not None:
+            series_rollup.setdefault(concept_path, set()).update(resolved)
 
     for concept_path, resolved in series_rollup.items():
         _apply_company_resolution(concept_path, resolved, meetings_updated)

@@ -105,3 +105,85 @@ def test_the_owners_own_company_is_left_off_threads_and_meetings(vault, monkeypa
     assert [stem for *_, stem in ccp._build_domain_company_index(vault_path)] == ["Acme"]
     monkeypatch.delenv("SECOND_BRAIN_SELF_EMAIL")
     assert "Core42" in [stem for *_, stem in ccp._build_domain_company_index(vault_path)]
+
+
+def _attendees(attendees) -> str:
+    return "attendees: [" + ", ".join(f'"[[{a}]]"' for a in attendees) + "]\n"
+
+
+def series_meeting(root: Path, folder_name: str, note_stem: str) -> Path:
+    """A recurring series as meeting-capture really writes it: the folder
+    carries a date prefix its own note does not."""
+    folder = root / "Work" / "Meetings" / folder_name
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{note_stem}.md"
+    path.write_text('---\ntype: "Meeting"\nrecurrence: true\nattendees: []\n'
+                    "---\n\n## Related\n", encoding="utf-8")
+    return path
+
+
+def instance(series_path: Path, name: str, attendees=(), *,
+             subfolder: str = "Recurrences", own_folder: bool = True) -> Path:
+    folder = series_path.parent / subfolder / (name if own_folder else "")
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{name}.md"
+    path.write_text('---\ntype: "Meeting"\nrecurrence: false\n'
+                    + _attendees(attendees) + "---\n\n## Related\n", encoding="utf-8")
+    return path
+
+
+def taqa_and_a_person(vault_path: Path) -> None:
+    hub(vault_path, "customer", "TAQA", domain="taqa.com")
+    (vault_path / "Work" / "People" / "jasim@taqa.com.md").write_text(
+        '---\ntype: "Person"\nemail: "jasim@taqa.com"\n---\n', encoding="utf-8")
+
+
+def test_a_recurring_series_and_its_instances_are_tagged(vault):
+    """Nothing about a recurring meeting was ever tagged. Its instances sit in
+    `Recurrences/<dated title>/`, which this looked for as a flat `occurrences/`;
+    and its concept note was rejected outright by a "folder name == file stem"
+    test that a date-prefixed series folder never satisfies."""
+    import create_companies_partners as ccp
+    vault_path, _ = vault
+    taqa_and_a_person(vault_path)
+    series = series_meeting(vault_path, "2026-06-24-TAQA x Core42 Weekly Cadence",
+                            "TAQA x Core42 Weekly Cadence")
+    weekly = instance(series, "2026-09-09-TAQA x Core42 Weekly Cadence", ["jasim@taqa.com"])
+
+    ccp.retag_meetings_by_attendee_company(vault_path)
+
+    assert "customer/taqa" in vm.read_note(weekly)[0]["tags"], "the instance itself"
+    assert "customer/taqa" in vm.read_note(series)[0]["tags"], "rolled up onto the series"
+
+
+def test_an_instance_is_found_in_either_layout_whatever_its_capitals(vault):
+    """Older captures left instances flat inside the folder; two spellings of
+    one folder name is what caused the silent miss in the first place."""
+    import create_companies_partners as ccp
+    vault_path, _ = vault
+    taqa_and_a_person(vault_path)
+    series = series_meeting(vault_path, "2026-06-24-Weekly", "Weekly")
+    flat = instance(series, "2026-09-09-Weekly", ["jasim@taqa.com"],
+                    subfolder="recurrences", own_folder=False)
+
+    ccp.retag_meetings_by_attendee_company(vault_path)
+
+    assert "customer/taqa" in vm.read_note(flat)[0]["tags"]
+    assert "customer/taqa" in vm.read_note(series)[0]["tags"]
+
+
+def test_a_one_time_meeting_is_still_tagged_from_its_own_attendees(vault):
+    """The iterator now identifies a meeting by its frontmatter rather than its
+    filename -- the 660 one-time meetings that already worked must keep working."""
+    import create_companies_partners as ccp
+    vault_path, _ = vault
+    taqa_and_a_person(vault_path)
+    folder = vault_path / "Work" / "Meetings" / "2026-09-09-TAQA Review"
+    folder.mkdir(parents=True)
+    note = folder / "2026-09-09-TAQA Review.md"
+    note.write_text('---\ntype: "Meeting"\nrecurrence: false\n'
+                    + _attendees(["jasim@taqa.com"]) + "---\n\n## Related\n", encoding="utf-8")
+
+    ccp.retag_meetings_by_attendee_company(vault_path)
+
+    assert "customer/taqa" in vm.read_note(note)[0]["tags"]
