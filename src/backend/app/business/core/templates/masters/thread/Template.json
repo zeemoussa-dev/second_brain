@@ -63,6 +63,21 @@
             "kind/email"
           ]
         }
+      },
+      {
+        "growth": "dynamic",
+        "name": "files",
+        "folder": "files",
+        "identity_fields": [
+          "source_email",
+          "file_slug"
+        ],
+        "frontmatter_defaults": {
+          "type": "File",
+          "tags": [
+            "kind/attachment"
+          ]
+        }
       }
     ]
   }

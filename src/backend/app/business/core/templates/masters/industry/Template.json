@@ -1,0 +1,61 @@
+{
+  "id": "industry",
+  "schema_version": 2,
+  "version": 1,
+  "identity": {
+    "strategy": "id"
+  },
+  "on_missing": "error",
+  "allow_create_folder": true,
+  "root": {
+    "type": "md",
+    "own_folder": true,
+    "plain_filename": true,
+    "plain_folder": true,
+    "on_existing_title": "error",
+    "frontmatter_defaults": {
+      "type": "Industry",
+      "name": "",
+      "description": "",
+      "parent": "",
+      "last_refreshed": "",
+      "tags": [
+        "kind/industry"
+      ]
+    },
+    "sections": [
+      {
+        "name": "What this is",
+        "access": "machine_write"
+      },
+      {
+        "name": "Market landscape",
+        "access": "machine_write"
+      },
+      {
+        "name": "Business drivers",
+        "access": "machine_write"
+      },
+      {
+        "name": "Typical use cases",
+        "access": "machine_write"
+      },
+      {
+        "name": "Key accounts",
+        "access": "machine_write"
+      },
+      {
+        "name": "Regulatory",
+        "access": "machine_write"
+      },
+      {
+        "name": "Our positioning",
+        "access": "machine_write"
+      },
+      {
+        "name": "Areas",
+        "access": "machine_write"
+      }
+    ]
+  }
+}

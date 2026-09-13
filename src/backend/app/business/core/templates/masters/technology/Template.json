@@ -1,0 +1,36 @@
+{
+  "id": "technology",
+  "schema_version": 2,
+  "version": 1,
+  "identity": {
+    "strategy": "id"
+  },
+  "on_missing": "error",
+  "allow_create_folder": true,
+  "root": {
+    "type": "md",
+    "own_folder": true,
+    "plain_filename": true,
+    "plain_folder": true,
+    "on_existing_title": "error",
+    "frontmatter_defaults": {
+      "type": "Technology",
+      "name": "",
+      "description": "",
+      "last_refreshed": "",
+      "tags": [
+        "kind/technology"
+      ]
+    },
+    "sections": [
+      {
+        "name": "What this is",
+        "access": "machine_write"
+      },
+      {
+        "name": "Areas",
+        "access": "machine_write"
+      }
+    ]
+  }
+}

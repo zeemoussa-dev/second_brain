@@ -4,12 +4,50 @@ An **Entity Template** (a "Master Template") defines one **vault structure**: wh
 a note of that type looks like, which sections it has, and what kind of actor may
 write each one. It is a *data contract*, nothing else.
 
-These 11 ship with the product and are installed into
+These 16 ship with the product and are installed into
 `<SECOND_BRAIN_DATA_PATH>/data/Templates/<id>/Template.json` on a fresh install.
 Before 2026-09-06 nothing shipped: all 11 existed only in one operator's config
 folder, the setup wizard seeded none, and a fresh install therefore had **no
 templates at all** — so every capture Skill would have failed on a missing
 structure. The framework shipped the engine and none of the contracts.
+
+## Every note carries a kind (2026-09-11)
+
+The operator's rule: **no note without tags, no note without a `kind/*`; `type` is
+optional.** So `kind` is the universal classifier and cannot be derived from
+`type` — each Template declares its own kind in `frontmatter_defaults.tags`, and
+so does each child.
+
+`industry`, `technology`, `industry-doc`, `ot-doc` and `sales-doc` were added
+because five real note types had no Template at all, which is why 1,362 notes in
+one real vault had no kind to inherit. The three doc types share `kind/kb-doc`
+with `azure-kb-doc`/`compass-kb-doc` — `kind` is the artefact's form, `type`
+its domain.
+
+`thread` declares a **`files` child** so an email attachment gets
+`kind/attachment` rather than the `file` Template's `kind/file`: an attachment
+and a file the operator uploaded are different things, and both carry
+`type: File`, so position in the Template — not type — is what separates them.
+Note the mismatch to fix on the capture side: this dynamic child produces
+`files/<title>.md`, while capture writes `files/<slug>/<slug>.md` directly
+without going through the engine. Today the declaration governs
+*classification*, not creation.
+
+## Upgrading an install (they never overwrite)
+
+`seed_shipped_masters()` installs only ids an install lacks, so **a fix to a
+master never reaches an install that already has that id.** That is not a bug —
+overwriting on every boot would silently revert an operator's edit — but it does
+mean a stale copy can persist indefinitely. One real install still had the
+pre-`kind` `thread` Template weeks later, so every Thread it captured was born
+without `kind/thread` and no backfill could ever stay ahead of it.
+
+Before diagnosing a missing field, diff the install's copy against its master.
+Upgrade only where the install is a strict *subset* of the master (nothing of the
+operator's to lose); anything else needs reading first. Renames are the dangerous
+case: `customer`, `partner` and `opportunity` moved `Log & Captures` to
+`History & Captures`, so upgrading those Templates without migrating the existing
+`<Name>-log.md` notes in the same change leaves hubs half-renamed.
 
 ## The rules
 
@@ -47,16 +85,14 @@ templates it appeared only on `machine_write` sections, never on `human_only`.
 What keeps agents out of your Personal Notes is `access`, which names nobody and
 stays.
 
-## Known blocker
+## The v1/v2 reader trap (fixed 2026-09-06, worth keeping in mind)
 
-`TemplateManager._to_template` reads the **v1 flat** field names (`note_name`,
-`sections`, `note_own_folder`) while all 11 files here are **v2** (`root.sections`,
-`root.own_folder`, `identity` as an object). Every `.get()` falls back to its
-default, so all 11 parse to **zero sections with `error=None`** — a silent
-mis-read, not a failure.
+`TemplateManager._to_template` once read the **v1 flat** field names
+(`note_name`, `sections`, `note_own_folder`) while every file here is **v2**
+(`root.sections`, `root.own_folder`, `identity` as an object). Reading v1 names
+out of a v2 file never raises — every `.get()` returns its default — so all 11
+parsed to **zero sections with `error=None`**: a silent mis-read, not a failure.
 
-Until that is fixed the backend cannot validate a template's contents, which means
-the "a Skill refuses to deploy unless its Template has the sections it writes"
-check cannot be built. Fix the reader — and add an explicit `schema_version` to
-these files in that same change, so a template says which engine it targets rather
-than being guessed at.
+The reader now honours both schemas and every file here declares
+`schema_version: 2`. The lesson survives the fix: **if a Template's sections come
+back empty, suspect a schema mismatch before anything else.**

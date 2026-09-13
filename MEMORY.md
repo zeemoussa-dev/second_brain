@@ -249,6 +249,10 @@ Where a rule does not belong here:
 
 - **A vault writer must preserve each note's own line endings and body whitespace.** Python reads with universal newlines and writes `os.linesep`, silently converting an LF note to CRLF; the vault is 99% CRLF AND synced to git, so the default turns a one-line tag change into a whole-file diff.
 
+- **Every note carries a `kind/*` tag; `type` is optional (operator, 2026-09-11).** `kind` is therefore the universal classifier and must never be derived from `type`: an email attachment and an uploaded file both carry `type: File` but are `kind/attachment` and `kind/file`. A note's kind comes from its Template, including its position as a declared child.
+
+- **`seed_shipped_masters()` never overwrites, so a fix to a master Template reaches no install that already has that id.** Before diagnosing a missing field, diff the install's copy against its master; upgrade only where the install is a strict subset. One real install still ran the pre-`kind` `thread` Template weeks after it was fixed, so every Thread it captured was born without `kind/thread`.
+
 ## Working discipline
 
 - **[2026-09-10] Do not leave backup copies behind. Deleting is the default; ASK before keeping a backup.** Operator rule, with a concrete reason: stray copies "generate lots of errors later". A `.bak` or a dated copy dropped next to the file it copies sits in a folder something SCANS -- `Settings/Entities.md` is read by the company pipeline, a Template folder is read by the seeder, a Skill's `scripts/` is deployed wholesale -- so the copy eventually gets parsed as real data, or deployed, or picked up by a glob. The safety a backup buys is already provided properly by git for anything in the repo, and by re-running the generator for anything derived. When a backup genuinely is warranted, ask first and put it OUTSIDE any tree the app reads.

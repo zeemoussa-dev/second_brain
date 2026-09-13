@@ -5816,3 +5816,23 @@ findable by the entry number in brackets.
   sub-0.6-confidence ones quarantined to `Tag Taxonomy Review.md` rather than
   written. Verified end-to-end against the live vault: 5 Threads tagged, watermark
   advanced 278 -> 273 due, existing tags and CRLF line endings preserved.
+
+- feat(templates): five master Templates added -- `industry`, `technology`,
+  `industry-doc`, `ot-doc`, `sales-doc`. Five real note types had no Template at
+  all, so notes of those types had no `kind` to inherit. The three doc types share
+  `kind/kb-doc` with the existing KB docs; `type` carries the domain.
+- feat(templates): `thread` gained a `files` child declaring `kind/attachment`, so
+  an email attachment is separable from an uploaded `file` (`kind/file`) even
+  though both carry `type: File`. Position in the Template, not type, is what
+  classifies them. Known gap recorded in the masters README: the dynamic child
+  produces `files/<title>.md` while capture writes `files/<slug>/<slug>.md`
+  directly, so the declaration governs classification, not creation.
+- fix(templates): 8 of this install's 11 Templates were older than their masters
+  and were upgraded (`thread` lacked `kind/thread`, `kind/email` and the
+  Conversation section; the KB docs lacked `kind/kb-doc`; `research-kb-doc`
+  carried the un-namespaced `research` tag). Seeding never overwrites, so a master
+  fix reaches no install that already has that id -- which is why a stale copy had
+  persisted and every Thread captured here would have been born without a kind.
+  `customer`, `partner` and `opportunity` were deliberately NOT upgraded: their
+  `Log & Captures` to `History & Captures` rename needs the existing `<Name>-log.md`
+  notes migrated in the same change.
