@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Installed plugin screens (ADR-022). Generated: the Marketplace copies each
+# installed plugin's ui/ here and rebuilds. Never hand-edit or commit them.
+src/plugins/*
+!src/plugins/README.md

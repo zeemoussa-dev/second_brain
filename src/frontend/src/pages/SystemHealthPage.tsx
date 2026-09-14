@@ -4,6 +4,14 @@ import {
   type SystemHealthResponse,
 } from '../features/system-health/client';
 import { fetchHermesStatus, type HermesServerStatus } from '../features/hermes-ops/client';
+import { pluginUiProblems } from '../pluginHost/registry';
+
+const PLUGIN_STATUS_BADGE: Record<string, string> = {
+  loaded: 'badge-success',
+  refused: 'badge-warning',
+  invalid: 'badge-danger',
+  disabled: 'badge-danger',
+};
 
 function AppStatusTab({ health, onRefresh }: { health: SystemHealthResponse; onRefresh: () => void }) {
   return (
@@ -57,6 +65,47 @@ function AppStatusTab({ health, onRefresh }: { health: SystemHealthResponse; onR
             </div>
           ))}
         </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
+        <h2>Plugins</h2>
+        <p
+          className="text-muted"
+          style={{ fontSize: 'var(--font-size-sm)', marginTop: 'calc(-1 * var(--space-3))' }}
+        >
+          What happened to each installed plugin when the app started. A plugin
+          that is refused, invalid or disabled does not run, so its screens and
+          endpoints are simply absent — this is where you find out why.
+        </p>
+        {health.plugins.length === 0 && pluginUiProblems.length === 0 ? (
+          <p className="text-muted">No plugins installed.</p>
+        ) : (
+          <div className="item-list">
+            {health.plugins.map((plugin) => (
+              <div className="item-row" key={plugin.id}>
+                <div className="item-row-main">
+                  <span className="item-row-title">
+                    {plugin.name}{plugin.version ? ` v${plugin.version}` : ''}{' '}
+                    <span className={`badge ${PLUGIN_STATUS_BADGE[plugin.status] ?? 'badge-warning'}`}>
+                      {plugin.status}
+                    </span>
+                  </span>
+                  <span className="item-row-meta">{plugin.reason ?? plugin.routes_prefix ?? plugin.id}</span>
+                </div>
+              </div>
+            ))}
+            {pluginUiProblems.map((problem) => (
+              <div className="item-row" key={problem}>
+                <div className="item-row-main">
+                  <span className="item-row-title">
+                    <span className="badge badge-warning">screen skipped</span>
+                  </span>
+                  <span className="item-row-meta">{problem}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </>
   );

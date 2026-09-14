@@ -1,4 +1,5 @@
 import { Link } from 'react-router';
+import { pluginSettingsPages } from '../pluginHost/registry';
 
 // Icon-card grid landing page (operator, 2026-08-27: "I need a Settings
 // Landing Page with Cards to each Section... I want Icons per Section
@@ -37,6 +38,24 @@ export function SettingsPage() {
           </Link>
         ))}
       </div>
+      {/* Settings pages contributed by installed plugins (ADR-022). Absent
+          entirely when no installed plugin has any. */}
+      {pluginSettingsPages.length > 0 && (
+        <>
+          <h2 style={{ marginTop: 'var(--space-4)' }}>Plugins</h2>
+          <div className="settings-grid">
+            {pluginSettingsPages.map((page) => (
+              <Link key={page.path} className="card settings-card" to={page.path}>
+                <span className="material-symbols-outlined settings-card-icon" aria-hidden="true">
+                  extension
+                </span>
+                <h2 className="settings-card-title">{page.label}</h2>
+                <p className="settings-card-desc">From the {page.pluginId} plugin.</p>
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
     </>
   );
 }

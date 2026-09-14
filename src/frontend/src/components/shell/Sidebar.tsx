@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink } from 'react-router';
 import { apiFetch } from '../../api/client';
+import { pluginNavEntries } from '../../pluginHost/registry';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -69,6 +70,18 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         <span className="nav-icon">&#128375;</span>
         <span className="nav-label">Crawlers</span>
       </NavLink>
+      {/* Installed plugins' entries (ADR-022) sit where My Day sat before it
+          became a plugin, so extracting it does not move it in the sidebar. */}
+      {pluginNavEntries.map((entry) => (
+        <NavLink
+          key={entry.to}
+          to={entry.to}
+          className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
+        >
+          <span className="nav-icon">{entry.icon ?? '◆'}</span>
+          <span className="nav-label">{entry.label}</span>
+        </NavLink>
+      ))}
       <NavLink
         to="/my-day"
         className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}

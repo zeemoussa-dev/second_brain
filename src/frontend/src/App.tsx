@@ -30,6 +30,7 @@ import { VaultGraphPage } from './pages/VaultGraphPage';
 import { NoteDetailPage } from './pages/NoteDetailPage';
 import { MeetingCockpitPage } from './pages/MeetingCockpitPage';
 import { InboxCockpitPage } from './pages/InboxCockpitPage';
+import { pluginRoutes, pluginSettingsPages } from './pluginHost/registry';
 
 function App() {
   return (
@@ -65,6 +66,13 @@ function App() {
           <Route path="/vault" element={<VaultGraphPage />} />
           <Route path="/meeting-cockpit/:stem" element={<MeetingCockpitPage />} />
           <Route path="/inbox-cockpit/:stem" element={<InboxCockpitPage />} />
+          {/* Installed plugins' screens (ADR-022), composed at build time. */}
+          {pluginRoutes.map((route) => (
+            <Route key={route.path} path={route.path} element={<route.component />} />
+          ))}
+          {pluginSettingsPages.map((page) => (
+            <Route key={page.path} path={page.path} element={<page.component />} />
+          ))}
         </Route>
         <Route path="/setup" element={<SetupPage />} />
       </Routes>
