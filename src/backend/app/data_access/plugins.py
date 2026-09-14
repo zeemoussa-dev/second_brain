@@ -44,6 +44,19 @@ def read_installed_record() -> dict | None:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def write_installed_record(record: dict) -> None:
+    """Written to a temporary file and swapped in. A crash mid-write must never
+    leave a half-written ownership record: the host reads a corrupt record as
+    "load nothing", and an uninstall could no longer find what to remove."""
+    root = plugins_root()
+    if root is None:
+        raise FileNotFoundError("No App Database Folder is configured")
+    root.mkdir(parents=True, exist_ok=True)
+    temporary = root / (_INSTALLED_RECORD_FILENAME + ".tmp")
+    temporary.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(root / _INSTALLED_RECORD_FILENAME)
+
+
 def read_manifest(plugin_id: str) -> dict:
     """Raises FileNotFoundError / json.JSONDecodeError."""
     root = plugins_root()

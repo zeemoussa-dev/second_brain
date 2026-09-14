@@ -13,6 +13,7 @@ from app.api.agents_router import router as agents_router
 from app.api.artifacts_router import router as artifacts_router
 from app.api.backup_router import router as backup_router
 from app.api.blueprints_router import router as blueprints_router
+from app.api.marketplace_router import router as marketplace_router
 from app.api.boot_router import router as boot_router
 from app.api.cockpit_router import router as cockpit_router
 from app.api.health_check_router import router as health_check_router
@@ -221,6 +222,7 @@ app.include_router(setup_router)
 app.include_router(artifacts_router)
 app.include_router(backup_router)
 app.include_router(blueprints_router)
+app.include_router(marketplace_router)
 app.include_router(boot_router)
 app.include_router(cockpit_router)
 app.include_router(my_day_router)

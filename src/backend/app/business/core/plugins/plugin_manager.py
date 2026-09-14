@@ -30,6 +30,12 @@ PLUGIN_ROUTE_PREFIX = "/plugins"
 # ("../x") or produce a route prefix nobody can type.
 _VALID_PLUGIN_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 
+
+
+def is_valid_plugin_id(plugin_id: str) -> bool:
+    return bool(_VALID_PLUGIN_ID.match(plugin_id))
+
+
 _load_report: list[Plugin] = []
 
 # What Cockpit asks to fill in a subject's fields (`BUG-063` seam). Built-in
