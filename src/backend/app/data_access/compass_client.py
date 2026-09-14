@@ -58,3 +58,64 @@ def request_chat_completion(messages: list[dict[str, str]], *, timeout: float = 
         raise CompassClientError(
             f"Compass call returned an unexpected response shape: {exc}"
         ) from exc
+
+
+class CompassEmbeddingsUnavailableError(CompassClientError):
+    """The embeddings route was reached but refused the request -- most
+    often a subscription that lists an embedding model in its catalogue
+    without being entitled to call it (confirmed live 2026-09-13: every
+    real embedding model returns HTTP 400 "You may not have a quota or
+    access to use this model", while an invented one returns 404). Kept
+    distinct from CompassClientError so the semantic layer can report
+    "embeddings are not enabled on this subscription" rather than the
+    generic "the call failed", and so it never reads as a code defect."""
+
+
+def request_embeddings(inputs: list[str], *, timeout: float = 60.0) -> list[list[float]]:
+    """Embeds `inputs` in ONE request and returns one vector per input,
+    in the order given. The provider is free to return `data` out of
+    order, so entries are re-sorted by their own `index` field rather
+    than trusted positionally -- an off-by-one here would silently
+    attach every note to its neighbour's meaning, which no test of
+    ranking quality would obviously catch."""
+    endpoint = settings.compass_embeddings_endpoint
+    if not endpoint or not settings.compass_api_key:
+        raise CompassEmbeddingsUnavailableError(
+            "Compass embeddings are not configured (compass_base_url/compass_api_key)"
+        )
+
+    payload: dict = {"model": settings.compass_embedding_model, "input": inputs}
+    if settings.compass_embedding_dimensions > 0:
+        payload["dimensions"] = settings.compass_embedding_dimensions
+    headers = {
+        "Authorization": f"Bearer {settings.compass_api_key}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        response = httpx.post(endpoint, json=payload, headers=headers, timeout=timeout)
+    except httpx.HTTPError as exc:
+        raise CompassClientError(f"Compass embeddings call failed (POST {endpoint}): {exc}") from exc
+
+    if response.status_code >= 400:
+        # The provider's own message is the actionable part ("no quota",
+        # "invalid input model") -- swallowing it for a tidy generic error
+        # would send the operator to read code instead of a subscription.
+        raise CompassEmbeddingsUnavailableError(
+            f"Compass embeddings refused the request (HTTP {response.status_code}): "
+            f"{response.text[:300]}"
+        )
+
+    try:
+        rows = sorted(response.json()["data"], key=lambda row: row["index"])
+        vectors = [[float(value) for value in row["embedding"]] for row in rows]
+    except (KeyError, IndexError, TypeError, ValueError) as exc:
+        raise CompassClientError(
+            f"Compass embeddings returned an unexpected response shape: {exc}"
+        ) from exc
+
+    if len(vectors) != len(inputs):
+        raise CompassClientError(
+            f"Compass embeddings returned {len(vectors)} vectors for {len(inputs)} inputs"
+        )
+    return vectors

@@ -29,6 +29,21 @@ class Settings(BaseSettings):
     compass_base_url: str = ""
     compass_api_key: str = ""
     compass_model: str = ""
+    # Semantic search (REQ-SB-06) reuses the SAME Compass subscription and key
+    # as chat -- a separate provider would mean a second credential to keep
+    # alive for no gain. Only the model and the route differ, so these three
+    # are all that is needed on top of the trio above.
+    compass_embedding_model: str = "text-embedding-3-large"
+    # `dimensions` is sent only when > 0: the parameter is a Matryoshka-style
+    # truncation supported by text-embedding-3-*, and an older deployment
+    # (ada-002) rejects the request outright rather than ignoring it. 1024
+    # keeps the whole store ~8MB at this vault's scale with no measurable
+    # recall loss versus the native 3072.
+    compass_embedding_dimensions: int = 1024
+    # Override only when the embeddings route does not sit beside the chat
+    # route on the same host; otherwise it is derived (see the property
+    # below), so a normal install configures nothing here.
+    compass_embeddings_url: str = ""
     # Optional since 2026-09-03. Nothing calls Anthropic any more: the
     # `anthropic` SDK is no longer imported anywhere in `app/`, and agent chat
     # moved to Hermes in the 2026-08-20 pivot. The only remaining readers are
@@ -102,6 +117,21 @@ class Settings(BaseSettings):
     @property
     def setup_required(self) -> bool:
         return bool(self.missing_required_settings)
+
+    @property
+    def compass_embeddings_endpoint(self) -> str:
+        """The embeddings route, derived from the configured chat route
+        unless explicitly overridden. `compass_base_url` is a FULL route
+        (".../v1/chat/completions"), not a base -- an install that pointed
+        the two at the same URL would send every embedding request to the
+        chat endpoint and fail with a confusing model error, so the
+        chat-specific tail is swapped rather than appended to."""
+        if self.compass_embeddings_url:
+            return self.compass_embeddings_url.strip()
+        base = self.compass_base_url.strip()
+        if not base:
+            return ""
+        return base.removesuffix("/").removesuffix("/chat/completions") + "/embeddings"
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:

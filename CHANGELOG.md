@@ -170,6 +170,31 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 - docs: `src/CBO Agents Build/` -- the one-time build pipelines (backfills, first
   company build, curation, migrations, retrofit), recorded as reference only. The
   Agents Map now shows only the delta pipelines the CBO watches.
+- feat: semantic + hybrid vault search (`REQ-SB-06`, `ADR-020`). One embedding per
+  note, stored as a flat little-endian float32 file plus a manifest under
+  `<App Database Folder>/semantic/`; unit-normalised at write time so a query is a
+  bare dot product. `GET /vault-search/semantic` ranks by meaning alone,
+  `GET /vault-search/hybrid` fuses it with the existing BM25 ranking by Reciprocal
+  Rank Fusion (k=60), `GET /vault-search/semantic/status` reports whether the
+  provider will actually answer, and `POST /vault-search/semantic/rebuild` embeds
+  only the notes whose content hash changed. New `SemanticManager`
+  (`business/core/semantic/`), `hybrid_search` (`business/logic/`), `semantic_store`
+  (`data_access/`), and `request_embeddings` on the existing Compass client.
+
+- feat: `vault-search` Skill — the agent-facing half. A stdlib-only script that asks
+  the backend for hybrid results, so no embedding client is needed inside a Hermes
+  profile (`ADR-019`'s payload rule). Closes the gap where BM25 existed in the
+  backend but the Hermes-side `vault_manager.py` carried only
+  `find_by_id`/`find_by_filename`/`find_in_folder`, leaving agents unable to search
+  at all.
+
+- docs: `ADR-020` — why a vector database (Qdrant) was evaluated and deferred, with
+  the conditions that should trigger a revisit (~100k vectors, filtered ANN, or more
+  than one writer), and why the structural index must stay an exact-match lookup.
+
+- fix: `semantic_store.read_vectors` raised `ValueError` out of `array.frombytes` for
+  a file truncated mid-float (a crash or sync collision), instead of reading as "no
+  usable store" like every other corruption path. Found by its own test.
 
 - feat: `reconcile_entities.py` — makes the vault's folders agree with `Entities.md`.
   Reclassify between Customers and Partners, re-parent an Affiliate under its parent,

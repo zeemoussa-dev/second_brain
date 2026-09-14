@@ -2382,3 +2382,101 @@ code directly, not assumed:
   double-append trap) moved to `Documentation/Framework/hermes/`.
 
 ---
+
+## ADR-020: Semantic search is an embedding store the backend owns, fused with BM25 by rank; Qdrant evaluated and deferred
+
+**Status:** Accepted
+**Date:** 2026-09-13
+
+**Context:** `REQ-SB-06` (Search Quality Enhancements, P2) has always named
+"chunking note content ahead of embedding at scale, and reranking results",
+deferred until `REQ-SB-02`'s keyword baseline shipped. It has shipped:
+field-weighted BM25 over title/tags/body, served at `GET
+/vault-search/search`. Three things then came together.
+
+1. **The operator asked whether a vector database (Qdrant) should replace
+   the index.** It should not, and the reason matters: the structural index
+   (`build_vault_index.py`, `index_builder_lib.py`) is not a search index.
+   It is a deterministic `id -> path` lookup whose correctness contract is
+   exact match — `find_by_id` falling through to a real scan is merely slow,
+   but a wrong "does not exist" makes a capture pipeline create a duplicate
+   note. Approximate nearest-neighbour cannot hold that contract.
+2. **The agents cannot reach the search that already exists.** BM25 lives in
+   the backend's `VaultManager`; the payload copy of `vault_manager.py`
+   shipped into Hermes profiles carries only `find_by_id`/`find_by_filename`/
+   `find_in_folder`, and there are no MCP servers. So retrieval quality was
+   never the only gap — the retrieval *path to the agent* was missing.
+3. **The provider already serves embeddings, but this subscription cannot
+   call them.** `api.core42.ai/v1` lists `text-embedding-3-large`,
+   `embed-v-4-0`, `qwen3-embedding` and a `qwen3-reranker`. Every one returns
+   HTTP 400 "You may not have a quota or access to use this model", while an
+   invented model name returns 404 — so the route and the names are real and
+   the entitlement is not (confirmed live, 2026-09-13).
+
+**Decision:**
+
+- **One vector per note, not per chunk.** This corpus is 2,014 already-
+  distilled notes (Thread summaries, Meeting notes, Customer hubs), not long
+  documents. A note is the unit the UI, the wikilink graph and every Skill
+  already speak. `SemanticManager._semantic_card` is the seam where chunking
+  would land if notes ever grow long enough that their middle is unfindable.
+- **The embedded text is a composed card, not the raw file** — meaningful
+  frontmatter (subject/description/customer/type/aliases/tags) plus a bounded
+  4,000-character head of the body. Frontmatter carries identity the body
+  often never restates, and raw provenance blocks would otherwise dominate a
+  short note's vector.
+- **Brute-force cosine over a flat float32 file, no vector database.** 2,014
+  x 1024 dims is ~8MB and a few million multiply-adds per query. Qdrant (or
+  any ANN index) starts paying for itself around 1e5-1e6 vectors. **Revisit
+  when:** stored vectors pass ~100k, or filtered ANN over payload is needed,
+  or more than one process writes the store. Until one of those is true, an
+  ANN index buys a speed-up smaller than the HTTP round trip carrying the
+  query, at the cost of an install dependency and a second source of truth.
+- **Vectors are unit-normalised at write time**, so every query is a bare dot
+  product rather than a per-query normalisation pass over the whole corpus.
+- **Staleness is decided by a content hash of the card, never by mtime.**
+  OneDrive rewrites mtimes on sync; re-embedding 2,014 unchanged notes
+  because a folder synced would spend real quota for no change in meaning.
+- **A store built against a different model or dimension count is discarded
+  wholesale.** Mixing two embedding spaces in one file ranks notes by numbers
+  that share no meaning, and nothing would raise.
+- **Keyword and semantic results are fused by Reciprocal Rank Fusion
+  (k=60), not by blending scores.** A BM25 score is an unbounded term sum; a
+  cosine is bounded -1..1. Any weighted sum of the two hides a tuning
+  constant that drifts whenever the corpus or model changes. RRF keeps only
+  each result's rank, which is the part both rankers agree on the meaning of.
+- **Both halves always run.** Embeddings are weakest exactly where this vault
+  is queried most — an account name, a tag, a surname, a project code — and
+  BM25 is weakest on a described concept whose words appear nowhere in the
+  note. Dropping either half loses a class of query.
+- **`GET /vault-search/hybrid` never fails for a missing semantic half.** It
+  returns keyword-only results with `semantic_available: false` and the real
+  reason. A search box that silently returned nothing because a quota lapsed
+  would read as an empty vault. `GET /vault-search/semantic` (the diagnostic
+  surface) does return 503, because a caller asking for meaning alone needs
+  to know it did not get it.
+- **The agent-facing Skill (`vault-search`) is a stdlib-only HTTP client onto
+  the backend**, not a second embedding implementation. This deliberately
+  breaks the "keeps working even if the backend is down" property that
+  `vault-index` has, and that is the trade: `ADR-019`'s payload rule keeps
+  Hermes-side scripts dependency-free, and an embedding client is a real
+  dependency. Backend down is a reported, non-zero-exit state with an
+  instruction to fall back to a direct `vault_manager` lookup.
+
+**Consequences:**
+
+- Semantic ranking is **inert until the Compass subscription is entitled to
+  an embedding deployment.** Everything else — the store, fusion, the API,
+  the Skill, the degraded path — is live and tested today. When quota is
+  granted, the change is `POST /vault-search/semantic/rebuild`, not a code
+  change. If entitlement is never granted, swapping providers is confined to
+  `data_access/compass_client.request_embeddings`.
+- The build is **on demand only.** No cron job schedules it yet; the operator
+  triggers a rebuild. Scheduling it belongs with the Index cron work
+  (`IndexManager`) rather than being invented separately here.
+- **No frontend surface yet.** The search box still calls `/vault-search/
+  search`. Pointing it at `/hybrid` is a one-line change, deliberately left
+  until semantic results actually exist to judge.
+- The reranker on offer (`qwen3-reranker`) is **not used.** RRF already
+  fuses two orderings; a cross-encoder rerank is the next quality step if
+  fused results prove insufficient, and it would be its own decision.

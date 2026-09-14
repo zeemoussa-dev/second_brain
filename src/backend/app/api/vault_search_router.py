@@ -6,10 +6,17 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
+from app.business.core.semantic.semantic_manager import (
+    SemanticIndexUnavailableError,
+    SemanticManager,
+)
 from app.business.core.vault.vault_manager import VaultManager
+from app.business.logic import hybrid_search
+from app.data_access.compass_client import CompassClientError
 
 router = APIRouter(prefix="/vault-search")
 _vault_manager = VaultManager()
+_semantic_manager = SemanticManager(_vault_manager)
 
 
 @router.get("/status")
@@ -53,6 +60,45 @@ def get_note_asset(stem: str, filename: str) -> FileResponse:
 def get_search(q: str, limit: int = 20) -> dict:
     """Scenarios 4, 5."""
     return _vault_manager.search(q, limit=limit)
+
+
+@router.get("/semantic")
+def get_semantic_search(q: str, limit: int = 20) -> dict:
+    """REQ-SB-06 -- meaning-based ranking alone. 503 (not 500) for an
+    unbuilt index or an embedding model this subscription cannot call:
+    both are real, operator-fixable service states, not server faults."""
+    try:
+        return _semantic_manager.search(q, limit=limit)
+    except (SemanticIndexUnavailableError, CompassClientError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/hybrid")
+def get_hybrid_search(q: str, limit: int = 20) -> dict:
+    """REQ-SB-06 -- keyword and meaning fused (RRF). Never 503s: it falls
+    back to keyword-only and reports `semantic_available: false`, so this
+    is the endpoint a caller should prefer when it wants an answer rather
+    than a diagnosis."""
+    return hybrid_search.search(q, limit=limit)
+
+
+@router.get("/semantic/status")
+def get_semantic_status() -> dict:
+    """Whether a semantic index exists, what built it, and whether the
+    provider will answer at all (this install's subscription lists
+    embedding models it is not entitled to call)."""
+    return _semantic_manager.get_status()
+
+
+@router.post("/semantic/rebuild")
+def post_semantic_rebuild(force: bool = False) -> dict:
+    """Embeds every note whose content changed since the last build;
+    `force=true` re-embeds the whole vault (needed after changing the
+    embedding model, which invalidates every stored vector)."""
+    try:
+        return _semantic_manager.build(force=force)
+    except CompassClientError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/tags")
