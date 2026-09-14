@@ -48,6 +48,7 @@ is a thin status mirror of the index table below.
 | BUG-059 | An attachment whose filename contains a path separator is saved under a TRUNCATED name with its extension lost — the bytes land in a file called `Fw` with no extension, and the Thread's Files link points at the truncated name | Logic | Major | Open | 2026-09-09 | — |
 | BUG-060 | A Thread note's `title` frontmatter is the raw base64 conversation id while its filename and `thread_name` are readable, so Obsidian displays the id | UI | Minor | Open | 2026-09-09 | — |
 | BUG-061 | A Pipeline whose id matches an Agent id silently draws TWICE on the Agents Map — `GET /agents` concatenates agents and pipeline summaries with no collision check, so the same id appears as two nodes with different types | Logic | Minor | Open | 2026-09-10 | — |
+| BUG-062 | The framework's data access and backend Vault Manager hardcode Customer/Partner/Opportunity, so business Templates cannot leave the framework — the concepts are compiled into vault_writer, hub linking, People extraction, My Day and Entities.md parsing instead of being declared by Templates | Logic | Major | Open | 2026-09-14 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -885,3 +886,39 @@ is a thin status mirror of the index table below.
   regardless of what the map does with it.
 - **Worked around on this install:** the pipelines are `m365-email-capture` and
   `m365-meeting-capture`, distinct from the `email-capture` Agent that runs them.
+
+### BUG-062 — the framework hardcodes Customer/Partner/Opportunity, so business Templates cannot leave it
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-09-14, while planning the split of this repo into the framework,
+  `sb-cbo-agent` and `sb-pss-agent`. The rule for the split is that the framework
+  knows nothing about business; Customer, Partner and Opportunity are business.
+- **Root cause:** those concepts are written into framework code instead of being
+  declared by Templates. Counted as EXECUTABLE lines (comments and docstrings
+  stripped), so documentation that merely mentions them is not counted:
+
+      123  data_access/vault_writer.py            build_tags() bakes in `customer/`,
+                                                   customer_directory_paths(), ...
+       23  business/people_extraction.py
+       21  business/partner_hub_linking.py
+       19  business/customer_hub_linking.py
+       15  business/my_day.py
+       12  business/core/vault/vault_manager.py   parses `## Partners` out of Entities.md
+        2  business/core/skills/managers/company_index.py
+
+  The shared Hermes-side engine `skills/managers/vault_manager.py` is NOT affected:
+  0 executable lines. Its mentions of Opportunity->Customer are docstrings describing
+  a Template-driven parent link, which is the shape the rest should take.
+- **Repro:** move the `customer`, `partner` and `opportunity` Master Templates out of
+  `templates/masters/` into an agent repo. The Templates are gone, but vault_writer,
+  hub linking, People extraction and My Day still name them, so the framework keeps
+  behaving as if they exist.
+- **Expected:** framework code resolves entity kinds, folders and tag namespaces from
+  whatever Templates are installed; an agent repo that ships no Customer Template gets
+  no Customer behaviour.
+- **Actual:** the concepts are compiled in, so they cannot move to `sb-cbo-agent`,
+  and every Template problem involving these kinds traces back to code, not data.
+- **Fix approach (operator, 2026-09-14):** step by step, one module at a time, with
+  the framework runnable after each step.
