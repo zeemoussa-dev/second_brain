@@ -18,6 +18,19 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: `history_log.py` joins `vault_manager.py` as a shared engine -- the one
+  implementation of a dated History entry: the format, newest-first ordering, and
+  replace-rather-than-repeat for an entry that names its source. Extracted from
+  `apply_thread_extract.py`, which now delegates to it; its own 8 History tests pass
+  unchanged. 10 engine tests.
+
+- fix: `track-opportunities` -- the vault is the CRM-of-record: never ask which CRM,
+  never offer Salesforce/Dynamics/HubSpot. Notes are located with the installed
+  `obsidian` Skill, but every write goes through the Skill's scripts, and History
+  through the new `log_history.py`. On 2026-09-14 a WhatsApp update was met with
+  "Which CRM is this opportunity in?" and then hand-patched, stripping `type: "Log"`
+  from a note's frontmatter mid-edit.
+
 - feat: `find_mentioned_entities.py` -- the other half of company discovery.
   `find_new_entities.py` can only find a company that has sent us mail; a
   company merely DISCUSSED in threads has no domain, so 736 such names had

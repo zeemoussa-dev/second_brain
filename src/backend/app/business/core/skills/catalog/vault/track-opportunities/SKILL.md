@@ -151,11 +151,47 @@ next week", "note that Microsoft is now involved", a status/consumption
 change mentioned in passing. **Never creates an Opportunity as a side
 effect** -- if it doesn't already exist, say so and offer Job 1 instead.
 
+**The vault is the CRM-of-record.** Opportunities live in this vault and
+nowhere else. Never ask which CRM an Opportunity is in, never offer
+Salesforce/Dynamics/HubSpot as options, and never propose building a new
+way to do this -- the mechanism already exists and is described below.
+(Live failure, 2026-09-14: a request to log consumption against an ADNOC
+Opportunity was met with "Which CRM is this opportunity in?", then answered
+by hand-editing the files, which stripped `type: "Log"` from a note's
+frontmatter mid-edit.)
+
+**Finding the note: use the `obsidian` Skill, which every profile already
+has.** Locate and read the Opportunity with its file tools -- resolve the
+real vault path first, then `search_files`/`read_file` with concrete
+absolute paths. That is the one sanctioned way to find a note here; do not
+improvise another, and do not guess a path. What you pass onward is the
+Opportunity's own ROOT `.md` path, never a `-history`/`-captures` child.
+
+**Reading is `obsidian`'s job; WRITING is not.** Every change below goes
+through the scripts named here. A hand `patch` of an Opportunity's
+frontmatter is what damaged a note on 2026-09-14: the Template contract
+exists precisely so field edits cannot do that.
+
 Map what the operator said onto ONE of the real sections (ask if it's
 genuinely unclear which one):
 - **History** -- a dated diary entry, what happened / who you talked to.
-  Almost always `mode: "append"`. Lives on the `-history.md` child, not the
-  root -- pass `"child_suffix": "history"` in the payload.
+  **Use `log_history.py`, not the `modify-section` call below:**
+
+  ```
+  terminal(command="python \"${HERMES_SKILL_DIR}\scripts\log_history.py\" --note-path \"<Opportunity root .md>\" --line \"spoke to procurement, they want revised pricing\"")
+  ```
+
+  It writes the same `<Title>-history.md` child the template declares, in
+  the shared `- YYYY-MM-DD: <line>` form every History note in this vault
+  uses, newest first. `--date` when the event happened on a day other than
+  today; `--link "[[Some Note]]"` when the entry has a source note, which
+  also makes a re-run REPLACE that entry instead of stacking a second copy.
+  Prints `{"written": false, "reason": "identical entry already present"}`
+  when a retry would have duplicated a line -- that is success, not failure.
+
+  This is the same engine (`history_log.py`) that writes a Customer's or
+  Partner's History, so an Opportunity's History reads identically to
+  theirs. Do not hand-format a history line yourself.
 - **Actions** -- a follow-up/next-step. Almost always `append`. Root
   section, no `child_suffix`.
 - **Related** -- a link to something else relevant (a person, a
@@ -177,9 +213,10 @@ terminal(command="python \"${HERMES_SKILL_DIR}\scripts\vault_manager.py\" modify
 the default the SKILL.md examples above already assume.)
 
 Payload: `{"content": str, "title": str, "parent_value": str, "child_suffix":
-str}` (`child_suffix` only for History/Captures -- `"history"` or `"captures"`;
-omit it entirely for Actions/Related/Summary, which stay on the root
-note). `parent_value` is matched the same way as Job 1 (real Customer
+str}` (`child_suffix` only for Captures -- `"captures"`; omit it entirely for
+Actions/Related/Summary, which stay on the root note. History no longer goes
+through this call at all: `log_history.py` above owns it, so that a dated
+entry has one format and one idempotency rule wherever it is written). `parent_value` is matched the same way as Job 1 (real Customer
 name or a known alias); `title` is matched exactly against the
 Opportunity's own real title within that Customer -- this call resolves
 the Customer AND finds the Opportunity by name itself, the same way Job

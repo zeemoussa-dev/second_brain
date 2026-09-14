@@ -63,6 +63,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+import history_log
 import vault_manager as vm
 
 _SCHEMA_VERSION = 1
@@ -241,54 +242,24 @@ def _known_company_names(vault_path: Path) -> set[str]:
 # applier this replaced wrote them; this one did not until 2026-09-11, and not
 # one company History in the vault had a single entry.
 
-_HISTORY_ENTRY = re.compile(r"^- (\d{4}-\d{2}-\d{2}): (.+)$")
-_SENTENCE_END = re.compile(r"(?<=[.!?])\s")
-_WHITESPACE = re.compile(r"\s+")
-_HISTORY_LINE_MAX = 160
+# The entry format, the ordering and the replace-rather-than-repeat rule
+# live in the shared `history_log` engine now (2026-09-14) -- Opportunities
+# need the same History entries these Threads write, and two copies of this
+# format would drift the moment one side changed.
 
 
 def _history_line(extraction: dict) -> str:
     """The one line a company's History gets for this Thread: the reader's own
     `history_line` when it wrote one, otherwise the first sentence of its
     summary -- which is all an extraction saved before the field existed has."""
-    line = _WHITESPACE.sub(" ", str(extraction.get("history_line") or "")).strip()
-    if not line:
-        summary = _WHITESPACE.sub(" ", str(extraction.get("summary") or "")).strip()
-        line = _SENTENCE_END.split(summary, 1)[0] if summary else ""
-    line = line.rstrip(". ")
-    if len(line) > _HISTORY_LINE_MAX:
-        line = line[:_HISTORY_LINE_MAX].rsplit(" ", 1)[0].rstrip(",;: ") + "…"
-    return line
+    return history_log.condense(extraction.get("history_line"),
+                                fallback=extraction.get("summary"))
 
 
 def _history_update(hub_md: Path, date: str, line: str, thread_link: str):
     """(history note, frontmatter, new body) -- or None when nothing changes.
-
-    ONE entry per Thread: an entry already pointing at this Thread is replaced,
-    not joined by a second. A Thread enriched again after it grew gets its
-    latest line at its latest date, instead of the company's History reading
-    like a changelog of one conversation. Newest first; the note's header and
-    frontmatter are kept."""
-    history = hub_md.parent / f"{hub_md.stem}-history.md"
-    if os.path.isfile(vm.long_path(history)):
-        frontmatter, body = vm.read_note(history)
-    else:
-        frontmatter = {"type": "History", "name": f"{hub_md.stem} History",
-                       "parent": f"[[{hub_md.stem}]]", "tags": ["kind/history"]}
-        body = f"\n# {hub_md.stem}\n"
-    lines = body.splitlines()
-    kept = [line_ for line_ in lines if not _HISTORY_ENTRY.match(line_)]
-    entries = [m.groups() for line_ in lines if (m := _HISTORY_ENTRY.match(line_))]
-    suffix = f" -- {thread_link}"
-    updated = [(d, t) for d, t in entries if not t.endswith(suffix)]
-    updated.append((date, f"{line}{suffix}"))
-    if set(updated) == set(entries):
-        return None
-    updated.sort(key=lambda entry: entry[0], reverse=True)
-    while kept and not kept[-1].strip():
-        kept.pop()
-    new_body = "\n".join(kept) + "\n\n" + "\n".join(f"- {d}: {t}" for d, t in updated) + "\n"
-    return history, frontmatter, new_body
+    Thin wrapper kept so this module's own callers and tests read unchanged."""
+    return history_log.update_history(hub_md, date, line, thread_link)
 
 
 def write_history(vault_path: Path, thread_path: Path, thread_frontmatter: dict,
