@@ -38,11 +38,9 @@ def is_valid_plugin_id(plugin_id: str) -> bool:
 
 _load_report: list[Plugin] = []
 
-# What Cockpit asks to fill in a subject's fields (`BUG-063` seam). Built-in
-# enrichers are registered by framework code while a piece that will become a
-# plugin still lives in the framework, and they survive a reload; plugin
-# enrichers are rebuilt by every `load_all` from the plugins that loaded.
-_builtin_subject_enrichers: list[plugin_api.SubjectEnricher] = []
+# What Cockpit asks to fill in a subject's fields (`BUG-063` seam), rebuilt by
+# every `load_all` from the plugins that loaded. Only plugins contribute: the
+# framework itself knows no business concept to enrich a subject with.
 _plugin_subject_enrichers: list[plugin_api.SubjectEnricher] = []
 
 
@@ -85,13 +83,9 @@ class PluginManager:
     def get_load_report(self) -> list[Plugin]:
         return list(_load_report)
 
-    def register_builtin_subject_enricher(self, enricher: plugin_api.SubjectEnricher) -> None:
-        if enricher not in _builtin_subject_enrichers:
-            _builtin_subject_enrichers.append(enricher)
-
     def get_subject_enrichers(self) -> list[plugin_api.SubjectEnricher]:
-        """Built-ins first, then plugins in install order."""
-        return [*_builtin_subject_enrichers, *_plugin_subject_enrichers]
+        """In plugin install order."""
+        return list(_plugin_subject_enrichers)
 
     def _load_one(
         self, entry: object, seen: set[str], enrichers: list[plugin_api.SubjectEnricher],

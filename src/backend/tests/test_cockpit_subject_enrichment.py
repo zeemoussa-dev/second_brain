@@ -36,7 +36,6 @@ def enrichers(monkeypatch):
     # get_thread persists recommended agents on first read; a test must never write.
     monkeypatch.setattr(cockpit_view.chat_store, "get_thread", lambda kind, stem: {"messages": []})
     registered: list = []
-    monkeypatch.setattr(plugin_manager_module, "_builtin_subject_enrichers", [])
     monkeypatch.setattr(plugin_manager_module, "_plugin_subject_enrichers", registered)
     return registered
 
