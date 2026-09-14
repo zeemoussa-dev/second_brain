@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from app.business import my_day
 from app.business.core.plugins import plugin_manager as plugin_manager_module
 from app.business.logic import cockpit_view
 
@@ -94,15 +93,3 @@ def test_cockpit_no_longer_imports_my_day():
             imported.update(alias.name for alias in node.names)
 
     assert not [name for name in imported if "my_day" in name]
-
-
-def test_my_day_hands_its_customer_resolver_to_the_plugin_host(monkeypatch):
-    monkeypatch.setattr(my_day._vault_manager, "get_index", lambda: {
-        "Adnoc": {"frontmatter": {"type": "Customer", "name": "Adnoc"}, "tags": ["customer/adnoc"]},
-        "G42": {"frontmatter": {"type": "Partner", "name": "G42"}, "tags": ["partner/g42"]},
-    })
-
-    assert my_day._customer_subject_enricher in plugin_manager_module.PluginManager().get_subject_enrichers()
-    # A Partner tag listed first must not win: Cockpit wants THE Customer.
-    assert my_day._customer_subject_enricher("email", {}, ["partner/g42", "customer/adnoc"]) == {"customer": "Adnoc"}
-    assert my_day._customer_subject_enricher("email", {}, ["partner/g42"]) == {}

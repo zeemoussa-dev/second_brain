@@ -90,13 +90,6 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         </NavLink>
       ))}
       <NavLink
-        to="/my-day"
-        className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
-      >
-        <span className="nav-icon">☀</span>
-        <span className="nav-label">My Day</span>
-      </NavLink>
-      <NavLink
         to="/settings"
         className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
       >

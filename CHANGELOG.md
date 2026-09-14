@@ -18,6 +18,8 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- refactor: My Day leaves the framework (`REQ-SB-91` Phase 5). Removed `business/my_day.py`, `business/logic/my_day_window.py`, `api/my_day_router.py`, the My Day pages and client, their routes and sidebar entry, the built-in customer enricher, and My Day's dashboard rules in `my-day.css` (the shared list and approval styles stay). My Day now comes only from the installed plugin, which had first passed a parity check against the framework's own endpoints on real data: summary, emails, calendar and todo, for the whole window and a single day, and the 400 for a day outside the window, all identical, with the Inbox Cockpit still showing a Thread's customer.
+
 - feat: My Day 1.0.0 is published to the Marketplace (`src/marketplace/my-day/1.0.0/`, `REQ-SB-91` Phase 5), from `sb-plugins-my-day` 556d2c6 through `scripts/publish_plugin.py`, which passed every gate: manifest, layout, import boundary, the plugin's 9 tests, and its screens building inside this framework. The framework's own My Day stays until the installed plugin passes a parity check.
 
 - refactor: Pending Approvals is a framework screen (`REQ-SB-91` Phase 5, operator decision 2026-09-14). Agents asking a human is part of how agents work, not part of My Day, so the page moves from `/my-day/approvals` to `/approvals` with its own sidebar entry. A plugin's screens may not import framework features, so the host contract (`src/pluginHost/api.ts`) gains `fetchPendingApprovalCount()`: My Day's dashboard shows the count and links to `/approvals`, but cannot act on an approval itself.

@@ -1,24 +1,7 @@
 /* ==========================================================================
-   My Day dashboard (REQ-SB-12)
+   Shared list vocabulary. My Day's own dashboard rules left with the My Day
+   plugin (REQ-SB-91 Phase 5); what stays here is used across the framework.
    ========================================================================== */
-
-.my-day-navigator {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin: var(--space-3) 0 var(--space-4);
-}
-
-.my-day-navigator-current {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-}
-
-.my-day-navigator-day {
-  font-weight: 600;
-  font-size: var(--font-size-lg);
-}
 
 .btn-link {
   background: none;
@@ -30,38 +13,7 @@
   text-decoration: underline;
 }
 
-.my-day-window-range {
-  margin-left: auto;
-  font-size: var(--font-size-sm);
-}
-
-.day-section-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: var(--space-4);
-}
-
-.day-section-card {
-  display: block;
-  text-decoration: none;
-  color: inherit;
-  transition: transform 0.15s ease, border-color 0.15s ease;
-}
-
-.day-section-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--color-accent);
-}
-
-.day-section-count {
-  font-size: var(--font-size-xl);
-  font-weight: 600;
-  margin: var(--space-2) 0;
-}
-
-/* ==========================================================================
-   Generic item list — reused across the My Day drill-down pages.
-   ========================================================================== */
+/* Generic item list. */
 
 .item-list { display: flex; flex-direction: column; gap: var(--space-2); }
 

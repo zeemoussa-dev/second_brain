@@ -4,10 +4,6 @@ import { SetupPage } from './pages/SetupPage';
 import { AgentsMapPage } from './pages/AgentsMapPage';
 import { ChatPage } from './pages/ChatPage';
 import { CrawlersPage } from './pages/CrawlersPage';
-import { MyDayPage } from './pages/MyDayPage';
-import { MyDayEmailsPage } from './pages/MyDayEmailsPage';
-import { MyDayCalendarPage } from './pages/MyDayCalendarPage';
-import { MyDayTodoPage } from './pages/MyDayTodoPage';
 import { ApprovalsPage } from './pages/ApprovalsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { SettingsArtifactsPage } from './pages/SettingsArtifactsPage';
@@ -41,10 +37,6 @@ function App() {
           <Route path="/" element={<AgentsMapPage />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/crawlers" element={<CrawlersPage />} />
-          <Route path="/my-day" element={<MyDayPage />} />
-          <Route path="/my-day/emails" element={<MyDayEmailsPage />} />
-          <Route path="/my-day/calendar" element={<MyDayCalendarPage />} />
-          <Route path="/my-day/todo" element={<MyDayTodoPage />} />
           <Route path="/approvals" element={<ApprovalsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/system" element={<SettingsSystemPage />} />

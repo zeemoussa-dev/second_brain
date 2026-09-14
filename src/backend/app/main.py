@@ -20,7 +20,6 @@ from app.api.health_check_router import router as health_check_router
 from app.api.hermes_agents_router import router as hermes_agents_router
 from app.api.hermes_router import router as hermes_router
 from app.api.index_router import router as index_router
-from app.api.my_day_router import router as my_day_router
 from app.api.pipelines_router import router as pipelines_router
 from app.api.sections_router import router as sections_router
 from app.api.skills_router import router as skills_router
@@ -225,7 +224,6 @@ app.include_router(blueprints_router)
 app.include_router(marketplace_router)
 app.include_router(boot_router)
 app.include_router(cockpit_router)
-app.include_router(my_day_router)
 app.include_router(system_health_router)
 app.include_router(vault_index_router)
 app.include_router(vault_search_router)
