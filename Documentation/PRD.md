@@ -5072,6 +5072,8 @@ standing convention. -->
 
 ### REQ-SB-90: Deploy Skills Provisioned Into an Install's Config Folder, Not Only Skills Shipped in the Framework Catalog
 
+**Superseded 2026-09-14 by `REQ-SB-91` / `ADR-022`.** Skills are installed from plugin packages; the framework does not read Skill bodies out of an install's config folder. Kept for the record; do not `/spec` this requirement.
+
 Raised 2026-09-14, out of splitting this repository into the framework
 (Second Brain) and two agent repositories, `sb-cbo-agent` and
 `sb-pss-agent`. The operator's model for the split: *"When we deploy the
@@ -5110,5 +5112,54 @@ Customer/Partner/Opportunity coupling tracked separately as `BUG-062`.
 <!-- Logged directly by the Framework session at the operator's instruction
 ("If I needed a feature that the framework doesn't have will be logged");
 /spec should re-verify Finding 1 against the real code before drafting. -->
+
+**Acceptance:** To be drafted as Gherkin at `/spec`.
+
+### REQ-SB-91: Plugin Host and Marketplace — Install Solution Pieces From Settings Instead of Shipping Them in the Framework
+
+Raised 2026-09-14, directly after the repository split (`ADR-021`). The operator's framing:
+*"have PlugIns part of the Settings that we can install Parts of the Solution from and Leave
+the framework Fully empty; then if we installed a plugin it comes with its own pieces."*
+Plugins carry code, not only configuration: *"My Day is a Screen, it's not related to Second
+Brain at all"* and *"if I am building a second Brain for a CFO he cares nothing about
+Partners and Customers."* Decided in `ADR-022`.
+
+**Finding 1 — solution screens and logic are compiled into the framework.** My Day is
+`business/my_day.py` (342 lines), `api/my_day_router.py` (5 endpoints),
+`business/logic/my_day_window.py`, the client `features/my-day/client.ts`, and five screens
+(`MyDayPage`, `MyDayEmailsPage`, `MyDayCalendarPage`, `MyDayTodoPage`,
+`MyDayApprovalsPage`). `Entities.md` is `data_access/entities.py`, three `/vault/entities`
+endpoints, the backend `VaultManager`'s own parsing, artifact export/import hooks, and
+`SettingsVaultEntitiesPage`. Confirmed by reading the code on 2026-09-14.
+
+**Finding 2 — everything is mounted statically.** `main.py` includes 21 routers by name;
+`App.tsx` declares every route; `Sidebar.tsx` hardcodes every nav entry. There is no seam
+through which an installed piece could add a route, a screen or a nav item.
+
+**Finding 3 — Blueprints already cover the Hermes layer.** Installing a Blueprint creates
+the Section, agents, their Skills, the soul and primary routing, with a preflight check.
+It cannot install screens, backend code, Templates, pipelines or schedules, and there is no
+uninstall. The Settings Blueprints page is the natural seed for the Marketplace.
+
+**Finding 4 — My Day is coupled to Cockpit.** `business/logic/cockpit_view.py` imports
+`my_day`, so extracting My Day either includes Cockpit or introduces a seam first.
+
+**Scope.**
+- A plugin host: manifest (`id`, `version`, `framework_api`, `requires`); backend loading in
+  the lifespan with routers under `/plugins/<id>/`; route, nav and Settings-page registries in
+  the frontend fed by build-time composition; a version gate; failure isolation surfaced in
+  System Health.
+- A stable Plugin API facade, and an install-time import check that rejects a plugin
+  reaching past it.
+- A Marketplace inside the framework: validated, versioned packages published from plugin
+  repositories, installed and uninstalled from Settings, with an ownership record.
+- First extraction: My Day, as a plugin in its own repository, published to the Marketplace
+  and installed on this machine with no loss of behaviour.
+
+Out of scope here: the Entities extraction (`BUG-062`), and any runtime (non-rebuild)
+loading of screens, which `ADR-022` rejected.
+
+<!-- Logged by the Framework session at the operator's instruction; /spec should re-verify
+Findings 1-4 against the real code before drafting stories. -->
 
 **Acceptance:** To be drafted as Gherkin at `/spec`.
