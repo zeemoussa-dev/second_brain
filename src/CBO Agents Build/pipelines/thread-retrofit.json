@@ -4,7 +4,7 @@
   "reference": true,
   "status": "reference only -- the first run over the backlog; the same script is also the last step of the nightly Metadata pass",
   "description": "Brings Threads captured before a format change up to the current shape, from data already in the vault -- no re-capture. Rebuilds the Conversation index from the message notes, adds kind/thread, kind/email and kind/attachment, and removes the mailbox owner's own participant links.",
-  "script": "m365/email-thread-capture/scripts/retrofit_conversation_index.py",
+  "script": "graph/email-thread-capture/scripts/retrofit_conversation_index.py",
   "run": "python retrofit_conversation_index.py --vault-path <vault> --dry-run   (then without --dry-run)",
   "steps": [
     {"id": "conversation", "name": "Rebuild the Conversation index", "description": "From the message notes, sorted; written only when it changed.", "depends_on": [], "type": "producer"},

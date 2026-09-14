@@ -73,7 +73,7 @@ def _sibling_skill_scripts(skill_id: str) -> Path | None:
     for candidate in (
         SCRIPTS_DIR.parents[1] / skill_id / "scripts",          # repo, same tool
         SCRIPTS_DIR.parent / skill_id,                          # deployed, same tool
-        # Another Tool: the retrofit lives under m365/, this Skill under vault/.
+        # Another Tool: the retrofit lives under graph/, this Skill under vault/.
         *SCRIPTS_DIR.parents[2].glob(f"*/{skill_id}/scripts"),  # repo
         *SCRIPTS_DIR.parents[1].glob(f"*/{skill_id}"),          # deployed
         # Another profile, deployed: <profiles>/<other>/skills/<tool>/<skill>.

@@ -18,6 +18,14 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- refactor: the `m365` Tool is renamed `graph` -- a Tool names its transport, not a
+  product, and `outlook` sits beside it as a sibling Tool. `graph_calendar_lib.py`
+  resolved its email-capture sibling through a literal `"m365"` path, so meeting
+  capture would have failed to import after the move; fixed, along with the three
+  reference pipelines and the README in `src/CBO Agents Build/`. The opportunity
+  Template's `product: "m365"` is a Microsoft 365 product value, not a Tool, and is
+  deliberately unchanged.
+
 - fix: `migrate_hub_children.py` reached 21 of the vault's 58 `-log.md` notes. It
   named a top-level `Work/Opportunities` root that never existed, read only each
   root's direct children (missing Affiliates), and could not follow nesting

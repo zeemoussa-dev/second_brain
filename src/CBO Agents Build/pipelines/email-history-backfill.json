@@ -4,7 +4,7 @@
   "reference": true,
   "status": "reference only -- a one-time build run, never scheduled",
   "description": "Pulls the mailbox's history -- Inbox and Sent Items -- back to a chosen date, through exactly the same per-message chain the hourly Email Capture delta uses, so a backfilled Thread is indistinguishable from a live one. Walks BACKWARDS from the newest message, which matters to everything downstream: it appends older messages to the oldest end of conversations that already exist.",
-  "script": "m365/email-thread-capture/scripts/run_full_capture.py",
+  "script": "graph/email-thread-capture/scripts/run_full_capture.py",
   "run": "python run_full_capture.py --vault-path <vault> [--before <oldest received already captured, to resume>]",
   "steps": [
     {"id": "page-backwards", "name": "Page backwards", "description": "Fetches a page of messages older than the last one seen, until the target date.", "depends_on": [], "type": "worker"},

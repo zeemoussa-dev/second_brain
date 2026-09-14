@@ -29,12 +29,12 @@ pipeline whether it faces 2,000 unread Threads or 20.
 
 | Reference pipeline | Built | Script |
 |---|---|---|
-| [Email History Backfill](pipelines/email-history-backfill.json) | Threads for the last N months of mail | `m365/email-thread-capture/scripts/run_full_capture.py` |
-| [Meeting History Backfill](pipelines/meeting-history-backfill.json) | Meetings over a wide window | `m365/meeting-capture/scripts/run_full_meeting_capture.py` |
+| [Email History Backfill](pipelines/email-history-backfill.json) | Threads for the last N months of mail | `graph/email-thread-capture/scripts/run_full_capture.py` |
+| [Meeting History Backfill](pipelines/meeting-history-backfill.json) | Meetings over a wide window | `graph/meeting-capture/scripts/run_full_meeting_capture.py` |
 | [Company Discovery — First Build](pipelines/company-discovery-first-build.json) | `Entities.md`, the Customer and Partner hubs | `vault/entity-domain-extraction`, `vault/create-companies-partners` |
 | [Entity Curation](pipelines/entity-curation.json) | real company names, merges, classification | operator review + online research |
 | [Hub Template Migration](pipelines/hub-template-migration.json) | existing hubs brought to a new template shape | `vault/create-companies-partners/scripts/migrate_hub_children.py` |
-| [Thread Retrofit](pipelines/thread-retrofit.json) | Conversation index and kind tags on the backlog | `m365/email-thread-capture/scripts/retrofit_conversation_index.py` |
+| [Thread Retrofit](pipelines/thread-retrofit.json) | Conversation index and kind tags on the backlog | `graph/email-thread-capture/scripts/retrofit_conversation_index.py` |
 
 Script paths are relative to `src/backend/app/business/core/skills/catalog/`.
 

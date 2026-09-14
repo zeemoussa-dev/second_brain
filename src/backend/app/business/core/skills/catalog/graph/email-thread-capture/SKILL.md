@@ -53,7 +53,7 @@ server vs. Hermes-native Skill scripts," for why.
 ## Prerequisites
 
 **Transport: Microsoft Graph (2026-09-09).** This Skill moved from Outlook
-desktop COM to Graph and now lives under the **`m365`** Tool. No Outlook,
+desktop COM to Graph and now lives under the **`graph`** Tool. No Outlook,
 no `pywin32`, no mail profile on the host -- which is the point: the agent
 runs as one account and reads a mailbox belonging to another, which COM
 cannot do. (`outlook/meeting-capture` is still the COM path and is

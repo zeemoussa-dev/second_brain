@@ -57,8 +57,8 @@ from pathlib import Path
 # 3-month capture, and a broken import there stops the whole pull.
 _HERE = Path(__file__).resolve()
 _CANDIDATES = [
-    _HERE.parents[3] / "m365" / "email-thread-capture" / "scripts",  # repo
-    _HERE.parents[2] / "m365" / "email-thread-capture",              # deployed
+    _HERE.parents[3] / "graph" / "email-thread-capture" / "scripts",  # repo
+    _HERE.parents[2] / "graph" / "email-thread-capture",              # deployed
 ]
 for _candidate in _CANDIDATES:
     if (_candidate / "graph_lib.py").is_file() and str(_candidate) not in sys.path:
