@@ -50,6 +50,7 @@ is a thin status mirror of the index table below.
 | BUG-061 | A Pipeline whose id matches an Agent id silently draws TWICE on the Agents Map — `GET /agents` concatenates agents and pipeline summaries with no collision check, so the same id appears as two nodes with different types | Logic | Minor | Open | 2026-09-10 | — |
 | BUG-062 | The framework's data access and backend Vault Manager hardcode Customer/Partner/Opportunity, so business Templates cannot leave the framework — the concepts are compiled into vault_writer, hub linking, People extraction, My Day and Entities.md parsing instead of being declared by Templates | Logic | Major | Open | 2026-09-14 | — |
 | BUG-063 | Cockpit, a framework component, picks agents by Customer — `moderator.py` matches a 'customer expert' through a hardcoded Customer Section, and `cockpit_view` resolves a subject's customer by importing My Day | Logic | Major | Open | 2026-09-14 | — |
+| BUG-065 | Replacing an installed plugin version deleted the old files in place, so a `__pycache__` held open by OneDrive stopped the delete half-way — the plugin's modules were gone, the record still named the old version, and the Marketplace answered 500 | Logic | Critical | Fixed | 2026-09-14 | this change |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -955,3 +956,31 @@ is a thin status mirror of the index table below.
   the plugin extraction plan (`Implementation/Plans/2026-09-14-plugin-host-and-my-day-plugin.md`,
   Phase 3). The `moderator` Customer matching moves to the Entities plugin through a
   matcher hook, together with `BUG-062`.
+
+### BUG-065 — Replacing a plugin version could leave it half-deleted
+
+- **Area:** Logic
+- **Severity:** Critical
+- **Status:** Fixed
+- **Found:** 2026-09-14, installing My Day 1.1.0 over 1.0.0 on an install whose config
+  folder is synced by OneDrive. `POST /marketplace/my-day/1.1.0/install` answered 500 with
+  `PermissionError: [WinError 5] Access is denied` on `plugins/my-day/backend/__pycache__`.
+- **Root cause:** `MarketplaceManager.install` replaced a version by uninstalling it first,
+  and uninstall ran `shutil.rmtree` on each owned piece in place. `rmtree` deletes file by
+  file, so when the OS refused one directory the plugin was already stripped: its
+  `__init__.py`, `day_view.py` and `routes.py` were gone, only `plugin.json` and the held
+  cache folder remained, the ownership record still said 1.0.0, and the screens were
+  untouched. The running backend kept serving from memory; the next start would have
+  disabled the plugin. The plugin host also wrote that `__pycache__` into the synced folder.
+- **Repro:** install a plugin, hold any file in its `backend/` open (a sync client, an
+  editor), then install another version of it.
+- **Expected:** the new version replaces the old, or nothing changes and the reason is shown.
+- **Actual:** the old version half-deleted, the new one not installed, a 500.
+- **Fix:** a version is never deleted in place. Install copies the package into a
+  `.marketplace-work` folder beside each piece first, moves the installed pieces aside with
+  one rename each, moves the new pieces in, writes the record, and only then deletes the
+  replaced pieces as far as the OS allows. A failure before the swap completes puts
+  everything back and answers 409 with the reason. Leftovers the OS will not delete are
+  reported and swept by the plugin's next install or uninstall. Uninstall moves every piece
+  aside before deleting any. The plugin host no longer writes bytecode into the config folder.
+  Regression tests in `tests/test_marketplace.py`.

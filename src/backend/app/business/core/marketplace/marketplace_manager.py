@@ -20,6 +20,10 @@ from app.data_access import plugins as plugins_data
 from app.data_access import skills as skills_data
 
 _VERSION = re.compile(r"^\d+\.\d+\.\d+$")
+_HELD_OPEN_HINT = (
+    "Something is holding its files open -- for example a sync client such as OneDrive, "
+    "or an editor. Try again once it has let go."
+)
 
 
 def _version_key(version: str) -> tuple[int, ...]:
@@ -117,29 +121,59 @@ class MarketplaceManager:
     def install(self, plugin_id: str, version: str) -> dict:
         """Installs one published version, replacing any other installed version
         of the same plugin. Re-runs preflight itself and changes nothing when it
-        fails -- it never trusts a preview the client may be holding."""
+        fails -- it never trusts a preview the client may be holding.
+
+        The installed version is never destroyed before the new one is in place
+        (`BUG-065`): the package is copied into a work folder first, the
+        installed pieces are moved aside whole, the new pieces moved in, and
+        only then is the old version deleted, as far as the OS allows. A failure
+        before the swap completes puts everything back."""
         check = self.preflight(plugin_id, version)
         if not check["ok"]:
-            return {"installed": False, "plugin_id": plugin_id, "version": version, "problems": check["problems"]}
+            return self._not_installed(plugin_id, version, check["problems"])
 
-        if check["replaces"]:
-            removal = self.uninstall(plugin_id)
-            if not removal["uninstalled"]:
-                return {"installed": False, "plugin_id": plugin_id, "version": version,
-                        "problems": [f"the installed {check['replaces']} could not be removed: {removal['reason']}"]}
+        try:
+            targets = marketplace_data.install_targets(plugin_id)
+            marketplace_data.sweep_work_folders(plugin_id)
+            staged = marketplace_data.stage_package(plugin_id, version)
+        except OSError as exc:
+            return self._not_installed(plugin_id, version, [f"the package could not be copied into this install: {exc}"])
 
-        owned = marketplace_data.copy_package_into_install(plugin_id, version)
+        moved_aside: dict[str, Path] = {}
+        placed: list[str] = []
+        try:
+            for part, target in targets.items():
+                aside = marketplace_data.move_aside(target)
+                if aside is not None:
+                    moved_aside[part] = aside
+            for part, source in staged.items():
+                if source is not None:
+                    marketplace_data.move_into_place(source, targets[part])
+                    placed.append(part)
+        except OSError as exc:
+            self._put_back(targets, staged, moved_aside, placed)
+            return self._not_installed(plugin_id, version, [
+                f"the installed version could not be replaced, so nothing was changed: {exc}. "
+                f"{_HELD_OPEN_HINT}"
+            ])
+
         record = plugins_data.read_installed_record() or {"plugins": []}
-        record.setdefault("plugins", []).append({
+        record["plugins"] = [
+            entry for entry in record.get("plugins") or []
+            if not (isinstance(entry, dict) and entry.get("id") == plugin_id)
+        ]
+        record["plugins"].append({
             "id": plugin_id,
             "version": version,
             "installed_at": datetime.now(timezone.utc).isoformat(),
-            "owned": [path for path in owned.values() if path],
+            "owned": [str(targets[part]) for part in placed],
         })
         plugins_data.write_installed_record(record)
+        leftovers = [path for aside in moved_aside.values() for path in marketplace_data.discard_tree(aside)]
         return {
-            "installed": True, "plugin_id": plugin_id, "version": version,
-            "replaced": check["replaces"], "owned": owned, "restart_required": True, "problems": [],
+            "installed": True, "plugin_id": plugin_id, "version": version, "replaced": check["replaces"],
+            "owned": {part: (str(targets[part]) if part in placed else None) for part in targets},
+            "leftovers": leftovers, "restart_required": True, "problems": [],
         }
 
     # -- uninstall ----------------------------------------------------------------
@@ -151,31 +185,72 @@ class MarketplaceManager:
 
         A recorded path outside the two folders a plugin can own is never
         deleted -- the ownership record is a file on disk, and a tampered or
-        corrupted one must not be able to point a delete at anything else."""
+        corrupted one must not be able to point a delete at anything else.
+
+        Every owned piece is moved aside before anything is deleted, so when one
+        cannot be moved the rest are put back and nothing changes (`BUG-065`)."""
         record = plugins_data.read_installed_record() or {"plugins": []}
         entries = record.get("plugins") or []
         matching = [entry for entry in entries if isinstance(entry, dict) and entry.get("id") == plugin_id]
         if not matching:
-            return {"uninstalled": False, "plugin_id": plugin_id, "reason": f"{plugin_id} is not installed"}
+            return {"uninstalled": False, "plugin_id": plugin_id, "in_use": False, "reason": f"{plugin_id} is not installed"}
 
         allowed_roots = [root for root in (plugins_data.plugins_root(), marketplace_data.frontend_plugins_root()) if root]
-        removed, refused = [], []
+        to_remove: list[Path] = []
+        refused: list[str] = []
         for entry in matching:
             for path in entry.get("owned") or []:
                 if any(_is_within(Path(path), root) and Path(path).resolve() != root.resolve() for root in allowed_roots):
-                    if marketplace_data.remove_tree(path):
-                        removed.append(path)
+                    to_remove.append(Path(path))
                 else:
                     refused.append(path)
 
+        marketplace_data.sweep_work_folders(plugin_id)
+        moved_aside: list[tuple[Path, Path]] = []
+        try:
+            for path in to_remove:
+                aside = marketplace_data.move_aside(path)
+                if aside is not None:
+                    moved_aside.append((path, aside))
+        except OSError as exc:
+            for path, aside in reversed(moved_aside):
+                try:
+                    marketplace_data.move_into_place(aside, path)
+                except OSError:
+                    pass
+            return {
+                "uninstalled": False, "plugin_id": plugin_id, "in_use": True,
+                "reason": f"{plugin_id} could not be removed, so nothing was changed: {exc}. {_HELD_OPEN_HINT}",
+            }
+
         record["plugins"] = [entry for entry in entries if entry not in matching]
         plugins_data.write_installed_record(record)
+        leftovers = [path for _, aside in moved_aside for path in marketplace_data.discard_tree(aside)]
         return {
-            "uninstalled": True, "plugin_id": plugin_id, "removed": removed,
-            "refused_outside_plugin_folders": refused, "restart_required": True, "reason": None,
+            "uninstalled": True, "plugin_id": plugin_id, "removed": [str(path) for path, _ in moved_aside],
+            "refused_outside_plugin_folders": refused, "leftovers": leftovers,
+            "restart_required": True, "reason": None,
         }
 
     # -- internals ------------------------------------------------------------------
+
+    def _not_installed(self, plugin_id: str, version: str, problems: list[str]) -> dict:
+        return {"installed": False, "plugin_id": plugin_id, "version": version, "problems": list(problems)}
+
+    def _put_back(self, targets: dict[str, Path], staged: dict[str, Path | None],
+                  moved_aside: dict[str, Path], placed: list[str]) -> None:
+        """Undoes a swap that failed part-way: takes out what was moved in, returns
+        what was moved aside, and deletes the staging copy."""
+        for part in placed:
+            marketplace_data.discard_tree(targets[part])
+        for part, aside in moved_aside.items():
+            try:
+                marketplace_data.move_into_place(aside, targets[part])
+            except OSError:
+                pass
+        for source in staged.values():
+            if source is not None:
+                marketplace_data.discard_tree(source)
 
     def _installed_versions(self) -> dict[str, str]:
         try:

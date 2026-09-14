@@ -102,9 +102,17 @@ def import_backend_package(plugin_id: str) -> ModuleType:
         raise ImportError(f"{plugin_id}: backend/__init__.py cannot be loaded as a package")
     module = importlib.util.module_from_spec(spec)
     sys.modules[package_name] = module
+    # The plugins folder lives in the install's config folder, which may be
+    # synced. A sync client holding a plugin's __pycache__ open is what stopped
+    # a version from being replaced (BUG-065), and a plugin is small enough to
+    # compile at every start.
+    wrote_bytecode = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
     try:
         spec.loader.exec_module(module)
     except BaseException:
         sys.modules.pop(package_name, None)
         raise
+    finally:
+        sys.dont_write_bytecode = wrote_bytecode
     return module

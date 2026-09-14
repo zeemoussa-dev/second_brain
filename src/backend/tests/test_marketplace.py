@@ -74,6 +74,28 @@ def installed_record(roots) -> dict:
     return json.loads((roots["config"] / "plugins" / "installed.json").read_text(encoding="utf-8"))
 
 
+def work_entries(roots) -> list[str]:
+    """What is waiting in the Marketplace's work folders: staging copies and replaced pieces."""
+    entries = []
+    for root in (roots["config"] / "plugins", roots["frontend_plugins"]):
+        work = root / ".marketplace-work"
+        if work.is_dir():
+            entries.extend(entry.name for entry in work.iterdir())
+    return entries
+
+
+def refuse_to_move(monkeypatch, locked: Path) -> None:
+    """Makes one installed piece behave as if something held a file in it open."""
+    real_move_aside = marketplace_data.move_aside
+
+    def move_aside(path):
+        if Path(path) == locked:
+            raise PermissionError(13, "Access is denied", str(path))
+        return real_move_aside(path)
+
+    monkeypatch.setattr(marketplace_data, "move_aside", move_aside)
+
+
 # -- listing and preflight -------------------------------------------------------
 
 
@@ -176,6 +198,83 @@ def test_installing_the_same_version_twice_is_refused(roots):
     assert any("already installed" in problem for problem in result["problems"])
 
 
+# BUG-065: replacing a version deleted the installed backend file by file, so a
+# __pycache__ held open by OneDrive stopped it half-way -- modules gone, record
+# still naming the old version, and a 500.
+
+
+def test_a_version_that_cannot_be_moved_aside_stays_installed_and_whole(roots, monkeypatch):
+    publish(roots, version="1.0.0")
+    publish(roots, version="1.1.0")
+    MarketplaceManager().install("my-day", "1.0.0")
+    # The screens are moved after the backend, so this also puts the backend back.
+    refuse_to_move(monkeypatch, roots["frontend_plugins"] / "my-day")
+
+    result = MarketplaceManager().install("my-day", "1.1.0")
+
+    assert result["installed"] is False
+    assert any("could not be replaced, so nothing was changed" in problem for problem in result["problems"])
+    backend = (roots["config"] / "plugins" / "my-day" / "backend" / "__init__.py").read_text(encoding="utf-8")
+    assert 'VERSION = "1.0.0"' in backend
+    assert (roots["frontend_plugins"] / "my-day" / "index.tsx").is_file()
+    assert [e["version"] for e in installed_record(roots)["plugins"]] == ["1.0.0"]
+    assert work_entries(roots) == []
+    assert [prefix for prefix, _ in PluginManager().load_all()] == ["/plugins/my-day"]
+
+
+def test_a_replaced_version_that_cannot_be_deleted_does_not_fail_the_install(roots, monkeypatch):
+    publish(roots, version="1.0.0")
+    publish(roots, version="1.1.0")
+    MarketplaceManager().install("my-day", "1.0.0")
+    deleting = {"allowed": False}
+    real_rmtree = marketplace_data.shutil.rmtree
+
+    def rmtree(path, *args, **kwargs):
+        if deleting["allowed"]:
+            return real_rmtree(path, *args, **kwargs)
+        return None
+
+    monkeypatch.setattr(marketplace_data.shutil, "rmtree", rmtree)
+
+    result = MarketplaceManager().install("my-day", "1.1.0")
+
+    assert result["installed"] is True
+    backend = (roots["config"] / "plugins" / "my-day" / "backend" / "__init__.py").read_text(encoding="utf-8")
+    assert 'VERSION = "1.1.0"' in backend
+    assert len(result["leftovers"]) == 2 and len(work_entries(roots)) == 2
+
+    deleting["allowed"] = True
+    MarketplaceManager().uninstall("my-day")
+
+    assert work_entries(roots) == []
+
+
+def test_install_repairs_a_plugin_left_with_only_its_bytecode_cache(roots):
+    publish(roots, version="1.0.0")
+    publish(roots, version="1.1.0")
+    MarketplaceManager().install("my-day", "1.0.0")
+    backend = roots["config"] / "plugins" / "my-day" / "backend"
+    (backend / "__init__.py").unlink()
+    (backend / "__pycache__").mkdir(exist_ok=True)
+    (backend / "__pycache__" / "__init__.cpython-311.pyc").write_bytes(b"")
+
+    result = MarketplaceManager().install("my-day", "1.1.0")
+
+    assert result["installed"] is True
+    assert 'VERSION = "1.1.0"' in (backend / "__init__.py").read_text(encoding="utf-8")
+    assert not (backend / "__pycache__").exists()
+    assert [prefix for prefix, _ in PluginManager().load_all()] == ["/plugins/my-day"]
+
+
+def test_the_plugin_host_writes_no_bytecode_into_the_config_folder(roots):
+    publish(roots)
+    MarketplaceManager().install("my-day", "1.0.0")
+
+    PluginManager().load_all()
+
+    assert list((roots["config"] / "plugins").rglob("__pycache__")) == []
+
+
 # -- uninstall ----------------------------------------------------------------------
 
 
@@ -212,6 +311,21 @@ def test_uninstalling_something_not_installed_is_reported(roots):
     result = MarketplaceManager().uninstall("my-day")
 
     assert result["uninstalled"] is False
+
+
+def test_an_uninstall_that_cannot_move_a_piece_aside_changes_nothing(roots, monkeypatch):
+    publish(roots)
+    MarketplaceManager().install("my-day", "1.0.0")
+    refuse_to_move(monkeypatch, roots["frontend_plugins"] / "my-day")
+
+    result = MarketplaceManager().uninstall("my-day")
+
+    assert result["uninstalled"] is False
+    assert result["in_use"] is True
+    assert (roots["config"] / "plugins" / "my-day" / "backend" / "__init__.py").is_file()
+    assert (roots["frontend_plugins"] / "my-day" / "index.tsx").is_file()
+    assert [e["id"] for e in installed_record(roots)["plugins"]] == ["my-day"]
+    assert work_entries(roots) == []
 
 
 # -- HTTP ----------------------------------------------------------------------------

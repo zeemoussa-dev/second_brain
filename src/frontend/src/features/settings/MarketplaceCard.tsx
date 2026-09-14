@@ -11,11 +11,13 @@ import {
 // happen -- and what would stop it -- before anything changes on disk.
 
 function problemsFrom(error: unknown): string[] {
-  // A refused install is a 409 whose body is {"detail": {..., "problems": [...]}}.
+  // A refused install is a 409 whose body is {"detail": {..., "problems": [...]}};
+  // a refused uninstall (a piece held open, BUG-065) carries {"detail": {..., "reason": "..."}}.
   if (error instanceof ApiError) {
     try {
       const body = JSON.parse(error.message);
       if (Array.isArray(body?.detail?.problems)) return body.detail.problems;
+      if (typeof body?.detail?.reason === 'string') return [body.detail.reason];
       if (typeof body?.detail === 'string') return [body.detail];
     } catch {
       // Not JSON: fall through to the raw message.

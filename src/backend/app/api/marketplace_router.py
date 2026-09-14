@@ -43,4 +43,8 @@ def install(plugin_id: str, version: str) -> dict:
 def uninstall(plugin_id: str) -> dict:
     if not _manager.is_installed(plugin_id):
         raise HTTPException(status_code=404, detail=f"{plugin_id} is not installed")
-    return _manager.uninstall(plugin_id)
+    result = _manager.uninstall(plugin_id)
+    if not result["uninstalled"]:
+        # Installed, but a piece is held open: nothing was changed (BUG-065).
+        raise HTTPException(status_code=409, detail=result)
+    return result
