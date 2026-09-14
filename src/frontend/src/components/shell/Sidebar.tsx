@@ -70,13 +70,6 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         <span className="nav-icon">&#128375;</span>
         <span className="nav-label">Crawlers</span>
       </NavLink>
-      <NavLink
-        to="/approvals"
-        className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
-      >
-        <span className="nav-icon">&#10003;</span>
-        <span className="nav-label">Approvals</span>
-      </NavLink>
       {/* Installed plugins' entries (ADR-022) sit where My Day sat before it
           became a plugin, so extracting it does not move it in the sidebar. */}
       {pluginNavEntries.map((entry) => (

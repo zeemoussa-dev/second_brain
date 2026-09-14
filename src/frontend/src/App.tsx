@@ -4,7 +4,6 @@ import { SetupPage } from './pages/SetupPage';
 import { AgentsMapPage } from './pages/AgentsMapPage';
 import { ChatPage } from './pages/ChatPage';
 import { CrawlersPage } from './pages/CrawlersPage';
-import { ApprovalsPage } from './pages/ApprovalsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { SettingsArtifactsPage } from './pages/SettingsArtifactsPage';
 import { SettingsBlueprintsPage } from './pages/SettingsBlueprintsPage';
@@ -37,7 +36,6 @@ function App() {
           <Route path="/" element={<AgentsMapPage />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/crawlers" element={<CrawlersPage />} />
-          <Route path="/approvals" element={<ApprovalsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/system" element={<SettingsSystemPage />} />
           <Route path="/settings/sections" element={<SettingsSectionsPage />} />

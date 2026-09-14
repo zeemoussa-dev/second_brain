@@ -1,0 +1,49 @@
+/* My Day's own layout. The list vocabulary it renders with (.item-list,
+   .item-row, .btn-link, .card, .empty-state) belongs to the framework. */
+
+.my-day-navigator {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-3) 0 var(--space-4);
+}
+
+.my-day-navigator-current {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.my-day-navigator-day {
+  font-weight: 600;
+  font-size: var(--font-size-lg);
+}
+
+.my-day-window-range {
+  margin-left: auto;
+  font-size: var(--font-size-sm);
+}
+
+.day-section-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+}
+
+.day-section-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.day-section-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-accent);
+}
+
+.day-section-count {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  margin: var(--space-2) 0;
+}

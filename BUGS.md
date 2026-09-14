@@ -50,6 +50,7 @@ is a thin status mirror of the index table below.
 | BUG-061 | A Pipeline whose id matches an Agent id silently draws TWICE on the Agents Map — `GET /agents` concatenates agents and pipeline summaries with no collision check, so the same id appears as two nodes with different types | Logic | Minor | Open | 2026-09-10 | — |
 | BUG-062 | The framework's data access and backend Vault Manager hardcode Customer/Partner/Opportunity, so business Templates cannot leave the framework — the concepts are compiled into vault_writer, hub linking, People extraction, My Day and Entities.md parsing instead of being declared by Templates | Logic | Major | Open | 2026-09-14 | — |
 | BUG-063 | Cockpit, a framework component, picks agents by Customer — `moderator.py` matches a 'customer expert' through a hardcoded Customer Section, and `cockpit_view` resolves a subject's customer by importing My Day | Logic | Major | Open | 2026-09-14 | — |
+| BUG-064 | The pending-approvals API was archived on 2026-08-20 but its screens were not — the Approvals page, My Day's approvals card and the Agents Map chat proposal cards call `/pending-approvals*`, which answers 404, and show nothing instead of an error | UI | Major | Open | 2026-09-14 | — |
 | BUG-065 | Replacing an installed plugin version deleted the old files in place, so a `__pycache__` held open by OneDrive stopped the delete half-way — the plugin's modules were gone, the record still named the old version, and the Marketplace answered 500 | Logic | Critical | Fixed | 2026-09-14 | this change |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
@@ -956,6 +957,29 @@ is a thin status mirror of the index table below.
   the plugin extraction plan (`Implementation/Plans/2026-09-14-plugin-host-and-my-day-plugin.md`,
   Phase 3). The `moderator` Customer matching moves to the Entities plugin through a
   matcher hook, together with `BUG-062`.
+
+### BUG-064 — Screens still call the pending-approvals API archived on 2026-08-20
+
+- **Area:** UI
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-09-14, by the Entities inventory for `REQ-SB-91`, then confirmed against
+  the running backend: `GET /pending-approvals?status=pending` answers 404.
+- **Root cause:** commit `c65c708` moved `api/pending_approvals_router.py` to `app/_archive/`
+  with the other orchestration-layer routers. No replacement was mounted, and the screens
+  that call it were left in place:
+  - `pages/ApprovalsPage.tsx` (the Approvals screen, first at `/my-day/approvals`, then `/approvals`)
+  - My Day's Pending Approvals card, through `pluginHost/api.ts` `fetchPendingApprovalCount`
+  - `features/agents-map/AgentDetailPanel.tsx`, chat proposal cards
+    (`fetchPendingApproval`, `approvePendingApproval`, `declinePendingApproval`)
+- **Repro:** open My Day or the Approvals screen with a Supervised agent proposal pending.
+- **Expected:** pending proposals listed, or a visible error.
+- **Actual:** "Nothing awaiting approval", because the failed fetch is never surfaced.
+- **Fix approach:** operator decision 2026-09-14, "Remove it for now": the Approvals screen,
+  its sidebar entry, `fetchPendingApprovalCount` and My Day's card are removed (My Day 1.1.0).
+  The Agents Map chat proposal cards are left for a later decision on approvals as a planned
+  feature; when approvals return, kinds with their own decision (Company Review) are
+  registered by a plugin, not hardcoded.
 
 ### BUG-065 — Replacing a plugin version could leave it half-deleted
 
