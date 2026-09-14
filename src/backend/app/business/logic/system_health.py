@@ -25,8 +25,10 @@ credential/endpoint data), no per-agent rollup (that concept is retired
 alongside disabled_agents)."""
 from __future__ import annotations
 
+from app.business.core.plugins.plugin_manager import PluginManager
 from app.business.core.provider.provider_manager import ProviderManager
 
+_plugin_manager = PluginManager()
 _provider_manager = ProviderManager()
 
 
@@ -39,5 +41,14 @@ def get_system_health() -> dict:
                 "has_real_client": p.has_real_client,
             }
             for p in _provider_manager.get_all()
+        ],
+        # ADR-022: what the plugin host did at startup. A refused, invalid or
+        # disabled plugin is otherwise invisible -- its screens just aren't there.
+        "plugins": [
+            {
+                "id": p.id, "name": p.name, "version": p.version, "status": p.status,
+                "reason": p.reason, "routes_prefix": p.routes_prefix,
+            }
+            for p in _plugin_manager.get_load_report()
         ],
     }

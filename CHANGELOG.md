@@ -18,6 +18,8 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: the backend plugin host (`ADR-022`, `REQ-SB-91` Phase 1). Installed plugins live in `<SECOND_BRAIN_DATA_PATH>/plugins/`, recorded in `installed.json`; each is loaded during startup, its routers mounted under `/plugins/<id>/`. A `framework_api` that does not match is refused before any plugin code runs; a plugin that fails while importing or registering is disabled while the others still load; an id that could escape the plugins folder is rejected. `app/plugin_api.py` is the one module a plugin may import -- v1 is exactly what My Day uses (`vault.index`, `vault.notes_in_kind`, `vault.read_note`, `pipelines.get`, `hermes.run_cron_job`) and returns plain data, never framework entity classes. `scripts/check_plugin_imports.py` enforces the boundary both ways. System Health gains a `plugins` section. 15 tests.
+
 - docs: the plugin host + My Day extraction plan (`Implementation/Plans/2026-09-14-plugin-host-and-my-day-plugin.md`). My Day uses exactly five framework capabilities, which become Plugin API v1; two Cockpit seams are cut first; five gated phases. The plugin lives in `sb-plugins-my-day`.
 
 - docs: `BUG-063` logged -- Cockpit, a framework component, picks agents by Customer and imports My Day to resolve a subject's customer.

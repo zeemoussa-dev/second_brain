@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.business.core.templates.template_manager import TemplateManager
+from app.business.core.plugins.plugin_manager import PluginManager
 from app.business.core.vault.vault_manager import VaultManager
 from app.api.agents_router import router as agents_router
 from app.api.artifacts_router import router as artifacts_router
@@ -80,6 +81,15 @@ async def lifespan(app: FastAPI):
         # start hides it behind a dead port -- the operator could not even
         # reach the UI to be told. Serve, and say so loudly instead.
         print(f"[startup] ERROR: could not seed Master Templates: {exc!r}")
+    # ADR-022 -- load installed plugins before the app serves a request, so
+    # their routes exist from the first one. PluginManager already isolates
+    # each plugin's own failure; this guard is for the host itself failing,
+    # which must never keep the operator from reaching Settings to fix it.
+    try:
+        for prefix, router in PluginManager().load_all():
+            app.include_router(router, prefix=prefix)
+    except Exception as exc:
+        print(f"[startup] ERROR: the plugin host failed, no plugin was loaded: {exc!r}")
     # REQ-SB-80 -- RegistryLoader's cold boot + hot-reload poll loop.
     # Background task, never awaited (same "don't block 'application
     # startup complete'" reasoning as every other fire-and-forget task
