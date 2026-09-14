@@ -241,6 +241,7 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 | BUG-060 | A Thread note's `title` is the raw conversation id | UI | Open | — |
 | BUG-061 | A Pipeline sharing an Agent's id draws twice on the Agents Map | Logic | Open | — |
 | BUG-062 | The framework hardcodes Customer/Partner/Opportunity, so business Templates cannot leave it | Logic | Open | — |
+| BUG-063 | Cockpit, a framework component, picks agents by Customer | Logic | Open | — |
 
 > **Emptied 2026-09-06** with `BUGS.md`, which this mirrors — 42 rows.
 > History: `git show d64dcb4:BACKLOG.md`. Next id is **`BUG-043`**.

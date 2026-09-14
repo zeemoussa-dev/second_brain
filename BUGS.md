@@ -49,6 +49,7 @@ is a thin status mirror of the index table below.
 | BUG-060 | A Thread note's `title` frontmatter is the raw base64 conversation id while its filename and `thread_name` are readable, so Obsidian displays the id | UI | Minor | Open | 2026-09-09 | — |
 | BUG-061 | A Pipeline whose id matches an Agent id silently draws TWICE on the Agents Map — `GET /agents` concatenates agents and pipeline summaries with no collision check, so the same id appears as two nodes with different types | Logic | Minor | Open | 2026-09-10 | — |
 | BUG-062 | The framework's data access and backend Vault Manager hardcode Customer/Partner/Opportunity, so business Templates cannot leave the framework — the concepts are compiled into vault_writer, hub linking, People extraction, My Day and Entities.md parsing instead of being declared by Templates | Logic | Major | Open | 2026-09-14 | — |
+| BUG-063 | Cockpit, a framework component, picks agents by Customer — `moderator.py` matches a 'customer expert' through a hardcoded Customer Section, and `cockpit_view` resolves a subject's customer by importing My Day | Logic | Major | Open | 2026-09-14 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -922,3 +923,35 @@ is a thin status mirror of the index table below.
   and every Template problem involving these kinds traces back to code, not data.
 - **Fix approach (operator, 2026-09-14):** step by step, one module at a time, with
   the framework runnable after each step.
+
+### BUG-063 — Cockpit, a framework component, picks agents by Customer
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-09-14, while planning the My Day plugin extraction (`ADR-022`,
+  `REQ-SB-91`). The operator ruled that Cockpit is framework: *"Cockpit is a Concept of
+  Having Multiple Agents Communicate with each other."* A framework component must not know
+  Customer or Partner (`ADR-021`), and must not import a plugin (`ADR-022`).
+- **Root cause:** Cockpit encodes a company-relationship model in its own code. Counted as
+  EXECUTABLE lines, comments and docstrings excluded:
+
+      16  business/cockpit/moderator.py      _CUSTOMER_SECTION_ID = tag_slug("Customer"),
+                                              match_customer_expert(),
+                                              match_customer_fallback_agent()
+       6  business/logic/cockpit_view.py     resolves a subject's customer via
+                                              my_day.customer_from_tags / customer_name_by_tag
+       2  business/cockpit/chat_store.py     candidate agents start from match_customer_expert
+       2  business/cockpit/chat_turn.py      fallback agent from match_customer_fallback_agent
+
+- **Repro:** remove the Customer Section, or build a second brain with no Customer concept
+  (for example for a CFO), then open a Cockpit. The roster and the fallback agent are still
+  chosen through Customer matching, and `cockpit_view` still imports `my_day`.
+- **Expected:** Cockpit asks installed plugins. A subject-enricher hook resolves subject
+  attributes, and an agent-matcher hook proposes experts, so an install without the
+  Entities plugin (`sb-plugins-entities`) gets no Customer behaviour.
+- **Actual:** Customer matching is compiled into Cockpit, and Cockpit imports My Day.
+- **Fix approach:** the `cockpit_view` -> `my_day` import is cut by the subject-enricher seam in
+  the plugin extraction plan (`Implementation/Plans/2026-09-14-plugin-host-and-my-day-plugin.md`,
+  Phase 3). The `moderator` Customer matching moves to the Entities plugin through a
+  matcher hook, together with `BUG-062`.

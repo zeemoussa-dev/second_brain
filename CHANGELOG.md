@@ -18,6 +18,8 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- docs: `BUG-063` logged -- Cockpit, a framework component, picks agents by Customer and imports My Day to resolve a subject's customer.
+
 - docs: `REQ-SB-91` logged -- the plugin host and Marketplace. `REQ-SB-90` is superseded by it: Skills are installed from plugin packages rather than read out of an install's config folder.
 
 - docs: `ADR-022` -- plugins carry code; the framework becomes a plugin host with a Marketplace. A plugin brings its backend package, screens, Hermes content and Templates; plugins import only a stable Plugin API; a `framework_api` version gate refuses a mismatch; screens are composed at build time; validated packages published from plugin repositories are installed from Settings. First extraction: My Day.
