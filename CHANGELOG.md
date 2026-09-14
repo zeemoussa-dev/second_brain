@@ -18,6 +18,15 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix: `migrate_hub_children.py` reached 21 of the vault's 58 `-log.md` notes. It
+  named a top-level `Work/Opportunities` root that never existed, read only each
+  root's direct children (missing Affiliates), and could not follow nesting
+  (Opportunities under an Affiliate, affiliates of affiliates). Now recursive, skips
+  `_` folders, and routes every filesystem call through `long_path`: the first live
+  run died on `os.rename` past MAX_PATH after 26 notes, and `Path.is_file()` would
+  have silently skipped the rest instead. Run 2026-09-14: 58/58 renamed, second run
+  all zeros. 8 tests, where there were none.
+
 - feat: `history_log.py` joins `vault_manager.py` as a shared engine -- the one
   implementation of a dated History entry: the format, newest-first ordering, and
   replace-rather-than-repeat for an entry that names its source. Extracted from
