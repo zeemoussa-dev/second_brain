@@ -18,6 +18,12 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- docs: `Documentation/enable-long-paths.ps1` -- for IT. Reports, and when elevated
+  enables, Windows `LongPathsEnabled` and Git `core.longpaths`; verifies with a real
+  300-character path under TEMP; says how to reverse it. `-CheckOnly` needs no admin
+  and changes nothing. The vault holds notes past 260 characters, where
+  `Test-Path`/`is_file()` return false silently rather than failing.
+
 - refactor: the `m365` Tool is renamed `graph` -- a Tool names its transport, not a
   product, and `outlook` sits beside it as a sibling Tool. `graph_calendar_lib.py`
   resolved its email-capture sibling through a literal `"m365"` path, so meeting
