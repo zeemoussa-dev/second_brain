@@ -18,6 +18,8 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- refactor: business Skills and Templates leave the framework repository for `sb-pss-agent`, the install that runs them. Skills: `azure-cost-calculator`, `macc-forecast-generator`, `azure-kb-writer`, `compass-kb-writer`, `person-lookup`, `summarize-and-tag-threads`, `track-opportunities`, `create-companies-partners`, `entity-domain-extraction`, `new-company-discovery`, `capture-engagement`, `company-lookup`, `topic-tagging`. Templates: `azure-kb-doc`, `compass-kb-doc`, `industry`, `industry-doc`, `ot-doc`, `sales-doc`, `technology`. The framework keeps what any new agent can be built from: the Blueprint Skills, `vault-index` and `vault-search`, and the `graph` Tool with its capture Skills. `customer`, `partner` and `opportunity` stay until `BUG-062` removes the code that names them. The `pricing` Tool held only `azure-cost-calculator` and is gone with it. Until `REQ-SB-90`, the moved Skills cannot be redeployed from the app; copies already deployed into Hermes keep running.
+
 - docs: `REQ-SB-90` logged -- the framework can only read a Skill's body from its own catalog, so a Skill provisioned into an install's config folder (an agent repository) cannot be listed or deployed. Raised by the framework / sb-cbo-agent / sb-pss-agent split.
 
 - docs: `Documentation/enable-long-paths.ps1` -- for IT. Reports, and when elevated
