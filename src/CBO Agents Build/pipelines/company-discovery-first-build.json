@@ -1,0 +1,17 @@
+{
+  "id": "company-discovery-first-build",
+  "name": "Company Discovery -- First Build",
+  "reference": true,
+  "status": "reference only -- a one-time build run, never scheduled",
+  "description": "Builds Entities.md and the Customer/Partner hubs from captured mail, once. Afterwards, the nightly Metadata pass keeps them current with append-only discovery; this first build is the only run allowed to write Entities.md from scratch.",
+  "steps": [
+    {"id": "extract-domains", "name": "Group senders by domain", "description": "entity-domain-extraction/build_entities_report.py -- mechanical, no model. REWRITES Entities.md, which is why it is never scheduled: after the operator's first review, that file is curation.", "depends_on": [], "type": "worker"},
+    {"id": "operator-review", "name": "Operator review", "description": "The operator classifies Customer vs Partner, sets Ignore, merges domains into Aliases, names Affiliates. Nothing proceeds until this is done.", "depends_on": ["extract-domains"], "type": "worker"},
+    {"id": "create-hubs", "name": "Create the hubs", "description": "create-companies-partners/create_companies_partners.py -- hubs, Affiliates under their parents, People moved into place, company tags.", "depends_on": ["operator-review"], "type": "producer"},
+    {"id": "fill-profiles", "name": "Fill the profiles", "description": "A model fills each hub's Summary once, so no Customer profile starts empty.", "depends_on": ["create-hubs"], "type": "producer"}
+  ],
+  "notes": [
+    "Nightly, the Metadata pipeline runs new-company-discovery/find_new_entities.py instead: it APPENDS unseen domains as `Ignore: Yes` and never touches an existing entry.",
+    "Discovery by domain only finds companies someone emailed. Enrichment adds the rest -- a company discussed in a body or an attachment -- to a review list."
+  ]
+}

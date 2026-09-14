@@ -1,7 +1,7 @@
 ---
 name: summarize-and-tag-threads
 description: Enrichment for email Threads. Reads a Thread once and emits ONE structured extraction -- summary, the people it reveals, the actions it contains, the facts worth remembering -- which is then fanned out to the Thread, the People notes and the company hubs. Use when asked to summarize, enrich or catch up on threads, and as the Enrichment pipeline's scheduled job.
-version: 0.6.0
+version: 0.9.0
 author: second-brain
 license: MIT
 platforms: [windows]
@@ -45,10 +45,12 @@ conversation is *about*, and what it *reveals*.
 
 ## The loop
 
+A scheduled run's prompt header gives the EXACT interpreter and script folder -- use those verbatim. The deployed Skill is flat: there is no scripts\ subfolder, so a path copied from the repo layout does not exist on the machine that runs it.
+
 ### 1. Ask which Threads are due
 
 ```
-terminal(command="python \"${HERMES_SKILL_DIR}\scripts\select_threads.py\" --limit 25")
+terminal(command="python \"${HERMES_SKILL_DIR}\select_threads.py\" --limit 25")
 ```
 
 It returns the batch, oldest first. **Do not pick threads yourself** and
@@ -65,8 +67,14 @@ occasionally re-read one. That is the intended trade.
 ### 2. Read each Thread as text
 
 ```
-terminal(command="python \"${HERMES_SKILL_DIR}\scripts\read_thread.py\" --thread-dir \"<dir>\"")
+terminal(command="python \"${HERMES_SKILL_DIR}\read_thread.py\" --thread-id \"<thread_id>\"")
 ```
+
+**Name a Thread only by the `thread_id` the batch gives you** -- here and
+as `thread_id` in the extraction. Never type or build a folder path from
+its name: names carry a `|` Windows turns into something else, are cut at
+80 characters, and can hold invisible characters that do not survive into
+your prompt. A guessed path fails, and that Thread then fails on every run.
 
 Always this, never the message notes directly. Capture stores each body
 exactly as it arrived, and **83% of a stored Outlook body is markup** --
@@ -84,13 +92,13 @@ complete.
 Write the JSON to a scratch file, then apply it:
 
 ```
-terminal(command="python \"${HERMES_SKILL_DIR}\scripts\apply_thread_extract.py\" --input-file <scratch path>")
+terminal(command="python \"${HERMES_SKILL_DIR}\apply_thread_extract.py\" --input-file <scratch path>")
 ```
 
 ```json
 {
   "schema_version": 1,
-  "thread_path": "<the Thread's own concept .md path>",
+  "thread_id": "<the thread_id from the batch -- never a path>",
   "summary": "What was actually discussed, decided or asked.",
   "companies": ["Masdar"],
   "people": [
@@ -99,6 +107,7 @@ terminal(command="python \"${HERMES_SKILL_DIR}\scripts\apply_thread_extract.py\"
      "linkedin": "..."}
   ],
   "actions": [{"text": "...", "owner": "...", "due": "..."}],
+  "history_line": "Pilot scope agreed; pricing due Friday.",
   "important_info": [{"text": "...", "company": "Masdar"}]
 }
 ```
@@ -129,7 +138,9 @@ assume "no external participant = no company".
 company not the parent"). The parent relationship already lives on
 Masdar's own `affiliate_of` and Mubadala's `## Affiliates` back-link.
 
-Every name here is also checked against the real hubs. One with no hub is
+Every name here is also checked against the real hubs. One that matches a
+hub, by name or alias, is tagged on the Thread by the separate Tagging
+pipeline, which reads your saved extraction; one with no hub is
 filed for the operator to review, never created and never written into
 `Entities.md` -- see **Companies nobody knew about** below. So name a
 company you are confident the Thread is about even when you suspect it
@@ -139,9 +150,10 @@ has no hub yet: that is exactly the signal that pass is looking for.
 
 Only what the Thread actually reveals -- almost always from an email
 signature. **Never guess a job title from context.** These fill blanks on
-real Person notes that other threads reference, and the applier is
-deliberately fill-only: a value already there is never overwritten, so a
-wrong guess you make is only prevented by you not making it.
+real Person notes that other threads reference. The Company pipeline files
+them from your saved read, and it only fills blanks: a value already there is
+kept, and a different one is logged to that person's History. So a wrong guess
+you make is only prevented by you not making it.
 
 Do not send `name` or `email` as corrections. They are the note's
 identity, set at capture from real message headers.
@@ -157,12 +169,24 @@ Thread states one. Leave them out when it does not; an invented deadline
 is worse than a missing one. These become checkboxes in the Thread's
 `## Actions`.
 
+#### history_line
+
+One line for the History of every company in `companies` -- what happened
+with THEM in this Thread, the way someone reading that company's History
+wants it: "Pilot scope agreed; pricing due Friday", not the summary again.
+The Company pipeline gives each named company that has a hub a dated entry
+linking back to this Thread. One entry per Thread: if the Thread grows and is enriched again,
+its entry is replaced, not repeated. If you leave it out, the first sentence
+of your summary is used instead -- so write it; a summary's first sentence is
+rarely the line a History reader wants.
+
 #### important_info
 
 Facts worth remembering about the relationship beyond this Thread -- a
 budget approved, a reorganisation, a change of decision-maker. Name the
-company each belongs to. Carried in the persisted extraction for the
-hub-side applier; not written by this script.
+company each belongs to -- the Company pipeline files each one in that
+company's Captures, linking back to this Thread. A fact naming no company, or
+one with no hub, is not filed anywhere.
 
 **If a Thread reveals nothing, say so with empty lists.** An empty
 `people` or `actions` is a real and correct answer. Do not manufacture
@@ -191,7 +215,10 @@ and report it**; never improvise a workaround.
   `<data>/data/ThreadExtracts/<thread-id>.json`. If an applier turns out
   to have a bug, the fix re-applies from disk rather than re-reading
   thousands of Threads through a model.
-- **Person fields are filled, never overwritten.**
+- **It writes onto the Thread only** -- Summary and Actions. Company tags,
+  each company's History and Captures, and People details are filed from
+  the saved extraction by the pipeline that owns each note (Tagging and
+  Company), so no note has two writers.
 - **Freshness is stamped last**, so a crash mid-apply leaves the Thread
   looking unenriched and it is simply picked up again.
 

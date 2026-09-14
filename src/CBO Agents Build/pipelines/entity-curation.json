@@ -1,0 +1,19 @@
+{
+  "id": "entity-curation",
+  "name": "Entity Curation",
+  "reference": true,
+  "status": "reference only -- run when discovery surfaces a batch, never scheduled",
+  "description": "Turns discovered domains into real companies. Discovery names an entry after its domain ('Acmecorp' for acmecorp.com); curation replaces that with the company's real name, folds a second domain of a known company into its Aliases, files a subsidiary as an Affiliate of its parent, and classifies each -- then the operator flips Ignore to No and the Metadata pipeline builds the hubs.",
+  "steps": [
+    {"id": "merge", "name": "Merge second domains", "description": "A subdomain or regional domain of a company that already has an entry goes into that entry's Aliases -- not a new company.", "depends_on": [], "type": "worker"},
+    {"id": "research", "name": "Research each entity", "description": "Look the company up online: its real name, what it does, who owns it. Ownership decides the classification.", "depends_on": ["merge"], "type": "worker"},
+    {"id": "classify", "name": "Classify", "description": "Customer if owned by the local government or a government entity; Partner otherwise, suppliers included. A subsidiary is an Affiliate of its parent, with its own hub.", "depends_on": ["research"], "type": "worker"},
+    {"id": "hold-the-uncertain", "name": "Hold what research cannot settle", "description": "Left Ignore: Yes with the reason, for the operator -- who knows the correspondence -- to decide.", "depends_on": ["classify"], "type": "worker"},
+    {"id": "flip", "name": "Flip and build", "description": "Ignore: No on the settled ones; the 30-minute hub job creates them.", "depends_on": ["classify"], "type": "producer"}
+  ],
+  "notes": [
+    "An ALIAS says 'same company, second domain'. An AFFILIATE is its own entity with its own hub, People and history. A product of a company is an alias, not a company.",
+    "Research changes answers a guess would get wrong: a domain can belong to a company since merged into the operator's own.",
+    "Verify after every rewrite that no field on an already-created entry changed. There is no backup of Entities.md."
+  ]
+}

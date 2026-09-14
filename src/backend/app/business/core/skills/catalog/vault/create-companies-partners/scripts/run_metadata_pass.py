@@ -19,10 +19,13 @@ Steps, in dependency order:
   3. reconcile  make the folders agree with Entities.md -- reclassify between
                 Customers and Partners, re-parent an Affiliate under its parent,
                 remove a folder marked Deleted
-  4. people     move People into their hub folder, and repair the duplicates
-                capture continuously recreates
-  5. retag      company tags on Threads, Meetings and People, from domains
-  6. engagement engagement/<classification> on Threads and Meetings
+  4. (people)   no longer here -- People run as their own hourly pipeline,
+                people_pipeline.py, which files them AND folds duplicates
+  5. hub-upkeep missing hub sections, the hub's own tag, its children's tags
+  6. (tagging)  no longer here -- company tags and engagement are the Tagging
+                pipeline, run_tagging_pass.py, at 03:30
+  7. retrofit   Conversation index, kind/thread, kind/email, kind/attachment
+                and self-link removal on Threads -- writes only what changed
 
 Order is not arbitrary. `reconcile` runs AFTER `hubs` so an Affiliate whose
 parent was only created tonight can still be filed under it, and BEFORE
@@ -59,10 +62,22 @@ def _sibling_skill_scripts(skill_id: str) -> Path | None:
     flattens it to `<profile>/skills/<tool>/<skill>/` with no scripts/ level.
     Hardcoding the repo shape is why the previous discovery step resolved to a
     path that exists only in a checkout -- it would have reported "not found"
-    every night on the machine that actually runs it."""
+    every night on the machine that actually runs it.
+
+    A Skill can also be deployed to ANOTHER PROFILE: summarize-and-tag-files
+    lives under `files-manager` while this one is under `email-capture`, and
+    Tagging's attachment step failed every night looking for it beside itself
+    (2026-09-12). Sibling profiles are searched too, rather than deploying a
+    second copy of that Skill -- two copies of one script is the drift that
+    once left 228 stale copies across 41 profiles."""
     for candidate in (
-        SCRIPTS_DIR.parents[1] / skill_id / "scripts",   # repo
-        SCRIPTS_DIR.parent / skill_id,                   # deployed (flat)
+        SCRIPTS_DIR.parents[1] / skill_id / "scripts",          # repo, same tool
+        SCRIPTS_DIR.parent / skill_id,                          # deployed, same tool
+        # Another Tool: the retrofit lives under m365/, this Skill under vault/.
+        *SCRIPTS_DIR.parents[2].glob(f"*/{skill_id}/scripts"),  # repo
+        *SCRIPTS_DIR.parents[1].glob(f"*/{skill_id}"),          # deployed
+        # Another profile, deployed: <profiles>/<other>/skills/<tool>/<skill>.
+        *SCRIPTS_DIR.parents[3].glob(f"*/skills/*/{skill_id}"),
     ):
         if candidate.is_dir():
             return candidate
@@ -97,7 +112,8 @@ def _run(label: str, args: list[str], cwd: Path) -> dict:
 # pass correctly skipped is not a change, and treating it as one would make the
 # quiet mode print every single night.
 _INVENTORY_KEYS = {"skipped_ignored", "skipped_already", "skipped_unresolved",
-                   "flat_people", "hubs_seen", "status", "hubs_only"}
+                   "flat_people", "hubs_seen", "status", "hubs_only",
+                   "threads_seen", "self_email", "total_threads"}
 
 
 def _did_something(steps: list[dict]) -> bool:
@@ -165,13 +181,30 @@ def main() -> int:
     if allow_delete:
         reconcile_args.append("--allow-delete")
     steps.append(_run("reconcile", reconcile_args, SCRIPTS_DIR))
-    steps.append(_run("people", ["create_companies_partners.py", "--vault-path", vault,
-                                 "--reconcile-people"], SCRIPTS_DIR))
-    # retag-only covers People, Threads, Meetings and engagement in one call --
-    # it builds its domain index once and reuses it, so splitting these apart
-    # would rescan the vault per step for no benefit.
-    steps.append(_run("retag", ["create_companies_partners.py", "--vault-path", vault,
-                                "--retag-only"], SCRIPTS_DIR))
+    # People are no longer a step here: they run as their own hourly People
+    # pipeline (people_pipeline.py), which both files them under their company
+    # and folds the duplicates capture recreates (operator, 2026-09-11). This
+    # step only ever did the second half -- and since hub creation stopped
+    # moving people, nobody was filed at all.
+    # Hub upkeep only: missing sections, the hub's own tag, its children's tags.
+    # Company tagging of People, Threads and Meetings -- and the engagement
+    # label derived from it -- is the Tagging pipeline now (run_tagging_pass.py,
+    # 03:30), which runs after this so every tag points at where each company
+    # finally sits.
+    steps.append(_run("hub-upkeep", ["create_companies_partners.py", "--vault-path", vault,
+                                     "--hub-upkeep"], SCRIPTS_DIR))
+
+    # Mechanical, so it belongs here rather than waiting for a one-off run: new
+    # Threads arrive every hour and each needs the same Conversation index,
+    # kind tags and self-link removal the backlog got (2026-09-11).
+    retrofit_dir = _sibling_skill_scripts("email-thread-capture")
+    if retrofit_dir and (retrofit_dir / "retrofit_conversation_index.py").is_file():
+        steps.append(_run("retrofit", ["retrofit_conversation_index.py", "--vault-path", vault],
+                          retrofit_dir))
+    else:
+        steps.append({"step": "retrofit", "ok": False,
+                      "error": "retrofit_conversation_index.py not found -- is the "
+                               "email-thread-capture Skill deployed?"})
 
     failed = [s["step"] for s in steps if not s["ok"]]
 

@@ -145,7 +145,10 @@ def _parse_frontmatter_value(raw: str):
 
 
 def read_note(path: Path) -> tuple[dict, str]:
-    text = path.read_text(encoding="utf-8")
+    # long_path: this local reader runs on the attachment note itself, which is
+    # often past MAX_PATH -- the engine's own read_note already handled that,
+    # this copy did not.
+    text = Path(vm.long_path(path)).read_text(encoding="utf-8")
     if not text.startswith("---\n"):
         return {}, text
     end = text.find("\n---\n", 4)
@@ -219,7 +222,7 @@ def _resolve_thread_path(vault_path: Path, thread_wikilink: str) -> Path | None:
     if not threads_root.exists():
         return None
     candidate = threads_root / stem / f"{stem}.md"
-    return candidate if candidate.exists() else None
+    return candidate if os.path.isfile(vm.long_path(candidate)) else None
 
 
 def update_files_log_line(vault_path: Path, thread_path: Path, file_stem: str, short_summary: str) -> bool:
@@ -314,10 +317,10 @@ def add_file_detail(vault_path: Path, file_path: str, details: str, images: list
     real_file = Path(file_path)
     if not real_file.is_absolute():
         real_file = vault_path / real_file
-    if not real_file.is_file():
+    if not os.path.isfile(vm.long_path(real_file)):
         return {"error": f"file not found: {real_file}"}
     md_path = real_file.parent / f"{real_file.parent.name}.md"
-    if not md_path.is_file():
+    if not os.path.isfile(vm.long_path(md_path)):
         return {"error": f"File note not found: {md_path}"}
 
     attached_images = _attach_images(real_file.parent, images or [])
@@ -344,6 +347,40 @@ def add_file_detail(vault_path: Path, file_path: str, details: str, images: list
 
 # ── main ─────────────────────────────────────────────────────────────────
 
+def _record_unknown_companies(vault_path: Path, names: list[str], file_id: str,
+                              file_name: str) -> None:
+    """Files unresolved company names in the same review store the thread
+    applier feeds (operator, 2026-09-11: "When Enrichement Start Check Entities
+    in the new threads"). An attachment is often the ONLY place a company
+    appears -- a proposal naming the end customer, a partner deck listing its
+    clients -- with no email from them for domain discovery to find. Recorded
+    for review, never created.
+
+    Two appliers write this one file. The replace is atomic, so it can lose a
+    concurrent run's additions but never corrupt the store -- acceptable for a
+    review list whose counts rebuild on the next sighting."""
+    import json
+    import os
+    path = vm.data_root(vault_path) / "data" / "UnknownCompanies.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        store = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        store = {}
+    for name in names:
+        name = (name or "").strip()
+        if not name:
+            continue
+        entry = store.setdefault(name, {"seen": 0, "threads": []})
+        entry["seen"] = entry.get("seen", 0) + 1
+        files = entry.setdefault("files", [])
+        if file_id not in [f["id"] for f in files] and len(files) < 5:
+            files.append({"id": file_id, "name": file_name})
+    scratch = path.with_suffix(".writing")
+    scratch.write_text(json.dumps(store, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(scratch, path)
+
+
 def apply_file_review(vault_path: Path, data: dict, force: bool = False) -> dict:
     file_path = Path(data["file_path"])
     if not file_path.is_absolute():
@@ -360,7 +397,7 @@ def apply_file_review(vault_path: Path, data: dict, force: bool = False) -> dict
     # agent's own judgment (found live, `REQ-SB-88-US-01-T04`: the real
     # cron job re-processed 4/15 already-summarized real Files despite
     # SKILL.md's documented skip rule).
-    if not force and file_path.is_file() and vm.get_section_content(file_path, "Summary"):
+    if not force and os.path.isfile(vm.long_path(file_path)) and vm.get_section_content(file_path, "Summary"):
         return {
             "skipped": True,
             "reason": "summary_already_present",
@@ -388,6 +425,8 @@ def apply_file_review(vault_path: Path, data: dict, force: bool = False) -> dict
     )
     if tags:
         vm.merge_tags(file_path, tags)
+    if unresolved:
+        _record_unknown_companies(vault_path, unresolved, file_id, file_path.stem)
 
     files_log_updated = False
     frontmatter, _ = read_note(file_path)

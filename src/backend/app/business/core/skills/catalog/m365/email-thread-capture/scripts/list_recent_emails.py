@@ -1,7 +1,7 @@
 """CLI entry point: fetch one bounded page of recent Outlook emails.
 
 Usage:
-    python list_recent_emails.py --limit 50 [--since ISO] [--before ISO]
+    python list_recent_emails.py --limit 50 [--since ISO] [--before ISO] [--oldest-first]
 
 Prints a JSON array of email dicts to stdout, one per email:
 {id, subject, sender_name, sender_email, sender_department,
@@ -21,6 +21,10 @@ outlook_lib.py at the real per-folder read. Each recipient's own `type`
 (2026-09-02) is "to" or "cc", read directly from Outlook's own
 recipient.Type at the COM layer. Both fields pass straight through this
 module unmodified -- no remapping happens here.
+
+`--oldest-first` (2026-09-11) returns the OLDEST `limit` emails after
+`--since` instead of the newest -- how the delta pages forward from its
+watermark.
 
 `attachments[].temp_path` points at a real file on disk holding that
 attachment's raw bytes (None if it was too large to save) -- pass it
@@ -59,10 +63,13 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--since", default=None)
     parser.add_argument("--before", default=None)
+    parser.add_argument("--oldest-first", action="store_true",
+                        help="The oldest `limit` emails after --since, instead of the newest.")
     args = parser.parse_args()
 
     try:
-        emails = list_recent_mail(limit=args.limit, since=args.since, before=args.before)
+        emails = list_recent_mail(limit=args.limit, since=args.since, before=args.before,
+                                  oldest_first=args.oldest_first)
     except OutlookUnavailable as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

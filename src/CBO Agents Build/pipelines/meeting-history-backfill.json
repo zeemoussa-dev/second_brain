@@ -1,0 +1,17 @@
+{
+  "id": "meeting-history-backfill",
+  "name": "Meeting History Backfill",
+  "reference": true,
+  "status": "reference only -- a one-time build run, never scheduled",
+  "description": "Captures the calendar over a wide window in one bounded fetch. The same script over a 2-days-back / 14-ahead window is the live Meeting Capture delta; only the window differs.",
+  "script": "m365/meeting-capture/scripts/run_full_meeting_capture.py",
+  "run": "python run_full_meeting_capture.py --days-back 90 --days-ahead 14",
+  "steps": [
+    {"id": "fetch-window", "name": "Fetch the window", "description": "One calendarView fetch over the window, paged until complete.", "depends_on": [], "type": "worker"},
+    {"id": "ingest", "name": "Ingest each event", "description": "Series, occurrences and one-time meetings; attendees linked; related Threads linked. Idempotent: an occurrence's identity is series + start.", "depends_on": ["fetch-window"], "type": "producer"}
+  ],
+  "notes": [
+    "Run it AFTER the email backfill, not beside it: both write People notes, and running them together lost ~60 events to contention the first time.",
+    "--limit defaults to 1000; a 90-day window on a busy calendar holds several hundred events."
+  ]
+}

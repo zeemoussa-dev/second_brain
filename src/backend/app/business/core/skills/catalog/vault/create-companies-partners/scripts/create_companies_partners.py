@@ -428,6 +428,66 @@ def reconcile_people(vault_path: Path, *, dry_run: bool = False) -> dict:
             "flat_people": len(list(flat_dir.glob("*.md")))}
 
 
+def _hub_domains(frontmatter: dict) -> list[str]:
+    """A hub's email domains: its `domain` field AND its `aliases`.
+
+    Entities.md's Aliases column holds further domains -- taqa.com on TAQA,
+    sa.ey.com on EY -- and matching `domain` alone missed every person at one
+    (2026-09-11). A name alias such as "ADCB" yields a value no email domain
+    ever equals, so reading aliases as domains is harmless for those."""
+    aliases = frontmatter.get("aliases") or []
+    if isinstance(aliases, str):
+        aliases = [aliases]
+    return (_split_domains(frontmatter.get("domain") or "")
+            + _split_domains(",".join(str(a) for a in aliases)))
+
+
+def _owner_domain() -> str:
+    """The mailbox owner's own email domain, from SECOND_BRAIN_SELF_EMAIL --
+    empty when it is not set."""
+    email = (os.environ.get("SECOND_BRAIN_SELF_EMAIL") or "").strip().lower()
+    return email.rsplit("@", 1)[1] if "@" in email else ""
+
+
+def sync_hub_domains(vault_path: Path, entities_path: Path, *, dry_run: bool = False) -> list[str]:
+    """Copies each entry's Domain and Aliases from Entities.md onto its existing
+    hub note -- adding only, never removing.
+
+    A hub took them at creation and never again, so a domain or alias added
+    afterwards -- sa.ey.com on EY, taqa.com on TAQA, injazat.com on Core42 --
+    never reached the note People and Tagging actually read, and nobody at those
+    domains was ever filed (2026-09-11). A value on the hub that Entities.md no
+    longer lists is left alone: removing one is the operator's call, not a
+    guess this makes. Returns "Hub: +value" for every addition."""
+    hubs = {hub_md.stem: hub_md for hub_md, _kind in _iter_hub_notes(vault_path)}
+    added: list[str] = []
+    for entry in parse_entities(entities_path.read_text(encoding="utf-8-sig")):
+        if _is_excluded_from_creation(entry):
+            continue
+        hub_md = hubs.get(_slugify(_entry_name(entry)))
+        if hub_md is None:
+            continue
+        fields = entry["fields"]
+        frontmatter, _ = vm.read_note(hub_md)
+        have = _split_domains(frontmatter.get("domain") or "")
+        new_domains = [d for d in _split_domains(fields.get("Domain") or "") if d not in have]
+        existing_aliases = frontmatter.get("aliases") or []
+        if isinstance(existing_aliases, str):
+            existing_aliases = [existing_aliases]
+        new_aliases = [a.strip() for a in (fields.get("Aliases") or "").split(",")
+                       if a.strip() and a.strip() not in existing_aliases]
+        if not (new_domains or new_aliases):
+            continue
+        added += [f"{hub_md.stem}: +{value}" for value in new_domains + new_aliases]
+        if dry_run:
+            continue
+        if new_domains:
+            vm.update(vault_path, hub_md, frontmatter={"domain": ", ".join(have + new_domains)})
+        if new_aliases:
+            merge_list_field(hub_md, "aliases", new_aliases)
+    return added
+
+
 def retag_people_by_domain(vault_path: Path) -> dict:
     """2026-08-21 bug fix: a Person note already moved into its own
     Customer/Partner/Affiliate People/ folder (by a prior run of THIS
@@ -455,7 +515,7 @@ def retag_people_by_domain(vault_path: Path) -> dict:
     domain_index: dict[str, tuple[str, str, str]] = {}
     for hub_md, kind in _iter_hub_notes(vault_path):
         frontmatter, _ = vm.read_note(hub_md)
-        for domain in _split_domains(frontmatter.get("domain") or ""):
+        for domain in _hub_domains(frontmatter):
             # First hub claiming a domain keeps it. A domain shared by two hubs
             # is an Entities.md curation error, not something to resolve by
             # tagging the person with both.
@@ -547,11 +607,20 @@ def _build_domain_company_index(vault_path: Path) -> list[tuple[list[str], str, 
     domain. `kind` ("customer"/"partner") is carried so callers that need
     to build a `customer/<slug>`/`partner/<slug>` tag (not just a
     "## Related" wikilink, which doesn't care) don't have to re-derive it
-    themselves."""
+    themselves.
+
+    The mailbox owner's OWN company is left out (operator, 2026-09-11). Its
+    staff are on nearly every Thread -- 2,046 of 2,627 -- so its tag and
+    Related link would say nothing about any of them, the same reason the
+    owner's own Person links were removed. Its People are still filed under it;
+    only Threads and Meetings, which this index feeds, skip it."""
+    owner = _owner_domain()
     entries: list[tuple[list[str], str, str]] = []
     for hub_md, kind in _iter_hub_notes(vault_path):
         frontmatter, _ = vm.read_note(hub_md)
-        domains = _split_domains(frontmatter.get("domain") or "")
+        domains = _hub_domains(frontmatter)
+        if owner and owner in domains:
+            continue
         if domains:
             entries.append((domains, kind, hub_md.stem))
     return entries
@@ -578,11 +647,9 @@ def retag_threads_by_participant_company(vault_path: Path) -> dict:
         every message under it) -- alongside whatever Person wikilinks
         are already there, never removing them.
 
-    Every internal Core42 person is core42.ai or core42.ae, and Core42 is
-    now a real Partner hub note (2026-08-21) -- so yes, [[Core42]] will
-    show up in "## Related" on nearly every Thread. That's not a bug:
-    nearly every real Thread genuinely does have a Core42 participant
-    (whoever's mailbox this is, if no one else on the other side).
+    The mailbox owner's own company is never added (operator, 2026-09-11) --
+    its staff are on nearly every Thread, so the link would say nothing; see
+    _build_domain_company_index.
 
     Idempotent, re-runnable via --retag-only as new hub notes, domains,
     or messages show up. Returns {"threads_updated": [...],
@@ -639,29 +706,90 @@ def retag_threads_by_participant_company(vault_path: Path) -> dict:
     return {"threads_updated": threads_updated, "messages_updated": messages_updated}
 
 
+# The folder a recurring series keeps its instances in, spelled the way the
+# only thing that CREATES it spells it -- meeting-capture's own
+# ingest_meeting.py `_RECURRENCES_SUBFOLDER`. This file looked for
+# "occurrences" instead, a leftover from the older pipeline that vault_lib.py's
+# own (now unused) occurrence_note_path() belongs to, so for 66 real series
+# every captured instance went untagged -- silently, because a glob that
+# matches nothing is not an error (2026-09-12).
+_RECURRENCES_SUBFOLDER = "Recurrences"
+
+
+def _recurrences_dir(series_directory: Path) -> Path | None:
+    """The series' own instances folder, matched without regard to case.
+
+    Two spellings of one folder name is what caused the silent miss above;
+    matching the real child rather than a literal means a capitalisation
+    change on either side cannot quietly zero this out again."""
+    if not series_directory.is_dir():
+        return None
+    wanted = _RECURRENCES_SUBFOLDER.casefold()
+    return next((child for child in series_directory.iterdir()
+                 if child.is_dir() and child.name.casefold() == wanted), None)
+
+
+def _series_concept_note(instance_path: Path) -> Path | None:
+    """The series concept note an instance belongs to, or None if it is not a
+    series instance at all.
+
+    Walks up to whichever ancestor holds the Recurrences folder rather than
+    counting path levels, because an instance sits either directly inside it or
+    in a folder of its own, and both shapes are real here. The concept note is
+    then found by its own frontmatter -- a series folder's name carries a date
+    prefix the note itself does not, so deriving the filename from the folder
+    name finds nothing."""
+    wanted = _RECURRENCES_SUBFOLDER.casefold()
+    for parent in instance_path.parents:
+        if parent.name.casefold() != wanted:
+            continue
+        for candidate in sorted(parent.parent.glob("*.md")):
+            frontmatter, _ = vm.read_note(candidate)
+            if frontmatter.get("type") == "Meeting" and frontmatter.get("recurrence"):
+                return candidate
+        return None
+    return None
+
+
 def _iter_meeting_notes(vault_path: Path):
-    """Yields (path, is_series_concept) for every real Meeting note --
-    a one-time meeting's own single file, a recurring series' own
-    concept file, and every occurrence file under its own occurrences/
-    (mirrors _iter_thread_notes' "directory name == file stem" concept-
-    file test, plus a second pass into occurrences/ for a series)."""
+    """Yields (path, is_series_concept) for every real Meeting note -- a
+    one-time meeting's own single file, a recurring series' own concept file,
+    and every captured instance under that series' own Recurrences/.
+
+    The note is identified by its own `type: "Meeting"` frontmatter, NOT by its
+    filename. The earlier "directory name == file stem" test (borrowed from
+    Threads, where it holds) rejected every recurring series in the vault: a
+    series folder carries a date prefix its own note does not
+    ("2026-06-24-TAQA x Core42 Weekly Cadence/TAQA x Core42 Weekly
+    Cadence.md"), so 66 series concept notes were skipped outright, along with
+    the one one-time meeting whose title ends in a dot Windows drops from the
+    folder name. Every meeting folder holds exactly one note of its own, so
+    reading the type is both simpler and correct (2026-09-12)."""
     meetings_root = vault_path / "Work" / "Meetings"
     if not meetings_root.exists():
         return
-    for concept_path in sorted(meetings_root.glob("*/*.md")):
-        if not concept_path.is_file() or concept_path.parent.name != concept_path.stem:
+    for folder in sorted(meetings_root.glob("*")):
+        if not folder.is_dir():
             continue
-        frontmatter, _ = vm.read_note(concept_path)
-        if frontmatter.get("type") != "Meeting":
-            continue
-        is_series = bool(frontmatter.get("recurrence"))
-        yield concept_path, is_series
-        if is_series:
-            occurrences_dir = concept_path.parent / "occurrences"
-            if occurrences_dir.exists():
-                for occurrence_path in sorted(occurrences_dir.glob("*.md")):
-                    if occurrence_path.is_file():
-                        yield occurrence_path, False
+        for concept_path in sorted(folder.glob("*.md")):
+            frontmatter, _ = vm.read_note(concept_path)
+            if frontmatter.get("type") != "Meeting":
+                continue
+            is_series = bool(frontmatter.get("recurrence"))
+            yield concept_path, is_series
+            if not is_series:
+                continue
+            recurrences_dir = _recurrences_dir(folder)
+            if recurrences_dir is None:
+                continue
+            # An instance gets its own folder ("Recurrences/<dated title>/<dated
+            # title>.md"), which is what meeting-capture writes today; the flat
+            # shape is what older captures left behind. Both are real in this
+            # vault's history, so read both rather than assuming one.
+            for instance_path in sorted(list(recurrences_dir.glob("*.md"))
+                                        + list(recurrences_dir.glob("*/*.md"))):
+                if instance_path.is_file():
+                    yield instance_path, False
 
 
 def _resolve_companies_for_wikilinks(wikilinks: list[str], person_emails: dict[str, str], domain_index) -> set[tuple[str, str]]:
@@ -680,7 +808,7 @@ def _resolve_companies_for_wikilinks(wikilinks: list[str], person_emails: dict[s
 def _apply_company_resolution(path: Path, resolved: set[tuple[str, str]], updated: list[str]) -> None:
     """Shared tag + "## Related" application, used both for a meeting's
     own real attendees and for a recurring series' concept note's own
-    rolled-up union across its occurrences."""
+    rolled-up union across its captured instances."""
     if not resolved:
         return
     tags = [f"{kind}/{_tag_slug(stem)}" for kind, stem in resolved]
@@ -727,11 +855,9 @@ def retag_meetings_by_attendee_company(vault_path: Path) -> dict:
         resolved = _resolve_companies_for_wikilinks(frontmatter.get("attendees") or [], person_emails, domain_index)
         _apply_company_resolution(meeting_path, resolved, meetings_updated)
 
-        if meeting_path.parent.name == "occurrences":
-            series_directory = meeting_path.parent.parent
-            concept_path = series_directory / f"{series_directory.name}.md"
-            if concept_path.exists():
-                series_rollup.setdefault(concept_path, set()).update(resolved)
+        concept_path = _series_concept_note(meeting_path)
+        if concept_path is not None:
+            series_rollup.setdefault(concept_path, set()).update(resolved)
 
     for concept_path, resolved in series_rollup.items():
         _apply_company_resolution(concept_path, resolved, meetings_updated)
@@ -963,6 +1089,14 @@ def build(vault_path: Path, entities_path: Path, *, move_people: bool = True) ->
     people_moved_total = 0
 
     top_level_paths: dict[str, tuple[Path, Path, str]] = {}  # name.lower() -> (folder, md_path, section)
+    # Every hub already in the vault, wherever it sits, by its folder name.
+    # Creation used to check only the exact path Entities.md implies, so an
+    # entity whose section or parent had just changed was created AGAIN at the
+    # new path beside the original -- and the nightly reconcile then refused to
+    # move the original onto it, so the duplicate was permanent (2026-09-11:
+    # AIQ, made an Affiliate of ADNOC, appeared twice).
+    existing_hubs: dict[str, Path] = {md.stem: md for md, _ in _iter_hub_notes(vault_path)}
+    waiting_to_move: list[str] = []
 
     # Pass 1: top-level entries (blank "Affiliate of")
     for entry in entries:
@@ -976,11 +1110,18 @@ def build(vault_path: Path, entities_path: Path, *, move_people: bool = True) ->
         md_path = _hub_path(vault_path, name, section)
         already = entry["fields"].get("Created", "No").strip().lower() == "yes"
         if not md_path.exists():
-            vm.create(
-                vault_path, _template_for(section), title=name, note_name=_hub_root(section),
-                frontmatter=_hub_frontmatter(name, entry["fields"].get("Domain", ""), entry["fields"].get("Aliases", "")),
-                caller=_VM_CALLER,
-            )
+            elsewhere = existing_hubs.get(md_path.stem)
+            if elsewhere is not None:
+                # Exists, just not where Entities.md now says -- reclassified,
+                # or no longer an Affiliate. The nightly reconcile MOVES it.
+                md_path = elsewhere
+                waiting_to_move.append(name)
+            else:
+                vm.create(
+                    vault_path, _template_for(section), title=name, note_name=_hub_root(section),
+                    frontmatter=_hub_frontmatter(name, entry["fields"].get("Domain", ""), entry["fields"].get("Aliases", "")),
+                    caller=_VM_CALLER,
+                )
         top_level_paths[name.lower()] = (md_path.parent, md_path, section)
         if already:
             skipped_already.append(name)
@@ -1065,10 +1206,14 @@ def build(vault_path: Path, entities_path: Path, *, move_people: bool = True) ->
                     parent_section = entry["section"]
                     parent_md = _hub_path(vault_path, affiliate_of, parent_section)
                     if not parent_md.exists():
-                        vm.create(
-                            vault_path, _template_for(parent_section), title=affiliate_of, note_name=_hub_root(parent_section),
-                            caller=_VM_CALLER,
-                        )
+                        elsewhere = existing_hubs.get(parent_md.stem)
+                        if elsewhere is not None:
+                            parent_md = elsewhere
+                        else:
+                            vm.create(
+                                vault_path, _template_for(parent_section), title=affiliate_of, note_name=_hub_root(parent_section),
+                                caller=_VM_CALLER,
+                            )
                     placeholder_entry = {
                         "section": parent_section,
                         "heading": affiliate_of,
@@ -1083,7 +1228,13 @@ def build(vault_path: Path, entities_path: Path, *, move_people: bool = True) ->
             parent_folder, parent_md, parent_section = parent
             affiliate_md = _affiliate_path(parent_folder, name)
             already = entry["fields"].get("Created", "No").strip().lower() == "yes"
-            if not affiliate_md.exists():
+            elsewhere = None if affiliate_md.exists() else existing_hubs.get(affiliate_md.stem)
+            if elsewhere is not None:
+                # Exists elsewhere -- made an Affiliate after it was created, or
+                # given a new parent. Reconcile moves it; see pass 1.
+                affiliate_md = elsewhere
+                waiting_to_move.append(name)
+            elif not affiliate_md.exists():
                 # parent_value=affiliate_of -- the engine's own resolve_parent
                 # finds parent_md (already guaranteed to exist above), auto-
                 # derives note_name from it (_child_note_name), and writes
@@ -1133,6 +1284,7 @@ def build(vault_path: Path, entities_path: Path, *, move_people: bool = True) ->
             "created": created, "skipped_ignored": skipped_ignored,
             "skipped_already": skipped_already, "skipped_unresolved": skipped_unresolved,
             "auto_created_parents": auto_created_parents, "hubs_only": True,
+            "waiting_to_move": waiting_to_move,
         }
 
     # Always retag/relink at the end -- catches BOTH people this run just
@@ -1203,6 +1355,15 @@ def main() -> int:
         help="Skip Entities.md entirely -- just re-run the domain-based Person tag/link pass "
              "against whatever Customer/Partner/Affiliate hub notes already exist.",
     )
+    parser.add_argument("--hub-upkeep", action="store_true",
+                        help="Hub upkeep only -- missing sections, the hub's own tag, its "
+                             "children's tags. The Metadata pipeline's step.")
+    parser.add_argument("--domain-tags", action="store_true",
+                        help="Company tags on People, Threads and Meetings from email "
+                             "domains. The Tagging pipeline's first step.")
+    parser.add_argument("--engagement", action="store_true",
+                        help="engagement/<classification> on Threads and Meetings, from "
+                             "their company tags. The Tagging pipeline's last step.")
     args = parser.parse_args()
     if not (args.vault_path or "").strip():
         # An empty value would become Path("") -> the CWD, which is exactly the
@@ -1216,6 +1377,42 @@ def main() -> int:
 
     if args.reconcile_people:
         print(json.dumps(reconcile_people(vault_path), ensure_ascii=False))
+        return 0
+
+    # --retag-only's pieces, split so each lands in the pipeline it belongs to
+    # (operator, 2026-09-11: "Enrich is different from Tagging, 2 Pipelines
+    # now", then "All tagging"): hub upkeep is Metadata -- the hub's own shape;
+    # domain tags and engagement are Tagging. --retag-only still runs them all.
+    if args.hub_upkeep:
+        entities_path = vault_manager.data_root(vault_path) / "Settings" / args.entities_name
+        synced = sync_hub_domains(vault_path, entities_path) if entities_path.is_file() else []
+        upkeep = backfill_hub_note_metadata(vault_path)
+        print(json.dumps({
+            "hub_domains_synced": synced,
+            "hub_notes_self_tagged": len(upkeep["self_tagged"]),
+            "hub_notes_log_captures_backfilled": len(upkeep["log_captures_backfilled"]),
+            "hub_children_tagged": len(upkeep["children_tagged"]),
+            "hub_sections_added": len(upkeep["sections_added"]),
+        }, ensure_ascii=False))
+        return 0
+    if args.domain_tags:
+        people = retag_people_by_domain(vault_path)
+        threads = retag_threads_by_participant_company(vault_path)
+        meetings = retag_meetings_by_attendee_company(vault_path)
+        print(json.dumps({
+            "people_tagged": len(people["tagged"]),
+            "people_linked": len(people["linked"]),
+            "threads_related_updated": len(threads["threads_updated"]),
+            "messages_company_linked": len(threads["messages_updated"]),
+            "meetings_updated": len(meetings["meetings_updated"]),
+        }, ensure_ascii=False))
+        return 0
+    if args.engagement:
+        engagement = tag_engagement_type(vault_path)
+        print(json.dumps({
+            "engagement_threads_tagged": len(engagement["threads_updated"]),
+            "engagement_meetings_tagged": len(engagement["meetings_updated"]),
+        }, ensure_ascii=False))
         return 0
 
     if args.retag_only:

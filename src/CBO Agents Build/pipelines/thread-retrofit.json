@@ -1,0 +1,17 @@
+{
+  "id": "thread-retrofit",
+  "name": "Thread Retrofit",
+  "reference": true,
+  "status": "reference only -- the first run over the backlog; the same script is also the last step of the nightly Metadata pass",
+  "description": "Brings Threads captured before a format change up to the current shape, from data already in the vault -- no re-capture. Rebuilds the Conversation index from the message notes, adds kind/thread, kind/email and kind/attachment, and removes the mailbox owner's own participant links.",
+  "script": "m365/email-thread-capture/scripts/retrofit_conversation_index.py",
+  "run": "python retrofit_conversation_index.py --vault-path <vault> --dry-run   (then without --dry-run)",
+  "steps": [
+    {"id": "conversation", "name": "Rebuild the Conversation index", "description": "From the message notes, sorted; written only when it changed.", "depends_on": [], "type": "producer"},
+    {"id": "kind-tags", "name": "Kind tags", "description": "kind/thread, kind/email, kind/attachment -- added only where absent.", "depends_on": [], "type": "producer"},
+    {"id": "self-links", "name": "Remove the owner", "description": "Needs SECOND_BRAIN_SELF_EMAIL; without it this step is skipped, and capture stops excluding the owner.", "depends_on": [], "type": "producer"}
+  ],
+  "notes": [
+    "The first run over a large backlog is slow: every Thread is written, and each write resolves the Thread by id. Nightly it touches only what changed."
+  ]
+}

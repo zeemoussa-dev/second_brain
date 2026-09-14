@@ -18,6 +18,159 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat: `find_mentioned_entities.py` -- the other half of company discovery.
+  `find_new_entities.py` can only find a company that has sent us mail; a
+  company merely DISCUSSED in threads has no domain, so 736 such names had
+  accumulated in `UnknownCompanies.json` with no way for the operator to act on
+  them. This drops the ones already tracked (by row, alias, or a hub's own
+  spellings) and writes the rest into `Entities.md` as `Ignore: Yes` /
+  `Created: No` rows with an empty `Domain`, most-mentioned first -- inert
+  questions, not decisions. `--min-mentions` caps how many rows he takes on;
+  everything below the line still appears, with the threads it came from, in a
+  regenerated `Settings/Unclassified-Companies.md`.
+- fix: normalising a company name no longer treats an apostrophe as a word
+  separator, so "L'IMAD" and "LIMAD" resolve to each other.
+
+- fix: recurring meetings are tagged with the companies who attend them. Nothing
+  about a recurring series had ever been tagged: its instances live in
+  `Recurrences/<dated title>/`, which the tagger looked for as a flat
+  `occurrences/`, and its concept note was rejected outright by a "folder name
+  == file stem" test that a date-prefixed series folder can never satisfy. A
+  meeting note is now identified by its own `type: "Meeting"` frontmatter, and
+  the series a given instance belongs to is found by walking up to the folder
+  that holds it rather than by rebuilding a filename. Retrofitted: 172 recurring
+  notes tagged (up from none), 433 given an engagement classification.
+
+- feat: `company-lookup` -- the portfolio answered from the vault instead of
+  from whatever the agent happened to read. `company_counts.py` separates
+  companies we have CLASSIFIED from the ones we have actually ENGAGED with (305
+  and 262 today, and an affiliate is never counted as its own relationship);
+  `find_company.py` returns every company a name could mean, with how it
+  matched, and names the neighbours even on an exact hit; `company_brief.py`
+  gathers one relationship from the notes that own each part -- History for
+  events, `## Captured` for durable facts, the hub's unticked `## Actions` for
+  what we still owe. All three read only, and a name matching two companies
+  gets candidates rather than a brief. Attached to `entity-manager`.
+
+- feat: `capture-engagement` -- what the CBO says about a company, filed against
+  that company. One resolve step (which company, which people; ambiguity is
+  reported, never resolved by picking) and one applier: the event becomes a dated
+  line in the company's History, durable facts land under its Captures'
+  `## Captured`, commitments become checkboxes in the hub's Actions, people are
+  wiki-linked. Every line carries `-- CBO capture`; the operator's own `## Notes`
+  and `## Personal Notes` are never touched. Owned by the new `entity-manager`
+  agent in the Customers/Partners section.
+- refactor: `company_index.py` joins `vault_manager.py` as a shared engine, so
+  resolving a company name to its hub is one implementation -- and one that
+  refuses to resolve a parent to its affiliate or to choose between two matches.
+
+- fix: company matching compares an identifying form of the name (legal forms such as LLC/Ltd/PJSC removed, dotted initialisms collapsed), so an affiliate's legal name resolves to the affiliate rather than to nothing -- and never to its parent.
+
+- fix: Tagging's attachment step could never find its Skill (deployed under a
+  different Hermes profile), Enrichment now resolves a Thread id an agent
+  shortened when it can only mean one Thread, and the review file parallel jobs
+  share survives Windows' lock and rename races.
+
+- feat: Thread Enrichment runs as parallel jobs over disjoint shards of the
+  backlog (`select_threads.py --shard K --shards N`, CRC32 of the Thread id), with
+  a lock on the one file every job updates (`UnknownCompanies.json`). Five jobs of
+  twenty Threads, every 15 minutes, on the operator's instance.
+- fix: hub notes pick up later edits to Entities.md's Domain and Aliases (hub
+  upkeep copies them, adding only); People, Thread and Meeting company matching
+  reads a hub's aliases as well as its domain; the mailbox owner's own company is
+  left off Threads and Meetings, while its People are still filed under it.
+
+- fix: Enrichment names each Thread by its conversation id, never by a path. The
+  agent had typed folder paths from Thread titles and got them wrong (a `|`, an
+  80-character cut, a zero-width space the prompt strips), so those Threads failed
+  at the head of every batch. The picker returns ids, the read and save scripts
+  resolve the folder in code, and the launcher shows the agent ids only.
+
+- fix: the email delta could never catch up a backlog bigger than one run. It
+  paged backward from "now" and saved its watermark only at the end, so Hermes'
+  one-hour limit killed every run with nothing saved. It now pages oldest first
+  from the watermark, saves after each email, stops itself at 50 minutes, and
+  skips mail already in the vault.
+
+- feat: Company pipeline -- hourly, no model. From each Thread's saved extraction
+  it writes each named company's History, files the facts worth remembering under
+  that company's Captures (`## Captured`; the operator's `## Notes` is never
+  touched), and fills People details: blanks are filled, a differing value is
+  logged to the person's History and the existing one kept. Enrichment now writes
+  only onto the Thread and saves its read. Retrofit: 32 facts into 31 companies'
+  Captures, 1 field filled, 6 title changes logged; a second pass wrote nothing.
+
+- feat: Tagging is its own pipeline and owns every tag -- company tags from email
+  domains, from each Thread's saved extraction and from attachment summaries, then
+  the engagement label, nightly at 03:30. Enrichment reads and saves; it no longer
+  tags. Metadata is structure only: discover, hubs, reconcile, hub upkeep, thread
+  upkeep.
+
+- feat: Enrichment writes Customer Logs -- a dated line in the History of each
+  company a Thread names, one entry per Thread. Backfilled from the saved
+  extractions without a model: 240 entries across 59 company Histories, none of
+  which had a single entry before.
+
+- fix: thread enrichment never tagged the companies it named -- they fed only the
+  review list, dropping the "tag all companies" rule the applier it replaced
+  enforced. It now tags every named company that resolves to a hub, by name or
+  alias. Backfilled from the saved extractions without re-reading anything: 240
+  tags on 126 Threads, plus 8 on 5 attachments from their summaries' wikilinks.
+  `retag_threads_from_extracts.py` and `retag_files_from_summaries.py` are safe to
+  re-run after any alias or hub is added.
+
+- feat: People pipeline -- every Person filed under the company it belongs to, hourly.
+  A duplicate capture recreates is folded into the filed note: blank fields filled,
+  any value that differs logged to the note's History with the existing value kept,
+  then deleted. A duplicate someone wrote in is never deleted. First run filed 1,521
+  of the 1,537 people who belonged to a hub; none had ever been filed before.
+
+- fix: thread enrichment and the backend's Cockpit lookup searched only the flat
+  People folder / Customers, so filed people -- mostly under Partners -- would have
+  vanished from both.
+
+- fix: the Agents Map showed every pipeline with no schedule. The manager matched a
+  Hermes job by NAME against a job ID, and looked in a profile's store while
+  `hermes cron create` writes the shared one. Now by id or name, with a shared-store
+  fallback.
+
+- fix: hub creation made a second copy of an entity whose parent or section had
+  changed (AIQ, made an Affiliate of ADNOC, appeared twice), and the nightly move
+  then refused to merge onto it. Creation now looks for the entity anywhere in the
+  vault and leaves the move to reconcile.
+
+- fix: `vault_manager.write_note` wrote with a plain path, so every engine write to a
+  note past MAX_PATH failed -- File Enrichment summarized long-path attachments and
+  could not save them. Fixed with the other plain-path spots it led to.
+
+- fix: attachments named after an email subject (`:`, `|`) and slugs cut on a space
+  still lost 37 files after the MAX_PATH fix. All 256 lost attachments are recovered.
+
+- fix: the email and meeting deltas defer to each other, not only to a backfill --
+  both write the same People notes.
+
+- feat: File Enrichment pipeline -- every captured attachment gets a real summary,
+  a one-line caption on its Thread and its company tags. Text is extracted in code
+  (`read_file.py`: PDF, Word, Excel, PowerPoint, forwarded email) and the extractor
+  states what it could not read. Scheduled every 30 minutes, ten files a run.
+
+- fix: 256 attachments were lost to Windows MAX_PATH -- capture created the folder,
+  then failed writing the file inside it, silently. All attachment I/O now goes
+  through `vault_manager.long_path`. `recover_lost_attachments.py` re-fetches the
+  lost bytes from Graph, tracing each empty folder to its message by hash.
+
+- fix: re-capturing a message rewrote its attachment notes with an empty Summary.
+  Capture meets messages again routinely, so an existing attachment note is now
+  never rewritten.
+
+- feat: Meeting Capture runs as an hourly delta (2 days back, 14 ahead), deferring
+  while an email backfill runs. The thread retrofit is the nightly Metadata pass's
+  last step and writes only what changed.
+
+- docs: `src/CBO Agents Build/` -- the one-time build pipelines (backfills, first
+  company build, curation, migrations, retrofit), recorded as reference only. The
+  Agents Map now shows only the delta pipelines the CBO watches.
+
 - feat: `reconcile_entities.py` — makes the vault's folders agree with `Entities.md`.
   Reclassify between Customers and Partners, re-parent an Affiliate under its parent,
   remove a folder marked `Deleted` (moving its People back to `Work/People` first).

@@ -1,0 +1,18 @@
+{
+  "id": "hub-template-migration",
+  "name": "Hub Template Migration",
+  "reference": true,
+  "status": "reference only -- run once per template change, never scheduled",
+  "description": "A template shapes only the notes created AFTER it changed. When the Customer/Partner/Opportunity template renames or adds a section, the hubs already in the vault need this to match: Log renamed to History, captures notes split into a human Notes section and an agent Captured section, and sections put back in template order.",
+  "script": "vault/create-companies-partners/scripts/migrate_hub_children.py",
+  "run": "python migrate_hub_children.py --vault-path <vault> --dry-run   (then without --dry-run)",
+  "steps": [
+    {"id": "rename-children", "name": "Rename the children", "description": "<Name>-log.md to <Name>-history.md, with its heading and index link.", "depends_on": [], "type": "producer"},
+    {"id": "structure-captures", "name": "Structure the captures note", "description": "## Notes for the operator, ## Captured for agents -- the human_only / machine_write split made structural.", "depends_on": [], "type": "producer"},
+    {"id": "reorder", "name": "Restore section order", "description": "Backfilled sections are appended; each block is moved WITH its content into template order, unknown headings kept after the known ones.", "depends_on": ["rename-children"], "type": "producer"}
+  ],
+  "notes": [
+    "Idempotent: a second run reports zero changes.",
+    "A rename lands in three places: the template, every writer that builds the path or heading by hand, and this migration. Grep the catalog for the old name before calling it done."
+  ]
+}

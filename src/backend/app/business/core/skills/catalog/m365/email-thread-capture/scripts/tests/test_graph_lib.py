@@ -201,6 +201,16 @@ def test_filter_and_paging_land_in_the_query():
     assert "mailFolders/inbox/messages" in url
 
 
+def test_oldest_first_asks_graph_for_ascending_order():
+    """The delta pages FORWARD from its watermark; descending order would hand
+    it the newest mail first and strand everything in between."""
+    ascending = graph_lib._folder_url("a@b.com", "inbox", 50, "2026-09-04 09:12:33.482000+00:00",
+                                      None, oldest_first=True)
+    assert "receivedDateTime+asc" in ascending or "receivedDateTime asc" in ascending
+    default = graph_lib._folder_url("a@b.com", "inbox", 50, None, None)
+    assert "receivedDateTime+desc" in default or "receivedDateTime desc" in default
+
+
 def test_named_mailbox_is_used_not_me():
     """App-only auth has no signed-in user, so /me does not exist."""
     url = graph_lib._folder_url("sherif.tawfik@core42.ai", "inbox", 5, None, None)

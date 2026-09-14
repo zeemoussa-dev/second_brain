@@ -26,10 +26,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from pathlib import Path
 
+from vault_manager import long_path
+
 _SLUG_INVALID_CHARS = re.compile(r'[\\/:*?"<>|]')
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f]")
 _LEADING_RE_PREFIX = re.compile(r"^(?:re:\s*)+", re.IGNORECASE)
 _FRONTMATTER_LINE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*):\s?(.*)$")
 _LIST_ITEM_PATTERN = re.compile(r'"((?:[^"\\]|\\.)*)"')
@@ -92,8 +96,28 @@ def _is_header_allowed(caller: str, header: str) -> bool:
 # ── slugs / frontmatter formatting ─────────────────────────────────────
 
 def _slugify(text: str, max_len: int = 80) -> str:
-    slug = _SLUG_INVALID_CHARS.sub("-", text).strip()
-    return slug[:max_len] if slug else "untitled"
+    # Trimmed AFTER truncating, not before. A cut at 80 can land on a space,
+    # and Windows silently drops a trailing space or dot from a path component
+    # -- but only through the plain API. Through long_path's literal form the
+    # name is taken as written, so the folder capture made ("...Maiyas") and
+    # the one a re-fetch asked for ("...Maiyas ") were different (2026-09-11).
+    slug = _SLUG_INVALID_CHARS.sub("-", text).strip()[:max_len].rstrip(" .")
+    return slug or "untitled"
+
+
+def _disk_name(filename: str, max_len: int = 180) -> str:
+    """The name an attachment is WRITTEN under; the note's `original_filename`
+    keeps the real one verbatim. Many attachments are attached emails named
+    after their subject -- "FW: Invitation...", "To Send | Fw: ..." -- and `:`
+    and `|` are illegal in a Windows file name. Only the folder slug was ever
+    sanitized, so those writes failed and the attachment was lost. Capped below
+    NTFS's 255-character component limit, keeping the extension."""
+    name = _SLUG_INVALID_CHARS.sub("-", filename)
+    name = _CONTROL_CHARS.sub("", name).strip().rstrip(" .") or "attachment"
+    if len(name) > max_len:
+        stem, suffix = os.path.splitext(name)
+        name = stem[: max_len - len(suffix)].rstrip(" .") + suffix
+    return name
 
 
 def clean_subject(subject: str) -> str:
@@ -148,8 +172,9 @@ def _write_frontmatter_note(path: Path, frontmatter: dict, body: str) -> None:
     for key, value in frontmatter.items():
         frontmatter_lines.append(f"{key}: {_format_frontmatter_value(value)}")
     frontmatter_lines.append("---")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(frontmatter_lines) + "\n\n" + body, encoding="utf-8")
+    os.makedirs(long_path(path.parent), exist_ok=True)
+    Path(long_path(path)).write_text("\n".join(frontmatter_lines) + "\n\n" + body,
+                                     encoding="utf-8")
 
 
 def insert_frontmatter_key_if_missing(path: Path, key: str, value) -> bool:
@@ -442,10 +467,24 @@ def write_file_companion(
 ) -> dict:
     slug = _slugify(file_slug)
     files_dir = subfolder / "files" / slug
-    files_dir.mkdir(parents=True, exist_ok=True)
-    file_path = files_dir / original_filename
-    file_path.write_bytes(content)
+    # Through long_path, never plain Path I/O. A Thread folder name, the slug and
+    # the original filename together routinely pass Windows' 260-character
+    # MAX_PATH. The folder -- just under the limit -- was created, then writing
+    # the file inside it failed: 256 attachments captured as EMPTY folders, with
+    # no file and no note, and nothing reported anywhere (2026-09-11).
+    os.makedirs(long_path(files_dir), exist_ok=True)
+    file_path = files_dir / _disk_name(original_filename)
+    if not os.path.isfile(long_path(file_path)):
+        with open(long_path(file_path), "wb") as handle:
+            handle.write(content)
     companion_path = files_dir / f"{slug}.md"
+    # Never reset a companion note that already exists. Capture can meet the
+    # same attachment twice -- an overlapping backfill, a recovery re-fetch --
+    # and rewriting the note would blank a Summary File Enrichment has already
+    # written, and any Personal Notes the operator added.
+    if os.path.isfile(long_path(companion_path)):
+        return {"file_path": str(file_path), "companion_path": str(companion_path),
+                "already_captured": True}
     frontmatter = {
         "type": "File",
         "file_slug": file_slug,
