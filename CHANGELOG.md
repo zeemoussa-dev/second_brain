@@ -18,6 +18,8 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- refactor: Pending Approvals is a framework screen (`REQ-SB-91` Phase 5, operator decision 2026-09-14). Agents asking a human is part of how agents work, not part of My Day, so the page moves from `/my-day/approvals` to `/approvals` with its own sidebar entry. A plugin's screens may not import framework features, so the host contract (`src/pluginHost/api.ts`) gains `fetchPendingApprovalCount()`: My Day's dashboard shows the count and links to `/approvals`, but cannot act on an approval itself.
+
 - feat: Settings → Marketplace (`ADR-022`, `REQ-SB-91` Phase 4c). Lists published plugins with their versions, compatibility and what is installed; a version is always checked before install is offered, showing what installing would do or everything that would stop it; install, replace and uninstall report that the backend needs a restart and point to Settings → System. Reachable from a new Settings card.
 
 - feat: publishing plugins (`ADR-022`, `REQ-SB-91` Phase 4b). `scripts/publish_plugin.py <plugin-repo>` is the one publish step for every plugin repository: it checks plugin.json (valid id, x.y.z version, this framework's API), the layout, the import boundary, the plugin's own tests, and that its screens build inside this framework, and refuses to overwrite a published version -- all before writing anything. `check_plugin_imports.py --ui` adds the screen rule: a plugin's screens may import only their own files, the host contract in `src/pluginHost/`, and react / react-router. `src/pluginHost/api.ts` gives screens `apiFetch` without reaching into the framework. Verified with a real dry-run whose planted TypeScript error the build gate refused.

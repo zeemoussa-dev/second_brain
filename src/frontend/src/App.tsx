@@ -8,7 +8,7 @@ import { MyDayPage } from './pages/MyDayPage';
 import { MyDayEmailsPage } from './pages/MyDayEmailsPage';
 import { MyDayCalendarPage } from './pages/MyDayCalendarPage';
 import { MyDayTodoPage } from './pages/MyDayTodoPage';
-import { MyDayApprovalsPage } from './pages/MyDayApprovalsPage';
+import { ApprovalsPage } from './pages/ApprovalsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { SettingsArtifactsPage } from './pages/SettingsArtifactsPage';
 import { SettingsBlueprintsPage } from './pages/SettingsBlueprintsPage';
@@ -45,7 +45,7 @@ function App() {
           <Route path="/my-day/emails" element={<MyDayEmailsPage />} />
           <Route path="/my-day/calendar" element={<MyDayCalendarPage />} />
           <Route path="/my-day/todo" element={<MyDayTodoPage />} />
-          <Route path="/my-day/approvals" element={<MyDayApprovalsPage />} />
+          <Route path="/approvals" element={<ApprovalsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/system" element={<SettingsSystemPage />} />
           <Route path="/settings/sections" element={<SettingsSectionsPage />} />

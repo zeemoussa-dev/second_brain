@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router';
 import {
   fetchPendingApprovals,
   fetchKnownCompanies,
@@ -41,7 +40,9 @@ function groupPendingApprovals(items: PendingApproval[]): PendingApprovalGroup[]
   return order.map((key) => groupsByKey.get(key)!);
 }
 
-export function MyDayApprovalsPage() {
+// A framework screen, not My Day's (REQ-SB-91 Phase 5): agents asking a human
+// is part of how agents work, whichever plugins are installed.
+export function ApprovalsPage() {
   const [items, setItems] = useState<PendingApproval[] | null>(null);
   const [knownCompanies, setKnownCompanies] = useState<KnownCompanies | null>(null);
 
@@ -92,7 +93,6 @@ export function MyDayApprovalsPage() {
 
   return (
     <>
-      <p className="text-muted"><Link className="text-muted" to="/my-day">&larr; My Day</Link></p>
       <h1>Pending Approvals</h1>
       <p className="text-muted">
         Actions a Supervised agent has proposed on its own background/

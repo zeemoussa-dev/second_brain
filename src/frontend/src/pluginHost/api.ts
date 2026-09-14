@@ -4,4 +4,13 @@
 // API client directly -- breaks the next time that module changes, even
 // though its framework_api still matches.
 
+import { fetchPendingApprovals } from '../features/agents-map/pendingApprovalsApiClient';
+
 export { apiFetch, ApiError } from '../api/client';
+
+/** How many agent proposals are waiting on the operator. The approvals
+ * themselves are a framework screen at `/approvals`; a plugin may show the
+ * count and link there, never act on an approval itself. */
+export function fetchPendingApprovalCount(): Promise<number> {
+  return fetchPendingApprovals({ status: 'pending' }).then((items) => items.length);
+}

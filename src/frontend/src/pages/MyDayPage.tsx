@@ -148,7 +148,7 @@ export function MyDayPage() {
             </Link>
           );
         })}
-        <Link className="card day-section-card" to="/my-day/approvals">
+        <Link className="card day-section-card" to="/approvals">
           <h2>Pending Approvals</h2>
           {approvalsCount !== null && approvalsCount > 0 ? (
             <div className="day-section-count">{approvalsCount}</div>
