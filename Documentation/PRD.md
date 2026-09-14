@@ -5069,3 +5069,46 @@ rather than trusting this PRD summary alone, per this project's own
 standing convention. -->
 
 **Acceptance:** To be drafted as Gherkin at `/spec`.
+
+### REQ-SB-90: Deploy Skills Provisioned Into an Install's Config Folder, Not Only Skills Shipped in the Framework Catalog
+
+Raised 2026-09-14, out of splitting this repository into the framework
+(Second Brain) and two agent repositories, `sb-cbo-agent` and
+`sb-pss-agent`. The operator's model for the split: *"When we deploy the
+Framework it goes Empty, waiting Provisioning ... The Agents Repo has their
+own Skills and they are not part of the installation at all. If I needed a
+feature that the framework doesn't have, it will be logged."* An agent
+repository IS the vault's config folder for its install.
+
+**Finding 1 — the framework reads a Skill's body from one place only.**
+`app/data_access/skills.py` resolves every Skill through `_SKILLS_ROOT`,
+the framework's own package folder `business/core/skills/catalog/`
+(`list_categories`, `_find_skill_dir`, `read_skill_md`, `list_scripts`).
+The config folder holds only a Skill's METADATA
+(`data/Tools/<tool>/Skills/<skill>/Skill.json` + `Skill-visual.json`),
+never its `SKILL.md` or `scripts/`. So a Skill whose body lives in an agent
+repository is invisible to `SkillManager.get_all()` and cannot be deployed
+from the app — confirmed 2026-09-14 by reading the loader; no setting adds
+another root.
+
+**Finding 2 — the first content has already been copied out.** On
+2026-09-14 `azure-cost-calculator` and `macc-forecast-generator` were copied
+into `sb-pss-agent`, and `capture-engagement`, `company-lookup`,
+`entity-domain-extraction`, `new-company-discovery` and `topic-tagging`
+into `sb-cbo-agent`, as `data/Tools/<tool>/Skills/<skill>/{SKILL.md,
+scripts/}`. Until this requirement is built, removing them from the
+framework catalog makes them undeployable from the app (copies already
+deployed into Hermes profiles keep running).
+
+**Scope.** The framework discovers a Skill's body in the install's config
+folder at `data/Tools/<tool>/Skills/<skill>/` as well as in its shipped
+catalog, and deploys it through the existing `SkillManager.deploy` path.
+Out of scope: the framework knowing about any particular agent repository
+(it reads the config folder it is pointed at, nothing else), and the
+Customer/Partner/Opportunity coupling tracked separately as `BUG-062`.
+
+<!-- Logged directly by the Framework session at the operator's instruction
+("If I needed a feature that the framework doesn't have will be logged");
+/spec should re-verify Finding 1 against the real code before drafting. -->
+
+**Acceptance:** To be drafted as Gherkin at `/spec`.

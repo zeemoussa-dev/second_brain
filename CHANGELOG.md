@@ -18,6 +18,8 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- docs: `REQ-SB-90` logged -- the framework can only read a Skill's body from its own catalog, so a Skill provisioned into an install's config folder (an agent repository) cannot be listed or deployed. Raised by the framework / sb-cbo-agent / sb-pss-agent split.
+
 - docs: `Documentation/enable-long-paths.ps1` -- for IT. Reports, and when elevated
   enables, Windows `LongPathsEnabled` and Git `core.longpaths`; verifies with a real
   300-character path under TEMP; says how to reverse it. `-CheckOnly` needs no admin
