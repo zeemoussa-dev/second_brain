@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from app.business.core.pipelines.pipeline_manager import PipelineManager
+from app.business.core.plugins.plugin_manager import PluginManager
 from app.business.core.vault.vault_manager import VaultManager
 from app.business.hermes.client import get_client
 from app.data_access import vault_writer
@@ -340,3 +341,16 @@ def summary(day: str | None = None) -> dict:
         "todo": {"count": len(list_todo_items())},
         "window": {"start": window_start, "end": window_end},
     }
+
+
+def _customer_subject_enricher(subject_kind: str, frontmatter: dict, tags: list[str]) -> dict:
+    """Cockpit's `customer` for a note that has none of its own -- a Thread
+    carries only its `customer/<slug>` tag. Handed to the plugin host rather
+    than imported by Cockpit (`BUG-063`): when My Day becomes a plugin
+    (`REQ-SB-91` Phase 5), its `register(api)` passes this same function to
+    `api.register_subject_enricher`."""
+    customer = customer_from_tags(tags, customer_name_by_tag())
+    return {"customer": customer} if customer else {}
+
+
+PluginManager().register_builtin_subject_enricher(_customer_subject_enricher)

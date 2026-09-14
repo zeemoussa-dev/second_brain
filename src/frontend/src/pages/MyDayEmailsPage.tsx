@@ -24,7 +24,12 @@ export function MyDayEmailsPage() {
         {items && items.length > 0 ? (
           <div className="item-list">
             {items.map((item) => (
-              <Link className="item-row" to={`/inbox-cockpit/${item.stem}`} key={item.stem}>
+              <Link
+                className="item-row"
+                to={`/inbox-cockpit/${item.stem}`}
+                state={{ backTo: '/my-day/emails', backLabel: 'Emails' }}
+                key={item.stem}
+              >
                 <div className="item-row-main">
                   <span className="item-row-title">{item.subject}</span>
                   <span className="item-row-meta">

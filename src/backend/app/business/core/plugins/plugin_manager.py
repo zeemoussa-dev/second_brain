@@ -32,6 +32,13 @@ _VALID_PLUGIN_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 
 _load_report: list[Plugin] = []
 
+# What Cockpit asks to fill in a subject's fields (`BUG-063` seam). Built-in
+# enrichers are registered by framework code while a piece that will become a
+# plugin still lives in the framework, and they survive a reload; plugin
+# enrichers are rebuilt by every `load_all` from the plugins that loaded.
+_builtin_subject_enrichers: list[plugin_api.SubjectEnricher] = []
+_plugin_subject_enrichers: list[plugin_api.SubjectEnricher] = []
+
 
 class PluginManager:
     def load_all(self) -> list[tuple[str, APIRouter]]:
@@ -43,13 +50,14 @@ class PluginManager:
         `requires` is recorded but not yet enforced: resolving "graph or
         outlook" needs the Marketplace's view of what is installed, which
         arrives with it (`REQ-SB-91` Phase 4)."""
-        global _load_report
+        global _load_report, _plugin_subject_enrichers
         report: list[Plugin] = []
         mounts: list[tuple[str, APIRouter]] = []
 
         try:
             record = plugins_data.read_installed_record()
         except (OSError, ValueError) as exc:
+            _plugin_subject_enrichers = []
             _load_report = [Plugin(
                 id="installed.json", name="Installed plugins record", version="",
                 framework_api=None, status=INVALID,
@@ -58,18 +66,30 @@ class PluginManager:
             return []
 
         seen: set[str] = set()
+        enrichers: list[plugin_api.SubjectEnricher] = []
         for entry in (record or {}).get("plugins") or []:
-            plugin, plugin_mounts = self._load_one(entry, seen)
+            plugin, plugin_mounts = self._load_one(entry, seen, enrichers)
             report.append(plugin)
             mounts.extend(plugin_mounts)
 
         _load_report = report
+        _plugin_subject_enrichers = enrichers
         return mounts
 
     def get_load_report(self) -> list[Plugin]:
         return list(_load_report)
 
-    def _load_one(self, entry: object, seen: set[str]) -> tuple[Plugin, list[tuple[str, APIRouter]]]:
+    def register_builtin_subject_enricher(self, enricher: plugin_api.SubjectEnricher) -> None:
+        if enricher not in _builtin_subject_enrichers:
+            _builtin_subject_enrichers.append(enricher)
+
+    def get_subject_enrichers(self) -> list[plugin_api.SubjectEnricher]:
+        """Built-ins first, then plugins in install order."""
+        return [*_builtin_subject_enrichers, *_plugin_subject_enrichers]
+
+    def _load_one(
+        self, entry: object, seen: set[str], enrichers: list[plugin_api.SubjectEnricher],
+    ) -> tuple[Plugin, list[tuple[str, APIRouter]]]:
         raw_id = str(entry.get("id") or "").strip() if isinstance(entry, dict) else ""
         recorded_version = str(entry.get("version") or "") if isinstance(entry, dict) else ""
 
@@ -116,6 +136,9 @@ class PluginManager:
             return plugin, []
 
         prefix = f"{PLUGIN_ROUTE_PREFIX}/{raw_id}"
+        # Taken only now: an enricher a plugin registered before its own
+        # `register` raised belongs to a plugin that is disabled.
+        enrichers.extend(api.subject_enrichers)
         plugin.status = LOADED
         plugin.routes_prefix = prefix
         return plugin, [(prefix, router) for router in api.routers]

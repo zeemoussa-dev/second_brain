@@ -1,12 +1,13 @@
-import { useParams, Link } from 'react-router';
+import { useParams } from 'react-router';
 import { Cockpit } from '../features/cockpit/Cockpit';
+import { CockpitBackLink } from '../features/cockpit/CockpitBackLink';
 
 export function MeetingCockpitPage() {
   const { stem } = useParams<{ stem: string }>();
   if (!stem) return null;
   return (
     <>
-      <p className="text-muted"><Link className="text-muted" to="/my-day/calendar">&larr; Calendar</Link></p>
+      <CockpitBackLink />
       <Cockpit
         subjectKind="meeting"
         subjectNoteStem={stem}

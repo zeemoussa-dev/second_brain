@@ -1,16 +1,24 @@
 """Real business logic behind the Cockpit's own composed view and
 document-upload flow -- moved out of cockpit_router.py (2026-08-28, API
-layer holds no business logic): resolving a subject's real customer,
+layer holds no business logic): filling in a subject's missing fields,
 composing the view from several independent sources, and validating an
 upload are all business rules, not HTTP concerns.
+
+Cockpit is a framework component (`ADR-022`, `BUG-063`): it must not know a
+business concept such as Customer, nor import a plugin. It asks the plugin
+host's subject enrichers to fill in what a note does not carry itself.
 """
 from __future__ import annotations
 
-from app.business import my_day
+import logging
+
 from app.business.cockpit import chat_store, documents, people
+from app.business.core.plugins.plugin_manager import PluginManager
 from app.business.core.vault.vault_manager import VaultManager
 
 _vault_manager = VaultManager()
+_plugin_manager = PluginManager()
+_logger = logging.getLogger(__name__)
 
 
 class UnknownSubjectError(Exception):
@@ -27,19 +35,30 @@ class UploadTooLargeError(Exception):
         super().__init__(f"File too large ({size_mb:.1f} MB) — the limit is 25 MB.")
 
 
-def _subject_with_resolved_customer(entry: dict) -> dict:
-    """A Thread's own real frontmatter never carries a `customer` field
-    (found live 2026-08-27, operator: "Fix the People/Received field gap
-    on Threads") -- only a `customer/<slug>` tag, same convention
-    `my_day.py`'s own Calendar/Email projections already resolve through
-    `customer_name_by_tag`/`customer_from_tags`. A Meeting note that DOES
-    carry a real `customer` frontmatter value is left untouched (never
-    overwritten by the tag-derived one)."""
+def _enriched_subject(subject_kind: str, entry: dict) -> dict:
+    """The note's own frontmatter, plus what installed subject enrichers can
+    add. A Thread's frontmatter never carries a `customer` field, only a
+    `customer/<slug>` tag (found live 2026-08-27), so that value arrives from
+    an enricher.
+
+    An enricher only fills a field the note leaves empty: a Meeting note's own
+    real `customer` is never overwritten by a tag-derived one. An enricher that
+    raises or returns something other than a dict is skipped, so one plugin's
+    bug cannot take down a framework screen."""
     subject = dict(entry["frontmatter"])
-    if not subject.get("customer"):
-        customer = my_day.customer_from_tags(entry["tags"], my_day.customer_name_by_tag())
-        if customer:
-            subject["customer"] = customer
+    tags = list(entry["tags"])
+    for enrich in _plugin_manager.get_subject_enrichers():
+        try:
+            additions = enrich(subject_kind, dict(subject), tags)
+        except Exception:
+            _logger.exception("subject enricher %r failed for a %s; skipped",
+                              getattr(enrich, "__qualname__", enrich), subject_kind)
+            continue
+        if not isinstance(additions, dict):
+            continue
+        for field, value in additions.items():
+            if value and not subject.get(field):
+                subject[field] = value
     return subject
 
 
@@ -49,7 +68,7 @@ def build_cockpit_view(subject_kind: str, subject_note_stem: str) -> dict:
     if entry is None:
         raise UnknownSubjectError(subject_note_stem)
     return {
-        "subject": _subject_with_resolved_customer(entry),
+        "subject": _enriched_subject(subject_kind, entry),
         "people": people.resolve_people_chips(subject_kind, subject_note_stem),
         "overview": {
             "summary": None,

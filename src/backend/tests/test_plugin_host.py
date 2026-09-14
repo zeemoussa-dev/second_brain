@@ -232,3 +232,63 @@ def test_the_framework_itself_imports_no_plugin():
     app_dir = Path(__file__).resolve().parents[1] / "app"
 
     assert check_plugin_imports.check_core(app_dir) == []
+
+
+# -- the Cockpit subject-enricher seam (BUG-063) ---------------------------------
+
+from app.business.core.plugins import plugin_manager as plugin_manager_module  # noqa: E402
+
+_ENRICHING_BACKEND = '''
+def register(api):
+    def add_owner(subject_kind, frontmatter, tags):
+        return {"owner": f"{subject_kind}:{len(tags)}"}
+
+    api.register_subject_enricher(add_owner)
+'''
+
+_FAILS_AFTER_REGISTERING_BACKEND = '''
+def register(api):
+    api.register_subject_enricher(lambda kind, frontmatter, tags: {"leaked": True})
+    raise RuntimeError("fails after registering an enricher")
+'''
+
+
+@pytest.fixture()
+def no_builtin_enrichers(monkeypatch):
+    """Built-in enrichers are module-level and registered at import; isolate them."""
+    monkeypatch.setattr(plugin_manager_module, "_builtin_subject_enrichers", [])
+
+
+def test_a_loaded_plugin_contributes_its_subject_enrichers(data_path, no_builtin_enrichers):
+    install(data_path, "owners", backend=_ENRICHING_BACKEND)
+
+    PluginManager().load_all()
+    enrichers = PluginManager().get_subject_enrichers()
+
+    assert len(enrichers) == 1
+    assert enrichers[0]("meeting", {}, ["a", "b"]) == {"owner": "meeting:2"}
+
+
+def test_a_plugin_that_fails_after_registering_contributes_no_enricher(data_path, no_builtin_enrichers):
+    install(data_path, "flaky", backend=_FAILS_AFTER_REGISTERING_BACKEND)
+
+    PluginManager().load_all()
+
+    assert report_by_id()["flaky"].status == "disabled"
+    assert PluginManager().get_subject_enrichers() == []
+
+
+def test_builtin_enrichers_come_first_and_survive_reloading(data_path, no_builtin_enrichers):
+    def builtin(subject_kind, frontmatter, tags):
+        return {"source": "builtin"}
+
+    PluginManager().register_builtin_subject_enricher(builtin)
+    PluginManager().register_builtin_subject_enricher(builtin)
+    install(data_path, "owners", backend=_ENRICHING_BACKEND)
+
+    PluginManager().load_all()
+    PluginManager().load_all()
+
+    enrichers = PluginManager().get_subject_enrichers()
+    assert enrichers[0] is builtin
+    assert len(enrichers) == 2

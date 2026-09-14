@@ -15,6 +15,8 @@ plugin built against the old major is refused rather than half-working.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from fastapi import APIRouter
 
 from app.business.core.pipelines.pipeline_manager import PipelineManager
@@ -23,6 +25,10 @@ from app.business.hermes.client import get_client
 from app.data_access import vault_writer
 
 FRAMEWORK_API = 1
+
+# `enricher(subject_kind, frontmatter, tags) -> {field: value}`. Cockpit calls it
+# while composing a view of a note (`BUG-063` seam).
+SubjectEnricher = Callable[[str, dict, list[str]], dict]
 
 
 class VaultApi:
@@ -72,8 +78,16 @@ class PluginApi:
         self.pipelines = PipelinesApi()
         self.hermes = HermesApi()
         self.routers: list[APIRouter] = []
+        self.subject_enrichers: list[SubjectEnricher] = []
 
     def register_router(self, router: APIRouter) -> None:
         """Mounted under `/plugins/<plugin_id>/` once registration succeeds.
         A plugin whose `register` raises has none of its routers mounted."""
         self.routers.append(router)
+
+    def register_subject_enricher(self, enricher: SubjectEnricher) -> None:
+        """Lets Cockpit ask this plugin about a note it is showing, instead of
+        Cockpit knowing a business concept itself. Cockpit applies a returned
+        field only where the note carries no value for it: an enricher fills
+        gaps, and never overrides what the note itself says."""
+        self.subject_enrichers.append(enricher)

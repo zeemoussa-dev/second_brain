@@ -1,12 +1,13 @@
-import { useParams, Link } from 'react-router';
+import { useParams } from 'react-router';
 import { Cockpit } from '../features/cockpit/Cockpit';
+import { CockpitBackLink } from '../features/cockpit/CockpitBackLink';
 
 export function InboxCockpitPage() {
   const { stem } = useParams<{ stem: string }>();
   if (!stem) return null;
   return (
     <>
-      <p className="text-muted"><Link className="text-muted" to="/my-day/emails">&larr; Emails</Link></p>
+      <CockpitBackLink />
       <Cockpit
         subjectKind="email"
         subjectNoteStem={stem}
@@ -15,7 +16,7 @@ export function InboxCockpitPage() {
         // 2026-08-27, operator: "Fix the People/Received field gap on
         // Threads"); 'customer' is now resolved server-side from the
         // real customer/<slug> tag when the raw frontmatter has none
-        // (see cockpit_router.py::_subject_with_resolved_customer).
+        // (a subject enricher, see cockpit_view.py::_enriched_subject).
         infoFields={[{ label: 'Received', key: 'last_message_at' }, { label: 'Customer', key: 'customer' }]}
       />
     </>
