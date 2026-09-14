@@ -18,6 +18,8 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- docs: the plugin host + My Day extraction plan (`Implementation/Plans/2026-09-14-plugin-host-and-my-day-plugin.md`). My Day uses exactly five framework capabilities, which become Plugin API v1; two Cockpit seams are cut first; five gated phases. The plugin lives in `sb-plugins-my-day`.
+
 - docs: `BUG-063` logged -- Cockpit, a framework component, picks agents by Customer and imports My Day to resolve a subject's customer.
 
 - docs: `REQ-SB-91` logged -- the plugin host and Marketplace. `REQ-SB-90` is superseded by it: Skills are installed from plugin packages rather than read out of an install's config folder.
