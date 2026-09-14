@@ -2541,3 +2541,85 @@ version from the agents built on it.
   config folder itself moves into `sb-pss-agent`, which is the last step of the split.
 - The `outlook` Tool currently has no Skill in the repository (the COM transport survives in
   git history at `6c7bfbb^` and in the live Hermes install); restoring it is separate work.
+
+## ADR-022: Plugins carry code; the framework is a plugin host with a Marketplace
+
+**Status:** Accepted
+**Date:** 2026-09-14
+
+**Context:** `ADR-021` split the repositories but left solution-specific code compiled into
+the framework. My Day is a set of screens over inbox and calendar. `Entities.md` and the
+Customer, Partner and Opportunity concepts are a company-relationship feature (`BUG-062`).
+The operator's test: *a second brain built for a CFO cares nothing about Partners and
+Customers, and My Day is a screen, not Second Brain.*
+
+Blueprints already install a Section, agents, their Skills, the soul and primary routing,
+but they cannot carry screens, backend logic, Templates, pipelines, or an uninstall.
+
+**Declarative-only plugins were rejected.** Describing screens and settings as data would
+keep solution-specific screens inside the framework, merely disguised as configuration.
+
+Code, not configuration, is what differs between a PSS, a CBO and a CFO second brain.
+
+**Decision:**
+
+- **A plugin is installable code plus content.** It has five layers:
+  - a backend Python package (routers, managers, data access);
+  - frontend screens, nav entries and Settings pages;
+  - Hermes content (Skills, agents, pipelines), where today's Blueprint becomes this one layer;
+  - Templates and registries;
+  - a manifest (`id`, `version`, `framework_api`, `requires`).
+- **The framework core holds only what every second brain needs, plus the plugin host.**
+  - That core is vault indexing, search and graph, the Template engine, the capture Tools,
+    Sections, Agents, Skills, Pipelines and Indexes, the Hermes integration, and the app
+    shell with its generic screens.
+  - Core never imports, names or knows a plugin.
+- **One stable Plugin API.**
+  - Plugins import only a single facade (`app.plugin_api`): vault read and write,
+    Templates, Pipelines, the Hermes client, settings, and route, screen and nav
+    registration.
+  - An install-time import check rejects a plugin that reaches past the facade, just as the
+    `ADR-021` move gate rejected real dependencies.
+  - My Day today reaches `VaultManager`, `PipelineManager`, the Hermes client and
+    `vault_writer` directly, and that set seeds the facade.
+- **Version gate and failure isolation.**
+  - The manifest's `framework_api` major version must match the host's.
+  - A mismatched plugin is refused and shown in System Health, never half-loaded.
+  - A plugin that raises while registering is disabled, and the app still boots.
+- **Backend hosting.** The host loads installed plugins during the FastAPI lifespan and
+  mounts their routers under `/plugins/<id>/`.
+- **Frontend: build-time composition.**
+  - Installed plugins' screen source is included through Vite `import.meta.glob`.
+  - Routes (today hardcoded in `App.tsx`) and nav (hardcoded in `Sidebar.tsx`) become
+    registries fed by plugins.
+  - Installing a plugin rebuilds the frontend, so there is one React build and no runtime
+    bundles.
+- **Distribution through a Marketplace inside the framework.**
+  - Plugin source lives in its own repository.
+  - Publishing produces a validated, versioned package, checked three ways: the import
+    check, the version check, and that it builds.
+  - The package sits in the framework's Marketplace and is installed from Settings. The
+    Marketplace page grows out of today's Blueprints page.
+  - Its screens are compiled at install.
+- **Agent repositories** (`ADR-021`) hold their install's config plus the list of installed
+  plugins, pinned by version.
+- **First extraction: My Day.** It is small but exercises both the backend and the frontend
+  hooks, so it proves the host before the much larger Entities extraction.
+
+**Consequences:**
+
+- **`REQ-SB-90` is superseded.** Skills are installed from plugin packages, rather than
+  the framework reading Skill bodies out of an install's config folder.
+- **`BUG-062` changes shape.** The Customer, Partner and Opportunity code moves into a
+  Entities plugin (`sb-plugins-entities`) together with `Entities.md`, its Settings page, the company Skills and
+  `company_index`, instead of being made generic inside core.
+- **The framework repository contains plugin packages** as inert Marketplace entries.
+  Core must never import them, so the import check runs in both directions:
+  core must not reach the Marketplace, and plugins must not reach past the facade.
+- **Uninstall needs an ownership record** of what a plugin installed. Notes a plugin wrote
+  into the vault stay in the vault after uninstall.
+- **Installing needs a frontend build toolchain on the machine.** Node already ships
+  under `tools/node`.
+- **My Day is coupled to Cockpit.** `business/logic/cockpit_view.py` imports `my_day`, so
+  the first extraction either takes Cockpit along or introduces a seam. The extraction plan
+  decides which.
