@@ -2480,3 +2480,64 @@ field-weighted BM25 over title/tags/body, served at `GET
 - The reranker on offer (`qwen3-reranker`) is **not used.** RRF already
   fuses two orderings; a cross-encoder rerank is the next quality step if
   fused results prove insufficient, and it would be its own decision.
+
+## ADR-021: The framework repository is source only and deploys empty; each agent repository is its install's config folder
+
+**Status:** Accepted
+**Date:** 2026-09-14
+
+**Context:** One repository held the framework and two operators' business content
+together, and the live install had drifted from it in ways nobody could see: Skills
+deployed under a `jarvis` Tool the repository no longer had, Registry entries with no
+source, 228 stale engine copies before `ADR-019`. Customer, Partner and Opportunity were
+compiled into framework code (`BUG-062`), which is why every Template problem involving
+them traced back to code. The operator's goal: the framework must never run a different
+version from the agents built on it.
+
+**Decision:**
+
+- **Three repositories.** `second_brain` is the framework (Second Brain). `sb-pss-agent`
+  and `sb-cbo-agent` are agent repositories. A machine runs the framework plus the agent
+  repository of its install; the machine this was decided on runs the framework and
+  `sb-pss-agent`.
+- **The framework repository is source code only and deploys EMPTY**, waiting for
+  provisioning. Agent content is never part of a framework install, and the framework
+  never loads, names or knows about any agent repository.
+- **An agent repository IS the vault config folder of its install**:
+  `data/Templates/<id>/`, `data/Tools/<tool>/Skills/<skill>/` (metadata and body), Sections
+  and Agents, pipelines, Indexes, `AGENT-MEMORY.md`. It contains everything its install
+  needs except framework source.
+- **What is framework.** A Skill is framework if it is in a shipped Blueprint, OR it
+  belongs to a framework Tool or infrastructure concept. Anything reusable to build a new
+  agent belongs in the framework. On this date that is: the Blueprint Skills
+  (`capture-files`, `summarize-and-tag-files`, `capture-notes`, `research-kb-writer`); the
+  Index and search concepts (`vault-index`, `vault-search`); and the `graph` and `outlook`
+  Tools with their capture Skills. Blueprints are not stretched to cover infrastructure,
+  because a Blueprint installs agents and infrastructure has none of its own.
+- **What is not.** Business concepts, domain Skills and domain Templates, and specific
+  Indexes (`adnoc`, `masdar`, `taqa`) live in the agent repository whose install runs them.
+  Every non-framework Skill went to `sb-pss-agent`, including the company pipeline,
+  because this install runs it; `sb-cbo-agent` holds nothing until a CBO install exists.
+- **Shared history stays with the framework.** `MEMORY.md`, this file, `BUGS.md`,
+  `CHANGELOG.md`, the PRD and the stories are not split; agent repositories start fresh
+  ledgers.
+- **A missing framework feature is logged, never worked around** (`REQ-SB-90` is the first).
+- **Moves are gated.** Content is copied to the agent repository first and removed from
+  the framework only after a check proves nothing staying references or imports it and
+  the remaining test suites pass. The first such move caught five real dependencies.
+
+**Consequences:**
+
+- Thirteen Skills and seven Templates left the framework on 2026-09-14. The `pricing` Tool
+  held only `azure-cost-calculator` and is gone with it.
+- **Moved Skills cannot be redeployed from the app until `REQ-SB-90`** teaches the framework
+  to read a Skill's body from the config folder. Copies already deployed into Hermes keep
+  running.
+- **`customer`, `partner` and `opportunity` stay in `templates/masters/` until `BUG-062`**
+  removes the code that names them, step by step. `company_index.py`, a business engine in
+  the shared managers, is part of that work.
+- The live config folder still files three company Skills under the nonexistent `jarvis`
+  Tool; `sb-pss-agent` holds them under `vault`. That drift is corrected when the live
+  config folder itself moves into `sb-pss-agent`, which is the last step of the split.
+- The `outlook` Tool currently has no Skill in the repository (the COM transport survives in
+  git history at `6c7bfbb^` and in the live Hermes install); restoring it is separate work.
