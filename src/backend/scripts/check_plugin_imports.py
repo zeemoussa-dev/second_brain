@@ -1,10 +1,13 @@
 """check_plugin_imports.py -- the `ADR-022` boundary, checked mechanically.
 
-Two directions:
+Three directions:
 
     --plugin <plugin_dir>   a plugin may import from the framework ONLY
                             `app.plugin_api`, and never another plugin's package
     --core <app_dir>        the framework may never import a plugin package
+    --ui <ui_dir> --id <id> a plugin's screens may import only their own files,
+                            the host contract in src/pluginHost/, and the
+                            libraries the host provides
 
 A plugin that reaches past the facade breaks on the next framework change even
 when its `framework_api` matches -- the drift the version gate exists to stop --
@@ -17,6 +20,8 @@ from __future__ import annotations
 
 import argparse
 import ast
+import posixpath
+import re
 import sys
 from pathlib import Path
 
@@ -89,14 +94,77 @@ def check_core(app_dir: Path) -> list[str]:
     return violations
 
 
+# A plugin's screens are installed at `src/plugins/<plugin-id>/` in the frontend,
+# so every relative import is judged as if the file already sat there. Beyond its
+# own files a screen may reach only the host contract in `src/pluginHost/` and the
+# libraries the host provides. Any other framework module -- or a library the
+# framework merely happens to depend on -- is an internal that changes under it.
+_ALLOWED_UI_PACKAGES = {"react", "react/jsx-runtime", "react-router"}
+_UI_SOURCE_SUFFIXES = {".ts", ".tsx", ".js", ".jsx"}
+_UI_IMPORT_PATTERNS = (
+    # import x from '...' / import { a,\n b } from '...' / export { x } from '...'
+    re.compile(r"""\b(?:import|export)\s[^'"`;]*?\bfrom\s*['"]([^'"]+)['"]"""),
+    # import './side-effect.css'
+    re.compile(r"""\bimport\s*['"]([^'"]+)['"]"""),
+    # import('./lazy')
+    re.compile(r"""\bimport\(\s*['"]([^'"]+)['"]\s*\)"""),
+)
+
+
+def _ui_import_specifiers(source: str):
+    """Yields `(line, specifier)` once for every static, side-effect and dynamic import."""
+    seen: set[tuple[int, str]] = set()
+    for pattern in _UI_IMPORT_PATTERNS:
+        for match in pattern.finditer(source):
+            found = (source.count("\n", 0, match.start()) + 1, match.group(1))
+            if found not in seen:
+                seen.add(found)
+                yield found
+
+
+def check_plugin_ui(ui_dir: Path, plugin_id: str) -> list[str]:
+    violations: list[str] = []
+    installed_root = f"plugins/{plugin_id}"
+    sources = sorted(
+        path for path in ui_dir.rglob("*")
+        if path.suffix in _UI_SOURCE_SUFFIXES and "node_modules" not in path.parts
+    )
+    for path in sources:
+        placed_dir = posixpath.dirname(f"{installed_root}/{path.relative_to(ui_dir).as_posix()}")
+        for line, specifier in _ui_import_specifiers(path.read_text(encoding="utf-8")):
+            if specifier.startswith("."):
+                resolved = posixpath.normpath(posixpath.join(placed_dir, specifier))
+                inside_plugin = resolved == installed_root or resolved.startswith(installed_root + "/")
+                host_contract = resolved == "pluginHost" or resolved.startswith("pluginHost/")
+                if not (inside_plugin or host_contract):
+                    violations.append(
+                        f"{path}:{line}: imports `{specifier}` -- outside the plugin and the host contract (src/pluginHost/)"
+                    )
+            elif specifier not in _ALLOWED_UI_PACKAGES:
+                violations.append(
+                    f"{path}:{line}: imports package `{specifier}` -- screens may use only "
+                    f"{', '.join(sorted(_ALLOWED_UI_PACKAGES))} and src/pluginHost/"
+                )
+    return violations
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Check the ADR-022 plugin import boundary.")
     target = parser.add_mutually_exclusive_group(required=True)
     target.add_argument("--plugin", type=Path, help="a plugin's directory")
     target.add_argument("--core", type=Path, help="the framework's app/ directory")
+    target.add_argument("--ui", type=Path, help="a plugin's ui/ directory (needs --id)")
+    parser.add_argument("--id", help="the plugin id, for --ui")
     args = parser.parse_args()
 
-    violations = check_plugin(args.plugin) if args.plugin else check_core(args.core)
+    if args.ui and not args.id:
+        parser.error("--ui needs --id, because imports are judged from src/plugins/<id>/")
+    if args.plugin:
+        violations = check_plugin(args.plugin)
+    elif args.ui:
+        violations = check_plugin_ui(args.ui, args.id)
+    else:
+        violations = check_core(args.core)
     for violation in violations:
         print(violation)
     print(f"{len(violations)} violation(s)")
