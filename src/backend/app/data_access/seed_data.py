@@ -21,6 +21,18 @@ def exists(relative_path: str) -> bool:
 
 
 def write_blank(relative_path: str) -> None:
+    write_text(relative_path, "")
+
+
+def read_text(relative_path: str) -> str | None:
+    """None when the file does not exist yet."""
+    path = _path(relative_path)
+    if not path.exists():
+        return None
+    return path.read_text(encoding="utf-8-sig")
+
+
+def write_text(relative_path: str, content: str) -> None:
     path = _path(relative_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("", encoding="utf-8")
+    path.write_text(content, encoding="utf-8")

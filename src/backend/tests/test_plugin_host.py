@@ -399,6 +399,41 @@ def register(api):
     assert PluginManager().get_seed_data_files() == []
 
 
+_DATA_FILE_BACKEND = '''
+from fastapi import APIRouter
+
+
+def register(api):
+    api.register_seed_data_file("Settings/Stores.md")
+    router = APIRouter()
+
+    @router.post("/write")
+    def write():
+        api.data.write_text("Settings/Stores.md", "### Store\\n")
+        return {"read": api.data.read_text("Settings/Stores.md")}
+
+    @router.get("/unregistered")
+    def unregistered():
+        try:
+            api.data.read_text("Settings/Entities.md")
+        except PermissionError as exc:
+            return {"refused": str(exc)}
+        return {"refused": None}
+
+    api.register_router(router)
+'''
+
+
+def test_a_plugin_reads_and_writes_only_its_own_registered_data_files(data_path):
+    install(data_path, "stores", backend=_DATA_FILE_BACKEND)
+
+    client = app_with(PluginManager().load_all())
+
+    assert client.post("/plugins/stores/write").json() == {"read": "### Store\n"}
+    assert (data_path / "Settings" / "Stores.md").read_text(encoding="utf-8") == "### Store\n"
+    assert "not a data file this plugin registered" in client.get("/plugins/stores/unregistered").json()["refused"]
+
+
 def test_reloading_does_not_duplicate_a_plugins_enrichers(data_path):
     install(data_path, "owners", backend=_ENRICHING_BACKEND)
 

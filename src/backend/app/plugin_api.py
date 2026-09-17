@@ -10,8 +10,9 @@ change while its `framework_api` still matched.
 
 v1 was exactly what the first plugin (My Day) used. v2 adds what the Entities
 plugin needs, so the framework can stop knowing its business concepts: Cockpit
-agent matchers, services between plugins, People folders, seed data files,
-read access to Expert agents and Sections -- and, in a package, Templates. A
+agent matchers, services between plugins, People folders, seed data files and
+reading/writing them (`api.data`), read access to Expert agents and Sections --
+and, in a package, Templates. A
 new capability is added here when a plugin needs one. The host loads only
 plugins built for its exact `FRAMEWORK_API`, so a plugin that relies on a
 capability is never loaded by a framework that lacks it, and every installed
@@ -28,7 +29,7 @@ from app.business.core.pipelines.pipeline_manager import PipelineManager
 from app.business.core.sections.section_manager import SectionManager
 from app.business.core.vault.vault_manager import VaultManager
 from app.business.hermes.client import get_client
-from app.data_access import vault_writer
+from app.data_access import seed_data, vault_writer
 
 FRAMEWORK_API = 2
 
@@ -101,6 +102,28 @@ class SectionsApi:
         return {"id": section.id, "name": section.name, "fallback_agent_id": section.fallback_agent_id}
 
 
+class DataFilesApi:
+    """Reads and writes this plugin's own data files under the App Database
+    Folder -- only the ones it registered with `register_seed_data_file`, so
+    a plugin never reaches the framework's or another plugin's files."""
+
+    def __init__(self, registered_files: list[str]) -> None:
+        self._registered_files = registered_files
+
+    def _registered(self, relative_path: str) -> str:
+        normalized = _relative_path(relative_path, "data file")
+        if normalized not in self._registered_files:
+            raise PermissionError(f"{normalized!r} is not a data file this plugin registered")
+        return normalized
+
+    def read_text(self, relative_path: str) -> str | None:
+        """None when the file does not exist yet."""
+        return seed_data.read_text(self._registered(relative_path))
+
+    def write_text(self, relative_path: str, content: str) -> None:
+        seed_data.write_text(self._registered(relative_path), content)
+
+
 class HermesApi:
     def run_cron_job(self, job_name: str, profile_id: str | None = None) -> bool:
         """Fires a Hermes cron job now. Returns once the trigger is sent, not
@@ -125,6 +148,7 @@ class PluginApi:
         self.services: dict[str, object] = {}
         self.people_folders: list[str] = []
         self.seed_data_files: list[str] = []
+        self.data = DataFilesApi(self.seed_data_files)
 
     def register_router(self, router: APIRouter) -> None:
         """Mounted under `/plugins/<plugin_id>/` once registration succeeds.
