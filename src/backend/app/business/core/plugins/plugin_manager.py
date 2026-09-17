@@ -46,6 +46,7 @@ _plugin_subject_enrichers: list[plugin_api.SubjectEnricher] = []
 # another, rebuilt the same way.
 _plugin_agent_matchers: list[plugin_api.AgentMatcher] = []
 _plugin_services: dict[str, object] = {}
+_plugin_people_folders: list[str] = []
 
 
 class PluginManager:
@@ -58,7 +59,7 @@ class PluginManager:
         `requires` is recorded but not yet enforced: resolving "graph or
         outlook" needs the Marketplace's view of what is installed, which
         arrives with it (`REQ-SB-91` Phase 4)."""
-        global _load_report, _plugin_subject_enrichers, _plugin_agent_matchers, _plugin_services
+        global _load_report, _plugin_subject_enrichers, _plugin_agent_matchers, _plugin_services, _plugin_people_folders
         report: list[Plugin] = []
         mounts: list[tuple[str, APIRouter]] = []
 
@@ -66,6 +67,7 @@ class PluginManager:
             record = plugins_data.read_installed_record()
         except (OSError, ValueError) as exc:
             _plugin_subject_enrichers, _plugin_agent_matchers, _plugin_services = [], [], {}
+            _plugin_people_folders = []
             _load_report = [Plugin(
                 id="installed.json", name="Installed plugins record", version="",
                 framework_api=None, status=INVALID,
@@ -84,6 +86,7 @@ class PluginManager:
         _plugin_subject_enrichers = [enricher for api in loaded_apis for enricher in api.subject_enrichers]
         _plugin_agent_matchers = [matcher for api in loaded_apis for matcher in api.agent_matchers]
         _plugin_services = {name: service for api in loaded_apis for name, service in api.services.items()}
+        _plugin_people_folders = list(dict.fromkeys(folder for api in loaded_apis for folder in api.people_folders))
         return mounts
 
     def get_load_report(self) -> list[Plugin]:
@@ -99,6 +102,10 @@ class PluginManager:
 
     def get_service(self, name: str) -> object | None:
         return _plugin_services.get(name)
+
+    def get_people_folders(self) -> list[str]:
+        """Vault folders holding People, from every loaded plugin, without duplicates."""
+        return list(_plugin_people_folders)
 
     def _load_one(
         self, entry: object, seen: set[str], loaded_apis: list[plugin_api.PluginApi],

@@ -349,6 +349,31 @@ def register(api):
     assert PluginManager().get_service("flaky.lookup") is None
 
 
+def test_plugins_register_people_folders_combined_without_duplicates(data_path):
+    for plugin_id, folders in (("first", ["Work/Customers", "Work\\\\Partners"]), ("second", ["Work/Partners/"])):
+        install(data_path, plugin_id, backend=f'''
+def register(api):
+    api.register_people_folders({folders!r})
+''')
+
+    PluginManager().load_all()
+
+    assert PluginManager().get_people_folders() == ["Work/Customers", "Work/Partners"]
+
+
+@pytest.mark.parametrize("folder", ["../outside", "/Work/Customers", "C:/Work", ""])
+def test_a_people_folder_outside_the_vault_is_refused(data_path, folder):
+    install(data_path, "escaper", backend=f'''
+def register(api):
+    api.register_people_folders([{folder!r}])
+''')
+
+    PluginManager().load_all()
+
+    assert report_by_id()["escaper"].status == "disabled"
+    assert PluginManager().get_people_folders() == []
+
+
 def test_reloading_does_not_duplicate_a_plugins_enrichers(data_path):
     install(data_path, "owners", backend=_ENRICHING_BACKEND)
 

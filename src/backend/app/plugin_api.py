@@ -109,6 +109,7 @@ class PluginApi:
         self.subject_enrichers: list[SubjectEnricher] = []
         self.agent_matchers: list[AgentMatcher] = []
         self.services: dict[str, object] = {}
+        self.people_folders: list[str] = []
 
     def register_router(self, router: APIRouter) -> None:
         """Mounted under `/plugins/<plugin_id>/` once registration succeeds.
@@ -128,6 +129,19 @@ class PluginApi:
         ids that are not registered agents are ignored, and a matcher that
         raises is skipped."""
         self.agent_matchers.append(matcher)
+
+    def register_people_folders(self, folders: list[str]) -> None:
+        """Vault folders under which this plugin's notes keep People (e.g.
+        `Work/Customers`): Cockpit looks for a Person's note in
+        `<folder>/**/People/`, then the flat `Work/People/`. Vault-relative
+        paths only; anything that could leave the vault is refused."""
+        for folder in folders:
+            parts = str(folder).replace("\\", "/").split("/")
+            if not folder or str(folder).startswith(("/", "\\")) or ":" in str(folder) or ".." in parts:
+                raise ValueError(f"people folder {folder!r} must be a vault-relative path")
+            normalized = "/".join(part for part in parts if part)
+            if normalized not in self.people_folders:
+                self.people_folders.append(normalized)
 
     def provide_service(self, name: str, implementation: object) -> None:
         """Offers a capability to other plugins by name, so a plugin never

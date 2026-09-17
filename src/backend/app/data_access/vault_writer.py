@@ -216,7 +216,6 @@ def load_last_capture_run() -> dict | None:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-_CUSTOMERS_SUBFOLDER = f"{_WORK_ROOT}/Customers"
 _PEOPLE_SUBFOLDER = f"{_WORK_ROOT}/People"
 def person_note_dedup_key(name: str, email: str | None) -> str:
     """Lowercased email when one exists (REQ-SB-10's own original,
@@ -230,24 +229,18 @@ def person_note_dedup_key(name: str, email: str | None) -> str:
     return email.lower() if email else _slugify(name.lower())
 
 
-def find_person_note_path(dedup_key: str) -> Path | None:
-    """Vault-wide lookup by dedup_key alone, regardless of which Customer
-    (if any) the note is nested under (REQ-SB-71-US-03-T03, ADR-048
-    Decision 6) — mirrors resolve_thread_note_path's own "no persisted
-    index, a live bounded scan" precedent for the identical class of
-    problem: a Person's home is no longer deterministic from dedup_key
-    alone once nesting depends on a per-caller Customer match that can
-    legitimately differ across callers/time. Scans Work/Customers/*/
-    People/<stem>.md first, then the flat Work/People/<stem>.md fallback.
-    Purely read-only; never creates, writes, or renames anything."""
+def find_person_note_path(dedup_key: str, people_folders: list[str]) -> Path | None:
+    """Vault-wide lookup by dedup_key alone, regardless of which folder the
+    note is nested under (ADR-048 Decision 6). Scans each of `people_folders`
+    (vault-relative, e.g. a company folder) for `People/<stem>.md` at any
+    depth -- a Person is filed under their company, or an Affiliate one level
+    deeper -- then the flat `Work/People/<stem>.md` fallback.
+
+    Which folders hold People is the caller's decision: the framework compiles
+    in no company concept (Entities plan Phase 2). Purely read-only."""
     stem = _slugify(dedup_key)
-    # Both roots, any depth. The People pipeline files each person under their
-    # company -- a Partner's People/ folder, or an Affiliate's one level deeper
-    # -- and a search of Customers/*/People alone missed every one of those, so
-    # the Cockpit could not find most filed people (2026-09-11). Capture's own
-    # copy of this lookup got the same fix on 2026-08-21.
-    for root in (settings.vault_path / _CUSTOMERS_SUBFOLDER,
-                 settings.vault_path / _PARTNERS_SUBFOLDER):
+    for relative_folder in people_folders:
+        root = settings.vault_path / relative_folder
         if root.exists():
             nested_matches = sorted(root.glob(f"**/People/{stem}.md"))
             if nested_matches:
@@ -927,7 +920,6 @@ def rename_thread_directory(old_directory: Path, new_directory: Path) -> Path:
     return new_concept_path
 
 
-_PARTNERS_SUBFOLDER = f"{_WORK_ROOT}/Partners"
 def _agent_history_path():
     state_dir = settings.second_brain_data_path
     state_dir.mkdir(parents=True, exist_ok=True)
