@@ -27,10 +27,19 @@ export interface PluginSettingsPage {
   component: ComponentType;
 }
 
+/** A row in a Cockpit's info panel. `key` is a field of the Cockpit's
+ * subject, which a subject enricher of the same plugin can fill. */
+export interface PluginCockpitInfoField {
+  subjectKind: 'email' | 'meeting';
+  label: string;
+  key: string;
+}
+
 export interface PluginUi {
   routes?: PluginRoute[];
   nav?: PluginNavEntry[];
   settingsPages?: PluginSettingsPage[];
+  cockpitInfoFields?: PluginCockpitInfoField[];
 }
 
 export interface MountedRoute extends PluginRoute {
@@ -42,5 +51,9 @@ export interface MountedNavEntry extends PluginNavEntry {
 }
 
 export interface MountedSettingsPage extends PluginSettingsPage {
+  pluginId: string;
+}
+
+export interface MountedCockpitInfoField extends PluginCockpitInfoField {
   pluginId: string;
 }

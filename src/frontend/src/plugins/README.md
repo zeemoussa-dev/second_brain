@@ -13,5 +13,6 @@ Each `<plugin-id>/index.tsx` default-exports what the plugin contributes:
 - `routes` — screens, every path under `/<plugin-id>`
 - `nav` — sidebar entries, every target under `/<plugin-id>`
 - `settingsPages` — Settings pages, mounted under `/settings/plugins/<plugin-id>`
+- `cockpitInfoFields` — rows added to a Cockpit's info panel for `email` or `meeting` subjects, after the Cockpit's own rows; a key already shown is skipped
 
 A contribution that breaks these rules is skipped and reported, never mounted.

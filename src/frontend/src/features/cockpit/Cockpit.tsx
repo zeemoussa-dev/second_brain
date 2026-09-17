@@ -7,6 +7,7 @@ import {
 } from './cockpitApiClient';
 import { PersonNotePanel } from './PersonNotePanel';
 import { ChatMessageText } from '../../components/ChatMessageText';
+import { withPluginCockpitInfoFields } from '../../pluginHost/registry';
 
 // Same auto-grow ceiling as the established multiline chat input
 // (AgentChatPanel.tsx, operator: "need to grow bigger to show at least 3
@@ -547,7 +548,7 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
         <div className="cockpit-panel">
           <h3>{subjectKind === 'meeting' ? 'Meeting info' : 'Email info'}</h3>
           <div className="kv-list">
-            {infoFields.map(({ label, key }) => (
+            {withPluginCockpitInfoFields(subjectKind, infoFields).map(({ label, key }) => (
               <div className="kv-row" key={key}><span className="kv-key">{label}</span><span>{String(data?.subject[key] ?? '')}</span></div>
             ))}
           </div>

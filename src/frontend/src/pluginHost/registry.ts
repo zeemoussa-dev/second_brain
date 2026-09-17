@@ -1,4 +1,5 @@
 import type {
+  MountedCockpitInfoField,
   MountedNavEntry,
   MountedRoute,
   MountedSettingsPage,
@@ -25,15 +26,18 @@ function pluginIdFromModulePath(modulePath: string): string {
   return modulePath.split('/')[2] ?? '';
 }
 
+const COCKPIT_SUBJECT_KINDS = new Set(['email', 'meeting']);
+
 interface Collected {
   routes: MountedRoute[];
   nav: MountedNavEntry[];
   settingsPages: MountedSettingsPage[];
+  cockpitInfoFields: MountedCockpitInfoField[];
   problems: string[];
 }
 
 function collectPluginContributions(): Collected {
-  const collected: Collected = { routes: [], nav: [], settingsPages: [], problems: [] };
+  const collected: Collected = { routes: [], nav: [], settingsPages: [], cockpitInfoFields: [], problems: [] };
 
   for (const modulePath of Object.keys(pluginModules).sort()) {
     const pluginId = pluginIdFromModulePath(modulePath);
@@ -78,6 +82,14 @@ function collectPluginContributions(): Collected {
         : `/settings/plugins/${pluginId}`;
       collected.settingsPages.push({ ...page, path, pluginId });
     }
+
+    for (const field of ui.cockpitInfoFields ?? []) {
+      if (COCKPIT_SUBJECT_KINDS.has(field.subjectKind) && field.key && field.label) {
+        collected.cockpitInfoFields.push({ ...field, pluginId });
+      } else {
+        collected.problems.push(`${pluginId}: Cockpit info field "${field.label}" is not a valid email or meeting field and was not shown`);
+      }
+    }
   }
 
   for (const problem of collected.problems) {
@@ -91,6 +103,24 @@ const collected = collectPluginContributions();
 export const pluginRoutes: readonly MountedRoute[] = collected.routes;
 export const pluginNavEntries: readonly MountedNavEntry[] = collected.nav;
 export const pluginSettingsPages: readonly MountedSettingsPage[] = collected.settingsPages;
+
+/** A Cockpit's own info fields followed by the installed plugins' fields for
+ * that subject kind. A plugin field whose key the Cockpit (or an earlier
+ * plugin) already shows is left out, so the same field never appears twice. */
+export function withPluginCockpitInfoFields(
+  subjectKind: string,
+  ownFields: readonly { label: string; key: string }[],
+): { label: string; key: string }[] {
+  const shownKeys = new Set(ownFields.map((field) => field.key));
+  const fields = [...ownFields];
+  for (const field of collected.cockpitInfoFields) {
+    if (field.subjectKind === subjectKind && !shownKeys.has(field.key)) {
+      shownKeys.add(field.key);
+      fields.push({ label: field.label, key: field.key });
+    }
+  }
+  return fields;
+}
 /** Contributions that broke the rules above and were skipped. Shown on the
  * System Health page, because a skipped screen is otherwise just missing. */
 export const pluginUiProblems: readonly string[] = collected.problems;
