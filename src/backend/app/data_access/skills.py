@@ -32,12 +32,23 @@ from app.config import settings
 
 _SKILLS_ROOT = Path(__file__).resolve().parents[1] / "business" / "core" / "skills" / "catalog"
 _MANAGERS_ROOT = Path(__file__).resolve().parents[1] / "business" / "core" / "skills" / "managers"
+_INSTALL_MANAGERS_SUBPATH = ("data", "managers")
 
 
 def managers_root() -> Path:
     """Shared libraries materialised into a skill's own folder at deploy
     time rather than duplicated into it in the repo."""
     return _MANAGERS_ROOT
+
+
+def install_managers_root() -> Path | None:
+    """Shared libraries an agent repository ships for its own Skills, in the
+    install's config folder (`<SECOND_BRAIN_DATA_PATH>/data/managers/`) --
+    for example the company index its company Skills share. None before
+    setup has configured an App Database Folder."""
+    if settings.second_brain_data_path is None:
+        return None
+    return Path(settings.second_brain_data_path).joinpath(*_INSTALL_MANAGERS_SUBPATH)
 
 
 def list_categories() -> list[str]:
@@ -149,9 +160,25 @@ def shared_managers_target(hermes_home: Path) -> Path:
     return hermes_home / "managers"
 
 
-def deploy_shared_managers(hermes_home: Path) -> list[str]:
-    """Copies every canonical manager into the install's shared directory,
-    always overwriting. Returns the filenames written.
+def _manager_sources(root: Path | None) -> list[Path]:
+    if root is None or not root.is_dir():
+        return []
+    # Test scaffolding is not payload. conftest.py in particular would be
+    # picked up by any pytest run rooted at the install and change sys.path there.
+    return [
+        source for source in sorted(root.glob("*.py"))
+        if source.name != "conftest.py" and not source.name.startswith("test_")
+    ]
+
+
+def deploy_shared_managers(hermes_home: Path) -> dict[str, list[str]]:
+    """Copies every canonical manager, then every manager the install's own
+    config folder ships (`install_managers_root`), into the install's shared
+    directory, always overwriting. Returns `{"written": [...], "refused": [...]}`.
+
+    An install manager named like a framework manager is refused, never
+    copied: it would silently replace the framework's engine (`vault_manager.py`)
+    for every Skill on the install.
 
     Idempotent and cheap, so callers run it on every deploy rather than
     once: that is what makes staleness impossible. The install previously
@@ -161,16 +188,19 @@ def deploy_shared_managers(hermes_home: Path) -> list[str]:
     directory)."""
     target = shared_managers_target(hermes_home)
     target.mkdir(parents=True, exist_ok=True)
-    written = []
-    for source in sorted(_MANAGERS_ROOT.glob("*.py")):
-        # Test scaffolding is not payload. conftest.py in particular would
-        # be picked up by any pytest run rooted at the install and change
-        # sys.path there.
-        if source.name == "conftest.py" or source.name.startswith("test_"):
+    framework_sources = _manager_sources(_MANAGERS_ROOT)
+    framework_names = {source.name for source in framework_sources}
+    written, refused = [], []
+    for source in framework_sources:
+        shutil.copyfile(source, target / source.name)
+        written.append(source.name)
+    for source in _manager_sources(install_managers_root()):
+        if source.name in framework_names:
+            refused.append(source.name)
             continue
         shutil.copyfile(source, target / source.name)
         written.append(source.name)
-    return written
+    return {"written": written, "refused": refused}
 
 _SECTION_ACCESS_FILENAME = "section_access.json"
 

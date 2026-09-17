@@ -137,12 +137,15 @@ The app database folder — `<SECOND_BRAIN_DATA_PATH>`, historically
 data/Templates/<id>/Template.json
 data/EmailCapture/noise_definition.json
 data/Sections/ · data/Tools/ · data/Providers/
+data/managers/*.py            shared libraries the install's own Skills import
 pipelines/<id>.json
 AGENT-MEMORY.md
 ```
 
 These are **never repo-tracked files** and never live inside a Skill's `scripts/`
-folder. Resolve the folder through `vault_manager.data_root()`, never a hardcoded
+folder. `data/managers/` is where an agent repository puts a library several of its
+Skills share: `deploy_shared_managers` copies it into Hermes' shared managers folder
+beside the framework's own, and refuses one named like a framework manager. Resolve the folder through `vault_manager.data_root()`, never a hardcoded
 `.second-brain` — that hardcoding once cost a full day of silently dropped email
 capture.
 

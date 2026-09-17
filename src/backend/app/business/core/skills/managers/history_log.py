@@ -3,8 +3,8 @@
 Extracted from `summarize-and-tag-threads`'s own `apply_thread_extract.py`
 (2026-09-14), where it had been private, so that every writer of a History
 note shares one implementation of the entry format, the ordering and the
-replace-rather-than-repeat rule. It joins `vault_manager.py` and
-`company_index.py` as a shared engine: one copy, deployed onto the
+replace-rather-than-repeat rule. It joins `vault_manager.py` as a shared
+engine: one copy, deployed onto the
 install's `PYTHONPATH` by `deploy_shared_managers`, never bundled into a
 Skill's own `scripts/` folder (`ADR-019` -- a local copy silently wins over
 the shared one, which is how 228 stale `vault_manager.py` copies once ran
