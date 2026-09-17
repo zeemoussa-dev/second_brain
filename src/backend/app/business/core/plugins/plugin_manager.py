@@ -42,6 +42,10 @@ _load_report: list[Plugin] = []
 # every `load_all` from the plugins that loaded. Only plugins contribute: the
 # framework itself knows no business concept to enrich a subject with.
 _plugin_subject_enrichers: list[plugin_api.SubjectEnricher] = []
+# Cockpit's agent matchers (`BUG-063` seam) and the services plugins offer one
+# another, rebuilt the same way.
+_plugin_agent_matchers: list[plugin_api.AgentMatcher] = []
+_plugin_services: dict[str, object] = {}
 
 
 class PluginManager:
@@ -54,14 +58,14 @@ class PluginManager:
         `requires` is recorded but not yet enforced: resolving "graph or
         outlook" needs the Marketplace's view of what is installed, which
         arrives with it (`REQ-SB-91` Phase 4)."""
-        global _load_report, _plugin_subject_enrichers
+        global _load_report, _plugin_subject_enrichers, _plugin_agent_matchers, _plugin_services
         report: list[Plugin] = []
         mounts: list[tuple[str, APIRouter]] = []
 
         try:
             record = plugins_data.read_installed_record()
         except (OSError, ValueError) as exc:
-            _plugin_subject_enrichers = []
+            _plugin_subject_enrichers, _plugin_agent_matchers, _plugin_services = [], [], {}
             _load_report = [Plugin(
                 id="installed.json", name="Installed plugins record", version="",
                 framework_api=None, status=INVALID,
@@ -70,14 +74,16 @@ class PluginManager:
             return []
 
         seen: set[str] = set()
-        enrichers: list[plugin_api.SubjectEnricher] = []
+        loaded_apis: list[plugin_api.PluginApi] = []
         for entry in (record or {}).get("plugins") or []:
-            plugin, plugin_mounts = self._load_one(entry, seen, enrichers)
+            plugin, plugin_mounts = self._load_one(entry, seen, loaded_apis)
             report.append(plugin)
             mounts.extend(plugin_mounts)
 
         _load_report = report
-        _plugin_subject_enrichers = enrichers
+        _plugin_subject_enrichers = [enricher for api in loaded_apis for enricher in api.subject_enrichers]
+        _plugin_agent_matchers = [matcher for api in loaded_apis for matcher in api.agent_matchers]
+        _plugin_services = {name: service for api in loaded_apis for name, service in api.services.items()}
         return mounts
 
     def get_load_report(self) -> list[Plugin]:
@@ -87,8 +93,15 @@ class PluginManager:
         """In plugin install order."""
         return list(_plugin_subject_enrichers)
 
+    def get_agent_matchers(self) -> list[plugin_api.AgentMatcher]:
+        """In plugin install order."""
+        return list(_plugin_agent_matchers)
+
+    def get_service(self, name: str) -> object | None:
+        return _plugin_services.get(name)
+
     def _load_one(
-        self, entry: object, seen: set[str], enrichers: list[plugin_api.SubjectEnricher],
+        self, entry: object, seen: set[str], loaded_apis: list[plugin_api.PluginApi],
     ) -> tuple[Plugin, list[tuple[str, APIRouter]]]:
         raw_id = str(entry.get("id") or "").strip() if isinstance(entry, dict) else ""
         recorded_version = str(entry.get("version") or "") if isinstance(entry, dict) else ""
@@ -136,9 +149,9 @@ class PluginManager:
             return plugin, []
 
         prefix = f"{PLUGIN_ROUTE_PREFIX}/{raw_id}"
-        # Taken only now: an enricher a plugin registered before its own
+        # Taken only now: whatever a plugin registered before its own
         # `register` raised belongs to a plugin that is disabled.
-        enrichers.extend(api.subject_enrichers)
+        loaded_apis.append(api)
         plugin.status = LOADED
         plugin.routes_prefix = prefix
         return plugin, [(prefix, router) for router in api.routers]

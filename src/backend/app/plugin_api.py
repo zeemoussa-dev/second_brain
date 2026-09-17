@@ -19,7 +19,9 @@ from collections.abc import Callable
 
 from fastapi import APIRouter
 
+from app.business.core.agents.agent_manager import AgentManager
 from app.business.core.pipelines.pipeline_manager import PipelineManager
+from app.business.core.sections.section_manager import SectionManager
 from app.business.core.vault.vault_manager import VaultManager
 from app.business.hermes.client import get_client
 from app.data_access import vault_writer
@@ -29,6 +31,12 @@ FRAMEWORK_API = 1
 # `enricher(subject_kind, frontmatter, tags) -> {field: value}`. Cockpit calls it
 # while composing a view of a note (`BUG-063` seam).
 SubjectEnricher = Callable[[str, dict, list[str]], dict]
+
+# `matcher(subject_kind, subject) -> {"experts": [agent_id, ...], "fallback_agent_id": agent_id | None}`,
+# where `subject` is `{"stem", "frontmatter", "tags"}`. Cockpit asks it which agents
+# to recommend for a conversation about that note, and which agent answers when
+# nobody brought in fits (`BUG-063` seam).
+AgentMatcher = Callable[[str, dict], dict]
 
 
 class VaultApi:
@@ -61,6 +69,24 @@ class PipelinesApi:
         }
 
 
+class AgentsApi:
+    def list_experts(self) -> list[dict]:
+        """Every Expert agent: `id`, `name`, `description`, `section_id`."""
+        return [
+            {"id": agent.id, "name": agent.name, "description": agent.description, "section_id": agent.section_id}
+            for agent in AgentManager().get_expert_agents()
+        ]
+
+
+class SectionsApi:
+    def get(self, section_id: str) -> dict | None:
+        """`id`, `name` and `fallback_agent_id`, or None for an unknown Section."""
+        section = SectionManager().get_by_id(section_id)
+        if section is None:
+            return None
+        return {"id": section.id, "name": section.name, "fallback_agent_id": section.fallback_agent_id}
+
+
 class HermesApi:
     def run_cron_job(self, job_name: str, profile_id: str | None = None) -> bool:
         """Fires a Hermes cron job now. Returns once the trigger is sent, not
@@ -77,8 +103,12 @@ class PluginApi:
         self.vault = VaultApi()
         self.pipelines = PipelinesApi()
         self.hermes = HermesApi()
+        self.agents = AgentsApi()
+        self.sections = SectionsApi()
         self.routers: list[APIRouter] = []
         self.subject_enrichers: list[SubjectEnricher] = []
+        self.agent_matchers: list[AgentMatcher] = []
+        self.services: dict[str, object] = {}
 
     def register_router(self, router: APIRouter) -> None:
         """Mounted under `/plugins/<plugin_id>/` once registration succeeds.
@@ -91,3 +121,30 @@ class PluginApi:
         field only where the note carries no value for it: an enricher fills
         gaps, and never overrides what the note itself says."""
         self.subject_enrichers.append(enricher)
+
+    def register_agent_matcher(self, matcher: AgentMatcher) -> None:
+        """Lets Cockpit ask this plugin which agents fit a conversation about a
+        note, instead of Cockpit knowing a business concept itself. Returned
+        ids that are not registered agents are ignored, and a matcher that
+        raises is skipped."""
+        self.agent_matchers.append(matcher)
+
+    def provide_service(self, name: str, implementation: object) -> None:
+        """Offers a capability to other plugins by name, so a plugin never
+        imports another plugin. The name must be this plugin's id, a dot and
+        a name (`entities.customers`), so no plugin can take another's name."""
+        prefix = f"{self.plugin_id}."
+        if not name.startswith(prefix) or name == prefix:
+            raise ValueError(f"service {name!r} must be named '{prefix}<name>'")
+        if name in self.services:
+            raise ValueError(f"service {name!r} is provided twice")
+        self.services[name] = implementation
+
+    def get_service(self, name: str) -> object | None:
+        """Another loaded plugin's service, or None when that plugin is not
+        installed or did not load. Ask when the service is needed, not in
+        `register`: plugins load in install order, so the provider may load
+        after the plugin asking."""
+        # Imported here: the plugin manager imports this module.
+        from app.business.core.plugins.plugin_manager import PluginManager
+        return PluginManager().get_service(name)

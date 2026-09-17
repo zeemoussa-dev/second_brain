@@ -271,6 +271,84 @@ def test_a_plugin_that_fails_after_registering_contributes_no_enricher(data_path
     assert PluginManager().get_subject_enrichers() == []
 
 
+_MATCHING_AND_SERVING_BACKEND = '''
+def register(api):
+    api.register_agent_matcher(lambda kind, subject: {"experts": ["x-expert"]})
+    api.provide_service(api.plugin_id + ".lookup", lambda value: value.upper())
+'''
+
+_ASKING_BACKEND = '''
+from fastapi import APIRouter
+
+
+def register(api):
+    router = APIRouter()
+
+    @router.get("/ask")
+    def ask():
+        lookup = api.get_service("provider.lookup")
+        return {"answer": lookup("hi") if lookup else None}
+
+    api.register_router(router)
+'''
+
+
+def test_a_loaded_plugin_contributes_agent_matchers_and_services(data_path):
+    install(data_path, "provider", backend=_MATCHING_AND_SERVING_BACKEND)
+
+    PluginManager().load_all()
+
+    [matcher] = PluginManager().get_agent_matchers()
+    assert matcher("email", {}) == {"experts": ["x-expert"]}
+    assert PluginManager().get_service("provider.lookup")("hi") == "HI"
+
+
+def test_a_plugin_reaches_another_plugins_service_whatever_the_install_order(data_path):
+    install(data_path, "asker", backend=_ASKING_BACKEND)
+    install(data_path, "provider", backend=_MATCHING_AND_SERVING_BACKEND)
+
+    client = app_with(PluginManager().load_all())
+
+    assert client.get("/plugins/asker/ask").json() == {"answer": "HI"}
+
+
+def test_a_missing_service_is_none_not_an_error(data_path):
+    install(data_path, "asker", backend=_ASKING_BACKEND)
+
+    client = app_with(PluginManager().load_all())
+
+    assert client.get("/plugins/asker/ask").json() == {"answer": None}
+
+
+@pytest.mark.parametrize("name", ["other.lookup", "lookup", "provider.", "providerx.lookup"])
+def test_a_service_must_be_named_under_the_plugins_own_id(data_path, name):
+    backend = f'''
+def register(api):
+    api.provide_service({name!r}, object())
+'''
+    install(data_path, "provider", backend=backend)
+
+    PluginManager().load_all()
+
+    assert report_by_id()["provider"].status == "disabled"
+    assert PluginManager().get_service(name) is None
+
+
+def test_a_plugin_that_fails_after_registering_contributes_no_matcher_or_service(data_path):
+    backend = '''
+def register(api):
+    api.register_agent_matcher(lambda kind, subject: {})
+    api.provide_service("flaky.lookup", object())
+    raise RuntimeError("fails after registering")
+'''
+    install(data_path, "flaky", backend=backend)
+
+    PluginManager().load_all()
+
+    assert PluginManager().get_agent_matchers() == []
+    assert PluginManager().get_service("flaky.lookup") is None
+
+
 def test_reloading_does_not_duplicate_a_plugins_enrichers(data_path):
     install(data_path, "owners", backend=_ENRICHING_BACKEND)
 

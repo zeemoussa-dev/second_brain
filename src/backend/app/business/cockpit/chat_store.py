@@ -75,9 +75,10 @@ def get_thread(subject_kind: str, subject_note_stem: str) -> dict:
         state[key] = entry
     _ensure_last_answering_agent_fields(entry)
     if "recommended_agent_ids" not in entry:
-        customer_agent_id = moderator.match_customer_expert(subject_note_stem)
-        domain_agent_ids = moderator.match_domain_experts(subject_note_stem)
-        candidate_agent_ids = ([customer_agent_id] if customer_agent_id else []) + domain_agent_ids
+        candidate_agent_ids = (
+            moderator.recommended_experts(subject_kind, subject_note_stem)
+            + moderator.match_domain_experts(subject_note_stem)
+        )
         entry["recommended_agent_ids"] = list(dict.fromkeys(candidate_agent_ids))
         vault_writer.save_cockpit_chat_state(state)
     return entry

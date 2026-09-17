@@ -211,7 +211,7 @@ def _resolve_no_match_agent_id(
             reply_to_message_id=question_message_id,
         )
         return None
-    return moderator.match_customer_fallback_agent(subject_note_stem) or _RESEARCH_AGENT_ID
+    return moderator.fallback_agent(subject_kind, subject_note_stem) or _RESEARCH_AGENT_ID
 
 
 async def _reply_via_agent(agent_id: str, question_text: str) -> str:
@@ -342,7 +342,7 @@ async def send_user_message(
         # is no dedicated Expert TO bring in. Same fallback check as the
         # non-empty-roster branch above, just reached from a different
         # starting state.
-        fallback_agent_id = moderator.match_customer_fallback_agent(subject_note_stem)
+        fallback_agent_id = moderator.fallback_agent(subject_kind, subject_note_stem)
         if fallback_agent_id:
             agent_id = fallback_agent_id
         else:

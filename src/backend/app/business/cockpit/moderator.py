@@ -39,6 +39,7 @@ from __future__ import annotations
 import re
 
 from app.business.core.agents.agent_manager import AgentManager
+from app.business.core.plugins.plugin_manager import PluginManager
 from app.business.core.sections.section_manager import SectionManager
 from app.business.core.vault.vault_manager import VaultManager
 from app.business.hermes import agents_map_adapter
@@ -145,6 +146,63 @@ def match_customer_fallback_agent(subject_note_stem: str) -> str | None:
         return None
     section = _section_manager.get_by_id(_CUSTOMER_SECTION_ID)
     return section.fallback_agent_id if section is not None else None
+
+
+def _plugin_matches(subject_kind: str, subject_note_stem: str) -> list[dict] | None:
+    """What installed plugins' agent matchers say about this subject (`BUG-063`
+    seam), or None when no plugin registered a matcher. A matcher that raises
+    or answers something other than a dict is skipped, like a failing
+    subject enricher."""
+    matchers = PluginManager().get_agent_matchers()
+    if not matchers:
+        return None
+    entry = _vault_manager.get_index().get(subject_note_stem)
+    if entry is None:
+        return []
+    subject = {"stem": entry["stem"], "frontmatter": dict(entry["frontmatter"]), "tags": list(entry["tags"])}
+    matches = []
+    for matcher in matchers:
+        try:
+            match = matcher(subject_kind, subject)
+        except Exception:
+            continue
+        if isinstance(match, dict):
+            matches.append(match)
+    return matches
+
+
+def recommended_experts(subject_kind: str, subject_note_stem: str) -> list[str]:
+    """The agents plugins recommend for a conversation about this subject, in
+    plugin order, limited to agents that are really registered.
+
+    With no plugin matcher installed, the framework's own Customer matching
+    still answers, so nothing changes before the Entities plugin exists; that
+    transitional path is removed with it (Entities plan Phase 5)."""
+    matches = _plugin_matches(subject_kind, subject_note_stem)
+    if matches is None:
+        customer_agent_id = match_customer_expert(subject_note_stem)
+        return [customer_agent_id] if customer_agent_id else []
+    registered = {agent.id for agent in _agent_manager.get_expert_agents()}
+    experts = [
+        agent_id for match in matches for agent_id in (match.get("experts") or [])
+        if isinstance(agent_id, str) and agent_id in registered
+    ]
+    return list(dict.fromkeys(experts))
+
+
+def fallback_agent(subject_kind: str, subject_note_stem: str) -> str | None:
+    """Who answers when nobody brought in fits: the first registered agent a
+    plugin names, or None. Same transitional Customer fallback as
+    `recommended_experts` when no plugin matcher is installed."""
+    matches = _plugin_matches(subject_kind, subject_note_stem)
+    if matches is None:
+        return match_customer_fallback_agent(subject_note_stem)
+    registered = {agent.id for agent in _agent_manager.get_all()}
+    for match in matches:
+        agent_id = match.get("fallback_agent_id")
+        if isinstance(agent_id, str) and agent_id in registered:
+            return agent_id
+    return None
 
 
 def route_question(question_text: str, candidate_agent_ids: list[str]) -> dict:
