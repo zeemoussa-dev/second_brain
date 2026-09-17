@@ -117,6 +117,9 @@ compared read-only (listing and rendering) rather than by writing to the live re
 ### Phase 4 — My Day 1.3.0 asks Entities
 My Day drops its own resolver and enricher and uses `get_service("entities.customers")`.
 **Gate:** My Day parity with Entities installed; no customer and no error without it.
+**Status: done 2026-09-17.** My Day 1.3.0 (`sb-plugins-my-day` 004f08b). Parity live: six My Day endpoints and 38 Cockpit
+views identical; without the service, the real vault lists 31 emails and 7 meetings with no
+customer and no error (checked in-process rather than by uninstalling Entities).
 
 ### Phase 5 — Remove Entities from the framework
 Delete what moved; stop seeding the three masters; remove the Entities nav entry and route.
