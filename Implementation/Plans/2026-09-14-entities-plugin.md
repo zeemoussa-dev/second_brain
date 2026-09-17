@@ -104,6 +104,15 @@ store), screens (Entities settings page, Cockpit Customer info field), Templates
 masters). Publish, install from the Marketplace.
 **Gate:** the plugin's own tests; parity on real data for Entities CRUD, Cockpit roster and
 Customer field, People lookup, `.sbf` export/import.
+**Status: done 2026-09-17.** `sb-plugins-entities` 18df155, published and installed from the
+Marketplace. The plugin needed one more v2 capability, `api.data` (read/write its registered
+data files, `02d4f79`). The settings page sits under Settings → Plugins (the host rule), not
+the Vault settings nav -- open question 2 is still the operator's. Parity: 32 entities and
+the rendered file identical; 532 Threads/Meetings matched identically (171 via the Customer
+Section fallback, 0 dedicated Experts on this install); 2,044 notes resolve the same customer
+as My Day; after install, 38 live Cockpit views identical to the baseline. Entities CRUD was
+compared read-only (listing and rendering) rather than by writing to the live registry, and
+`.sbf` export/import is covered by `tests/test_artifact_seed_data.py`, not a live round trip.
 
 ### Phase 4 — My Day 1.3.0 asks Entities
 My Day drops its own resolver and enricher and uses `get_service("entities.customers")`.
