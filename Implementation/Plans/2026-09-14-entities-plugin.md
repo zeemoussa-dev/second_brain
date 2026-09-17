@@ -66,6 +66,9 @@ until seam 5 replaces its scan.
 
 ### Phase 1 — Delete dead entity code
 Framework only, no behaviour change.
+**Status: done 2026-09-17.** 1,253 lines removed (both hub-linking modules, the dead
+`people_extraction` functions, 41 `vault_writer` functions). Gate passed: suite, import check,
+empty boot, 34 live Cockpit views unchanged.
 **Gate:** backend suite, core import check, empty boot, live smoke (Cockpit people chips
 still resolve).
 
