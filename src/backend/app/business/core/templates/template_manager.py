@@ -118,6 +118,29 @@ class TemplateManager:
             seeded.append(template_id)
         return {"seeded": seeded, "kept": kept}
 
+    def validate_template(self, template_id: str, data: dict) -> str | None:
+        """Why `data` is not a Template this framework can use, or None --
+        the same `_to_template` parse every read applies."""
+        try:
+            self._to_template(template_id, data)
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
+            return f"{type(exc).__name__}: {exc}"
+        return None
+
+    def has_template(self, template_id: str) -> bool:
+        return template_id in set(templates_data.list_template_ids())
+
+    def install_if_missing(self, template_id: str, data: dict) -> bool:
+        """Writes a plugin's Template only when this install has none with
+        that id; True when it was written. The same never-overwrite rule as
+        `seed_shipped_masters`: an existing Template may carry the operator's
+        edits, so installing a plugin adopts it as it is."""
+        if self.has_template(template_id):
+            return False
+        self._to_template(template_id, data)
+        templates_data.write_template_json(template_id, data)
+        return True
+
     def get_by_id(self, template_id: str) -> Template | None:
         """None (never raises) if the id doesn't exist or its
         Template.json is malformed."""

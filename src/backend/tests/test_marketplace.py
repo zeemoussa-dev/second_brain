@@ -52,7 +52,7 @@ def roots(tmp_path, monkeypatch):
 
 
 def publish(roots, plugin_id="my-day", version="1.0.0", *, framework_api=None, requires=None,
-            manifest_id=None, manifest_version=None, with_ui=True) -> Path:
+            manifest_id=None, manifest_version=None, with_ui=True, templates=None) -> Path:
     package = roots["marketplace"] / plugin_id / version
     (package / "backend").mkdir(parents=True)
     manifest = {
@@ -67,7 +67,22 @@ def publish(roots, plugin_id="my-day", version="1.0.0", *, framework_api=None, r
     if with_ui:
         (package / "ui").mkdir()
         (package / "ui" / "index.tsx").write_text("export default {};\n", encoding="utf-8")
+    for template_id, data in (templates or {}).items():
+        (package / "templates" / template_id).mkdir(parents=True)
+        (package / "templates" / template_id / "Template.json").write_text(json.dumps(data), encoding="utf-8")
     return package
+
+
+def install_template(roots, template_id: str, data: dict) -> Path:
+    """A Template already on the install, as seeding or the operator left it."""
+    path = roots["config"] / "data" / "Templates" / template_id / "Template.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return path
+
+
+_CLIENT_TEMPLATE = {"id": "client", "version": 1, "sections": []}
+_OPERATOR_EDITED_TEMPLATE = {"id": "client", "version": 1, "sections": [], "note": "operator edit"}
 
 
 def installed_record(roots) -> dict:
@@ -273,6 +288,57 @@ def test_the_plugin_host_writes_no_bytecode_into_the_config_folder(roots):
     PluginManager().load_all()
 
     assert list((roots["config"] / "plugins").rglob("__pycache__")) == []
+
+
+# -- Templates layer (Entities plan Phase 2) ----------------------------------------------
+
+
+def test_preflight_says_which_templates_it_would_install_and_which_it_keeps(roots):
+    publish(roots, templates={"client": _CLIENT_TEMPLATE, "contract": {"id": "contract", "sections": []}})
+    install_template(roots, "contract", {"id": "contract", "sections": []})
+
+    check = MarketplaceManager().preflight("my-day", "1.0.0")
+
+    assert check["ok"] is True
+    assert check["templates"] == {"install": ["client"], "keep": ["contract"]}
+
+
+@pytest.mark.parametrize("template_id, data, expected", [
+    ("client", {"id": "client", "sections": "not a list"}, "not valid on this framework"),
+    ("client", {"id": "someone-else", "sections": []}, "declares id"),
+    ("client", ["not", "an", "object"], "not a JSON object"),
+    ("Bad_Id", {"sections": []}, "not a valid Template id"),
+])
+def test_preflight_refuses_a_package_with_an_invalid_template(roots, template_id, data, expected):
+    publish(roots, templates={template_id: data})
+
+    check = MarketplaceManager().preflight("my-day", "1.0.0")
+
+    assert check["ok"] is False
+    assert any(expected in problem for problem in check["problems"])
+
+
+def test_install_writes_missing_templates_and_never_overwrites_an_existing_one(roots):
+    publish(roots, templates={"client": _CLIENT_TEMPLATE, "contract": {"id": "contract", "sections": []}})
+    existing = install_template(roots, "client", _OPERATOR_EDITED_TEMPLATE)
+
+    result = MarketplaceManager().install("my-day", "1.0.0")
+
+    assert result["installed"] is True
+    assert result["templates"] == {"installed": ["contract"], "kept": ["client"]}
+    assert json.loads(existing.read_text(encoding="utf-8")) == _OPERATOR_EDITED_TEMPLATE
+    assert (roots["config"] / "data" / "Templates" / "contract" / "Template.json").is_file()
+    assert installed_record(roots)["plugins"][0]["templates"] == ["client", "contract"]
+
+
+def test_uninstall_leaves_the_templates_in_place(roots):
+    publish(roots, templates={"client": _CLIENT_TEMPLATE})
+    MarketplaceManager().install("my-day", "1.0.0")
+
+    result = MarketplaceManager().uninstall("my-day")
+
+    assert result["templates_left_in_place"] == ["client"]
+    assert (roots["config"] / "data" / "Templates" / "client" / "Template.json").is_file()
 
 
 # -- uninstall ----------------------------------------------------------------------

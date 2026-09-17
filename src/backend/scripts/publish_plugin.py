@@ -9,7 +9,7 @@ plugin that fails any of them is not published:
 
   1. plugin.json   a valid id, an x.y.z version, and the framework API this
                    framework provides
-  2. layout        backend/__init__.py and/or ui/index.tsx
+  2. layout        backend/__init__.py, ui/index.tsx and/or templates/<id>/Template.json
   3. boundary      the backend imports only `app.plugin_api`; the screens import
                    only their own files, src/pluginHost/ and the host's libraries
   4. tests         the plugin's own tests pass, when it has a tests/ folder
@@ -96,13 +96,44 @@ def manifest_problems(manifest: dict, host_api: int) -> list[str]:
 def layout_problems(repo: Path) -> list[str]:
     has_backend = (repo / "backend").is_dir()
     has_ui = (repo / "ui").is_dir()
+    has_templates = (repo / "templates").is_dir()
     problems = []
-    if not has_backend and not has_ui:
-        problems.append("the plugin has neither backend/ nor ui/")
+    if not (has_backend or has_ui or has_templates):
+        problems.append("the plugin has none of backend/, ui/ or templates/")
     if has_backend and not (repo / "backend" / "__init__.py").is_file():
         problems.append("backend/ has no __init__.py defining register(api)")
     if has_ui and not (repo / "ui" / "index.tsx").is_file():
         problems.append("ui/ has no index.tsx default-exporting the plugin's screens")
+    if has_templates:
+        problems.extend(template_problems(repo / "templates"))
+    return problems
+
+
+def template_problems(templates_dir: Path) -> list[str]:
+    """Each `templates/<id>/` holds a Template.json that parses to an object
+    whose `id`, when it declares one, is its folder name. Its sections are
+    checked against the framework's own Template parser when the Marketplace
+    checks a version for install, on the framework that will use it."""
+    problems = []
+    folders = sorted(p for p in templates_dir.iterdir() if p.is_dir() and p.name != "__pycache__")
+    if not folders:
+        problems.append("templates/ holds no Template folders")
+    for folder in folders:
+        where = f"templates/{folder.name}"
+        if not _VALID_PLUGIN_ID.match(folder.name):
+            problems.append(f"{where}: not a valid Template id (lowercase letters, digits, hyphens)")
+        try:
+            data = json.loads((folder / "Template.json").read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            problems.append(f"{where}: no Template.json")
+            continue
+        except ValueError as exc:
+            problems.append(f"{where}/Template.json is not valid JSON: {exc}")
+            continue
+        if not isinstance(data, dict):
+            problems.append(f"{where}/Template.json must hold a JSON object")
+        elif "id" in data and data["id"] != folder.name:
+            problems.append(f"{where}/Template.json declares id {data['id']!r}, not {folder.name!r}")
     return problems
 
 
@@ -199,7 +230,7 @@ def publish(
 
     target.mkdir(parents=True)
     shutil.copy2(repo / "plugin.json", target / "plugin.json")
-    for part in ("backend", "ui"):
+    for part in ("backend", "ui", "templates"):
         if (repo / part).is_dir():
             shutil.copytree(repo / part, target / part, ignore=_NEVER_PACKAGED)
     return {"published": True, "plugin_id": plugin_id, "version": version, "path": str(target)}

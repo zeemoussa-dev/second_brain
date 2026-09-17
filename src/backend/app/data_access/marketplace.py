@@ -4,11 +4,12 @@ one package's pieces into and out of an install. Zero business interpretation
 here: no compatibility check, no ownership decisions, no id rules -- that is
 MarketplaceManager's job.
 
-A package holds `plugin.json`, `backend/` (the plugin's Python package) and
-`ui/` (its screens). An installed plugin is two pieces: `plugin.json` and
-`backend/` in the install's config folder, where the backend plugin host loads
-them, and `ui/` in the frontend's `src/plugins/<plugin-id>/`, where build-time
-composition picks it up.
+A package holds `plugin.json`, `backend/` (the plugin's Python package),
+`ui/` (its screens) and `templates/<id>/Template.json` (its Templates). An
+installed plugin is two pieces: `plugin.json` and `backend/` in the install's
+config folder, where the backend plugin host loads them, and `ui/` in the
+frontend's `src/plugins/<plugin-id>/`, where build-time composition picks it
+up. Templates are not copied here: TemplateManager installs them.
 
 Pieces are never deleted in place (`BUG-065`). A delete that the OS stops
 part-way -- a sync client such as OneDrive holding a `__pycache__` open --
@@ -38,6 +39,8 @@ _FRONTEND_PLUGINS_ROOT = _SRC_ROOT / "frontend" / "src" / "plugins"
 _MANIFEST_FILENAME = "plugin.json"
 _BACKEND_DIRECTORY_NAME = "backend"
 _UI_DIRECTORY_NAME = "ui"
+_TEMPLATES_DIRECTORY_NAME = "templates"
+_TEMPLATE_FILENAME = "Template.json"
 _NEVER_COPIED = shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache", "node_modules")
 
 # Beside the pieces, in the same parent folder, so moving in and out is a
@@ -78,6 +81,18 @@ def read_package_manifest(plugin_id: str, version: str) -> dict:
     """Raises FileNotFoundError / json.JSONDecodeError."""
     path = marketplace_root() / plugin_id / version / _MANIFEST_FILENAME
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def read_package_templates(plugin_id: str, version: str) -> dict[str, object]:
+    """{Template id (its folder name): parsed Template.json} for one package;
+    empty when it ships no `templates/`. Raises OSError / json.JSONDecodeError."""
+    root = marketplace_root() / plugin_id / version / _TEMPLATES_DIRECTORY_NAME
+    if not root.is_dir():
+        return {}
+    return {
+        folder.name: json.loads((folder / _TEMPLATE_FILENAME).read_text(encoding="utf-8"))
+        for folder in sorted(root.iterdir()) if folder.is_dir()
+    }
 
 
 def install_targets(plugin_id: str) -> dict[str, Path]:

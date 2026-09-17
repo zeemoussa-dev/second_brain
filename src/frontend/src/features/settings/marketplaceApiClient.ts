@@ -33,6 +33,9 @@ export interface MarketplacePreflight {
   problems: string[];
   installed_version: string | null;
   replaces: string | null;
+  // Templates the package brings: written when missing, kept (never
+  // overwritten) when the install already has one with that id.
+  templates?: { install: string[]; keep: string[] };
 }
 
 export interface MarketplaceInstallResult {

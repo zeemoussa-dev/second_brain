@@ -15,6 +15,7 @@ from pathlib import Path
 
 from app import plugin_api
 from app.business.core.plugins.plugin_manager import is_valid_plugin_id
+from app.business.core.templates.template_manager import TemplateManager
 from app.data_access import marketplace as marketplace_data
 from app.data_access import plugins as plugins_data
 from app.data_access import skills as skills_data
@@ -90,6 +91,7 @@ class MarketplaceManager:
             "plugin_id": plugin_id, "version": version, "ok": False, "problems": [],
             "installed_version": installed_version,
             "replaces": installed_version if installed_version and installed_version != version else None,
+            "templates": {"install": [], "keep": []},
         }
         problems: list[str] = result["problems"]
 
@@ -114,6 +116,12 @@ class MarketplaceManager:
         if installed_version == version:
             problems.append(f"{plugin_id} {version} is already installed")
         problems.extend(self._unmet_requirements(plugin_id, manifest))
+        templates = self._package_templates(plugin_id, version, problems)
+        template_manager = TemplateManager()
+        result["templates"] = {
+            "install": [template_id for template_id in templates if not template_manager.has_template(template_id)],
+            "keep": [template_id for template_id in templates if template_manager.has_template(template_id)],
+        }
 
         result["ok"] = not problems
         return result
@@ -162,18 +170,22 @@ class MarketplaceManager:
             entry for entry in record.get("plugins") or []
             if not (isinstance(entry, dict) and entry.get("id") == plugin_id)
         ]
+        templates = self._package_templates(plugin_id, version, [])
         record["plugins"].append({
             "id": plugin_id,
             "version": version,
             "installed_at": datetime.now(timezone.utc).isoformat(),
             "owned": [str(targets[part]) for part in placed],
+            "templates": sorted(templates),
         })
         plugins_data.write_installed_record(record)
         leftovers = [path for aside in moved_aside.values() for path in marketplace_data.discard_tree(aside)]
+        installed_templates, kept_templates, template_problems = self._install_templates(templates)
         return {
             "installed": True, "plugin_id": plugin_id, "version": version, "replaced": check["replaces"],
             "owned": {part: (str(targets[part]) if part in placed else None) for part in targets},
-            "leftovers": leftovers, "restart_required": True, "problems": [],
+            "templates": {"installed": installed_templates, "kept": kept_templates},
+            "leftovers": leftovers, "restart_required": True, "problems": template_problems,
         }
 
     # -- uninstall ----------------------------------------------------------------
@@ -229,10 +241,51 @@ class MarketplaceManager:
         return {
             "uninstalled": True, "plugin_id": plugin_id, "removed": [str(path) for path, _ in moved_aside],
             "refused_outside_plugin_folders": refused, "leftovers": leftovers,
+            # Notes written against these Templates stay in the vault, so the
+            # Templates stay too; the operator removes one deliberately.
+            "templates_left_in_place": sorted({t for entry in matching for t in entry.get("templates") or []}),
             "restart_required": True, "reason": None,
         }
 
     # -- internals ------------------------------------------------------------------
+
+    def _package_templates(self, plugin_id: str, version: str, problems: list[str]) -> dict[str, dict]:
+        """The package's valid Templates; every invalid one is named in `problems`."""
+        try:
+            templates = marketplace_data.read_package_templates(plugin_id, version)
+        except (OSError, ValueError) as exc:
+            problems.append(f"the package's Templates cannot be read: {exc}")
+            return {}
+        valid: dict[str, dict] = {}
+        template_manager = TemplateManager()
+        for template_id, data in templates.items():
+            if not is_valid_plugin_id(template_id):
+                problems.append(f"Template folder {template_id!r} is not a valid Template id")
+            elif not isinstance(data, dict):
+                problems.append(f"Template {template_id!r} is not a JSON object")
+            elif "id" in data and data["id"] != template_id:
+                problems.append(f"Template {template_id!r} declares id {data['id']!r}")
+            elif reason := template_manager.validate_template(template_id, data):
+                problems.append(f"Template {template_id!r} is not valid on this framework: {reason}")
+            else:
+                valid[template_id] = data
+        return valid
+
+    def _install_templates(self, templates: dict[str, dict]) -> tuple[list[str], list[str], list[str]]:
+        """Writes each Template this install does not have and adopts the
+        rest as they are. Returns (installed, kept, problems); a Template that
+        cannot be written does not undo the install -- it is reported."""
+        installed, kept, problems = [], [], []
+        template_manager = TemplateManager()
+        for template_id, data in templates.items():
+            try:
+                if template_manager.install_if_missing(template_id, data):
+                    installed.append(template_id)
+                else:
+                    kept.append(template_id)
+            except OSError as exc:
+                problems.append(f"Template {template_id!r} could not be written: {exc}")
+        return installed, kept, problems
 
     def _not_installed(self, plugin_id: str, version: str, problems: list[str]) -> dict:
         return {"installed": False, "plugin_id": plugin_id, "version": version, "problems": list(problems)}

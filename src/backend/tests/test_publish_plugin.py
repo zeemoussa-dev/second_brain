@@ -119,6 +119,50 @@ def test_a_dry_run_checks_everything_and_publishes_nothing(repo, marketplace):
     assert not marketplace.exists()
 
 
+def add_template(repo: Path, template_id: str, content: str) -> None:
+    folder = repo / "templates" / template_id
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "Template.json").write_text(content, encoding="utf-8")
+
+
+def test_a_plugins_templates_are_published_with_it(repo, marketplace):
+    add_template(repo, "client", json.dumps({"id": "client", "sections": []}))
+
+    publish(repo, marketplace)
+
+    assert (marketplace / "my-day" / "1.0.0" / "templates" / "client" / "Template.json").is_file()
+
+
+def test_a_templates_only_plugin_is_published(repo, marketplace):
+    import shutil
+
+    shutil.rmtree(repo / "backend")
+    shutil.rmtree(repo / "ui")
+    add_template(repo, "client", json.dumps({"sections": []}))
+
+    assert publish(repo, marketplace)["published"] is True
+
+
+@pytest.mark.parametrize("template_id, content, expected", [
+    ("client", "{not json", "is not valid JSON"),
+    ("client", json.dumps({"id": "someone-else"}), "declares id"),
+    ("client", json.dumps(["a list"]), "must hold a JSON object"),
+    ("Bad_Id", json.dumps({}), "not a valid Template id"),
+])
+def test_an_invalid_template_is_refused(repo, marketplace, template_id, content, expected):
+    add_template(repo, template_id, content)
+
+    problems = refusal(repo, marketplace)
+
+    assert any(expected in problem for problem in problems)
+
+
+def test_a_template_folder_without_template_json_is_refused(repo, marketplace):
+    (repo / "templates" / "client").mkdir(parents=True)
+
+    assert any("no Template.json" in problem for problem in refusal(repo, marketplace))
+
+
 # -- refusals ----------------------------------------------------------------------
 
 

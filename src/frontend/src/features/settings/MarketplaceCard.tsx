@@ -169,6 +169,12 @@ export function MarketplaceCard() {
                   <p className="text-muted">
                     Ready to install {check.version}
                     {check.replaces ? `, replacing the installed ${check.replaces}` : ''}.
+                    {check.templates && check.templates.install.length > 0 && (
+                      <> Adds Templates: {check.templates.install.join(', ')}.</>
+                    )}
+                    {check.templates && check.templates.keep.length > 0 && (
+                      <> Keeps the existing {check.templates.keep.join(', ')} as they are.</>
+                    )}
                   </p>
                 ) : (
                   <>
