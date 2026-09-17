@@ -52,6 +52,7 @@ is a thin status mirror of the index table below.
 | BUG-063 | Cockpit, a framework component, picks agents by Customer — `moderator.py` matches a 'customer expert' through a hardcoded Customer Section, and `cockpit_view` resolves a subject's customer by importing My Day | Logic | Major | Open | 2026-09-14 | — |
 | BUG-064 | The pending-approvals API was archived on 2026-08-20 but its screens were not — the Approvals page, My Day's approvals card and the Agents Map chat proposal cards call `/pending-approvals*`, which answers 404, and show nothing instead of an error | UI | Major | Open | 2026-09-14 | — |
 | BUG-065 | Replacing an installed plugin version deleted the old files in place, so a `__pycache__` held open by OneDrive stopped the delete half-way — the plugin's modules were gone, the record still named the old version, and the Marketplace answered 500 | Logic | Critical | Fixed | 2026-09-14 | this change |
+| BUG-066 | Attaching a file in Chat fails — the paperclip posts to `/agents/{id}/chat/attachment`, a route that has not existed since the 2026-08-20 redesign, so the backend answers 404 and the Chat panel shows "Something went wrong" | UI | Major | Fixed | 2026-09-17 | this change |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -1008,3 +1009,25 @@ is a thin status mirror of the index table below.
   reported and swept by the plugin's next install or uninstall. Uninstall moves every piece
   aside before deleting any. The plugin host no longer writes bytecode into the config folder.
   Regression tests in `tests/test_marketplace.py`.
+
+### BUG-066 — Attaching a file in Chat fails
+
+- **Area:** UI
+- **Severity:** Major
+- **Status:** Fixed
+- **Found:** 2026-09-17, operator: "Chat is currently not working". The backend log showed
+  `POST /agents/default/chat/attachment` → 404; a plain text message through
+  `POST /agents/default/chat/stream` streamed a reply normally.
+- **Root cause:** the Chat panel's paperclip (`AgentChatPanel` →
+  `sendChatMessageWithAttachment`) was built against the pre-redesign attachment pipeline.
+  That route did not survive the 2026-08-20 redesign, and nothing in the current backend
+  served it, so every message with a file failed.
+- **Repro:** Chat → attach any file → Send.
+- **Expected:** the agent receives the message and the file.
+- **Actual:** 404; the thread shows "Something went wrong sending that message."
+- **Fix:** operator decision 2026-09-17, "hand the file to Primary". A framework route saves
+  the file to `<SECOND_BRAIN_DATA_PATH>/data/chat-uploads/<id>/` and sends the agent the
+  message with the saved path over the same kept-alive chat session; the agent decides what
+  the file means and files it (Primary: `capture-files`). Empty, oversized (25 MB) or
+  unsaveable files are not sent, and the reason is shown as an error bubble. The framework
+  interprets nothing about the file. Tests in `tests/test_chat_attachment.py`.

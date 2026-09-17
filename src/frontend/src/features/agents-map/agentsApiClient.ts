@@ -208,12 +208,10 @@ export function resetChatSession(agentId: string): Promise<{ reset: boolean }> {
 
 export interface ChatAttachmentResponse {
   reply: string;
-  attachment_status:
-    | 'filed'
-    | 'summarized_unfiled'
-    | 'rejected'
-    | 'extraction_failed'
-    | 'summarization_failed';
+  // 'sent_to_agent': saved to the install and handed to the agent with the
+  // message; 'rejected': not sent (empty, too large, unsaveable), and `reply`
+  // says why.
+  attachment_status: 'sent_to_agent' | 'rejected';
   vault_path: string | null;
 }
 

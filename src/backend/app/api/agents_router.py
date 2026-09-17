@@ -66,7 +66,7 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -75,7 +75,7 @@ from app.business.core.agents.agent_presentation import to_detail_dict, to_summa
 from app.business.core.vault.vault_manager import VaultManager
 from app.business.hermes import agents_map_adapter, chat_sessions
 from app.business.hermes.client import HermesUnavailableError, get_client
-from app.business.logic import agent_chat_stream
+from app.business.logic import agent_chat_stream, chat_attachment
 
 _vault_manager = VaultManager()
 
@@ -334,6 +334,38 @@ async def stream_chat_message(agent_id: str, body: ChatMessageBody) -> Streaming
         agent_chat_stream.stream_chat_turn(agent_id, body.message),
         media_type="text/event-stream",
     )
+
+
+@router.post("/{agent_id}/chat/attachment")
+async def send_chat_message_with_attachment(
+    agent_id: str, message: str = Form(""), file: UploadFile = File(...),
+) -> dict:
+    """One chat turn carrying a file (`chat_attachment`): the file is saved
+    into the install and the agent receives the message with its path, on the
+    same kept-alive session as `POST /{agent_id}/chat`. A file that is not
+    sent (empty, too large, unsaveable) is a 200 with `attachment_status:
+    "rejected"` and the reason as `reply`, which the Chat panel shows as an
+    error bubble -- never a silent drop."""
+    if get_client().profiles.find_by_id(agent_id) is None:
+        raise HTTPException(status_code=404, detail=f"Unknown agent: {agent_id!r}")
+
+    original_name = file.filename or ""
+    # One byte past the limit is enough to know it is too large.
+    content = await file.read(chat_attachment.MAX_ATTACHMENT_BYTES + 1)
+    try:
+        saved_path = chat_attachment.store_attachment(original_name, content)
+    except chat_attachment.AttachmentRejected as exc:
+        return {"reply": str(exc), "attachment_status": "rejected", "vault_path": None}
+
+    agent_message = chat_attachment.compose_agent_message(message, saved_path, original_name, len(content))
+    try:
+        reply_text = await chat_sessions.send_and_await_reply(agent_id, agent_message)
+    except HermesUnavailableError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="Hermes did not reply in time") from exc
+
+    return {"reply": reply_text, "attachment_status": "sent_to_agent", "vault_path": None}
 
 
 @router.post("/{agent_id}/chat/reset")
