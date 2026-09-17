@@ -39,6 +39,16 @@ SubjectEnricher = Callable[[str, dict, list[str]], dict]
 AgentMatcher = Callable[[str, dict], dict]
 
 
+def _relative_path(path: str, what: str) -> str:
+    """`path` with `/` separators, or ValueError when it could point outside
+    the folder it is relative to."""
+    text = str(path or "")
+    parts = text.replace("\\", "/").split("/")
+    if not text.strip() or text.startswith(("/", "\\")) or ":" in text or ".." in parts:
+        raise ValueError(f"{what} {path!r} must be a relative path")
+    return "/".join(part for part in parts if part)
+
+
 class VaultApi:
     def index(self) -> dict[str, dict]:
         """Every indexed note keyed by filename stem, each with `path`, `stem`,
@@ -110,6 +120,7 @@ class PluginApi:
         self.agent_matchers: list[AgentMatcher] = []
         self.services: dict[str, object] = {}
         self.people_folders: list[str] = []
+        self.seed_data_files: list[str] = []
 
     def register_router(self, router: APIRouter) -> None:
         """Mounted under `/plugins/<plugin_id>/` once registration succeeds.
@@ -136,12 +147,19 @@ class PluginApi:
         `<folder>/**/People/`, then the flat `Work/People/`. Vault-relative
         paths only; anything that could leave the vault is refused."""
         for folder in folders:
-            parts = str(folder).replace("\\", "/").split("/")
-            if not folder or str(folder).startswith(("/", "\\")) or ":" in str(folder) or ".." in parts:
-                raise ValueError(f"people folder {folder!r} must be a vault-relative path")
-            normalized = "/".join(part for part in parts if part)
+            normalized = _relative_path(folder, "people folder")
             if normalized not in self.people_folders:
                 self.people_folders.append(normalized)
+
+    def register_seed_data_file(self, relative_path: str) -> None:
+        """A file under the App Database Folder that this plugin's Skills
+        need before their first run (e.g. `Settings/Entities.md`). An
+        artifact export carries it empty, and an import creates it empty
+        when a deployed Skill mentions its name -- never over an existing
+        file."""
+        normalized = _relative_path(relative_path, "seed data file")
+        if normalized not in self.seed_data_files:
+            self.seed_data_files.append(normalized)
 
     def provide_service(self, name: str, implementation: object) -> None:
         """Offers a capability to other plugins by name, so a plugin never

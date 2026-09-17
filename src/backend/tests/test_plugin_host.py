@@ -374,6 +374,31 @@ def register(api):
     assert PluginManager().get_people_folders() == []
 
 
+def test_a_plugin_registers_its_seed_data_files(data_path):
+    install(data_path, "stores", backend='''
+def register(api):
+    api.register_seed_data_file("Settings/Stores.md")
+    api.register_seed_data_file("Settings\\\\Stores.md")
+''')
+
+    PluginManager().load_all()
+
+    assert PluginManager().get_seed_data_files() == ["Settings/Stores.md"]
+
+
+@pytest.mark.parametrize("path", ["../Stores.md", "/etc/passwd", "C:/Stores.md", " "])
+def test_a_seed_data_file_outside_the_data_folder_is_refused(data_path, path):
+    install(data_path, "escaper", backend=f'''
+def register(api):
+    api.register_seed_data_file({path!r})
+''')
+
+    PluginManager().load_all()
+
+    assert report_by_id()["escaper"].status == "disabled"
+    assert PluginManager().get_seed_data_files() == []
+
+
 def test_reloading_does_not_duplicate_a_plugins_enrichers(data_path):
     install(data_path, "owners", backend=_ENRICHING_BACKEND)
 

@@ -53,6 +53,7 @@ is a thin status mirror of the index table below.
 | BUG-064 | The pending-approvals API was archived on 2026-08-20 but its screens were not — the Approvals page, My Day's approvals card and the Agents Map chat proposal cards call `/pending-approvals*`, which answers 404, and show nothing instead of an error | UI | Major | Open | 2026-09-14 | — |
 | BUG-065 | Replacing an installed plugin version deleted the old files in place, so a `__pycache__` held open by OneDrive stopped the delete half-way — the plugin's modules were gone, the record still named the old version, and the Marketplace answered 500 | Logic | Critical | Fixed | 2026-09-14 | this change |
 | BUG-066 | Attaching a file in Chat fails — the paperclip posts to `/agents/{id}/chat/attachment`, a route that has not existed since the 2026-08-20 redesign, so the backend answers 404 and the Chat panel shows "Something went wrong" | UI | Major | Fixed | 2026-09-17 | this change |
+| BUG-067 | Importing an artifact bundle empties an existing `Settings/Entities.md` — the seed-data writer wrote an empty file whenever a deployed Skill mentioned it, without checking whether the file already held the operator's registry | Logic | Critical | Fixed | 2026-09-17 | this change |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -1031,3 +1032,23 @@ is a thin status mirror of the index table below.
   the file means and files it (Primary: `capture-files`). Empty, oversized (25 MB) or
   unsaveable files are not sent, and the reason is shown as an error bubble. The framework
   interprets nothing about the file. Tests in `tests/test_chat_attachment.py`.
+
+### BUG-067 — Importing an artifact bundle empties an existing Settings/Entities.md
+
+- **Area:** Logic
+- **Severity:** Critical
+- **Status:** Fixed
+- **Found:** 2026-09-17, by code reading while moving seed-data handling behind a plugin seam
+  (Entities plan Phase 2). Not observed live; whether any past import triggered it is
+  unknown.
+- **Root cause:** `artifact_import._write_seed_data` called `entities_data.write_raw("")` for
+  every `seed_data/Settings/Entities.md` a bundle carried once a deployed Skill mentioned
+  `Entities.md`. The module defined `_SEED_DATA_READERS` for exactly this path but never
+  used it, so nothing checked whether the file already existed.
+- **Repro:** with a populated `Settings/Entities.md`, import a `.sbf` whose Skills include one
+  that mentions `Entities.md` (for example `create-companies-partners`).
+- **Expected:** the registry is left as it is; a blank store is created only where none exists.
+- **Actual:** the registry is replaced with an empty file.
+- **Fix:** seed files are created empty only when they do not exist; an existing file is never
+  written. Seed files now come from `artifact_seed_data.seed_data_files()` (plugin-registered
+  files plus the transitional Entities.md). Tests in `tests/test_artifact_seed_data.py`.

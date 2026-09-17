@@ -32,9 +32,9 @@ from app.business.core.sections.section_manager import SectionManager
 from app.business.core.skills.skill_manager import SkillManager
 from app.business.core.templates.template_manager import TemplateManager
 from app.business.hermes.client import get_client
-from app.business.logic import artifact_import_compat, artifact_import_conflicts, sbf_archive
+from app.business.logic import artifact_import_compat, artifact_import_conflicts, artifact_seed_data, sbf_archive
 from app.config import settings
-from app.data_access import entities as entities_data
+from app.data_access import seed_data
 from app.data_access.registry import loader as registry_loader
 from app.data_access.registry import writer as registry_writer
 
@@ -49,7 +49,7 @@ _FALLBACK_SECTION_NAME = "Data Gatherer"  # Same real fallback AgentManager/Pipe
 # THIS deployment, never the source machine's own path. Duplicated (not
 # imported) from artifact_export.py, matching this codebase's own
 # established "each module owns its own business interpretation"
-# convention (see this module's own _SEED_DATA_ALLOWLIST docstring).
+# convention.
 _PLACEHOLDER_VAULT_PATH = "@@SECOND_BRAIN_VAULT_PATH@@"
 _PLACEHOLDER_HERMES_HOME = "@@SECOND_BRAIN_HERMES_HOME@@"
 _PLACEHOLDER_DATA_PATH = "@@SECOND_BRAIN_DATA_PATH@@"
@@ -78,24 +78,6 @@ def _restore_placeholders(text: str, *, json_escaped: bool) -> str:
     text = _substitute_placeholder(text, _PLACEHOLDER_HERMES_HOME, str(settings.hermes_home_path), json_escaped=json_escaped)
     text = _substitute_placeholder(text, _PLACEHOLDER_DATA_PATH, str(settings.second_brain_data_path), json_escaped=json_escaped)
     return text
-
-# Same v1 disclosed allowlist as `artifact_export.py`'s own
-# `_SEED_DATA_ALLOWLIST` -- {real target-relative seed/blank-data path ->
-# the literal substring a deployed Skill's own bundled content must
-# reference for that path to count as "its owning capability was
-# deployed". Duplicated rather than imported: each module owns its own
-# business interpretation of the same real, single v1 entry
-# (`Settings/Entities.md`), matching this codebase's own "zero business
-# interpretation shared across module boundaries" discipline.
-_SEED_DATA_ALLOWLIST: dict[str, str] = {
-    "Settings/Entities.md": "Entities.md",
-}
-_SEED_DATA_WRITERS: dict[str, "callable"] = {
-    "Settings/Entities.md": entities_data.write_raw,
-}
-_SEED_DATA_READERS: dict[str, "callable"] = {
-    "Settings/Entities.md": entities_data.read_raw,
-}
 
 _SKILL_FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
 
@@ -520,23 +502,22 @@ def _skill_content_references_needle(payload: dict[str, bytes], skill_id: str, n
 
 
 def _write_seed_data(payload: dict[str, bytes], deployed_skill_ids: set[str]) -> None:
-    """Writes every allowlisted seed/blank-data path this bundle carries
-    AND whose owning Skill was genuinely deployed this commit -- silently
-    no-op'd when that Skill was skipped entirely (a seed file has no
-    conflict/decision concept of its own). Content is ALWAYS forced
-    genuinely empty, regardless of what the bundle's own payload bytes
-    hold (the same hard capability/data boundary `artifact_export.py`'s
-    own writer already guarantees on the export side)."""
+    """Creates every seed data file this bundle carries whose owning Skill was
+    genuinely deployed this commit (`artifact_seed_data`) -- silently skipped
+    when that Skill was skipped, and when the file already exists: an existing
+    seed file holds the operator's own data, and an import must never empty
+    it (`BUG-067`). Content is always empty, whatever the bundle's payload
+    bytes hold."""
+    known_files = artifact_seed_data.seed_data_files()
     for member_path in payload:
         if not member_path.startswith("seed_data/"):
             continue
         target_path = member_path[len("seed_data/"):]
-        needle = _SEED_DATA_ALLOWLIST.get(target_path)
-        writer = _SEED_DATA_WRITERS.get(target_path)
-        if needle is None or writer is None:
+        needle = known_files.get(target_path)
+        if needle is None or seed_data.exists(target_path):
             continue
         owning_capability_deployed = any(
             _skill_content_references_needle(payload, skill_id, needle) for skill_id in deployed_skill_ids
         )
         if owning_capability_deployed:
-            writer("")
+            seed_data.write_blank(target_path)

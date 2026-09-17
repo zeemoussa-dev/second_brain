@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from app.business.hermes.client import get_client
-from app.business.logic import artifact_dependency_resolver, artifact_secret_scan, sbf_archive
+from app.business.logic import artifact_dependency_resolver, artifact_secret_scan, artifact_seed_data, sbf_archive
 from app.config import settings
 from app.data_access import indexes as indexes_data
 from app.data_access import pipelines as pipelines_data
@@ -38,8 +38,7 @@ from app.data_access.registry import loader as registry_loader
 # deployment (operator, 2026-09-03: "that is what we did in backup and
 # restore" -- apply the same fix here). Duplicated (not imported) from
 # hermes_backup.py, matching this codebase's own established "each module
-# owns its own business interpretation" convention (see artifact_import.
-# py's own identical duplication note for its _SEED_DATA_ALLOWLIST).
+# owns its own business interpretation" convention.
 # Payload folder per artifact kind. Only "index" needs stating -- naive
 # pluralisation would emit "indexs/", which the import side would then
 # never find.
@@ -77,19 +76,6 @@ def _substitute_placeholders(text: str) -> str:
     text = _substitute_both_forms(text, vault_str, _PLACEHOLDER_VAULT_PATH)
     text = _substitute_both_forms(text, hermes_str, _PLACEHOLDER_HERMES_HOME)
     return text
-
-
-# v1 disclosed allowlist (this task's own scope-internal judgement call,
-# logged in the Implementation Log -- the PRD names one real example, not
-# an enumerated list): {real target-relative seed/blank-data path -> the
-# literal substring a closure Skill's own content must reference for that
-# path to be considered genuinely needed}. Exactly one entry today,
-# matching Scenario 5's own real example -- `Settings/Entities.md` is the
-# only real seed/blank-data store of this shape in the app
-# (`data_access/entities.py`).
-_SEED_DATA_ALLOWLIST: dict[str, str] = {
-    "Settings/Entities.md": "Entities.md",
-}
 
 
 def _text_content_for_scan(closure: list[dict]) -> dict[str, str]:
@@ -173,9 +159,8 @@ def _add_seed_data_entries(closure: list[dict], payload: dict[str, bytes]) -> No
     Skills genuinely reference, content ALWAYS forced to `b""` --
     regardless of what the real, current file on this machine actually
     contains (the hard capability/data boundary, Scenarios 4/5). Never
-    reads the real file's own content -- `data_access.entities.read_raw()`
-    is never called anywhere in this module."""
-    for target_path, needle in _SEED_DATA_ALLOWLIST.items():
+    reads the real file's own content."""
+    for target_path, needle in artifact_seed_data.seed_data_files().items():
         if _closure_references_seed_needle(closure, needle):
             payload[f"seed_data/{target_path}"] = b""
 

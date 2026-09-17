@@ -47,6 +47,7 @@ _plugin_subject_enrichers: list[plugin_api.SubjectEnricher] = []
 _plugin_agent_matchers: list[plugin_api.AgentMatcher] = []
 _plugin_services: dict[str, object] = {}
 _plugin_people_folders: list[str] = []
+_plugin_seed_data_files: list[str] = []
 
 
 class PluginManager:
@@ -59,7 +60,8 @@ class PluginManager:
         `requires` is recorded but not yet enforced: resolving "graph or
         outlook" needs the Marketplace's view of what is installed, which
         arrives with it (`REQ-SB-91` Phase 4)."""
-        global _load_report, _plugin_subject_enrichers, _plugin_agent_matchers, _plugin_services, _plugin_people_folders
+        global _load_report, _plugin_subject_enrichers, _plugin_agent_matchers, _plugin_services
+        global _plugin_people_folders, _plugin_seed_data_files
         report: list[Plugin] = []
         mounts: list[tuple[str, APIRouter]] = []
 
@@ -67,7 +69,7 @@ class PluginManager:
             record = plugins_data.read_installed_record()
         except (OSError, ValueError) as exc:
             _plugin_subject_enrichers, _plugin_agent_matchers, _plugin_services = [], [], {}
-            _plugin_people_folders = []
+            _plugin_people_folders, _plugin_seed_data_files = [], []
             _load_report = [Plugin(
                 id="installed.json", name="Installed plugins record", version="",
                 framework_api=None, status=INVALID,
@@ -87,6 +89,7 @@ class PluginManager:
         _plugin_agent_matchers = [matcher for api in loaded_apis for matcher in api.agent_matchers]
         _plugin_services = {name: service for api in loaded_apis for name, service in api.services.items()}
         _plugin_people_folders = list(dict.fromkeys(folder for api in loaded_apis for folder in api.people_folders))
+        _plugin_seed_data_files = list(dict.fromkeys(path for api in loaded_apis for path in api.seed_data_files))
         return mounts
 
     def get_load_report(self) -> list[Plugin]:
@@ -106,6 +109,10 @@ class PluginManager:
     def get_people_folders(self) -> list[str]:
         """Vault folders holding People, from every loaded plugin, without duplicates."""
         return list(_plugin_people_folders)
+
+    def get_seed_data_files(self) -> list[str]:
+        """Seed data files from every loaded plugin, without duplicates."""
+        return list(_plugin_seed_data_files)
 
     def _load_one(
         self, entry: object, seen: set[str], loaded_apis: list[plugin_api.PluginApi],

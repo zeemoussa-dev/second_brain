@@ -245,6 +245,7 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 | BUG-064 | Screens still call the pending-approvals API archived on 2026-08-20 | UI | Open | — |
 | BUG-065 | Replacing a plugin version could leave it half-deleted | Logic | Fixed | this change |
 | BUG-066 | Attaching a file in Chat fails with a 404 | UI | Fixed | this change |
+| BUG-067 | Importing an artifact bundle empties an existing Settings/Entities.md | Logic | Fixed | this change |
 
 > **Emptied 2026-09-06** with `BUGS.md`, which this mirrors — 42 rows.
 > History: `git show d64dcb4:BACKLOG.md`. Next id is **`BUG-043`**.
