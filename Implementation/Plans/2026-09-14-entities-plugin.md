@@ -125,6 +125,14 @@ customer and no error (checked in-process rather than by uninstalling Entities).
 Delete what moved; stop seeding the three masters; remove the Entities nav entry and route.
 **Gate:** suite; empty boot; a grep gate for Customer/Partner/Opportunity in executable
 framework code (comments and test fixtures excepted); `BUG-062` and `BUG-063` closed.
+**Status: done 2026-09-17.** Operator: the Entities settings page stays under Settings →
+Plugins (open question 2 answered). Gate passed: suite 282, import check clean, build
+green; the grep gate leaves only Cockpit's overlap stopwords (kept deliberately) and the
+one-time migration script; empty boot has no Entities anything; live views identical.
+**Not done in this plan, still open:** `company_index.py` stays in the framework's shared
+managers until `sb-pss-agent` ships its own copy (the operator has not answered); the
+Hermes capture Skills' `Customers/`/`Partners/` scans and `ingest_email` classifications;
+`summarize-and-tag-files` company tagging (open question 1).
 
 ## Reported to the agent repos, not done here
 - `company_index.py` leaves the framework's shared managers; `sb-pss-agent` provisioning

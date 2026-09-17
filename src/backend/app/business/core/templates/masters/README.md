@@ -45,8 +45,8 @@ without `kind/thread` and no backfill could ever stay ahead of it.
 Before diagnosing a missing field, diff the install's copy against its master.
 Upgrade only where the install is a strict *subset* of the master (nothing of the
 operator's to lose); anything else needs reading first. Renames are the dangerous
-case: `customer`, `partner` and `opportunity` moved `Log & Captures` to
-`History & Captures`, so upgrading those Templates without migrating the existing
+case: `customer`, `partner` and `opportunity` (now shipped by the Entities
+plugin) moved `Log & Captures` to `History & Captures`, so upgrading those Templates without migrating the existing
 `<Name>-log.md` notes in the same change leaves hubs half-renamed.
 
 ## The rules

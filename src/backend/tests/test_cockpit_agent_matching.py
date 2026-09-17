@@ -1,6 +1,7 @@
-"""Cockpit asks plugins which agents fit a conversation (`BUG-063` seam,
-Entities plan Phase 2). Until a plugin registers a matcher, the framework's
-own Customer matching still answers, so nothing changes before Entities."""
+"""Cockpit asks plugins which agents fit a conversation (`BUG-063`, Entities
+plan Phases 2 and 5). The framework itself knows no business concept to match
+a subject by: without a plugin matcher it recommends nobody and names no
+fallback."""
 from types import SimpleNamespace
 
 import pytest
@@ -20,27 +21,26 @@ _ALL_AGENTS = _EXPERTS + [SimpleNamespace(id="customers-hub", name="Customers Hu
 
 @pytest.fixture()
 def cockpit(monkeypatch):
-    """A Cockpit over one subject, with no plugin matchers and no framework Customer match."""
+    """A Cockpit over one subject, with no plugin matchers."""
     monkeypatch.setattr(moderator._vault_manager, "get_index", lambda: {_SUBJECT["stem"]: _SUBJECT})
     monkeypatch.setattr(moderator._agent_manager, "get_expert_agents", lambda: list(_EXPERTS))
     monkeypatch.setattr(moderator._agent_manager, "get_all", lambda: list(_ALL_AGENTS))
-    monkeypatch.setattr(moderator, "match_customer_expert", lambda stem: None)
-    monkeypatch.setattr(moderator, "match_customer_fallback_agent", lambda stem: None)
     matchers: list = []
     monkeypatch.setattr(plugin_manager_module, "_plugin_agent_matchers", matchers)
     return matchers
 
 
-def test_without_plugin_matchers_the_framework_customer_matching_still_answers(cockpit, monkeypatch):
-    monkeypatch.setattr(moderator, "match_customer_expert", lambda stem: "adnoc-expert")
-    monkeypatch.setattr(moderator, "match_customer_fallback_agent", lambda stem: "customers-hub")
-
-    assert moderator.recommended_experts("email", _SUBJECT["stem"]) == ["adnoc-expert"]
-    assert moderator.fallback_agent("email", _SUBJECT["stem"]) == "customers-hub"
+def test_without_plugin_matchers_nobody_is_recommended_and_there_is_no_fallback(cockpit):
+    assert moderator.recommended_experts("email", _SUBJECT["stem"]) == []
+    assert moderator.fallback_agent("email", _SUBJECT["stem"]) is None
 
 
-def test_a_plugin_matcher_replaces_the_framework_customer_matching(cockpit, monkeypatch):
-    monkeypatch.setattr(moderator, "match_customer_expert", lambda stem: pytest.fail("framework matching used"))
+def test_the_framework_no_longer_matches_by_customer():
+    assert not hasattr(moderator, "match_customer_expert")
+    assert not hasattr(moderator, "match_customer_fallback_agent")
+
+
+def test_a_plugin_matcher_decides_the_experts_and_the_fallback(cockpit):
     seen = []
 
     def matcher(subject_kind, subject):

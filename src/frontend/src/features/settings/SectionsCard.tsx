@@ -218,7 +218,7 @@ export function SectionsCard() {
                       <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                         <input
                           className="input"
-                          placeholder="e.g. customer-hub"
+                          placeholder="e.g. research-hub"
                           value={fallbackAgentDrafts[section.id] ?? ''}
                           onChange={(event) => setFallbackAgentDrafts((prev) => ({ ...prev, [section.id]: event.target.value }))}
                         />

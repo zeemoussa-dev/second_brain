@@ -240,8 +240,8 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 | BUG-059 | An attachment filename containing a path separator is truncated and loses its extension | Logic | Open | — |
 | BUG-060 | A Thread note's `title` is the raw conversation id | UI | Open | — |
 | BUG-061 | A Pipeline sharing an Agent's id draws twice on the Agents Map | Logic | Open | — |
-| BUG-062 | The framework hardcodes Customer/Partner/Opportunity, so business Templates cannot leave it | Logic | Open | — |
-| BUG-063 | Cockpit, a framework component, picks agents by Customer | Logic | Open | — |
+| BUG-062 | The framework hardcodes Customer/Partner/Opportunity, so business Templates cannot leave it | Logic | Fixed | Entities plan Phases 1-5 |
+| BUG-063 | Cockpit, a framework component, picks agents by Customer | Logic | Fixed | Entities plan Phases 1-5 |
 | BUG-064 | Screens still call the pending-approvals API archived on 2026-08-20 | UI | Open | — |
 | BUG-065 | Replacing a plugin version could leave it half-deleted | Logic | Fixed | this change |
 | BUG-066 | Attaching a file in Chat fails with a 404 | UI | Fixed | this change |

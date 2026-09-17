@@ -48,8 +48,8 @@ is a thin status mirror of the index table below.
 | BUG-059 | An attachment whose filename contains a path separator is saved under a TRUNCATED name with its extension lost — the bytes land in a file called `Fw` with no extension, and the Thread's Files link points at the truncated name | Logic | Major | Open | 2026-09-09 | — |
 | BUG-060 | A Thread note's `title` frontmatter is the raw base64 conversation id while its filename and `thread_name` are readable, so Obsidian displays the id | UI | Minor | Open | 2026-09-09 | — |
 | BUG-061 | A Pipeline whose id matches an Agent id silently draws TWICE on the Agents Map — `GET /agents` concatenates agents and pipeline summaries with no collision check, so the same id appears as two nodes with different types | Logic | Minor | Open | 2026-09-10 | — |
-| BUG-062 | The framework's data access and backend Vault Manager hardcode Customer/Partner/Opportunity, so business Templates cannot leave the framework — the concepts are compiled into vault_writer, hub linking, People extraction, My Day and Entities.md parsing instead of being declared by Templates | Logic | Major | Open | 2026-09-14 | — |
-| BUG-063 | Cockpit, a framework component, picks agents by Customer — `moderator.py` matches a 'customer expert' through a hardcoded Customer Section, and `cockpit_view` resolves a subject's customer by importing My Day | Logic | Major | Open | 2026-09-14 | — |
+| BUG-062 | The framework's data access and backend Vault Manager hardcode Customer/Partner/Opportunity, so business Templates cannot leave the framework — the concepts are compiled into vault_writer, hub linking, People extraction, My Day and Entities.md parsing instead of being declared by Templates | Logic | Major | Fixed | 2026-09-14 | Entities plan Phases 1-5 |
+| BUG-063 | Cockpit, a framework component, picks agents by Customer — `moderator.py` matches a 'customer expert' through a hardcoded Customer Section, and `cockpit_view` resolves a subject's customer by importing My Day | Logic | Major | Fixed | 2026-09-14 | Entities plan Phases 1-5 |
 | BUG-064 | The pending-approvals API was archived on 2026-08-20 but its screens were not — the Approvals page, My Day's approvals card and the Agents Map chat proposal cards call `/pending-approvals*`, which answers 404, and show nothing instead of an error | UI | Major | Open | 2026-09-14 | — |
 | BUG-065 | Replacing an installed plugin version deleted the old files in place, so a `__pycache__` held open by OneDrive stopped the delete half-way — the plugin's modules were gone, the record still named the old version, and the Marketplace answered 500 | Logic | Critical | Fixed | 2026-09-14 | this change |
 | BUG-066 | Attaching a file in Chat fails — the paperclip posts to `/agents/{id}/chat/attachment`, a route that has not existed since the 2026-08-20 redesign, so the backend answers 404 and the Chat panel shows "Something went wrong" | UI | Major | Fixed | 2026-09-17 | this change |
@@ -896,7 +896,7 @@ is a thin status mirror of the index table below.
 
 - **Area:** Logic
 - **Severity:** Major
-- **Status:** Open
+- **Status:** Fixed
 - **Found:** 2026-09-14, while planning the split of this repo into the framework,
   `sb-cbo-agent` and `sb-pss-agent`. The rule for the split is that the framework
   knows nothing about business; Customer, Partner and Opportunity are business.
@@ -928,11 +928,23 @@ is a thin status mirror of the index table below.
 - **Fix approach (operator, 2026-09-14):** step by step, one module at a time, with
   the framework runnable after each step.
 
+- **Resolution (2026-09-17):** Customer, Partner, Affiliate and Opportunity left the framework
+  in five gated phases (`Implementation/Plans/2026-09-14-entities-plugin.md`). Dead hub
+  linking and People-creation code was deleted; `vault_writer` takes People folders from its
+  caller; the Entities registry, `Settings/Entities.md` I/O, the Entities settings page and
+  the `customer`/`partner`/`opportunity` Master Templates moved into the Entities plugin
+  (`sb-plugins-entities`); My Day gets customers from that plugin's service. An empty install
+  now seeds six Templates and has no Entities route, seed file or People folder. Still
+  outside the framework's executable code but not yet moved: Hermes Skill payload that
+  scans `Customers/`/`Partners/` (capture `vault_lib.py`, `capture-notes`, `capture-files`,
+  `ingest_email` classifications, `summarize-and-tag-files` company tagging) and
+  `company_index.py`, which stays until `sb-pss-agent` ships its own copy.
+
 ### BUG-063 — Cockpit, a framework component, picks agents by Customer
 
 - **Area:** Logic
 - **Severity:** Major
-- **Status:** Open
+- **Status:** Fixed
 - **Found:** 2026-09-14, while planning the My Day plugin extraction (`ADR-022`,
   `REQ-SB-91`). The operator ruled that Cockpit is framework: *"Cockpit is a Concept of
   Having Multiple Agents Communicate with each other."* A framework component must not know
@@ -959,6 +971,13 @@ is a thin status mirror of the index table below.
   the plugin extraction plan (`Implementation/Plans/2026-09-14-plugin-host-and-my-day-plugin.md`,
   Phase 3). The `moderator` Customer matching moves to the Entities plugin through a
   matcher hook, together with `BUG-062`.
+- **Resolution (2026-09-17):** Cockpit asks installed plugins' agent matchers
+  (`moderator.recommended_experts` / `fallback_agent`) and subject enrichers; the Customer
+  expert and Customer Section fallback logic lives in the Entities plugin. Without a plugin
+  matcher Cockpit recommends nobody and names no fallback. Parity on real data: 532
+  Threads/Meetings matched identically before the framework copy was removed. The generic
+  word list `_OVERLAP_STOPWORDS` still names customer/partner/engagement on purpose: without
+  them, domain matching on `customer/<slug>` tags would reintroduce Customer matching.
 
 ### BUG-064 — Screens still call the pending-approvals API archived on 2026-08-20
 

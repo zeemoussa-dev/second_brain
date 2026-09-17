@@ -1,9 +1,8 @@
 import { apiFetch, ApiError } from '../../api/client';
 
 // Vault settings (Settings > Vault, 2026-08-27) -- Overview (reuses the
-// existing POST /vault-index/rebuild), read-only Templates, and the
-// Entities CRUD registry (Work/Entities.md, relocated to
-// .second-brain/Settings/Entities.md).
+// existing POST /vault-index/rebuild) and read-only Templates. The Entities
+// registry moved to the Entities plugin (Entities plan Phase 5).
 
 export interface VaultOverview {
   total_notes: number;
@@ -62,55 +61,6 @@ export interface VaultTemplate {
 
 export function fetchVaultTemplates(): Promise<{ templates: VaultTemplate[] }> {
   return apiFetch('/vault/templates');
-}
-
-export interface VaultEntity {
-  name: string;
-  section: 'customer' | 'partner';
-  aliases: string;
-  affiliate_of: string;
-  created: boolean;
-  ignore: boolean;
-  domain: string;
-}
-
-export function fetchVaultEntities(): Promise<{ entities: VaultEntity[] }> {
-  return apiFetch('/vault/entities');
-}
-
-export interface VaultEntityPatch {
-  name?: string;
-  section?: string;
-  aliases?: string;
-  affiliate_of?: string;
-  domain?: string;
-  ignore?: boolean;
-}
-
-export function updateVaultEntity(name: string, patch: VaultEntityPatch): Promise<VaultEntity> {
-  return apiFetch<VaultEntity>(`/vault/entities/${encodeURIComponent(name)}`, {
-    method: 'PATCH',
-    body: JSON.stringify(patch),
-  });
-}
-
-export function deleteVaultEntity(name: string): Promise<{ deleted: boolean }> {
-  return apiFetch(`/vault/entities/${encodeURIComponent(name)}`, { method: 'DELETE' });
-}
-
-export interface NewVaultEntity {
-  name: string;
-  section: 'customer' | 'partner';
-  domain?: string;
-  aliases?: string;
-  affiliate_of?: string;
-}
-
-export function createVaultEntity(fields: NewVaultEntity): Promise<VaultEntity> {
-  return apiFetch<VaultEntity>('/vault/entities', {
-    method: 'POST',
-    body: JSON.stringify(fields),
-  });
 }
 
 // Export Data (REQ-SB-86-US-01-T02) -- a genuine, unfiltered real-filesystem

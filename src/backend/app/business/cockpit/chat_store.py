@@ -11,8 +11,9 @@ run_agent_conversation call.
 
 `recommended_agent_ids` (ADR-009, REQ-SB-82-US-03-T02) is an additive,
 compute-on-first-read field on this SAME per-subject entry -- never a
-second store. `get_thread` computes it via `moderator.match_customer_expert`/
-`match_domain_experts` (combined, deduplicated) the first time an entry has
+second store. `get_thread` computes it via `moderator.recommended_experts`
+(installed plugins' agent matchers) and `match_domain_experts` (combined,
+deduplicated) the first time an entry has
 no such key yet, then persists it; every later read serves the cached
 value, including the honest-empty `[]` case. `bring_in_agent`/`remove_agent`
 never read or write this field -- it is a non-authoritative hint list,

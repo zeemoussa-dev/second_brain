@@ -5,8 +5,7 @@ Partners too, and under an Affiliate one level deeper -- most filed people in a
 real vault -- so the Cockpit would have stopped finding them.
 
 Which folders hold People is no longer compiled into the framework: plugins
-register them, and until one does, Customers and Partners are still searched
-(Entities plan Phase 2).
+register them (Entities plan Phases 2 and 5).
 """
 from types import SimpleNamespace
 
@@ -69,9 +68,11 @@ def test_cockpit_searches_the_folders_plugins_register(vault, monkeypatch):
     assert people_extraction.find_existing_person_note("bo@acme.com") == {"note_path": str(filed), "name": "Someone"}
 
 
-def test_until_a_plugin_registers_folders_customers_and_partners_are_searched(vault, monkeypatch):
-    filed = person(vault, "Customers", "ADNOC", "People", "ali@adnoc.ae.md")
+def test_without_plugin_folders_only_the_flat_people_folder_is_searched(vault, monkeypatch):
+    person(vault, "Customers", "ADNOC", "People", "ali@adnoc.ae.md")
+    flat = person(vault, "People", "someone@gmail.com.md")
     monkeypatch.setattr(plugin_manager_module, "_plugin_people_folders", [])
 
-    assert people_extraction.people_folders() == _COMPANY_FOLDERS
-    assert people_extraction.find_existing_person_note("ali@adnoc.ae")["note_path"] == str(filed)
+    assert people_extraction.people_folders() == []
+    assert people_extraction.find_existing_person_note("ali@adnoc.ae") is None
+    assert people_extraction.find_existing_person_note("someone@gmail.com")["note_path"] == str(flat)

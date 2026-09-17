@@ -2,7 +2,6 @@ import { Link, useLocation } from 'react-router';
 
 const VAULT_NAV_ITEMS = [
   { key: 'overview', icon: 'insights', label: 'Overview', href: '/settings/vault' },
-  { key: 'entities', icon: 'domain', label: 'Entities', href: '/settings/vault/entities' },
   { key: 'templates', icon: 'description', label: 'Templates', href: '/settings/vault/templates' },
   { key: 'index-filtering', icon: 'filter_alt', label: 'Index Filtering', href: '/settings/vault/index-filtering' },
   { key: 'index-builder', icon: 'auto_stories', label: 'Index Builder', href: '/settings/vault/index-builder' },

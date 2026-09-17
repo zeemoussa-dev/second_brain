@@ -1,8 +1,8 @@
-"""Seed data files in artifact export/import (Entities plan Phase 2).
+"""Seed data files in artifact export/import (Entities plan Phases 2 and 5).
 
 Export and import no longer hardcode `Settings/Entities.md`: plugins register
-their seed files, and the framework lists Entities.md only until the Entities
-plugin does. An import never empties an existing seed file (`BUG-067`).
+their seed files, and without a plugin nothing is seed data. An import never
+empties an existing seed file (`BUG-067`).
 """
 import pytest
 
@@ -27,19 +27,20 @@ def deployed_skills_mention(monkeypatch, *names):
                         lambda payload, skill_id, needle: needle in names)
 
 
-def test_the_framework_still_lists_entities_until_the_plugin_registers_it(data_path):
-    assert artifact_seed_data.seed_data_files() == {"Settings/Entities.md": "Entities.md"}
+def test_without_plugins_nothing_is_seed_data(data_path):
+    assert artifact_seed_data.seed_data_files() == {}
 
 
-def test_plugin_registered_files_are_added_without_duplicates(data_path, monkeypatch):
+def test_plugin_registered_files_are_seed_data(data_path, monkeypatch):
     registered(monkeypatch, "Settings/Clients.md", "Settings/Entities.md")
 
     assert artifact_seed_data.seed_data_files() == {
-        "Settings/Entities.md": "Entities.md", "Settings/Clients.md": "Clients.md",
+        "Settings/Clients.md": "Clients.md", "Settings/Entities.md": "Entities.md",
     }
 
 
 def test_import_creates_a_missing_seed_file_empty_when_its_skill_is_deployed(data_path, monkeypatch):
+    registered(monkeypatch, "Settings/Entities.md")
     deployed_skills_mention(monkeypatch, "Entities.md")
 
     artifact_import._write_seed_data({"seed_data/Settings/Entities.md": b"not empty"}, {"create-companies"})
@@ -51,6 +52,7 @@ def test_import_never_empties_an_existing_seed_file(data_path, monkeypatch):
     store = data_path / "Settings" / "Entities.md"
     store.parent.mkdir(parents=True)
     store.write_text("### Adnoc\n", encoding="utf-8")
+    registered(monkeypatch, "Settings/Entities.md")
     deployed_skills_mention(monkeypatch, "Entities.md")
 
     artifact_import._write_seed_data({"seed_data/Settings/Entities.md": b""}, {"create-companies"})
@@ -59,6 +61,7 @@ def test_import_never_empties_an_existing_seed_file(data_path, monkeypatch):
 
 
 def test_import_skips_a_seed_file_no_deployed_skill_needs(data_path, monkeypatch):
+    registered(monkeypatch, "Settings/Entities.md")
     deployed_skills_mention(monkeypatch)
 
     artifact_import._write_seed_data({"seed_data/Settings/Entities.md": b""}, {"unrelated-skill"})
@@ -66,12 +69,12 @@ def test_import_skips_a_seed_file_no_deployed_skill_needs(data_path, monkeypatch
     assert not (data_path / "Settings" / "Entities.md").exists()
 
 
-def test_import_ignores_a_seed_file_nothing_registered(data_path, monkeypatch):
-    deployed_skills_mention(monkeypatch, "Anything.md")
+def test_an_older_archives_entities_file_is_ignored_without_the_entities_plugin(data_path, monkeypatch):
+    deployed_skills_mention(monkeypatch, "Entities.md")
 
-    artifact_import._write_seed_data({"seed_data/Settings/Anything.md": b""}, {"some-skill"})
+    artifact_import._write_seed_data({"seed_data/Settings/Entities.md": b""}, {"create-companies"})
 
-    assert not (data_path / "Settings" / "Anything.md").exists()
+    assert not (data_path / "Settings" / "Entities.md").exists()
 
 
 def test_import_creates_a_plugin_registered_seed_file(data_path, monkeypatch):

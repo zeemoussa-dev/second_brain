@@ -10,15 +10,11 @@ from __future__ import annotations
 from app.business.core.plugins.plugin_manager import PluginManager
 from app.data_access import vault_writer
 
-# Where People were filed before any plugin declared it. Used only while no
-# installed plugin registers People folders, so Cockpit keeps finding people
-# until the Entities plugin does; removed with it (Entities plan Phase 5).
-_TRANSITIONAL_PEOPLE_FOLDERS = ["Work/Customers", "Work/Partners"]
-
 
 def people_folders() -> list[str]:
-    """The vault folders installed plugins say hold People."""
-    return PluginManager().get_people_folders() or list(_TRANSITIONAL_PEOPLE_FOLDERS)
+    """The vault folders installed plugins say hold People. Without any, only
+    the flat `Work/People/` is searched."""
+    return PluginManager().get_people_folders()
 
 
 def find_existing_person_note(email: str) -> dict | None:

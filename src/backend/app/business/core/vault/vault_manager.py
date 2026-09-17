@@ -4,15 +4,16 @@ retiring four previously-separate business modules that had no single
 owning door: `vault_indexing.py` (the in-memory note index -- rebuild/
 read/overview), `vault_index_config.py` (which top-level Work/ folders
 the structural indexer walks), `vault_templates.py` (read-only Template
-listing), and `vault_entities.py` (Customer/Partner discovery CRUD).
+listing), and `vault_entities.py` (Customer/Partner discovery CRUD -- moved
+out to the Entities plugin, Entities plan Phase 5).
 
 `Vault` (vault.py) is a genuine singleton -- there is exactly one vault
 -- unlike Section/Agent/Pipeline's own real Array<Entity> shape,
 `core/__init__.py`'s own stated convention. Forcing a `get_all() ->
 list[Vault]` wrapper around a singleton would be artificial busywork
 with no real caller, so this Manager exposes `get_overview() -> Vault`
-instead, and its other three responsibilities (index/config/templates/
-entities) as their own dict-returning methods -- a deliberate,
+instead, and its other responsibilities (index/config/templates) as
+their own dict-returning methods -- a deliberate,
 documented deviation from the generic convention, not an oversight.
 
 The in-memory note index (`get_index()`/`rebuild_index()`) is real,
@@ -38,13 +39,11 @@ below now delegates to it rather than re-reading Template.json itself.
 
 2026-08-28, layering correction (operator: "Managers understand
 Entities, Data Access understands stores... I/O always happens in Data
-Access"): the index-filtering config and Entities.md's own raw file I/O
-moved out to `data_access/vault_index_config.py`/`data_access/
-entities.py` -- this Manager holds zero raw file calls of its own now
-(the note-index rebuild already routed through `vault_writer.py`, a
-real data_access module, from the start). Only the PARSE/RENDER of
-Entities.md's own `### <heading>` format stays here -- that's business
-shaping of the store's raw text, not I/O.
+Access"): the index-filtering config's raw file I/O moved out to
+`data_access/vault_index_config.py` -- this Manager holds zero raw file
+calls of its own now (the note-index rebuild already routed through
+`vault_writer.py`, a real data_access module, from the start). The
+Entities.md store went with the Entities plugin (Entities plan Phase 5).
 
 2026-08-28, later same day: folded in `vault_search.py` too (browse/
 tag-filter/note-detail/ranked-search/graph -- REQ-SB-02-US-01/ADR-026),
@@ -64,7 +63,6 @@ from app.business.core.templates.template import Template
 from app.business.core.templates.template_manager import TemplateManager
 from app.business.core.vault.vault import Vault
 from app.config import settings
-from app.data_access import entities as entities_data
 from app.data_access import vault_index_config as vault_index_config_data
 from app.data_access import vault_writer
 
@@ -75,18 +73,6 @@ from app.data_access import vault_writer
 
 _vault_index: dict[str, dict] = {}
 _last_rebuilt_at: str | None = None
-
-
-class EntityNotFoundError(Exception):
-    def __init__(self, name: str) -> None:
-        super().__init__(f"No entity named {name!r}")
-        self.name = name
-
-
-class DuplicateEntityError(Exception):
-    def __init__(self, name: str) -> None:
-        super().__init__(f"An entity named {name!r} already exists")
-        self.name = name
 
 
 def _frontmatter_wikilink_targets(frontmatter: dict) -> list[str]:
@@ -341,198 +327,6 @@ class VaultManager:
         Template.json itself, same as SectionManager delegating to
         AgentManager for a Section's own Hub Agent."""
         return self._template_manager.get_all()
-
-    # -- Entities (folded in from vault_entities.py) -------------------
-
-    _ENTITY_KNOWN_FIELDS = {"Company Name", "Aliases", "Affiliate of", "Created", "Ignore", "Domain", "Deleted"}
-
-    def _parse_entities(self, content: str) -> list[dict]:
-        section = None
-        entries: list[dict] = []
-        current: dict | None = None
-        for line in content.splitlines():
-            if line.startswith("## Companies"):
-                section = "customer"
-                continue
-            if line.startswith("## Partners"):
-                section = "partner"
-                continue
-            if line.startswith("### "):
-                if current is not None:
-                    entries.append(current)
-                current = {"section": section, "heading": line[4:].strip(), "fields": {}}
-                continue
-            stripped = line.strip()
-            if current is not None and stripped and ":" in stripped:
-                key, _, value = stripped.partition(":")
-                key = key.strip()
-                if key in self._ENTITY_KNOWN_FIELDS:
-                    current["fields"][key] = value.strip()
-        if current is not None:
-            entries.append(current)
-        return entries
-
-    def _render_entity_entry(self, lines: list[str], entry: dict) -> None:
-        f = entry["fields"]
-        lines.append(f"### {entry['heading']}")
-        lines.append("")
-        lines.append(f"\tCompany Name: {f.get('Company Name', '')}")
-        lines.append("")
-        lines.append(f"\tAliases: {f.get('Aliases', '')}")
-        lines.append("")
-        lines.append(f"\tAffiliate of: {f.get('Affiliate of', '')}")
-        lines.append("")
-        lines.append(f"\tCreated: {f.get('Created', 'No')}")
-        lines.append("")
-        lines.append(f"\tIgnore: {f.get('Ignore', 'No')}")
-        lines.append("")
-        lines.append(f"\tDomain: {f.get('Domain', '')}")
-        lines.append("")
-        # A real hard-delete removes the row's own Domain from the
-        # "already tracked" set find_new_entities.py checks before
-        # appending a new entry -- so a noise domain (SharePoint, Teams
-        # notification senders) that gets deleted just gets rediscovered
-        # on the next scan. Deleted: Yes keeps the row (and its Domain)
-        # in the file instead -- delete_entity() below sets this rather
-        # than removing the entry.
-        lines.append(f"\tDeleted: {f.get('Deleted', 'No')}")
-        lines.append("")
-        lines.append("")
-
-    def _render_entities(self, entries: list[dict]) -> str:
-        lines = [
-            "# Entities",
-            "",
-            "Step 1 of the company/partner discovery sequence -- mechanical,",
-            "domain-based grouping only, no LLM, no judgment about which of",
-            "these are real Customers vs. Partners vs. noise.",
-            "",
-            "**Edit this file by hand.** `Created`/`Ignore` are Yes/No flags a",
-            "later pipeline reads -- set `Ignore: Yes` instead of deleting an",
-            "entry (a notification sender, a one-off vendor -- not a real",
-            "business relationship); leave `Created: No` until that later,",
-            "separate pipeline has actually made the hub note for it. Use",
-            "`Aliases` to merge a duplicate that slipped through under a",
-            "different domain (rare -- domain grouping already prevents most",
-            "of this). Move real partners into `## Partners` below.",
-            "",
-            "## Companies",
-            "",
-        ]
-        for entry in entries:
-            if entry["section"] != "customer":
-                continue
-            self._render_entity_entry(lines, entry)
-        lines.append("## Partners")
-        lines.append("")
-        for entry in entries:
-            if entry["section"] != "partner":
-                continue
-            self._render_entity_entry(lines, entry)
-        return "\n".join(lines)
-
-    def _load_entities(self) -> list[dict]:
-        raw = entities_data.read_raw()
-        if raw is None:
-            return []
-        return self._parse_entities(raw)
-
-    def _save_entities(self, entries: list[dict]) -> None:
-        entities_data.write_raw(self._render_entities(entries))
-
-    def _entity_to_public(self, entry: dict) -> dict:
-        f = entry["fields"]
-        return {
-            "name": f.get("Company Name") or entry["heading"],
-            "section": entry["section"],
-            "aliases": f.get("Aliases", ""),
-            "affiliate_of": f.get("Affiliate of", ""),
-            "created": f.get("Created", "No") == "Yes",
-            "ignore": f.get("Ignore", "No") == "Yes",
-            "domain": f.get("Domain", ""),
-        }
-
-    def _entity_is_deleted(self, entry: dict) -> bool:
-        return entry["fields"].get("Deleted", "No") == "Yes"
-
-    def _find_entity(self, entries: list[dict], name: str) -> dict | None:
-        key = name.strip().lower()
-        for entry in entries:
-            entry_name = (entry["fields"].get("Company Name") or entry["heading"]).strip().lower()
-            if entry_name == key:
-                return entry
-        return None
-
-    def list_entities(self) -> list[dict]:
-        # Soft-deleted rows stay in the file (see delete_entity()) but
-        # must never surface in the UI.
-        return [self._entity_to_public(entry) for entry in self._load_entities() if not self._entity_is_deleted(entry)]
-
-    def create_entity(
-        self, name: str, section: str, domain: str = "", aliases: str = "", affiliate_of: str = "",
-    ) -> dict:
-        if section not in ("customer", "partner"):
-            raise ValueError(f"section must be 'customer' or 'partner', got {section!r}")
-        entries = self._load_entities()
-        if self._find_entity(entries, name) is not None:
-            raise DuplicateEntityError(name)
-        entry = {
-            "section": section,
-            "heading": name.strip(),
-            "fields": {
-                "Company Name": name.strip(),
-                "Aliases": aliases,
-                "Affiliate of": affiliate_of,
-                "Created": "No",
-                "Ignore": "No",
-                "Domain": domain,
-            },
-        }
-        entries.append(entry)
-        self._save_entities(entries)
-        return self._entity_to_public(entry)
-
-    def update_entity(self, name: str, patch: dict) -> dict:
-        entries = self._load_entities()
-        target = self._find_entity(entries, name)
-        if target is None:
-            raise EntityNotFoundError(name)
-        fields = target["fields"]
-
-        if "name" in patch:
-            new_name = patch["name"].strip()
-            if new_name and new_name.lower() != (fields.get("Company Name") or target["heading"]).strip().lower():
-                if self._find_entity(entries, new_name) is not None:
-                    raise DuplicateEntityError(new_name)
-                target["heading"] = new_name
-                fields["Company Name"] = new_name
-        if "section" in patch and patch["section"] in ("customer", "partner"):
-            target["section"] = patch["section"]
-        if "aliases" in patch:
-            fields["Aliases"] = patch["aliases"]
-        if "affiliate_of" in patch:
-            fields["Affiliate of"] = patch["affiliate_of"]
-        if "domain" in patch:
-            fields["Domain"] = patch["domain"]
-        if "ignore" in patch:
-            fields["Ignore"] = "Yes" if patch["ignore"] else "No"
-
-        self._save_entities(entries)
-        return self._entity_to_public(target)
-
-    def delete_entity(self, name: str) -> None:
-        """Soft delete -- sets Deleted: Yes (and Ignore: Yes, belt-and-
-        suspenders for any Hermes script instance that hasn't been
-        redeployed with the Deleted field yet) rather than removing the
-        row. list_entities() filters Deleted: Yes rows out, so this is
-        invisible in the UI despite staying on disk."""
-        entries = self._load_entities()
-        target = self._find_entity(entries, name)
-        if target is None:
-            raise EntityNotFoundError(name)
-        target["fields"]["Deleted"] = "Yes"
-        target["fields"]["Ignore"] = "Yes"
-        self._save_entities(entries)
 
     # -- Browse/search (folded in from vault_search.py) ----------------
 

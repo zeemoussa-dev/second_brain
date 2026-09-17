@@ -32,11 +32,11 @@ the wrong one with @"):
   Expert (brought-in or not) looks relevant does it check for a Section-
   level fallback next, and only then the Research Agent (Scenario 2).
 - Phase 5 (2026-08-27, operator: "Talking to Customers Hub will help fix
-  that"): before that final Research Agent fallback, checks whether this
-  conversation's own subject is a Customer with no dedicated Expert
-  registered at all (`moderator.match_customer_fallback_agent`) -- if the
-  Customer Section has its own configured fallback agent, that answers
-  instead of the generic Research Agent. Never brought into the roster,
+  that"): before that final Research Agent fallback, asks installed plugins
+  for a fallback agent for this conversation's subject
+  (`moderator.fallback_agent`; the Entities plugin names the Customer
+  Section's fallback for a Customer with no dedicated Expert) -- if one is
+  named, that answers instead of the generic Research Agent. Never brought into the roster,
   same one-off-answer shape as the Research Agent fallback itself. Only
   Customer conversations carry this signal today (a Meeting/Thread's own
   `customer:`/`customer/<slug>` tag); Technology/Sales/Industry get the

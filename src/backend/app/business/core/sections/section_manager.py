@@ -186,9 +186,9 @@ class SectionManager:
         Hermes profile (id == its profile folder name, chat_sessions.py's
         own convention) that answers on this Section's behalf when a
         mentioned entity in its scope has no dedicated Expert registered
-        (operator: "Fallback-only"). `None` when never configured --
-        moderator.match_customer_fallback_agent then correctly finds
-        nothing rather than fabricating a fallback."""
+        (operator: "Fallback-only"). `None` when never configured -- a
+        plugin's agent matcher then finds nothing rather than fabricating
+        a fallback."""
         state = _load_state()
         for section in state["sections"]:
             if section["id"] == section_id:

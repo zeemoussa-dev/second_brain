@@ -325,7 +325,7 @@ export function SectionDetailPanel({ sectionId, onClose, onSectionUpdated }: Sec
                     <input
                       className="input"
                       style={{ width: '100%' }}
-                      placeholder="e.g. Customers, Opportunities"
+                      placeholder="e.g. Projects, Research"
                       value={foldersDraft}
                       onChange={(event) => setFoldersDraft(event.target.value)}
                     />
@@ -354,7 +354,7 @@ export function SectionDetailPanel({ sectionId, onClose, onSectionUpdated }: Sec
                     <input
                       className="input"
                       style={{ width: '100%' }}
-                      placeholder="e.g. customer-hub"
+                      placeholder="e.g. research-hub"
                       value={fallbackAgentIdDraft}
                       onChange={(event) => setFallbackAgentIdDraft(event.target.value)}
                     />

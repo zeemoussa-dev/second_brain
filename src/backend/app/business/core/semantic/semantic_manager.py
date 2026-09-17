@@ -56,7 +56,7 @@ _DEFAULT_SEARCH_LIMIT = 20
 # Everything else (ids, timestamps, provenance) is noise in an embedding.
 _MEANINGFUL_FRONTMATTER_FIELDS = (
     "subject", "title", "name", "description", "summary",
-    "customer", "partner", "type", "status", "aliases",
+    "type", "status", "aliases",
 )
 
 

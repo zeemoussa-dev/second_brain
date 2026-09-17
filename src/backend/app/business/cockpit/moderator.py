@@ -1,26 +1,16 @@
 """Meeting Moderator roster recommendation (ADR-009, REQ-SB-82-US-03) and
 live per-question routing (REQ-SB-82-US-04/-06) -- three independent
 routing/matching tracks live in this module: two purely deterministic
-(`match_customer_expert`/`match_domain_experts`, `route_question`) and one
+(`match_domain_experts`, `route_question`) and one
 LLM-based (`route_question_llm`, ADR-012 point 2, composing `compass_client`
 for real reasoning over the brought-in roster/history/message, demoted-to-
 degrade-path relationship with `route_question` owned by `chat_turn.py`,
 ADR-012 point 3).
 
-`match_customer_expert` -- the subject note's own real customer signal
-(`customer:` frontmatter, per customer_hub_linking.py's own established
-convention, OR a `customer/<slug>` tag -- confirmed live against the real
-vault that a Thread/RawMessage note can carry ONLY the tag with no
-`customer:` field at all, e.g. "2026-08-19 1531 Compass Access for
-Masdar") mapped to a real, already-registered `<slug>-expert` agent in the
-real "Customer" Section (REQ-SB-83's Masdar/Adnoc/TAQA today) -- `None`,
-never fabricated, when no such agent is actually registered. Customer is
-never expressed as a folder for any subject note kind this Cockpit serves
-(Meeting/Thread) -- confirmed by direct inspection of
-email_classification.py's own module docstring ("customer is frontmatter
-+ a tag only, never a folder"); the PRD/ADR's own "tag/folder" phrasing is
-read as covering the two REAL signals above, not a literal third folder
-check. Logged as a scope-internal judgement call, not an escalation.
+Business-specific matching -- which Expert fits a subject because of a
+concept the framework does not know, such as its Customer -- comes from
+installed plugins' agent matchers (`recommended_experts`/`fallback_agent`,
+`BUG-063`, Entities plan Phase 5).
 
 `match_domain_experts` -- tokenized keyword overlap (operator's own
 "lightweight... refine later if too coarse" resolution, ADR-009) between
@@ -40,16 +30,12 @@ import re
 
 from app.business.core.agents.agent_manager import AgentManager
 from app.business.core.plugins.plugin_manager import PluginManager
-from app.business.core.sections.section_manager import SectionManager
 from app.business.core.vault.vault_manager import VaultManager
 from app.business.hermes import agents_map_adapter
-from app.data_access import compass_client, vault_writer
+from app.data_access import compass_client
 
-_section_manager = SectionManager()
 _agent_manager = AgentManager()
 _vault_manager = VaultManager()
-
-_CUSTOMER_SECTION_ID = vault_writer.tag_slug("Customer")
 
 # Real bug, found live 2026-08-26 (REQ-SB-82-US-04's own live-question
 # routing/suggestion): the original list here was curated for matching
@@ -94,60 +80,6 @@ def _tokenize(text: str) -> set[str]:
     }
 
 
-def _subject_customer(entry: dict) -> str | None:
-    customer = entry["frontmatter"].get("customer")
-    if customer:
-        return str(customer)
-    for tag in entry["tags"]:
-        if tag.startswith("customer/"):
-            return tag.split("/", 1)[1]
-    return None
-
-
-def match_customer_expert(subject_note_stem: str) -> str | None:
-    entry = _vault_manager.get_index().get(subject_note_stem)
-    if entry is None:
-        return None
-    customer = _subject_customer(entry)
-    if not customer:
-        return None
-    candidate_agent_id = f"{vault_writer.tag_slug(customer)}-expert"
-    # A real customer Expert is always `type: "expert"` by this app's own
-    # naming convention -- AgentManager.get_expert_agents() (2026-08-28)
-    # scopes this lookup to exactly that population instead of scanning
-    # the full agent+Pipeline roster for one id.
-    for agent in _agent_manager.get_expert_agents():
-        if agent.id == candidate_agent_id and agent.section_id == _CUSTOMER_SECTION_ID:
-            return candidate_agent_id
-    return None
-
-
-def match_customer_fallback_agent(subject_note_stem: str) -> str | None:
-    """The Section-level fallback (Phase 5, Implementation/Plans/
-    2026-08-27-vault-index-and-section-agents.md, operator: "Talking to
-    Customers Hub will help fix that") for a customer-tagged subject with
-    NO dedicated `<slug>-expert` registered -- returns the Customer
-    Section's own configured `fallback_agent_id`, or `None` (never
-    fabricated) when: the subject carries no customer signal at all (this
-    conversation isn't about a Customer -- Fallback-only means Section
-    fallback never engages for something it wasn't asked about), a
-    dedicated Expert already covers this exact customer (checked via
-    `match_customer_expert` first -- the dedicated Expert always wins,
-    matching the operator's own "Fallback-only" call), or the Section has
-    no fallback agent configured yet. Kept as its own function rather
-    than folded into `match_customer_expert` since the caller
-    (`chat_turn.py`) must distinguish "route to the dedicated Expert"
-    from "route to the Section fallback" -- two different real agents,
-    never conflated."""
-    if match_customer_expert(subject_note_stem) is not None:
-        return None
-    entry = _vault_manager.get_index().get(subject_note_stem)
-    if entry is None or not _subject_customer(entry):
-        return None
-    section = _section_manager.get_by_id(_CUSTOMER_SECTION_ID)
-    return section.fallback_agent_id if section is not None else None
-
-
 def _plugin_matches(subject_kind: str, subject_note_stem: str) -> list[dict] | None:
     """What installed plugins' agent matchers say about this subject (`BUG-063`
     seam), or None when no plugin registered a matcher. A matcher that raises
@@ -173,15 +105,12 @@ def _plugin_matches(subject_kind: str, subject_note_stem: str) -> list[dict] | N
 
 def recommended_experts(subject_kind: str, subject_note_stem: str) -> list[str]:
     """The agents plugins recommend for a conversation about this subject, in
-    plugin order, limited to agents that are really registered.
-
-    With no plugin matcher installed, the framework's own Customer matching
-    still answers, so nothing changes before the Entities plugin exists; that
-    transitional path is removed with it (Entities plan Phase 5)."""
+    plugin order, limited to agents that are really registered. None without
+    a plugin matcher: the framework itself knows no business concept to match
+    a subject by (`BUG-063`)."""
     matches = _plugin_matches(subject_kind, subject_note_stem)
     if matches is None:
-        customer_agent_id = match_customer_expert(subject_note_stem)
-        return [customer_agent_id] if customer_agent_id else []
+        return []
     registered = {agent.id for agent in _agent_manager.get_expert_agents()}
     experts = [
         agent_id for match in matches for agent_id in (match.get("experts") or [])
@@ -192,11 +121,10 @@ def recommended_experts(subject_kind: str, subject_note_stem: str) -> list[str]:
 
 def fallback_agent(subject_kind: str, subject_note_stem: str) -> str | None:
     """Who answers when nobody brought in fits: the first registered agent a
-    plugin names, or None. Same transitional Customer fallback as
-    `recommended_experts` when no plugin matcher is installed."""
+    plugin names, or None -- including when no plugin matcher is installed."""
     matches = _plugin_matches(subject_kind, subject_note_stem)
     if matches is None:
-        return match_customer_fallback_agent(subject_note_stem)
+        return None
     registered = {agent.id for agent in _agent_manager.get_all()}
     for match in matches:
         agent_id = match.get("fallback_agent_id")

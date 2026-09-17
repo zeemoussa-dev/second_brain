@@ -8,8 +8,8 @@ file, which holds the operator's data (`BUG-067`). A Skill "references" a
 seed file when its content mentions the file's name.
 
 Plugins register their seed files (`api.register_seed_data_file`), so export
-and import compile in no business store. `Settings/Entities.md` is still
-listed by the framework until the Entities plugin registers it (Phase 5).
+and import compile in no business store: an older archive's
+`Settings/Entities.md` is created only when the Entities plugin is installed.
 """
 from __future__ import annotations
 
@@ -17,10 +17,8 @@ from pathlib import PurePosixPath
 
 from app.business.core.plugins.plugin_manager import PluginManager
 
-_TRANSITIONAL_SEED_DATA_FILES = ["Settings/Entities.md"]
-
 
 def seed_data_files() -> dict[str, str]:
     """{data-path-relative file: the name a Skill's content must mention for it to be needed}."""
-    paths = dict.fromkeys(_TRANSITIONAL_SEED_DATA_FILES + PluginManager().get_seed_data_files())
+    paths = dict.fromkeys(PluginManager().get_seed_data_files())
     return {path: PurePosixPath(path).name for path in paths}

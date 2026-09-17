@@ -2,12 +2,12 @@ import os
 from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.business.core.vault.vault import Vault
-from app.business.core.vault.vault_manager import DuplicateEntityError, EntityNotFoundError, VaultManager
+from app.business.core.vault.vault_manager import VaultManager
 from app.business.logic import vault_export
 
 router = APIRouter(prefix="/vault")
@@ -62,54 +62,3 @@ def export_data_export(body: ExportDataExportBody, background_tasks: BackgroundT
         filename=f"second-brain-vault-export-{timestamp}.sbd",
         background=background_tasks,
     )
-
-
-@router.get("/entities")
-def list_entities() -> dict:
-    return {"entities": _vault_manager.list_entities()}
-
-
-class CreateEntityBody(BaseModel):
-    name: str
-    section: str
-    domain: str = ""
-    aliases: str = ""
-    affiliate_of: str = ""
-
-
-@router.post("/entities")
-def create_entity(body: CreateEntityBody) -> dict:
-    try:
-        return _vault_manager.create_entity(body.name, body.section, body.domain, body.aliases, body.affiliate_of)
-    except DuplicateEntityError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-
-class UpdateEntityBody(BaseModel):
-    name: str | None = None
-    section: str | None = None
-    aliases: str | None = None
-    affiliate_of: str | None = None
-    domain: str | None = None
-    ignore: bool | None = None
-
-
-@router.patch("/entities/{name}")
-def update_entity(name: str, body: UpdateEntityBody) -> dict:
-    try:
-        return _vault_manager.update_entity(name, body.model_dump(exclude_none=True))
-    except EntityNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    except DuplicateEntityError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
-
-
-@router.delete("/entities/{name}")
-def delete_entity(name: str) -> dict:
-    try:
-        _vault_manager.delete_entity(name)
-    except EntityNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    return {"deleted": True}
