@@ -79,6 +79,24 @@ framework, so nothing changes for the operator yet. `FRAMEWORK_API = 2`; publish
 My Day 1.2.0.
 **Gate:** suite, import checks, publish dry-run of a test package with `templates/`, parity
 of Cockpit roster and fallback on real chats, My Day unchanged.
+**Status: done 2026-09-17** (`4a3e795`, `fa901ce`, `355436e`, `deb5700`, `43728d5`, and the API
+bump). Changes from the plan above:
+- Seam 5 is a registration, `register_people_folders`, not "People locations from
+  Templates": no Template declares a People child, and People are filed by the Agent-owned
+  People pipeline. An index lookup was tried and rejected: the in-process index is rebuilt
+  only at start, so newly captured People would be missed.
+- Seam 3 is `register_seed_data_file`; moving it surfaced and fixed `BUG-067` (an import
+  emptied an existing `Settings/Entities.md`).
+- Templates in a package are never written over an existing Template (adopted instead), and
+  uninstall leaves them in place.
+
+**Transitional paths Phase 5 must remove** (each keeps today's behaviour while no plugin
+provides the seam):
+- `business/cockpit/moderator.py` -- `recommended_experts` / `fallback_agent` fall back to
+  `match_customer_expert` / `match_customer_fallback_agent` (and those functions themselves).
+- `business/people_extraction.py` -- `_TRANSITIONAL_PEOPLE_FOLDERS`.
+- `business/logic/artifact_seed_data.py` -- `_TRANSITIONAL_SEED_DATA_FILES`.
+- `frontend/src/pages/InboxCockpitPage.tsx` -- the hardcoded Customer info field.
 
 ### Phase 3 — Build `sb-plugins-entities` 1.0.0
 Backend (registry, `entities.customers` service, Cockpit enricher and matcher, seed-data

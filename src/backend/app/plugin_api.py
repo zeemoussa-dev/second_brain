@@ -8,10 +8,14 @@ back, never a framework entity class. An entity's fields change whenever the
 framework needs them to, and a plugin holding the class would break on that
 change while its `framework_api` still matched.
 
-v1 is exactly what the first plugin (My Day) uses, and nothing more. A new
-capability is added here when a plugin needs one; removing or changing an
-existing one is a `FRAMEWORK_API` major bump, after which every installed
-plugin built against the old major is refused rather than half-working.
+v1 was exactly what the first plugin (My Day) used. v2 adds what the Entities
+plugin needs, so the framework can stop knowing its business concepts: Cockpit
+agent matchers, services between plugins, People folders, seed data files,
+read access to Expert agents and Sections -- and, in a package, Templates. A
+new capability is added here when a plugin needs one. The host loads only
+plugins built for its exact `FRAMEWORK_API`, so a plugin that relies on a
+capability is never loaded by a framework that lacks it, and every installed
+plugin is republished when the version moves.
 """
 from __future__ import annotations
 
@@ -26,7 +30,7 @@ from app.business.core.vault.vault_manager import VaultManager
 from app.business.hermes.client import get_client
 from app.data_access import vault_writer
 
-FRAMEWORK_API = 1
+FRAMEWORK_API = 2
 
 # `enricher(subject_kind, frontmatter, tags) -> {field: value}`. Cockpit calls it
 # while composing a view of a note (`BUG-063` seam).
