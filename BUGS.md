@@ -54,6 +54,8 @@ is a thin status mirror of the index table below.
 | BUG-065 | Replacing an installed plugin version deleted the old files in place, so a `__pycache__` held open by OneDrive stopped the delete half-way — the plugin's modules were gone, the record still named the old version, and the Marketplace answered 500 | Logic | Critical | Fixed | 2026-09-14 | this change |
 | BUG-066 | Attaching a file in Chat fails — the paperclip posts to `/agents/{id}/chat/attachment`, a route that has not existed since the 2026-08-20 redesign, so the backend answers 404 and the Chat panel shows "Something went wrong" | UI | Major | Fixed | 2026-09-17 | this change |
 | BUG-067 | Importing an artifact bundle empties an existing `Settings/Entities.md` — the seed-data writer wrote an empty file whenever a deployed Skill mentioned it, without checking whether the file already held the operator's registry | Logic | Critical | Fixed | 2026-09-17 | this change |
+| BUG-068 | The backend launcher can leave an orphaned uvicorn worker holding port 8001, so pulled framework code never loads and every relaunch silently fails to bind while `/health` still answers 200 | Logic | Major | Open | 2026-09-18 | — |
+| BUG-069 | Skills moved to agent repositories cannot run their tests: they find the framework's master Templates and shared managers by counting parent folders, true only inside the framework's own tree | Logic | Major | Open | 2026-09-18 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -1071,3 +1073,27 @@ is a thin status mirror of the index table below.
 - **Fix:** seed files are created empty only when they do not exist; an existing file is never
   written. Seed files now come from `artifact_seed_data.seed_data_files()` (plugin-registered
   files plus the transitional Entities.md). Tests in `tests/test_artifact_seed_data.py`.
+
+### BUG-068 — An orphaned uvicorn worker keeps serving old code on port 8001
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-09-18, on the CBO install while validating the post-split framework: `/health` answered 200 but `/openapi.json` had none of the Marketplace routes the pulled commits added.
+- **Root cause:** `uvicorn --reload` on Windows runs the app in a `multiprocessing.spawn` child that inherits the listening socket. When the reloader dies, is killed, or a second backend is started by hand, the child keeps listening with whatever code it loaded. Its command line contains `spawn_main`, not `uvicorn`, so looking for "uvicorn" does not find it. `tools/run-backend.cmd` starts a new backend without checking who holds the port.
+- **Repro:** start the backend with the Startup launcher; stop only the reloader process; pull a framework change that adds a route; request that route.
+- **Expected:** a stale backend is either cleared or reported before a new one starts, and the running code's version is visible from outside.
+- **Actual:** an orphan from 2026-09-11 served port 8001 for a week. A 44-commit pull (Marketplace, plugin host) never loaded, and each relaunch's backend could not bind while `/health` kept answering 200 from the orphan.
+- **Suggested:** the launcher refuses to start (naming the PID) when port 8001 is already held; `/health` reports the framework's git SHA so stale code is detectable.
+
+### BUG-069 — Moved Skills' tests locate the framework by counting parent folders
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-09-18, running the company Skills' tests from `sb-cbo-agent`; `sb-pss-agent` fails identically.
+- **Root cause:** tests in `create-companies-partners` and `summarize-and-tag-threads` use `Path(__file__).parents[6] / "templates" / "masters"` and `parents[5] / "managers"`, and every moved Skill's `conftest.py` uses `parents[3] / "managers"` -- all true only inside `src/backend/app/business/core/skills/catalog/<tool>/<skill>/`. ADR-021's move gate ran the suites that STAYED in the framework, not the ones that moved. The `customer`/`partner` masters have also left the framework for the Entities plugin package.
+- **Repro:** in `sb-pss-agent`, with the framework managers and `data/managers` on `PYTHONPATH`, run `pytest` in `data/Tools/vault/Skills/summarize-and-tag-threads/scripts` (24 errors) and `create-companies-partners/scripts` (2 failed, 4 errors).
+- **Expected:** an agent repository's Skill tests run against the framework through a documented setting.
+- **Actual:** 31 tests error with `FileNotFoundError` on `data/templates/masters/...` and `Tools/managers`.
+- **Note:** worked around in `sb-cbo-agent` @ `4e625d3` (a shared `conftest.py` resolving `SECOND_BRAIN_FRAMEWORK` and a `shipped_template` fixture that also searches the Marketplace packages); `sb-pss-agent` is still affected. The framework has no supported way for an agent repository's tests to find it.
