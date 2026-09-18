@@ -62,6 +62,20 @@ trusted.
 - **Never force-push to main/master.** Warn the user if they request it.
 - **Never stage sensitive files** (`.env`, credentials). Warn if asked to commit them.
 
+## Repository boundary (`ADR-023`)
+
+This repository is the **framework**: source only, no business content. A session
+opened here knows this repository, and nothing of an agent install's own Skills,
+Templates or business rules -- those live in that install's repository
+(`sb-pss-agent`, `sb-cbo-agent`), each with its own `CLAUDE.md` and `MEMORY.md`.
+Plugin source lives in its own repository too (`sb-plugins-*`).
+
+- **Never write business knowledge into this repository's memory.** Customer,
+  Partner, Opportunity and one operator's workflow are not framework facts.
+- **Record cross-repository facts as boundaries, not as knowledge** -- that a repo
+  exists and what it owns, never how its content works.
+- **A need felt in an agent repository is logged there and implemented here.**
+
 ## Memory Protocol
 
 **Framework memory vs instance memory — decide this FIRST, before writing

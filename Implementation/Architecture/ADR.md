@@ -2623,3 +2623,49 @@ Code, not configuration, is what differs between a PSS, a CBO and a CFO second b
 - **My Day is coupled to Cockpit.** `business/logic/cockpit_view.py` imports `my_day`, so
   the first extraction either takes Cockpit along or introduces a seam. The extraction plan
   decides which.
+
+
+---
+
+## ADR-023: Each repository is its own working context — per-repository instructions and memory
+
+**Status:** Accepted
+**Date:** 2026-09-17
+
+**Context:** `ADR-021` split the work into a framework repository and one repository per
+agent install, and `ADR-022` added plugin repositories. A session is opened in one
+repository and knows that folder: its instructions, its memory, its files.
+
+Two things had not followed the split. The agent repositories carried **empty**
+`CLAUDE.md` and `MEMORY.md` scaffolds, so a session opened in `sb-pss-agent` began with no
+rules at all -- it could not know that a Skill here is deployed from elsewhere, that a
+shared engine belongs in `data/managers/`, or that framework source must never be copied
+in. And the knowledge earned while doing that work was written into the framework's memory,
+the only place that had any, which pulls business specifics into the repository whose whole
+premise is that it knows nothing about business.
+
+**Decision:**
+
+- **Every repository carries its own `CLAUDE.md` and `MEMORY.md`, sufficient on their own.**
+  A session opened there needs nothing from any other repository to work correctly.
+- **A repository's memory describes only itself.** The framework's memory holds framework
+  rules; an agent repository's holds that install's rules; a plugin repository's holds that
+  plugin's. No repository restates another's internals.
+- **Cross-repository facts are recorded as boundaries, not as knowledge.** "The framework is
+  a separate repository; raise the need there" is a boundary. Explaining how the framework's
+  plugin host works inside an agent repository is not.
+- **A missing capability is logged where it is felt and fixed where it belongs.** An agent
+  repository records the need; the framework implements it.
+- **Instance data stays out of every repository.** One machine's paths, mailbox, keys and
+  live state live in that install's own `AGENT-MEMORY.md`.
+
+**Consequences:**
+
+- A new session in `sb-pss-agent` knows PSS rules and nothing of the framework's internals;
+  a new session in `second_brain` knows the framework and nothing of PSS business rules.
+  That is the intended blindness, not a gap to fill.
+- Some facts are stated twice in different words -- once as a rule where it applies, once as
+  a boundary where it is felt. That duplication is accepted; merging them would recreate the
+  single shared context the split exists to remove.
+- Standing rules earned in an agent repository are written there, so the framework's memory
+  stops growing with business specifics.

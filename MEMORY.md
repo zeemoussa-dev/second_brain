@@ -59,9 +59,8 @@ Where a rule does not belong here:
 
 - **Every Hermes-side Skill script must resolve the App Database Folder through `vault_manager.data_root()`, never a hardcoded `<vault>/.second-brain`.** `data_root()` honours `SECOND_BRAIN_DATA_PATH` and falls back to the historical in-vault location. Hardcoding it caused a full day of silently dropped email capture after the config/vault split.
 
-- **An `_iter_*` scan that identifies records by folder shape must also check content - a frontmatter `type`, an `id` - before treating a match as authoritative.** Path shape alone is not identity: an Opportunity's folder satisfies the same shape test as a Customer hub, and a scan that trusted shape corrupted 10 of 13 real Opportunities.
+- **An `_iter_*` scan that identifies records by folder shape must also check content - a frontmatter `type`, an `id` - before treating a match as authoritative.** Path shape alone is not identity: a child note's folder can satisfy the same shape test as its parent hub's, and a scan that trusted shape corrupted 10 of 13 real notes of one kind.
 
-- **`create_companies_partners.py` gates hub creation on a local path-existence check at the exact location the Entities row implies, not a vault-wide title search.** A real hub nested under a different parent is therefore not found and a duplicate is created. Search by title before creating.
 
 - **Never trust a previously-recorded inventory of deployed file copies - re-enumerate live before any resync.** The last recorded count of `vault_manager.py` copies was badly stale: 9 in-repo and 73 deployed when actually checked.
 
@@ -125,13 +124,11 @@ Where a rule does not belong here:
 
 - **[2026-09-11] On Windows a rename or delete FAILS while any other process holds the file open (WinError 32), and capture holds Person notes constantly.** A bulk pass that moves or deletes notes must skip a busy file and retry it next run -- never let one exception end the run. A check for "is a capture running" at start is not enough: a capture can begin mid-run. The first People run filed 1,521 people and then died on one busy file.
 
-- **[2026-09-11] Every lookup of a Person must search flat Work/People AND both hub roots at any depth (`Customers/**/People`, `Partners/**/People`).** People are filed under Partners and under Affiliates one level deeper. Capture's lookups already did; enrichment's and the backend's did not, and would have lost every filed partner contact.
 
 - **[2026-09-11] When one applier replaces another, carry over EVERY rule the old one enforced -- list them before deleting it.** The extraction applier replaced `apply_thread_review` and silently dropped its company tagging, the operator's own "tag all companies" rule: named companies fed only the review list, and 149 of 179 enriched Threads went untagged by content. Persisting each extraction before applying it is what made the repair cheap -- a backfill from disk, no model.
 
 - **[2026-09-11] Enrichment reads and saves; Tagging tags; Metadata is structure.** Three pipelines, split by the operator's own test -- "does it need a model to decide?" -- and then by what they write. Company tags from ANY source (domains, a Thread's saved extraction, an attachment summary's links) and the engagement label derived from them all belong to Tagging, which runs after Metadata so every tag points at where each company finally sits, and computes engagement last so it sees every source. Putting a tag write inside an enrichment applier is the mistake this rule exists to stop.
 
-- **[2026-09-11] The operator's enrichment design fans ONE read out to four places: the Thread, People, Customer Logs (each named company's History) and Important Captures.** Check a new applier against all four. The extraction applier shipped writing one and a half of them; company History and tagging were both silently dropped from the applier it replaced.
 
 - **[2026-09-11] A pipeline that reads with a model writes only the note it read; everything else that read feeds is filed from the SAVED read by the pipeline that owns that note.** Enrichment writes the Thread's Summary and Actions and saves the extraction; Tagging files company tags from it, Company files each company's History and Captures and each person's details. Two writers on one note is how they overwrite each other, and a filer working from saved reads is re-derivable: idempotent, healed on the next run, and a company or alias added later picks up everything already read about it.
 
@@ -139,7 +136,6 @@ Where a rule does not belong here:
 
 - **[2026-09-12] Identify a vault note by its frontmatter `type`, never by its filename or folder name.** Threads hold "folder name == file stem", so Meetings borrowed the test -- but meeting-capture gives a series folder a date prefix its own note does not carry, and Windows drops a trailing dot from a folder name. Both silently rejected real notes. A glob that matches nothing raises nothing, so a wrong path assumption reads exactly like "there was no work to do": when a pass reports zero, check that it looked in the right place before believing it.
 
-- **[2026-09-12] A question with a number in it goes to a script, and the script reports classified and engaged separately.** Counting by reading notes gives a different answer each time and sounds certain either way. "How many partners" has two honest answers -- how many have hubs, and how many have ever appeared in an engagement -- so return both and let the caller say which it is giving. Count affiliates apart from companies: an affiliate is a hub, not its own relationship.
 
 - **[2026-09-12] Match a person's name on whole words, and search the company's affiliates as well as itself.** A substring match for "Mir" returned "Emirates"; searching only the named company missed a person filed under its affiliate, which is the normal case when the operator names the parent. Report which company the person is actually under so the caller can confirm rather than file against the wrong one.
 
@@ -153,7 +149,6 @@ Where a rule does not belong here:
 
 - **[2026-09-11] A value copied from Entities.md at creation is not kept in sync by anything unless something syncs it.** Hubs took Domain and Aliases once, at creation; every later curation edit (the aliases added for EY, TAQA, Core42) stayed in Entities.md while People and Tagging read the hub notes -- so nobody at those domains was ever filed, silently. Hub upkeep now copies them, adding only.
 
-- **[2026-09-11] Before changing what a company matches on, check what the change will tag.** Correcting Core42's misspelled domain would have stamped the operator's own company on 2,046 of 2,627 Threads and relabelled 964 colleague-only Threads from internal to partner, because the engagement rule counts any partner not in the internal set. Count the notes a matching change reaches, and settle internal/own-company status first.
 
 - **[2026-09-11] Parallel jobs over one queue need a stable partition and a lock on every file they all update.** Each job asks the same oldest-first question, so without a partition all of them read the same items; partition by CRC32 of the item id, never Python's `hash()`, which is salted per process. A shared read-modify-write file loses one job's update to the other's rename unless it is locked.
 
@@ -195,7 +190,6 @@ Where a rule does not belong here:
 
 - **Validate the shape of any Outlook COM field that can fall back to an internal identifier, never just its truthiness.** A failed GAL lookup returns a LegacyExchangeDN, which is truthy and is not an email address. Check the shape before using such a value as a dedup key, filename or displayed field.
 
-- **A note's customer signal is not reliably in one place.** Meeting notes always carry a `customer:` frontmatter field, while Thread and RawMessage notes can carry only a `customer/<slug>` tag. Any customer resolution must check both.
 
 - **`run_full_capture.py` has never written the watermark file; only `run_delta_capture.py` reads or writes it.** This is correct, pre-existing behaviour - do not add a watermark write to the full-history orchestrator on the assumption that it is missing.
 
@@ -307,7 +301,7 @@ Where a rule does not belong here:
 
 - **A command that succeeds in the agent's shell but fails in the operator's, on the same machine, is a network-path difference, not a flaky command.** Never build a theory on a result the operator's own shell has not reproduced.
 
-- **A Skill that writes only frontmatter or a note body declares no `writes:` block.** `writes:` is specifically the named-Entity-Template-section allow-list; `person-lookup`, `create-companies-partners` and `vault-index` all write real content and declare none.
+- **A Skill that writes only frontmatter or a note body declares no `writes:` block.** `writes:` is specifically the named-Entity-Template-section allow-list; a Skill can write real content and declare none (`vault-index` does).
 
 - **A vault writer must preserve each note's own line endings and body whitespace.** Python reads with universal newlines and writes `os.linesep`, silently converting an LF note to CRLF; the vault is 99% CRLF AND synced to git, so the default turns a one-line tag change into a whole-file diff.
 
@@ -321,7 +315,6 @@ Where a rule does not belong here:
 
 - **Before adding a delete action over data that a separate discovery or dedup process also reads, check what that process's "already seen" check keys on.** Removing the record it looks for silently un-suppresses whatever the record was suppressing - soft-delete with a flag instead.
 
-- **The Entities file format has two independent implementations of `parse_entities`/`render_entities`/`_KNOWN_FIELDS`, in `find_new_entities.py` and `create_companies_partners.py`.** A schema change needs both edited and both redeployed.
 
 - **Tokenized word-overlap matching against profile names and descriptions needs a stopword filter, including this domain's own boilerplate.** Without it a single coincidental shared word produces a confident false match.
 
