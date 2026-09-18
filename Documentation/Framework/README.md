@@ -41,6 +41,7 @@ answer.
 | **Pipeline** | A multi-step job with a dependency tree, usually on a schedule via a Hermes cron job. |
 | **Index** | A scoped, pre-built view of the vault for agents to search — chosen folders, optional tag filter, depth limit, own refresh schedule. |
 | **Provider** | An LLM endpoint and model. Listings only ever say *whether* a credential is set, never the secret itself. |
+| **Plugin** | A piece of a solution the framework does not carry: its own screens, endpoints, Templates and logic, published into the Marketplace and installed from Settings. The framework itself ships empty. |
 
 ### The capability hierarchy — say it this way, every time
 
@@ -111,6 +112,19 @@ Author a **Skill** — instructions plus scripts — and deploy it to the profil
 that need it. A Skill sitting in the repo does nothing until it is copied into a
 real profile.
 
+Step by step, including `writes:`, testing and deployment →
+**[Building-a-Skill.md](Building-a-Skill.md)**
+
+### Add a screen, an endpoint, or a whole business model
+
+The framework ships empty on purpose. Anything that is not true of *every*
+install — My Day's screens, Customers and Partners, a CFO's own model — is a
+**plugin**: its own repository, published into the Marketplace, installed from
+Settings, carrying its own screens, endpoints and Templates.
+
+Step by step, including the Plugin API, publishing and installing →
+**[Building-a-Plugin.md](Building-a-Plugin.md)**
+
 ### Run something on a schedule
 
 A **Pipeline** describes the steps and their dependencies; a **Hermes cron job**
@@ -174,6 +188,8 @@ Pipelines**. Nothing is invented for you.
 | Page | For |
 |---|---|
 | **[Templates.md](Templates.md)** | Authoring a note type — every key, the access model, testing |
+| **[Building-a-Skill.md](Building-a-Skill.md)** | Authoring a Skill — `SKILL.md`, scripts, tests, deployment, drift |
+| **[Building-a-Plugin.md](Building-a-Plugin.md)** | Authoring a plugin — the Plugin API, screens, Templates, publishing, installing |
 | **[Vault-Layout.md](Vault-Layout.md)** | Where every kind of note lands, and the two folder shapes |
 | **[Artifacts.md](Artifacts.md)** | Agent / Skill / Pipeline shapes, disk layout, `.sbf` `.sbb` `.sbd` |
 | **[Hermes-Runtime.md](Hermes-Runtime.md)** | Operating a live Hermes — API, auth, profiles, cron scoping |

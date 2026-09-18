@@ -5,8 +5,15 @@ and **Index**.
 They are what you author to extend the system, and what travels between installs
 in a `.sbf` bundle.
 
-Verified against the code, 2026-09-06. Templates have their own guide —
-[Templates.md](Templates.md).
+A **plugin package** is the sixth thing you can author and the one that carries
+code — screens, endpoints and Templates a particular install wants. It does not
+travel in a `.sbf`; it is published into the Marketplace and installed from
+Settings ([Building-a-Plugin.md](Building-a-Plugin.md)).
+
+Verified against the code, 2026-09-06; plugins and shared managers added
+2026-09-18. Each has its own guide — [Templates.md](Templates.md),
+[Building-a-Skill.md](Building-a-Skill.md),
+[Building-a-Plugin.md](Building-a-Plugin.md).
 
 ---
 
@@ -27,11 +34,18 @@ data/
   Tools/<tool>/Tool.json
   Tools/<tool>/Skills/<skill>/Skill.json         + Skill-visual.json
   Providers/<provider>/Provider.json
+  managers/*.py                                              # shared engines THIS install ships
 pipelines/<id>.json                                          # note: NOT under data/
+plugins/<plugin-id>/                                         # an installed plugin's backend
+plugins/installed.json                                       # what each plugin owns
 ```
 
 Two things worth noticing: a **background agent lives outside any Section**
 (`Background/Agents/`), and **Pipelines sit at the top level**, not under `data/`.
+
+An **agent repository is this folder** — the same layout in git. That is how an
+install's own Skills, Templates and shared managers are version-controlled
+without any of them entering the framework.
 
 ---
 
@@ -129,6 +143,14 @@ repo does nothing to a live install by itself.
 > canonical `vault_manager.py` lives in `../managers/` and is materialised
 > into `<hermes_home>/managers/` on `PYTHONPATH`. The repo previously held 16
 > copies in 5 versions and the live install 228 across 41 profiles.
+>
+> **An install ships its own engines too** (2026-09-18). `<app data>/data/managers/*.py`
+> — an agent repository's shared libraries, such as `company_index.py` — are
+> deployed into the same folder beside the framework's. One named like a
+> framework manager is refused rather than copied: it would silently replace
+> that engine for every Skill on the install.
+
+Authoring one end to end → **[Building-a-Skill.md](Building-a-Skill.md)**
 
 ---
 
@@ -177,6 +199,36 @@ without it (`ADR-019`).
 > those are opaque ids minted by the exporting machine's Hermes and mean
 > nothing here. An imported Index arrives real and rebuildable but
 > **unscheduled**, rather than silently running a job nobody asked for.
+
+---
+
+## Plugin package
+
+A plugin carries what is true of *one* install rather than of every install:
+screens, endpoints, Templates and logic. Source lives in its own repository;
+`scripts/publish_plugin.py` validates it and writes a versioned package into
+`src/marketplace/<plugin-id>/<version>/`.
+
+| Part | Holds |
+|---|---|
+| `plugin.json` | `id`, `name`, `version`, `framework_api`, `requires` |
+| `backend/` | `register(api)`; its routes are mounted under `/plugins/<id>/` |
+| `ui/` | screens, nav entries, Settings pages, Cockpit info fields |
+| `templates/<id>/` | Templates the plugin brings |
+
+- **`framework_api` must match the host exactly.** A plugin built for another
+  version is refused, with the reason on System Health, rather than half-loaded.
+- **The backend may import `app.plugin_api` and nothing else**; screens may
+  import only their own files, `src/pluginHost/` and react / react-router. Both
+  rules are checked at publish time.
+- **Installing** copies the backend into `<app data>/plugins/<id>/` and the
+  screens into the frontend's `src/plugins/<id>/`, records what it owns in
+  `plugins/installed.json`, and needs a backend restart. A Template already on
+  the install is adopted, never overwritten.
+- **Uninstalling** removes only what that record lists, and never a path outside
+  those two folders. Templates and vault notes stay.
+
+Authoring one end to end → **[Building-a-Plugin.md](Building-a-Plugin.md)**
 
 ---
 
@@ -229,3 +281,4 @@ without it (`ADR-019`).
 | Add a new specialist that reasons | **Agent** (a Hermes profile, annotated here) |
 | Run something on a schedule, in steps | **Pipeline** + a Hermes cron job |
 | Keep a scoped, rebuilt view of the vault | **Index** |
+| Add screens or endpoints only some installs want | **Plugin package** — never framework code |
