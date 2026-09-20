@@ -5163,3 +5163,39 @@ loading of screens, which `ADR-022` rejected.
 Findings 1-4 against the real code before drafting stories. -->
 
 **Acceptance:** To be drafted as Gherkin at `/spec`.
+
+### REQ-SB-92: Install a Plugin From Its Own Repository, Without Publishing Into the Framework
+
+Raised 2026-09-20 from the CBO install, while building the Action Center plugin
+(`sb-plugins-action-center`: a Task note type, a read-only backend and two screens over the
+actions the CBO asked of people).
+
+`ADR-022` places plugin source in its own repository, and the operator's standing rule for
+an agent install is that the framework repository is used for logging feature requests and
+bugs, nothing else (2026-09-18). Those two hold together only if a plugin can be installed
+from where it lives. Today it cannot.
+
+**Finding 1 - the Marketplace reads packages out of the framework's own tree.**
+`MarketplaceManager` lists and installs through `data_access/marketplace.py`
+(`list_package_versions`, `read_package_manifest`, `has_package`), which reads
+`src/marketplace/<plugin-id>/<version>/`. Confirmed by reading the code on 2026-09-20.
+
+**Finding 2 - publishing therefore writes into the framework repository.** `ADR-022`:
+*"The package sits in the framework's Marketplace and is installed from Settings."* So
+installing a plugin built in its own repository means committing that package here, which
+is exactly what the agent-install rule forbids. The Action Center is finished enough to
+install and cannot be, on the install that asked for it.
+
+**Scope.** Install a plugin package from a source OUTSIDE the framework checkout - a local
+path, and a git repository at a ref - through the same three gates publishing already
+applies: the import check (a plugin may reach only `app.plugin_api`), the `framework_api`
+major-version check, and that it builds. The installed record should name where it came
+from, so an install can say which repository and ref it is running.
+
+Out of scope: a hosted plugin registry, and any change to what a plugin may do once
+installed.
+
+<!-- Logged by the CBO install at the operator's instruction ("Log the feature request").
+/spec should re-verify Findings 1-2 against the real code before drafting. -->
+
+**Acceptance:** To be drafted as Gherkin at `/spec`.
