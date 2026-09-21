@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import importlib.util
 import json
 import os
 import re
@@ -40,6 +41,11 @@ MARKETPLACE_ROOT = _SRC_ROOT / "marketplace"
 
 sys.path.insert(0, str(_SCRIPTS_DIR))
 import check_plugin_imports  # noqa: E402
+
+_SCREEN_BUILD_FILE = _BACKEND_ROOT / "app" / "business" / "core" / "plugins" / "screen_build.py"
+_screen_build_spec = importlib.util.spec_from_file_location("plugin_screen_build", _SCREEN_BUILD_FILE)
+screen_build = importlib.util.module_from_spec(_screen_build_spec)
+_screen_build_spec.loader.exec_module(screen_build)
 
 # The plugin host's own id rule -- a package the host would refuse must never publish.
 _VALID_PLUGIN_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
@@ -166,32 +172,10 @@ def run_plugin_tests(repo: Path) -> str | None:
 
 
 def build_screens_in_framework(repo: Path, plugin_id: str) -> str | None:
-    """Copies the screens beside the installed plugins under a folder name the
-    host never mounts (it is not a valid plugin id), builds the whole frontend,
-    and always removes the copy. The copy sits at an installed plugin's depth,
-    so `../../pluginHost/...` resolves exactly as it will once installed.
-
-    The build output left in `dist/` includes the copy until the next build;
-    the dev server never serves `dist/`."""
-    if not (repo / "ui").is_dir():
-        return None
-    npm = shutil.which("npm") or shutil.which("npm.cmd")
-    if npm is None:
-        return "npm was not found on PATH, so the screens could not be built"
-    check_dir = _FRONTEND_ROOT / "src" / "plugins" / f"__publish-check-{plugin_id}"
-    shutil.rmtree(check_dir, ignore_errors=True)
-    shutil.copytree(repo / "ui", check_dir, ignore=shutil.ignore_patterns("node_modules"))
-    try:
-        completed = subprocess.run(
-            [npm, "run", "build"], cwd=_FRONTEND_ROOT,
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-        )
-    finally:
-        shutil.rmtree(check_dir, ignore_errors=True)
-    if completed.returncode == 0:
-        return None
-    tail = "\n".join((completed.stdout + completed.stderr).strip().splitlines()[-25:])
-    return f"the screens do not build inside this framework:\n{tail}"
+    """The same build gate the Marketplace runs when installing from a
+    repository -- one implementation, in `app/business/core/plugins/screen_build.py`,
+    loaded by file path so publishing still boots no application."""
+    return screen_build.build_screens(_FRONTEND_ROOT, plugin_id, repo / "ui", purpose="publish")
 
 
 def publish(
