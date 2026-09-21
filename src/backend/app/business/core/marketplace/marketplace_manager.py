@@ -103,10 +103,15 @@ class MarketplaceManager:
         """What installing would do, and everything that would stop it. Changes
         nothing."""
         installed_version = self._installed_versions().get(plugin_id)
+        # A plugin installed from its own repository carries the same version string as the
+        # published package but different code, so the version alone cannot say whether this
+        # would change anything (`BUG-071`).
+        installed_from_source = self._installed_sources().get(plugin_id)
+        replaces_something = bool(installed_version) and (installed_version != version or bool(installed_from_source))
         result = {
             "plugin_id": plugin_id, "version": version, "ok": False, "problems": [],
             "installed_version": installed_version,
-            "replaces": installed_version if installed_version and installed_version != version else None,
+            "replaces": installed_version if replaces_something else None,
             "templates": {"install": [], "keep": []},
         }
         problems: list[str] = result["problems"]
@@ -129,7 +134,7 @@ class MarketplaceManager:
                 f"built for framework API {manifest.get('framework_api')!r}; this framework provides "
                 f"API {plugin_api.FRAMEWORK_API}"
             )
-        if installed_version == version:
+        if installed_version == version and not installed_from_source:
             problems.append(f"{plugin_id} {version} is already installed")
         problems.extend(self._unmet_requirements(plugin_id, manifest))
         templates = self._package_templates(plugin_id, version, problems)

@@ -245,6 +245,40 @@ def test_the_same_version_can_be_reinstalled_from_a_moving_branch(roots):
     assert MarketplaceManager().install_from_source("git", str(repository), "main")["installed"] is True
 
 
+# BUG-071: the "already installed" rule compared version strings alone, so a plugin
+# installed from a repository could not be put back onto the published package of the
+# same version -- the operator had to uninstall it first.
+def test_the_published_package_can_replace_a_repository_install_of_the_same_version(roots):
+    package = publish_package(roots, version="1.0.0")
+    (package / "backend" / "__init__.py").write_text(
+        textwrap.dedent(_BACKEND).replace("{version}", "1.0.0") + '\nORIGIN = "package"\n', encoding="utf-8")
+    repository = git_repository(roots["tmp"] / "repo", version="1.0.0")
+    MarketplaceManager().install_from_source("git", str(repository), "main")
+
+    check = MarketplaceManager().preflight("action-center", "1.0.0")
+    result = MarketplaceManager().install("action-center", "1.0.0")
+
+    assert check["ok"] is True and check["replaces"] == "1.0.0"
+    assert result["installed"] is True
+    backend = (roots["config"] / "plugins" / "action-center" / "backend" / "__init__.py").read_text(encoding="utf-8")
+    assert 'ORIGIN = "package"' in backend
+    # Its origin is this Marketplace again, so Update has nothing to pull.
+    [entry] = installed_record(roots)["plugins"]
+    assert entry.get("source") is None
+    assert any("has no repository to pull" in problem
+               for problem in MarketplaceManager().update_from_source("action-center")["problems"])
+
+
+def test_a_marketplace_install_of_the_version_already_installed_is_still_refused(roots):
+    publish_package(roots, version="1.0.0")
+    MarketplaceManager().install("action-center", "1.0.0")
+
+    result = MarketplaceManager().install("action-center", "1.0.0")
+
+    assert result["installed"] is False
+    assert any("already installed" in problem for problem in result["problems"])
+
+
 def test_update_says_so_when_the_plugin_came_from_the_marketplace(roots):
     publish_package(roots, version="0.9.0")
     MarketplaceManager().install("action-center", "0.9.0")

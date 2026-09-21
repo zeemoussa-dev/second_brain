@@ -250,6 +250,7 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 | BUG-068 | An orphaned uvicorn worker keeps serving old code on port 8001 | Logic | Open | — |
 | BUG-069 | Moved Skills' tests locate the framework by counting parent folders | Logic | Open | — |
 | BUG-070 | A stopped backend's launcher shell keeps the log locked, so the next launch silently starts nothing | Logic | Open | — |
+| BUG-071 | A plugin installed from its own repository cannot be put back onto the published package | Logic | Closed | direct fix, 2026-09-21 |
 
 > **Emptied 2026-09-06** with `BUGS.md`, which this mirrors — 42 rows.
 > History: `git show d64dcb4:BACKLOG.md`. Next id is **`BUG-043`**.

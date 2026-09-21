@@ -1110,3 +1110,26 @@ is a thin status mirror of the index table below.
 - **Expected:** the new launch starts the backend, or reports why it could not.
 - **Actual:** port 8001 stays free, `/health` never answers, `backend.log` ends at the old process's `Terminate batch job (Y/N)?`.
 - **Suggested:** the launcher writes to a per-start log (or appends with a fallback name) and records a start failure in `startup-errors.log`, which it already does for a missing launcher; a stop/restart helper that stops the launcher shell with its tree would remove the trap altogether.
+
+### BUG-071 — A plugin installed from its own repository cannot be put back onto the published package
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Fixed
+- **Found:** 2026-09-21, on this install, reverting My Day from the GitHub install back to the
+  Marketplace package published at the same version.
+- **Root cause:** `MarketplaceManager.preflight` refused whenever `installed_version == version`,
+  comparing version strings alone. `REQ-SB-92` made that comparison insufficient: a plugin
+  installed from a repository records the same version string as the published package while
+  carrying different code, so the check reported "nothing to do" for a real change of origin.
+- **Repro:** install a plugin from its repository at a version the Marketplace also publishes,
+  then preflight or install that published version.
+- **Expected:** installing the published package replaces the repository install and clears its
+  recorded source, so the plugin is served by the Marketplace copy again.
+- **Actual:** refused with "<id> <version> is already installed"; the only way through was to
+  uninstall the plugin first, which removes the backend and screens in between.
+- **Fix:** the refusal now applies only when the installed copy has no recorded source -- a true
+  Marketplace-over-Marketplace reinstall. When a source is recorded, the published package
+  replaces it and `replaces` names the version it displaces. Tests in
+  `tests/test_marketplace_source.py` cover both directions, including that the reinstated plugin
+  reports no repository to pull.
