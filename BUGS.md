@@ -56,6 +56,7 @@ is a thin status mirror of the index table below.
 | BUG-067 | Importing an artifact bundle empties an existing `Settings/Entities.md` — the seed-data writer wrote an empty file whenever a deployed Skill mentioned it, without checking whether the file already held the operator's registry | Logic | Critical | Fixed | 2026-09-17 | this change |
 | BUG-068 | The backend launcher can leave an orphaned uvicorn worker holding port 8001, so pulled framework code never loads and every relaunch silently fails to bind while `/health` still answers 200 | Logic | Major | Open | 2026-09-18 | — |
 | BUG-069 | Skills moved to agent repositories cannot run their tests: they find the framework's master Templates and shared managers by counting parent folders, true only inside the framework's own tree | Logic | Major | Open | 2026-09-18 | — |
+| BUG-070 | A stopped backend leaves its launcher's `cmd.exe` alive holding `backend.log` open, so the next launcher cannot open the log and starts nothing, with no error anywhere | Logic | Major | Open | 2026-09-21 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -1097,3 +1098,15 @@ is a thin status mirror of the index table below.
 - **Expected:** an agent repository's Skill tests run against the framework through a documented setting.
 - **Actual:** 31 tests error with `FileNotFoundError` on `data/templates/masters/...` and `Tools/managers`.
 - **Note:** worked around in `sb-cbo-agent` @ `4e625d3` (a shared `conftest.py` resolving `SECOND_BRAIN_FRAMEWORK` and a `shipped_template` fixture that also searches the Marketplace packages); `sb-pss-agent` is still affected. The framework has no supported way for an agent repository's tests to find it.
+
+### BUG-070 — A stopped backend's launcher shell keeps the log locked, so the next launch silently starts nothing
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-09-21, on the CBO install, restarting the backend after a framework pull whose `WatchFiles ... Reloading...` had stalled (the old worker never exited -- the `BUG-068` family).
+- **Root cause:** `SecondBrain_Backend.vbs` runs `cmd /c run-backend.cmd > backend.log 2>&1`. Stopping the uvicorn reloader and worker leaves that `cmd.exe` alive, still holding `backend.log` open for writing. The next launch runs the same redirect, cannot open the file, and exits before starting uvicorn. Nothing is logged, because the log is the thing it could not open.
+- **Repro:** start the backend with the Startup launcher; stop only the uvicorn processes (not the `cmd.exe` running `run-backend.cmd`); run the launcher again.
+- **Expected:** the new launch starts the backend, or reports why it could not.
+- **Actual:** port 8001 stays free, `/health` never answers, `backend.log` ends at the old process's `Terminate batch job (Y/N)?`.
+- **Suggested:** the launcher writes to a per-start log (or appends with a fallback name) and records a start failure in `startup-errors.log`, which it already does for a missing launcher; a stop/restart helper that stops the launcher shell with its tree would remove the trap altogether.
