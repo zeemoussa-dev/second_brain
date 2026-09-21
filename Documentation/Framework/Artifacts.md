@@ -225,6 +225,10 @@ screens, endpoints, Templates and logic. Source lives in its own repository;
   screens into the frontend's `src/plugins/<id>/`, records what it owns in
   `plugins/installed.json`, and needs a backend restart. A Template already on
   the install is adopted, never overwritten.
+- **A plugin can also be installed straight from its own repository** (a git URL at a
+  branch, tag or commit) or a folder, without being published here at all
+  (`ADR-024`). The record then names that source and the resolved commit, and
+  **Update** pulls it again.
 - **Uninstalling** removes only what that record lists, and never a path outside
   those two folders. Templates and vault notes stay.
 

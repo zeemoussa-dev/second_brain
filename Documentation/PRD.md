@@ -5198,4 +5198,20 @@ installed.
 <!-- Logged by the CBO install at the operator's instruction ("Log the feature request").
 /spec should re-verify Findings 1-2 against the real code before drafting. -->
 
-**Acceptance:** To be drafted as Gherkin at `/spec`.
+**Acceptance:** Delivered directly on 2026-09-21 (`ADR-024`), without a `/spec` pass at the operator's
+instruction. Findings 1-2 were re-verified against the code first. What shipped:
+
+- `POST /marketplace/source/preflight` and `POST /marketplace/source/install` take `{kind: git|path,
+  location, ref}`. A repository is cloned to a temporary folder, read and discarded; a folder is read
+  where it is.
+- The three gates: `framework_api` must match exactly, the import boundary is checked (backend and
+  screens), and the screens must build inside this framework. The plugin's own tests and the
+  immutable-version rule stay with publishing.
+- `plugins/installed.json` records kind, location, ref and the resolved commit; the Marketplace page
+  shows it, and `POST /marketplace/{id}/update` pulls that source again. A plugin installed from the
+  framework's Marketplace records none, and says so when asked to update.
+- A source install replaces whatever is installed under that id, including a Marketplace-installed one;
+  re-installing the same ref is the upgrade path for a plugin tracked from a branch.
+- Verified live: My Day installed from `github.com/zeemoussa-dev/sb-plugins-my-day @ main`, over the
+  Marketplace copy, then updated from that same source; Entities (Marketplace-installed) refuses an
+  update with the reason. 16 tests, including real clones of a local repository.

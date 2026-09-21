@@ -175,6 +175,28 @@ Settings → Marketplace lists published plugins with their versions and
 compatibility. **Check** a version first: it reports what installing would do —
 which Templates it adds, which it keeps, what it replaces — and changes nothing.
 
+### From the plugin's own repository
+
+A plugin does not have to be published here at all (`ADR-024`). Settings →
+Marketplace → **Install from a repository** takes a git URL and a branch, tag or
+commit — or a folder on this machine while you are writing one. The repository is
+cloned to a temporary folder, checked, installed, and the clone is discarded.
+
+Three gates run, the same ones publishing applies: the `framework_api` match, the
+import boundary, and that the screens build inside this framework. The plugin's own
+tests stay with publishing — installing must not need your test dependencies.
+
+What is installed remembers where it came from — repository, ref and the resolved
+commit — and the page shows it. **Update** pulls that same source again, which is how
+a plugin tracked from a branch is upgraded: the code moves while the version string
+stays put, so there is deliberately no "already installed" refusal for a source.
+A plugin installed from this framework's Marketplace records no source and says so
+when asked to update; install another published version instead, or install it once
+from its repository to track that from then on.
+
+This is what an agent install uses: its repository is not the framework's, and it is
+not allowed to commit a package here (`ADR-023`).
+
 Install copies the backend into the install's config folder
 (`<app data>/plugins/<id>/`), the screens into the frontend's
 `src/plugins/<id>/`, records what it owns, and reports **restart required**: a
@@ -217,7 +239,8 @@ customers compared note by note before the framework copy was deleted.
 | Calling `get_service` inside `register` | The provider may not have loaded yet. Ask at call time. |
 | A screen importing a framework feature | Publishing refuses it. Ask for a host contract addition instead. |
 | Expecting an install to update a Template | It never overwrites one. Adopt, or ship a new id. |
-| Editing an installed plugin in place | The Marketplace owns those folders; edit the repository and publish a new version. |
+| Editing an installed plugin in place | The Marketplace owns those folders; edit the repository, then publish a new version or install from the repository again. |
+| Expecting Update on a Marketplace-installed plugin | It has no repository to pull. Install it once from its repository to track that instead. |
 | Forgetting the restart | Screens appear immediately, endpoints do not. |
 
 ---

@@ -2669,3 +2669,53 @@ premise is that it knows nothing about business.
   single shared context the split exists to remove.
 - Standing rules earned in an agent repository are written there, so the framework's memory
   stops growing with business specifics.
+
+
+---
+
+## ADR-024: A plugin installs from where it lives — a repository or a folder — not only from the framework's Marketplace
+
+**Status:** Accepted
+**Date:** 2026-09-21
+
+**Context:** `ADR-022` put plugin source in its own repository but kept one way in: publish a
+versioned package into `src/marketplace/<id>/<version>/` in the framework's own tree, then
+install it from Settings. `ADR-023` and the operator's standing rule say an agent install
+uses the framework repository for logging requests and bugs, nothing else. Those cannot both
+hold: the CBO install finished a plugin (`sb-plugins-action-center`) it was not allowed to
+install, because installing meant committing a package here (`REQ-SB-92`).
+
+**Decision:**
+
+- **A plugin can be installed from a source outside this checkout**: a git repository at a
+  branch, tag or commit, or a folder on this machine. A repository is cloned to a temporary
+  folder, read, and discarded; a folder is read where it is and never written to.
+- **The same gates apply as publishing**, minus the ones that belong to a published artifact:
+  the `framework_api` match, the import boundary, and that the screens build. The plugin's
+  own tests and the immutable-version rule stay with publishing, because installing must not
+  require a plugin's test dependencies, and a repository's branch moves while its version
+  string stays put.
+- **One implementation of each gate.** The boundary rules and the screen build moved into
+  `app/business/core/plugins/{import_rules,screen_build}.py`, which the publish script loads
+  by file path so it still boots no application.
+- **What is installed records where it came from** — kind, location, ref and the resolved
+  commit — in `plugins/installed.json`. The Marketplace page shows it, and **Update** pulls
+  that same source again. A plugin installed from the framework's Marketplace records no
+  source, and updating it means installing another published version.
+- **A source install replaces whatever is installed under that id**, including a plugin that
+  came from this framework's Marketplace. There is deliberately no "already installed"
+  refusal for a source: re-installing the same ref *is* the upgrade.
+- **The framework keeps publishing its own plugins.** `src/marketplace/` stays, so a fresh
+  install still has My Day and Entities without network access.
+
+**Consequences:**
+
+- An agent install can run a plugin it wrote without touching the framework repository, which
+  is what `ADR-023` requires of it.
+- Installing now depends on `git` and `npm` being present; without them the operator is told
+  which one is missing rather than left with a failed install.
+- Installing from a repository runs arbitrary code the operator pointed at. That is the same
+  trust as publishing, moved to install time: the gates catch boundary and compatibility
+  breaks, not malice, and the provenance record says exactly what was pulled.
+- A plugin tracked from a branch has no version discipline of its own. The recorded commit is
+  what identifies it; the version string is the plugin author's claim.
