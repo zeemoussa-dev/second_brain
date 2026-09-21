@@ -19,10 +19,21 @@ export interface MarketplacePackage {
   error: string | null;
 }
 
+/** Where an installed plugin came from. Absent means this framework's own
+ * Marketplace; otherwise the repository or folder it was installed from
+ * (REQ-SB-92), which is what an update pulls again. */
+export interface PluginSource {
+  kind: 'git' | 'path';
+  location: string;
+  ref?: string | null;
+  commit?: string | null;
+}
+
 export interface MarketplacePlugin {
   id: string;
   installed_version: string | null;
-  // Newest first.
+  source?: PluginSource | null;
+  // Newest first. Empty for a plugin installed from its own repository.
   packages: MarketplacePackage[];
 }
 
@@ -38,11 +49,16 @@ export interface MarketplacePreflight {
   templates?: { install: string[]; keep: string[] };
 }
 
+export interface MarketplaceSourcePreflight extends MarketplacePreflight {
+  source: PluginSource;
+}
+
 export interface MarketplaceInstallResult {
   installed: boolean;
   plugin_id: string;
   version: string;
   replaced?: string | null;
+  source?: PluginSource | null;
   restart_required?: boolean;
   problems: string[];
 }
@@ -72,4 +88,25 @@ export function installPlugin(id: string, version: string): Promise<MarketplaceI
 
 export function uninstallPlugin(id: string): Promise<MarketplaceUninstallResult> {
   return apiFetch(`/marketplace/${encodeURIComponent(id)}/uninstall`, { method: 'POST' });
+}
+
+// Installing from where a plugin lives, so it never has to be published into
+// the framework's own tree (REQ-SB-92). Preflight clones, reads and discards.
+export interface PluginSourceRequest {
+  kind: 'git' | 'path';
+  location: string;
+  ref?: string | null;
+}
+
+export function preflightSource(source: PluginSourceRequest): Promise<MarketplaceSourcePreflight> {
+  return apiFetch('/marketplace/source/preflight', { method: 'POST', body: JSON.stringify(source) });
+}
+
+export function installFromSource(source: PluginSourceRequest): Promise<MarketplaceInstallResult> {
+  return apiFetch('/marketplace/source/install', { method: 'POST', body: JSON.stringify(source) });
+}
+
+/** Pulls the plugin's recorded repository and ref again and re-installs it. */
+export function updatePlugin(id: string): Promise<MarketplaceInstallResult> {
+  return apiFetch(`/marketplace/${encodeURIComponent(id)}/update`, { method: 'POST' });
 }
