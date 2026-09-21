@@ -14,9 +14,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from app import plugin_api
+from app.business.core.plugins import import_rules, screen_build
 from app.business.core.plugins.plugin_manager import is_valid_plugin_id
 from app.business.core.templates.template_manager import TemplateManager
 from app.data_access import marketplace as marketplace_data
+from app.data_access import plugin_sources
 from app.data_access import plugins as plugins_data
 from app.data_access import skills as skills_data
 
@@ -71,8 +73,22 @@ class MarketplaceManager:
                 catalog.append({
                     "id": plugin_id,
                     "installed_version": installed.get(plugin_id),
+                    "source": self._installed_sources().get(plugin_id),
                     "packages": packages,
                 })
+        # A plugin installed straight from its repository has no published
+        # package, so it would otherwise not be listed at all -- and an
+        # operator could neither see nor uninstall it (`REQ-SB-92`).
+        listed = {entry["id"] for entry in catalog}
+        for plugin_id, entry in sorted(self._installed_entries().items()):
+            if plugin_id in listed:
+                continue
+            catalog.append({
+                "id": plugin_id,
+                "installed_version": str(entry.get("version") or ""),
+                "source": entry.get("source"),
+                "packages": [],
+            })
         return catalog
 
     def has_package(self, plugin_id: str, version: str) -> bool:
@@ -147,46 +163,75 @@ class MarketplaceManager:
         except OSError as exc:
             return self._not_installed(plugin_id, version, [f"the package could not be copied into this install: {exc}"])
 
-        moved_aside: dict[str, Path] = {}
-        placed: list[str] = []
-        try:
-            for part, target in targets.items():
-                aside = marketplace_data.move_aside(target)
-                if aside is not None:
-                    moved_aside[part] = aside
-            for part, source in staged.items():
-                if source is not None:
-                    marketplace_data.move_into_place(source, targets[part])
-                    placed.append(part)
-        except OSError as exc:
-            self._put_back(targets, staged, moved_aside, placed)
-            return self._not_installed(plugin_id, version, [
-                f"the installed version could not be replaced, so nothing was changed: {exc}. "
-                f"{_HELD_OPEN_HINT}"
-            ])
-
-        record = plugins_data.read_installed_record() or {"plugins": []}
-        record["plugins"] = [
-            entry for entry in record.get("plugins") or []
-            if not (isinstance(entry, dict) and entry.get("id") == plugin_id)
-        ]
         templates = self._package_templates(plugin_id, version, [])
-        record["plugins"].append({
-            "id": plugin_id,
-            "version": version,
-            "installed_at": datetime.now(timezone.utc).isoformat(),
-            "owned": [str(targets[part]) for part in placed],
-            "templates": sorted(templates),
-        })
-        plugins_data.write_installed_record(record)
-        leftovers = [path for aside in moved_aside.values() for path in marketplace_data.discard_tree(aside)]
-        installed_templates, kept_templates, template_problems = self._install_templates(templates)
-        return {
-            "installed": True, "plugin_id": plugin_id, "version": version, "replaced": check["replaces"],
-            "owned": {part: (str(targets[part]) if part in placed else None) for part in targets},
-            "templates": {"installed": installed_templates, "kept": kept_templates},
-            "leftovers": leftovers, "restart_required": True, "problems": template_problems,
-        }
+        return self._place(plugin_id, version, targets, staged, templates,
+                           replaced=check["replaces"], source=None)
+
+    # -- install from a repository or folder (`REQ-SB-92`) ---------------------------
+
+    def preflight_source(self, kind: str, location: str, ref: str | None = None) -> dict:
+        """What installing this source would do, and everything that would stop
+        it. Clones a repository, reads it, and discards the clone; changes
+        nothing on the install."""
+        fetched = None
+        try:
+            fetched = plugin_sources.fetch(kind, location, ref)
+            return self._check_source(fetched)
+        except plugin_sources.SourceError as exc:
+            return self._source_result(kind, location, ref, problems=[str(exc)])
+        finally:
+            self._discard(fetched)
+
+    def install_from_source(self, kind: str, location: str, ref: str | None = None) -> dict:
+        """Installs a plugin straight from where it lives -- a repository at a
+        ref, or a folder on this machine -- so a plugin never has to be
+        published into the framework's own tree to be installable (`REQ-SB-92`).
+
+        The same swap as a published install: nothing installed is destroyed
+        before the new pieces are in place."""
+        fetched = None
+        try:
+            fetched = plugin_sources.fetch(kind, location, ref)
+            check = self._check_source(fetched)
+            if not check["ok"]:
+                return self._not_installed(check["plugin_id"], check["version"], check["problems"],
+                                           source=check["source"])
+            plugin_id, version = check["plugin_id"], check["version"]
+            try:
+                targets = marketplace_data.install_targets(plugin_id)
+                marketplace_data.sweep_work_folders(plugin_id)
+                staged = marketplace_data.stage_source(plugin_id, fetched["directory"])
+            except OSError as exc:
+                return self._not_installed(plugin_id, version,
+                                           [f"the plugin could not be copied into this install: {exc}"],
+                                           source=check["source"])
+            templates = self._source_templates(fetched["directory"], [])
+            return self._place(plugin_id, version, targets, staged, templates,
+                               replaced=check["replaces"], source=check["source"])
+        except plugin_sources.SourceError as exc:
+            return self._not_installed(None, None, [str(exc)],
+                                       source={"kind": kind, "location": location, "ref": ref})
+        finally:
+            self._discard(fetched)
+
+    def update_from_source(self, plugin_id: str) -> dict:
+        """Re-installs a plugin from the source it was installed from -- the same
+        repository and ref, pulled again (`REQ-SB-92`). This is how a plugin is
+        upgraded when its repository moves: the ref is usually a branch, so the
+        version string can stay put while the code changes.
+
+        A plugin installed from this framework's own Marketplace has no source
+        to pull, and is upgraded by installing another published version."""
+        entry = self._installed_entries().get(plugin_id)
+        if entry is None:
+            return self._not_installed(plugin_id, None, [f"{plugin_id} is not installed"])
+        source = entry.get("source")
+        if not isinstance(source, dict) or not source.get("location"):
+            return self._not_installed(plugin_id, str(entry.get("version") or ""), [
+                f"{plugin_id} was installed from this framework's Marketplace, which has no repository to pull. "
+                "Install a published version, or install it once from its repository to track that instead."
+            ])
+        return self.install_from_source(source.get("kind", plugin_sources.GIT), source["location"], source.get("ref"))
 
     # -- uninstall ----------------------------------------------------------------
 
@@ -249,6 +294,140 @@ class MarketplaceManager:
 
     # -- internals ------------------------------------------------------------------
 
+    def _place(self, plugin_id: str, version: str, targets: dict[str, Path],
+               staged: dict[str, Path | None], templates: dict[str, dict],
+               *, replaced: str | None, source: dict | None) -> dict:
+        """The swap every install goes through, whether the plugin came from the
+        Marketplace or straight from its repository: move the installed pieces
+        aside whole, move the new ones in, record what is owned, then delete the
+        old ones (`BUG-065`). A failure before the swap completes puts
+        everything back."""
+        moved_aside: dict[str, Path] = {}
+        placed: list[str] = []
+        try:
+            for part, target in targets.items():
+                aside = marketplace_data.move_aside(target)
+                if aside is not None:
+                    moved_aside[part] = aside
+            for part, staged_part in staged.items():
+                if staged_part is not None:
+                    marketplace_data.move_into_place(staged_part, targets[part])
+                    placed.append(part)
+        except OSError as exc:
+            self._put_back(targets, staged, moved_aside, placed)
+            return self._not_installed(plugin_id, version, [
+                f"the installed version could not be replaced, so nothing was changed: {exc}. "
+                f"{_HELD_OPEN_HINT}"
+            ], source=source)
+
+        record = plugins_data.read_installed_record() or {"plugins": []}
+        record["plugins"] = [
+            entry for entry in record.get("plugins") or []
+            if not (isinstance(entry, dict) and entry.get("id") == plugin_id)
+        ]
+        entry = {
+            "id": plugin_id,
+            "version": version,
+            "installed_at": datetime.now(timezone.utc).isoformat(),
+            "owned": [str(targets[part]) for part in placed],
+            "templates": sorted(templates),
+        }
+        # Where it came from, so an install can say which repository and ref it
+        # is running (`REQ-SB-92`). Absent means the framework's own Marketplace.
+        if source is not None:
+            entry["source"] = source
+        record["plugins"].append(entry)
+        plugins_data.write_installed_record(record)
+        leftovers = [path for aside in moved_aside.values() for path in marketplace_data.discard_tree(aside)]
+        installed_templates, kept_templates, template_problems = self._install_templates(templates)
+        return {
+            "installed": True, "plugin_id": plugin_id, "version": version, "replaced": replaced,
+            "owned": {part: (str(targets[part]) if part in placed else None) for part in targets},
+            "templates": {"installed": installed_templates, "kept": kept_templates},
+            "source": source, "leftovers": leftovers, "restart_required": True, "problems": template_problems,
+        }
+
+    def _check_source(self, fetched: dict) -> dict:
+        """Everything that would stop this source being installed, in the order
+        that costs least: the manifest, then the layout and the import boundary,
+        and only when those pass, the build (`REQ-SB-92` -- the three gates)."""
+        directory = Path(fetched["directory"])
+        source = fetched["source"]
+        manifest = plugin_sources.read_manifest(directory)
+        plugin_id = str(manifest.get("id") or "")
+        version = str(manifest.get("version") or "")
+        problems: list[str] = []
+
+        if not is_valid_plugin_id(plugin_id):
+            problems.append(f"plugin.json declares id {manifest.get('id')!r}, which is not a valid plugin id")
+        if not _VERSION.match(version):
+            problems.append(f"plugin.json declares version {manifest.get('version')!r}, which is not x.y.z")
+        if manifest.get("framework_api") != plugin_api.FRAMEWORK_API:
+            problems.append(
+                f"built for framework API {manifest.get('framework_api')!r}; this framework provides "
+                f"API {plugin_api.FRAMEWORK_API}"
+            )
+        if problems:
+            return self._source_result(source["kind"], source["location"], source.get("ref"),
+                                       problems=problems, plugin_id=plugin_id or None, version=version or None,
+                                       source=source)
+
+        backend_dir, ui_dir = directory / "backend", directory / "ui"
+        has_templates = (directory / "templates").is_dir()
+        if not (backend_dir.is_dir() or ui_dir.is_dir() or has_templates):
+            problems.append("the plugin has none of backend/, ui/ or templates/")
+        if backend_dir.is_dir() and not (backend_dir / "__init__.py").is_file():
+            problems.append("backend/ has no __init__.py defining register(api)")
+        if ui_dir.is_dir() and not (ui_dir / "index.tsx").is_file():
+            problems.append("ui/ has no index.tsx default-exporting the plugin's screens")
+        if backend_dir.is_dir():
+            problems.extend(import_rules.check_plugin(backend_dir))
+        if ui_dir.is_dir():
+            problems.extend(import_rules.check_plugin_ui(ui_dir, plugin_id))
+        problems.extend(self._unmet_requirements(plugin_id, manifest))
+        templates = self._source_templates(directory, problems)
+
+        if not problems and ui_dir.is_dir():
+            failure = screen_build.build_screens(marketplace_data.frontend_root(), plugin_id, ui_dir, purpose="install")
+            if failure:
+                problems.append(failure)
+
+        installed_version = self._installed_versions().get(plugin_id)
+        template_manager = TemplateManager()
+        return self._source_result(
+            source["kind"], source["location"], source.get("ref"), problems=problems,
+            plugin_id=plugin_id, version=version, source=source, installed_version=installed_version,
+            templates={
+                "install": [t for t in templates if not template_manager.has_template(t)],
+                "keep": [t for t in templates if template_manager.has_template(t)],
+            },
+        )
+
+    def _source_result(self, kind: str, location: str, ref: str | None, *, problems: list[str],
+                       plugin_id: str | None = None, version: str | None = None, source: dict | None = None,
+                       installed_version: str | None = None, templates: dict | None = None) -> dict:
+        return {
+            "ok": not problems, "problems": list(problems),
+            "plugin_id": plugin_id, "version": version,
+            "installed_version": installed_version,
+            "replaces": installed_version if installed_version and installed_version != version else None,
+            "templates": templates or {"install": [], "keep": []},
+            "source": source or {"kind": kind, "location": location, "ref": ref},
+        }
+
+    def _discard(self, fetched: dict | None) -> None:
+        if fetched is not None and fetched.get("temporary"):
+            plugin_sources.discard(fetched["directory"])
+
+    def _source_templates(self, source_dir: Path, problems: list[str]) -> dict[str, dict]:
+        """A source folder's valid Templates; every invalid one is named in `problems`."""
+        try:
+            templates = marketplace_data.read_source_templates(source_dir)
+        except (OSError, ValueError) as exc:
+            problems.append(f"the plugin's Templates cannot be read: {exc}")
+            return {}
+        return self._valid_templates(templates, problems)
+
     def _package_templates(self, plugin_id: str, version: str, problems: list[str]) -> dict[str, dict]:
         """The package's valid Templates; every invalid one is named in `problems`."""
         try:
@@ -256,6 +435,9 @@ class MarketplaceManager:
         except (OSError, ValueError) as exc:
             problems.append(f"the package's Templates cannot be read: {exc}")
             return {}
+        return self._valid_templates(templates, problems)
+
+    def _valid_templates(self, templates: dict, problems: list[str]) -> dict[str, dict]:
         valid: dict[str, dict] = {}
         template_manager = TemplateManager()
         for template_id, data in templates.items():
@@ -287,8 +469,10 @@ class MarketplaceManager:
                 problems.append(f"Template {template_id!r} could not be written: {exc}")
         return installed, kept, problems
 
-    def _not_installed(self, plugin_id: str, version: str, problems: list[str]) -> dict:
-        return {"installed": False, "plugin_id": plugin_id, "version": version, "problems": list(problems)}
+    def _not_installed(self, plugin_id: str | None, version: str | None, problems: list[str],
+                       *, source: dict | None = None) -> dict:
+        return {"installed": False, "plugin_id": plugin_id, "version": version,
+                "source": source, "problems": list(problems)}
 
     def _put_back(self, targets: dict[str, Path], staged: dict[str, Path | None],
                   moved_aside: dict[str, Path], placed: list[str]) -> None:
@@ -305,15 +489,22 @@ class MarketplaceManager:
             if source is not None:
                 marketplace_data.discard_tree(source)
 
-    def _installed_versions(self) -> dict[str, str]:
+    def _installed_entries(self) -> dict[str, dict]:
         try:
             record = plugins_data.read_installed_record() or {}
         except (OSError, ValueError):
             return {}
         return {
-            str(entry.get("id")): str(entry.get("version") or "")
+            str(entry.get("id")): entry
             for entry in record.get("plugins") or [] if isinstance(entry, dict) and entry.get("id")
         }
+
+    def _installed_versions(self) -> dict[str, str]:
+        return {plugin_id: str(entry.get("version") or "") for plugin_id, entry in self._installed_entries().items()}
+
+    def _installed_sources(self) -> dict[str, dict | None]:
+        """Where each installed plugin came from; None means this framework's own Marketplace."""
+        return {plugin_id: entry.get("source") for plugin_id, entry in self._installed_entries().items()}
 
     def _unmet_requirements(self, plugin_id: str, manifest: dict) -> list[str]:
         """Each requirement names a Tool or an installed plugin; `a|b` is met by

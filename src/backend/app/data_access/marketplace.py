@@ -34,6 +34,7 @@ from app.data_access import plugins as plugins_data
 
 _SRC_ROOT = Path(__file__).resolve().parents[3]
 _MARKETPLACE_ROOT = _SRC_ROOT / "marketplace"
+_FRONTEND_ROOT = _SRC_ROOT / "frontend"
 _FRONTEND_PLUGINS_ROOT = _SRC_ROOT / "frontend" / "src" / "plugins"
 
 _MANIFEST_FILENAME = "plugin.json"
@@ -57,6 +58,12 @@ def marketplace_root() -> Path:
 
 def frontend_plugins_root() -> Path:
     return _FRONTEND_PLUGINS_ROOT
+
+
+def frontend_root() -> Path:
+    """The frontend checkout -- where a plugin's screens are built before it is
+    installed, and where they land."""
+    return _FRONTEND_ROOT
 
 
 def list_package_versions() -> dict[str, list[str]]:
@@ -83,16 +90,22 @@ def read_package_manifest(plugin_id: str, version: str) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def read_package_templates(plugin_id: str, version: str) -> dict[str, object]:
-    """{Template id (its folder name): parsed Template.json} for one package;
-    empty when it ships no `templates/`. Raises OSError / json.JSONDecodeError."""
-    root = marketplace_root() / plugin_id / version / _TEMPLATES_DIRECTORY_NAME
+def read_source_templates(source_dir: Path) -> dict[str, object]:
+    """{Template id (its folder name): parsed Template.json} for a plugin's
+    source -- a published package or a repository checkout. Empty when it ships
+    no `templates/`. Raises OSError / json.JSONDecodeError."""
+    root = Path(source_dir) / _TEMPLATES_DIRECTORY_NAME
     if not root.is_dir():
         return {}
     return {
         folder.name: json.loads((folder / _TEMPLATE_FILENAME).read_text(encoding="utf-8"))
         for folder in sorted(root.iterdir()) if folder.is_dir()
     }
+
+
+def read_package_templates(plugin_id: str, version: str) -> dict[str, object]:
+    """The published package's Templates."""
+    return read_source_templates(marketplace_root() / plugin_id / version)
 
 
 def install_targets(plugin_id: str) -> dict[str, Path]:
@@ -109,10 +122,16 @@ def _work_path(beside: Path, kind: str, plugin_id: str) -> Path:
 
 
 def stage_package(plugin_id: str, version: str) -> dict[str, Path | None]:
-    """Copies a package into work folders beside where it will be installed,
+    """Copies a published package into work folders beside where it will be installed."""
+    return stage_source(plugin_id, marketplace_root() / plugin_id / version)
+
+
+def stage_source(plugin_id: str, source_dir: Path) -> dict[str, Path | None]:
+    """Copies a plugin's source -- a published package, or a repository checkout
+    (`REQ-SB-92`) -- into work folders beside where it will be installed,
     without touching anything installed: `{"backend": <path>, "ui": <path or
     None>}`. A copy that fails removes what it copied and raises."""
-    source = marketplace_root() / plugin_id / version
+    source = Path(source_dir)
     targets = install_targets(plugin_id)
     staged: dict[str, Path | None] = {"backend": None, "ui": None}
     try:
