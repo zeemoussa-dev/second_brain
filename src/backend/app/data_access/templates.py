@@ -57,9 +57,20 @@ def write_template_json(template_id: str, data: dict) -> None:
     this once any per-artifact conflict decision has already been made."""
     template_dir = templates_root() / template_id
     template_dir.mkdir(parents=True, exist_ok=True)
-    (template_dir / "Template.json").write_text(
-        json.dumps(data, indent=2), encoding="utf-8"
-    )
+    path = template_dir / "Template.json"
+    text = json.dumps(data, indent=2)
+    if not path.is_file():
+        path.write_text(text, encoding="utf-8")
+        return
+    # Overwriting keeps the file's own line endings and final newline. Editing
+    # one field from Settings otherwise rewrote every line of a CRLF file on a
+    # synced folder -- the same rule the vault writer follows for notes.
+    existing = path.read_bytes()
+    if existing.endswith(b"\n"):
+        text += "\n"
+    if b"\r\n" in existing:
+        text = text.replace("\n", "\r\n")
+    path.write_bytes(text.encode("utf-8"))
 
 # The shipped Master Template set -- the framework's own Entity Templates,
 # version-controlled beside TemplateManager rather than left to each

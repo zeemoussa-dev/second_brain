@@ -328,6 +328,12 @@ class VaultManager:
         AgentManager for a Section's own Hub Agent."""
         return self._template_manager.get_all()
 
+    def get_template_json(self, template_id: str) -> dict | None:
+        return self._template_manager.read_json(template_id)
+
+    def update_template(self, template_id: str, data: dict) -> Template:
+        return self._template_manager.update(template_id, data)
+
     # -- Browse/search (folded in from vault_search.py) ----------------
 
     def list_notes(self, page: int = 1, page_size: int = _DEFAULT_PAGE_SIZE, tag: str | None = None) -> dict:

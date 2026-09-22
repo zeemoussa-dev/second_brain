@@ -10,6 +10,7 @@ import {
 } from '../features/settings/artifactsApiClient';
 import { ArtifactExportModal } from '../features/settings/ArtifactExportModal';
 import { ArtifactImportModal } from '../features/settings/ArtifactImportModal';
+import { TemplateEditorModal } from '../features/settings/TemplateEditorModal';
 
 // Cross-type artifact browser (REQ-SB-85-US-01/02/03), redesigned
 // 2026-09-02 per the operator's own design pass: "Same style as the
@@ -59,6 +60,7 @@ export function SettingsArtifactsPage() {
   const [livePreview, setLivePreview] = useState<ExportPreviewResult | null>(null);
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [openTemplateId, setOpenTemplateId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchArtifacts().then(setArtifacts);
@@ -204,6 +206,19 @@ export function SettingsArtifactsPage() {
                         {locked && <span className="item-row-locked-hint">Required by: {lockedVia}</span>}
                       </div>
                       <div className="item-row-actions">
+                        {activeKind === 'template' && (
+                          <button
+                            type="button"
+                            className="btn"
+                            data-testid={`template-view-${artifact.id}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setOpenTemplateId(artifact.id);
+                            }}
+                          >
+                            View
+                          </button>
+                        )}
                         <input
                           type="checkbox"
                           data-testid={`artifact-checkbox-${activeKind}-${artifact.id}`}
@@ -237,6 +252,8 @@ export function SettingsArtifactsPage() {
       )}
 
       {importModalOpen && <ArtifactImportModal onClose={() => setImportModalOpen(false)} />}
+
+      {openTemplateId && <TemplateEditorModal templateId={openTemplateId} onClose={() => setOpenTemplateId(null)} />}
     </>
   );
 }

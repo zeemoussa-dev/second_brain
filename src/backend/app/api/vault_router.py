@@ -2,9 +2,9 @@ import os
 from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.business.core.vault.vault import Vault
 from app.business.core.vault.vault_manager import VaultManager
@@ -36,6 +36,32 @@ def update_index_config(folder_name: str, body: UpdateIndexConfigBody) -> dict:
 @router.get("/templates")
 def list_templates() -> dict:
     return {"templates": _vault_manager.list_templates()}
+
+
+@router.get("/templates/{template_id}")
+def get_template(template_id: str) -> dict:
+    try:
+        data = _vault_manager.get_template_json(template_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"Template.json does not parse: {exc}") from exc
+    if data is None:
+        raise HTTPException(status_code=404, detail=f"no Template {template_id!r} on this install")
+    return {"id": template_id, "json": data}
+
+
+class UpdateTemplateBody(BaseModel):
+    json_data: dict = Field(alias="json")
+
+
+@router.put("/templates/{template_id}")
+def update_template(template_id: str, body: UpdateTemplateBody) -> dict:
+    try:
+        template = _vault_manager.update_template(template_id, body.json_data)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"id": template_id, "json": _vault_manager.get_template_json(template_id), "template": template}
 
 
 @router.get("/export-data/tree")

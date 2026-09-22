@@ -63,6 +63,24 @@ export function fetchVaultTemplates(): Promise<{ templates: VaultTemplate[] }> {
   return apiFetch('/vault/templates');
 }
 
+// One Template's JSON exactly as on disk, and saving an edit to it. The server
+// validates before writing and answers 422 with the reason when it refuses.
+export interface TemplateJson {
+  id: string;
+  json: Record<string, unknown>;
+}
+
+export function fetchTemplateJson(templateId: string): Promise<TemplateJson> {
+  return apiFetch(`/vault/templates/${encodeURIComponent(templateId)}`);
+}
+
+export function saveTemplateJson(templateId: string, json: Record<string, unknown>): Promise<TemplateJson> {
+  return apiFetch(`/vault/templates/${encodeURIComponent(templateId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ json }),
+  });
+}
+
 // Export Data (REQ-SB-86-US-01-T02) -- a genuine, unfiltered real-filesystem
 // tree of settings.vault_path (T01), the source the Export Data folder-tree
 // picker page renders/selects against.

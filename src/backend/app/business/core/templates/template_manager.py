@@ -26,8 +26,11 @@ narrowly-scoped write path added ONLY to let `REQ-SB-85-US-03`'s import
 orchestrator write a genuine Template.json onto the target machine --
 still the sole gateway onto Template data (the new writer in
 `data_access/templates.py` is never called directly by anything else).
-No general Templates create/update/delete authoring UI exists or is
-implied by this addition.
+
+`read_json()`/`update()` (2026-09-22, operator: show a Template and edit it
+from Settings > Artifacts) add editing an EXISTING Template's JSON -- still
+no create or delete. `update()` validates through the same `_to_template`
+parse as every other write.
 """
 from __future__ import annotations
 
@@ -149,6 +152,38 @@ class TemplateManager:
             return self._to_template(template_id, data)
         except (OSError, ValueError, TypeError):
             return None
+
+    def read_json(self, template_id: str) -> dict | None:
+        """The Template.json exactly as on disk, for viewing and editing; None
+        when this install has no Template with that id. Raises when the file
+        exists but does not parse -- that is worth showing, not hiding."""
+        if not self.has_template(template_id):
+            return None
+        return templates_data.read_template_json(template_id)
+
+    def update(self, template_id: str, data: dict) -> Template:
+        """Replaces an existing Template's JSON. Raises LookupError when there
+        is no such Template (this edits, it never creates) and ValueError,
+        with the reason, when `data` is not a Template this framework can use
+        -- nothing is written in either case.
+
+        The engine reads section access from Template.json at write time, so
+        an edit takes effect on the next Skill run. `version` is the one field
+        with a reach beyond this file: Skills declare the version they write
+        against, and deploying refuses a mismatch."""
+        if not self.has_template(template_id):
+            raise LookupError(f"no Template {template_id!r} on this install")
+        if not isinstance(data, dict):
+            raise ValueError("a Template must be a JSON object")
+        declared_id = data.get("id", template_id)
+        if declared_id != template_id:
+            raise ValueError(f"the JSON says id {declared_id!r}, but this is Template {template_id!r}; "
+                             "an id cannot be changed by editing")
+        problem = self.validate_template(template_id, data)
+        if problem is not None:
+            raise ValueError(problem)
+        templates_data.write_template_json(template_id, data)
+        return self.get_by_id(template_id)
 
     def import_template(self, template_id: str, data: dict) -> Template:
         """Real, narrowly-scoped write path for import provisioning only
