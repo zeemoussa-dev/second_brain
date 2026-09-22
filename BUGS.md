@@ -58,6 +58,7 @@ is a thin status mirror of the index table below.
 | BUG-069 | Skills moved to agent repositories cannot run their tests: they find the framework's master Templates and shared managers by counting parent folders, true only inside the framework's own tree | Logic | Major | Fixed | 2026-09-18 | `1b03723` |
 | BUG-070 | A stopped backend leaves its launcher's `cmd.exe` alive holding `backend.log` open, so the next launcher cannot open the log and starts nothing, with no error anywhere | Logic | Major | Fixed | 2026-09-21 | `39725f0` |
 | BUG-071 | A plugin installed from its own repository cannot be put back onto the published package of the same version -- the "already installed" refusal compared version strings alone, so the operator had to uninstall first | Logic | Major | Fixed | 2026-09-21 | `7e7ac7c` |
+| BUG-072 | Hermes health checks count the deleted-profiles tombstone as a profile -- after the first Agent deletion, `profiles/.deleted/` was counted, failed the path-agreement check, and was offered a settings sync | Logic | Minor | Fixed | 2026-09-22 | `15fb6b4` |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -1137,3 +1138,15 @@ is a thin status mirror of the index table below.
   replaces it and `replaces` names the version it displaces. Tests in
   `tests/test_marketplace_source.py` cover both directions, including that the reinstated plugin
   reports no repository to pull.
+
+### BUG-072 — Hermes health checks count the deleted-profiles tombstone as a profile
+
+- **Area:** Logic
+- **Severity:** Minor
+- **Status:** Fixed
+- **Found:** 2026-09-22, on this install, right after deleting a leftover test profile through the app: "Profiles agree on the paths" went from naming that profile to naming `.deleted`.
+- **Root cause:** `hermes profile delete` tombstones a profile into `profiles/.deleted/`. `BUG-053` taught the Agents list to skip dot-folders (`app/hermes/profiles.py`), but the four walks in `setup_wizard.py` -- the profile count, the deployed-Skills count, the path-agreement check and the `.env` sync targets -- still took every folder under `profiles/`.
+- **Repro:** delete any Agent, then open Settings → Hermes health.
+- **Expected:** the tombstone is ignored; the checks describe real profiles only.
+- **Actual:** the profile count included `.deleted`, the path-agreement check failed naming it, and its hint ("saving re-syncs them") would have written settings into the tombstone.
+- **Fix:** the predicate became public as `is_real_profile`, reaches `setup_wizard` through `business/hermes/client.py` (the only module allowed to import `app/hermes`), and one `_profile_dirs()` serves all four walks. A regression test fails on the previous code. `15fb6b4`.
