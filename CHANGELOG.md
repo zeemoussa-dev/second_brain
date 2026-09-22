@@ -18,6 +18,8 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat(settings): view and edit a Template from Settings > Artifacts. Each Template row has a View button showing its Template.json; Edit and Save go through `PUT /vault/templates/{id}`, which edits an existing Template only, refuses a changed id, and validates through the same parse every write uses. Overwriting a Template keeps the file's own line endings and final newline. Also fixed: the Artifacts page crashed on an install with an Index (`BUG-073`). Logged `BUG-074` (a job in a profile whose gateway is stopped never runs, silently) and `BUG-075` (the Outlook capture Skills exist only as deployed copies).
+
 - fix(setup): the Hermes health checks no longer count `profiles/.deleted/` -- where Hermes tombstones a deleted profile -- as a profile (`BUG-072`). The profile count, the deployed-Skills count, the path-agreement check and the `.env` sync now share `BUG-053`'s rule, so deleting an Agent no longer turns "Profiles agree on the paths" red or offers to write settings into the tombstone.
 
 - fix(skills): an agent repository's Skill tests have a supported way to find the framework (`BUG-069`). `src/backend/skill_testing.py`, located by `SECOND_BRAIN_FRAMEWORK` (default: a `second_brain` checkout above the Skill), puts the Skill, its repository's engines and the framework's shared engines on `sys.path`, and resolves Master Templates across the repository, the framework's masters and the Marketplace packages -- from source, not a Hermes deployment, and failing loudly rather than skipping. Documented in Building-a-Skill.md, "Testing a Skill outside the framework".{nl}

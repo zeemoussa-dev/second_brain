@@ -252,6 +252,9 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 | BUG-070 | A stopped backend's launcher shell keeps the log locked, so the next launch silently starts nothing | Logic | Fixed | `39725f0` |
 | BUG-071 | A plugin installed from its own repository cannot be put back onto the published package | Logic | Closed | direct fix, 2026-09-21 |
 | BUG-072 | Hermes health checks count the deleted-profiles tombstone as a profile | Logic | Fixed | `15fb6b4` |
+| BUG-073 | The Artifacts page crashes on an install that has an Index | UI | Fixed | `e13c348` |
+| BUG-074 | A scheduled job in a profile whose gateway is stopped never runs, and nothing says so | Logic | Open | — |
+| BUG-075 | The Outlook capture Skills exist only as deployed copies; the catalog would replace them with Graph | Logic | Open | — |
 
 > **Emptied 2026-09-06** with `BUGS.md`, which this mirrors — 42 rows.
 > History: `git show d64dcb4:BACKLOG.md`. Next id is **`BUG-043`**.

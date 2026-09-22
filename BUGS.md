@@ -59,6 +59,9 @@ is a thin status mirror of the index table below.
 | BUG-070 | A stopped backend leaves its launcher's `cmd.exe` alive holding `backend.log` open, so the next launcher cannot open the log and starts nothing, with no error anywhere | Logic | Major | Fixed | 2026-09-21 | `39725f0` |
 | BUG-071 | A plugin installed from its own repository cannot be put back onto the published package of the same version -- the "already installed" refusal compared version strings alone, so the operator had to uninstall first | Logic | Major | Fixed | 2026-09-21 | `7e7ac7c` |
 | BUG-072 | Hermes health checks count the deleted-profiles tombstone as a profile -- after the first Agent deletion, `profiles/.deleted/` was counted, failed the path-agreement check, and was offered a settings sync | Logic | Minor | Fixed | 2026-09-22 | `15fb6b4` |
+| BUG-073 | The Artifacts page crashes on an install that has an Index -- Index became the backend's fifth artifact kind but the page's per-kind literals listed four, so the first `index` item blanked Settings | UI | Major | Fixed | 2026-09-22 | `e13c348` |
+| BUG-074 | A scheduled job in a profile whose gateway is stopped never runs, and nothing says so -- meeting capture silently stopped for three weeks while every health check stayed green | Logic | Blocker | Open | 2026-09-22 | — |
+| BUG-075 | The Outlook capture Skills exist only as deployed copies -- `822a5f6` rewrote meeting-capture from Outlook to Graph in place, so a redeploy from the catalog would break an install without Graph | Logic | Major | Open | 2026-09-22 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -1150,3 +1153,40 @@ is a thin status mirror of the index table below.
 - **Expected:** the tombstone is ignored; the checks describe real profiles only.
 - **Actual:** the profile count included `.deleted`, the path-agreement check failed naming it, and its hint ("saving re-syncs them") would have written settings into the tombstone.
 - **Fix:** the predicate became public as `is_real_profile`, reaches `setup_wizard` through `business/hermes/client.py` (the only module allowed to import `app/hermes`), and one `_profile_dirs()` serves all four walks. A regression test fails on the previous code. `15fb6b4`.
+
+### BUG-073 — The Artifacts page crashes on an install that has an Index
+
+- **Area:** UI
+- **Severity:** Major
+- **Status:** Fixed
+- **Found:** 2026-09-22, reported by the operator: opening Settings > Artifacts blanked the screen.
+- **Root cause:** `28b7280` (2026-09-06) made Index the backend's fifth artifact kind. The page's `ArtifactKind` type and its hand-written per-kind literals still listed four, so `groups[artifact.kind].push` hit `undefined` for the first `index` item. It surfaced only once an install had index definitions in `data/Indexes/`.
+- **Repro:** on an install with any Index, open Settings > Artifacts.
+- **Expected:** the page lists every artifact kind, Indexes included.
+- **Actual:** `TypeError: Cannot read properties of undefined (reading 'push')`; the screen goes blank.
+- **Fix:** Index is a kind on the page, with an Indexes tab and export label; every per-kind map is built from one list, and an unknown kind is left out instead of crashing. Verified live. `e13c348`.
+
+### BUG-074 — A scheduled job in a profile whose gateway is stopped never runs, and nothing says so
+
+- **Area:** Logic
+- **Severity:** Blocker
+- **Status:** Open
+- **Found:** 2026-09-22, reported by the operator: My Day showed no meetings on a day with seven.
+- **Root cause:** Hermes runs a profile's cron jobs only from that profile's own gateway. `meeting-capture-recurring` lived in `meeting-prep-agent`, whose gateway was stopped, so it last ran 2026-09-01 and its `next_run_at` stayed at 2026-09-01 21:24. `hermes cron run` only queues a job for the next tick, so My Day's Refresh, which fires the same job, did nothing either. The Hermes health checks report "Scheduled jobs configured" and the Pipeline showed a `cron_next_run_at` three weeks in the past, and nothing flagged either.
+- **Repro:** schedule a job in a non-default profile whose gateway is not running; wait one interval.
+- **Expected:** the health checks (and the Pipeline) report a job that is overdue by more than its own interval, naming its profile and whether that profile's gateway runs.
+- **Actual:** silence; one-off meetings stopped being captured on 2026-09-01.
+- **Workaround applied on the reporting install (operator-approved):** the job was recreated in the default profile, whose gateway runs, the stranded one paused, and the Meeting Builder pipeline repointed (`cron_profile_id: null`). That fixes one install, not the blind spot.
+- **Suggested:** a health check over every profile's `cron/jobs.json`: an enabled job whose `next_run_at` is older than one interval is overdue, and one in a profile with no running gateway cannot run at all.
+
+### BUG-075 — The Outlook capture Skills exist only as deployed copies; the catalog would replace them with Graph
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-09-22, diagnosing meeting capture on an install without Graph access.
+- **Root cause:** `822a5f6` moved `meeting-capture` from `outlook/` to the Graph Tool and deleted `outlook_lib.py` -- a rewrite in place, although the CHANGELOG says the Outlook version "remains under `outlook/meeting-capture`". It does not exist in any repository now; the only Outlook copy is the one deployed on such an install (0.1.0, `outlook_lib.py`). `email-thread-capture` shows the same shape: the catalog holds the Graph version while the running install uses a deployed Outlook copy.
+- **Repro:** on an install without Graph, redeploy `meeting-capture` from the catalog.
+- **Expected:** an install whose mail and calendar come from Outlook can deploy an Outlook capture Skill from source.
+- **Actual:** the redeploy replaces the working Outlook copy with the Graph version, which cannot run there.
+- **Note:** the Outlook 0.1.0 source is recoverable from `822a5f6^`. Where it belongs -- back in the framework catalog under `outlook/`, beside the Graph version, or in the agent repository whose install uses Outlook -- is an operator decision. Until then, do not redeploy either capture Skill to such an install.
