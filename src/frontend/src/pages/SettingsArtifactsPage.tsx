@@ -27,21 +27,29 @@ import { ArtifactImportModal } from '../features/settings/ArtifactImportModal';
 // confirmation flows are both popups now (ArtifactExportModal/
 // ArtifactImportModal), not inline page cards.
 
-const KIND_ORDER: ArtifactKind[] = ['skill', 'template', 'agent', 'pipeline'];
+const KIND_ORDER: ArtifactKind[] = ['skill', 'template', 'agent', 'pipeline', 'index'];
 const KIND_NAV: { kind: ArtifactKind; icon: string; label: string }[] = [
   { kind: 'template', icon: 'description', label: 'Templates' },
   { kind: 'skill', icon: 'auto_awesome', label: 'Skills' },
   { kind: 'agent', icon: 'smart_toy', label: 'Agents' },
   { kind: 'pipeline', icon: 'conveyor_belt', label: 'Pipelines' },
+  { kind: 'index', icon: 'database', label: 'Indexes' },
 ];
 const KIND_LABELS: Record<ArtifactKind, string> = {
-  skill: 'Skills', template: 'Templates', agent: 'Agents', pipeline: 'Pipelines',
+  skill: 'Skills', template: 'Templates', agent: 'Agents', pipeline: 'Pipelines', index: 'Indexes',
 };
+
+// One entry per kind, built from KIND_ORDER so a kind can never be half-added:
+// Index became a backend artifact kind (2026-09-06) and every hand-written
+// literal here missed it, so the first install with an index blanked the page.
+function byKind<T>(make: () => T): Record<ArtifactKind, T> {
+  return Object.fromEntries(KIND_ORDER.map((kind) => [kind, make()])) as Record<ArtifactKind, T>;
+}
 
 type SelectionState = Record<ArtifactKind, Set<string>>;
 
 function emptySelection(): SelectionState {
-  return { skill: new Set(), template: new Set(), agent: new Set(), pipeline: new Set() };
+  return byKind(() => new Set<string>());
 }
 
 export function SettingsArtifactsPage() {
@@ -57,9 +65,11 @@ export function SettingsArtifactsPage() {
   }, []);
 
   const groupedByKind = useMemo(() => {
-    const groups: Record<ArtifactKind, ArtifactSummary[]> = { skill: [], template: [], agent: [], pipeline: [] };
+    const groups = byKind<ArtifactSummary[]>(() => []);
     for (const artifact of artifacts ?? []) {
-      groups[artifact.kind].push(artifact);
+      // A kind this page does not know yet is left out rather than crashing
+      // the whole Settings screen.
+      groups[artifact.kind]?.push(artifact);
     }
     return groups;
   }, [artifacts]);
@@ -93,7 +103,7 @@ export function SettingsArtifactsPage() {
   }, [selection]);
 
   const lockedByKind = useMemo(() => {
-    const locked: Record<ArtifactKind, Map<string, string>> = { skill: new Map(), template: new Map(), agent: new Map(), pipeline: new Map() };
+    const locked = byKind(() => new Map<string, string>());
     for (const entry of livePreview?.closure ?? []) {
       if (entry.included_reason === 'dependency') {
         locked[entry.kind as ArtifactKind]?.set(entry.id, entry.depends_via ?? '');
@@ -150,7 +160,7 @@ export function SettingsArtifactsPage() {
         </div>
       </div>
       <p className="text-muted">
-        Every real Skill, Template, Agent, and Pipeline in this deployment, browsable across
+        Every real Skill, Template, Agent, Pipeline, and Index in this deployment, browsable across
         kinds — mark what you want and it stays marked as you switch tabs, ready to Export.
       </p>
 

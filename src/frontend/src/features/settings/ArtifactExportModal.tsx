@@ -10,7 +10,7 @@ import {
 import { extractErrorDetail, triggerBlobDownload } from './artifactFlowUtils';
 
 const KIND_LABELS: Record<ArtifactKind, string> = {
-  skill: 'Skill', template: 'Template', agent: 'Agent', pipeline: 'Pipeline',
+  skill: 'Skill', template: 'Template', agent: 'Agent', pipeline: 'Pipeline', index: 'Index',
 };
 
 type SecretDecisionValue = 'redact' | 'keep';

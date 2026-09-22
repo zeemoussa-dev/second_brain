@@ -4,7 +4,8 @@ import { apiFetch, ApiError } from '../../api/client';
 // already-Done GET /artifacts endpoint (app/api/artifacts_router.py),
 // same apiFetch helper every other settings client uses.
 
-export type ArtifactKind = 'skill' | 'template' | 'agent' | 'pipeline';
+// Must list every kind GET /artifacts returns (app/business/logic/artifacts_inventory.py).
+export type ArtifactKind = 'skill' | 'template' | 'agent' | 'pipeline' | 'index';
 
 export interface ArtifactSummary {
   kind: ArtifactKind;
