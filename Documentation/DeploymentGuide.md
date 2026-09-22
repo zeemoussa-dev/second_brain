@@ -63,6 +63,19 @@ tools\run-frontend.cmd    # vite dev server, http://localhost:5173
 tools\run-prototype.cmd   # python -m http.server, http://localhost:8088
 ```
 
+**Stopping and restarting the backend** -- always through the helper:
+
+```bash
+tools\backend.cmd status     # who holds 8001, and whether it runs the checkout's commit
+tools\backend.cmd restart    # after every framework pull
+tools\backend.cmd stop
+tools\backend.cmd start      # hidden, logs to src\backend\backend.log, waits for /health
+```
+
+Killing "uvicorn" by hand is what leaves an orphaned `--reload` worker serving old code,
+or a launcher shell holding the log (`BUG-068`, `BUG-070`). `run-backend.cmd` refuses to
+start while port 8001 is held and names what holds it.
+
 `.claude/launch.json` wires the same three commands into Claude Code's
 own preview tooling for in-session browser verification.
 
@@ -100,18 +113,12 @@ running session.
 
 ## Troubleshooting
 
-**Port already in use / backend won't start on 8001.** A previous uvicorn
-`--reload` process can leave an orphaned worker holding the port even
-after its parent console window is closed. The PID reported by
-`netstat`/`Get-NetTCPConnection` is sometimes the *original* parent, which
-may no longer exist in the process table — find the real live child
-instead:
-
-```powershell
-Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*uvicorn*" }
-```
-
-Kill the specific PID that command surfaces, then retry.
+**Port already in use / backend won't start on 8001, or pulled changes never
+appear.** A uvicorn `--reload` worker can outlive its reloader and keep serving the
+code it loaded, while Windows names the dead reloader as the port's owner. Run
+`tools\backend.cmd status`: it finds that worker and compares the commit `/health`
+reports with the checkout. `tools\backend.cmd restart` clears it. A holder that is
+not a Second Brain backend is named and left for you to stop.
 
 **Backend fails immediately on startup with a Pydantic validation
 error.** A required `.env` value is missing — `app/config.py`'s

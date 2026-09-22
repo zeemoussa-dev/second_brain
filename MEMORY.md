@@ -299,6 +299,8 @@ Where a rule does not belong here:
 
 - **The backend serves port 8001, and a mismatch shows up as a completely empty UI with no console-visible cause.** Read the network tab's target port rather than assuming the backend is down. Before treating a bind failure as a reserved port, check which process already holds it.
 
+- **Stop and restart the backend only with `tools\backend.cmd stop|restart`, never by killing "uvicorn".** A `--reload` worker's command line says `spawn_main(parent_pid=N)`, not uvicorn, and it keeps serving old code after its reloader dies while Windows names the dead reloader as the port's owner; the launcher shell or the worker can also keep `backend.log` open so the next launch starts nothing (`BUG-068`, `BUG-070`). `/health` reports the commit the process loaded -- compare it with `git rev-parse HEAD` before trusting that a pull is live.
+
 - **A machine-specific literal in a Hermes cron-wrapper script must be read from an environment variable with the current value as fallback, never left as a bare constant.** A copied runner would otherwise run silently against the original machine's vault.
 
 - **A command that succeeds in the agent's shell but fails in the operator's, on the same machine, is a network-path difference, not a flaky command.** Never build a theory on a result the operator's own shell has not reproduced.

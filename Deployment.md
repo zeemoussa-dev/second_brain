@@ -990,6 +990,9 @@ tools\run-frontend.cmd    # vite dev server, http://localhost:5173
 Or double-click `start.bat` at the repo root, which opens both in their
 own console windows.
 
+After pulling framework changes, `tools\backend.cmd restart` -- never kill "uvicorn"
+by hand; see `Documentation/DeploymentGuide.md` (`BUG-068`, `BUG-070`).
+
 **Important — this differs from the older `Documentation/DeploymentGuide.md`:**
 the backend no longer does its own capture (the APScheduler-based hourly
 job described there is gone). All capture and enrichment is Hermes cron

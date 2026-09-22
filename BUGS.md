@@ -54,9 +54,9 @@ is a thin status mirror of the index table below.
 | BUG-065 | Replacing an installed plugin version deleted the old files in place, so a `__pycache__` held open by OneDrive stopped the delete half-way — the plugin's modules were gone, the record still named the old version, and the Marketplace answered 500 | Logic | Critical | Fixed | 2026-09-14 | this change |
 | BUG-066 | Attaching a file in Chat fails — the paperclip posts to `/agents/{id}/chat/attachment`, a route that has not existed since the 2026-08-20 redesign, so the backend answers 404 and the Chat panel shows "Something went wrong" | UI | Major | Fixed | 2026-09-17 | this change |
 | BUG-067 | Importing an artifact bundle empties an existing `Settings/Entities.md` — the seed-data writer wrote an empty file whenever a deployed Skill mentioned it, without checking whether the file already held the operator's registry | Logic | Critical | Fixed | 2026-09-17 | this change |
-| BUG-068 | The backend launcher can leave an orphaned uvicorn worker holding port 8001, so pulled framework code never loads and every relaunch silently fails to bind while `/health` still answers 200 | Logic | Major | Open | 2026-09-18 | — |
+| BUG-068 | The backend launcher can leave an orphaned uvicorn worker holding port 8001, so pulled framework code never loads and every relaunch silently fails to bind while `/health` still answers 200 | Logic | Major | Fixed | 2026-09-18 | `39725f0` |
 | BUG-069 | Skills moved to agent repositories cannot run their tests: they find the framework's master Templates and shared managers by counting parent folders, true only inside the framework's own tree | Logic | Major | Open | 2026-09-18 | — |
-| BUG-070 | A stopped backend leaves its launcher's `cmd.exe` alive holding `backend.log` open, so the next launcher cannot open the log and starts nothing, with no error anywhere | Logic | Major | Open | 2026-09-21 | — |
+| BUG-070 | A stopped backend leaves its launcher's `cmd.exe` alive holding `backend.log` open, so the next launcher cannot open the log and starts nothing, with no error anywhere | Logic | Major | Fixed | 2026-09-21 | `39725f0` |
 | BUG-071 | A plugin installed from its own repository cannot be put back onto the published package of the same version -- the "already installed" refusal compared version strings alone, so the operator had to uninstall first | Logic | Major | Fixed | 2026-09-21 | `7e7ac7c` |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
@@ -1080,13 +1080,14 @@ is a thin status mirror of the index table below.
 
 - **Area:** Logic
 - **Severity:** Major
-- **Status:** Open
+- **Status:** Fixed
 - **Found:** 2026-09-18, on the CBO install while validating the post-split framework: `/health` answered 200 but `/openapi.json` had none of the Marketplace routes the pulled commits added.
 - **Root cause:** `uvicorn --reload` on Windows runs the app in a `multiprocessing.spawn` child that inherits the listening socket. When the reloader dies, is killed, or a second backend is started by hand, the child keeps listening with whatever code it loaded. Its command line contains `spawn_main`, not `uvicorn`, so looking for "uvicorn" does not find it. `tools/run-backend.cmd` starts a new backend without checking who holds the port.
 - **Repro:** start the backend with the Startup launcher; stop only the reloader process; pull a framework change that adds a route; request that route.
 - **Expected:** a stale backend is either cleared or reported before a new one starts, and the running code's version is visible from outside.
 - **Actual:** an orphan from 2026-09-11 served port 8001 for a week. A 44-commit pull (Marketplace, plugin host) never loaded, and each relaunch's backend could not bind while `/health` kept answering 200 from the orphan.
 - **Suggested:** the launcher refuses to start (naming the PID) when port 8001 is already held; `/health` reports the framework's git SHA so stale code is detectable.
+- **Fix:** `tools\backend.cmd status|stop|start|restart` (`tools/backend.ps1`). `stop` finds the whole backend -- launcher shell, uvicorn reloader and `spawn_main` worker -- including a worker whose reloader is dead, through the `parent_pid` in its own command line or the dead PID Windows still names as the port's owner, and stops each tree; a port-8001 holder that is not a Second Brain backend is named and left alone. `start` and `run-backend.cmd` refuse while 8001 is held, naming the holder. `/health` now reports the commit the running code was loaded from, and `status`/`start` compare it with the checkout, so stale code is visible from outside. Reproduced live (reloader killed, orphan serving, both launch paths refusing, `restart` recovering) before and after. `39725f0`.
 
 ### BUG-069 — Moved Skills' tests locate the framework by counting parent folders
 
@@ -1104,13 +1105,14 @@ is a thin status mirror of the index table below.
 
 - **Area:** Logic
 - **Severity:** Major
-- **Status:** Open
+- **Status:** Fixed
 - **Found:** 2026-09-21, on the CBO install, restarting the backend after a framework pull whose `WatchFiles ... Reloading...` had stalled (the old worker never exited -- the `BUG-068` family).
 - **Root cause:** `SecondBrain_Backend.vbs` runs `cmd /c run-backend.cmd > backend.log 2>&1`. Stopping the uvicorn reloader and worker leaves that `cmd.exe` alive, still holding `backend.log` open for writing. The next launch runs the same redirect, cannot open the file, and exits before starting uvicorn. Nothing is logged, because the log is the thing it could not open.
 - **Repro:** start the backend with the Startup launcher; stop only the uvicorn processes (not the `cmd.exe` running `run-backend.cmd`); run the launcher again.
 - **Expected:** the new launch starts the backend, or reports why it could not.
 - **Actual:** port 8001 stays free, `/health` never answers, `backend.log` ends at the old process's `Terminate batch job (Y/N)?`.
 - **Suggested:** the launcher writes to a per-start log (or appends with a fallback name) and records a start failure in `startup-errors.log`, which it already does for a missing launcher; a stop/restart helper that stops the launcher shell with its tree would remove the trap altogether.
+- **Fix:** `tools\backend.cmd stop` stops the launcher shell with the rest of the backend, so nothing is left holding the log. `start` also checks the log first and, if something else still holds it, writes to `backend-<timestamp>.log` and says so rather than dying silently. Reproduced live: here the orphaned worker, not the shell, had inherited the log handle -- the same stop covers both. The CBO install's own `SecondBrain_Backend.vbs` is instance-side and unchanged; calling `tools\backend.cmd start` from it removes the trap there. `39725f0`.
 
 ### BUG-071 — A plugin installed from its own repository cannot be put back onto the published package
 
