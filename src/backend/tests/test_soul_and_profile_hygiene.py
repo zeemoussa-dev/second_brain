@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from app.business.core.blueprints.blueprint_manager import BlueprintManager
-from app.hermes.profiles import _is_real_profile
+from app.hermes.profiles import is_real_profile
 
 NL = chr(10)
 
@@ -17,7 +17,7 @@ def test_a_tombstoned_profile_is_not_an_agent(tmp_path: Path) -> None:
     (tmp_path / "notes-manager").mkdir()
     (tmp_path / "notes.md").write_text("x", encoding="utf-8")
 
-    real = sorted(p.name for p in tmp_path.iterdir() if _is_real_profile(p))
+    real = sorted(p.name for p in tmp_path.iterdir() if is_real_profile(p))
 
     assert real == ["notes-manager"]
 

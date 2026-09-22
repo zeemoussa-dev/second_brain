@@ -29,6 +29,7 @@ import time
 from pathlib import Path
 
 from app.business import system_settings
+from app.business.hermes.client import is_real_profile
 from app.config import settings
 from app.data_access import skills as skills_data
 
@@ -119,14 +120,25 @@ def _check_gateway(home: Path | None) -> dict:
     return {"ok": True, "detail": "Gateway running"}
 
 
+def _profile_dirs(home: Path) -> list[Path]:
+    """Every real profile folder under `profiles/`. `hermes profile delete`
+    tombstones a profile into `profiles/.deleted/`, which is Hermes'
+    bookkeeping, not a profile: counted as one, it read as an extra profile,
+    failed the path-agreement check, and would have had settings written into
+    it on the next save (BUG-072 -- the checks here missed BUG-053's rule)."""
+    profiles_dir = home / "profiles"
+    if not profiles_dir.is_dir():
+        return []
+    return sorted(p for p in profiles_dir.iterdir() if is_real_profile(p))
+
+
 def _check_profiles(home: Path | None) -> dict:
     if home is None or not home.is_dir():
         return {"ok": False, "detail": "Nowhere to look"}
     # "default" IS the home dir itself and has no folder under profiles/
     # (app/hermes/profiles.py documents this real layout), so it is counted
     # separately or it goes missing from the total.
-    profiles_dir = home / "profiles"
-    named = sorted(p.name for p in profiles_dir.iterdir() if p.is_dir()) if profiles_dir.is_dir() else []
+    named = [p.name for p in _profile_dirs(home)]
     if not named:
         return {"ok": False, "detail": "Only the default profile -- no specialist agents provisioned yet"}
     shown = ", ".join(named[:4])
@@ -142,9 +154,7 @@ def _check_deployed_skills(home: Path | None) -> dict:
     if home is None or not home.is_dir():
         return {"ok": False, "detail": "Nowhere to look"}
     roots = [home / "skills"]
-    profiles_dir = home / "profiles"
-    if profiles_dir.is_dir():
-        roots += [p / "skills" for p in profiles_dir.iterdir() if p.is_dir()]
+    roots += [p / "skills" for p in _profile_dirs(home)]
     count = sum(len(list(root.rglob("SKILL.md"))) for root in roots if root.is_dir())
     if count == 0:
         return {"ok": False, "detail": "No skills deployed"}
@@ -218,12 +228,12 @@ def _check_profile_env_drift(home: Path | None) -> dict:
     expected = _managed_env_values(home / ".env")
     if not expected:
         return {"ok": False, "detail": "Hermes' own .env carries none of these settings yet"}
-    profiles_dir = home / "profiles"
-    if not profiles_dir.is_dir():
+    profiles = _profile_dirs(home)
+    if not profiles:
         return {"ok": True, "detail": "No profiles yet -- nothing to drift"}
 
     stale: list[str] = []
-    for profile in sorted(p for p in profiles_dir.iterdir() if p.is_dir()):
+    for profile in profiles:
         if _managed_env_values(profile / ".env") != expected:
             stale.append(profile.name)
     if stale:
@@ -233,7 +243,7 @@ def _check_profile_env_drift(home: Path | None) -> dict:
             "ok": False,
             "detail": f"{len(stale)} profile(s) disagree with Hermes' own .env ({shown}{suffix}) -- saving re-syncs them",
         }
-    return {"ok": True, "detail": f"All {len(list(profiles_dir.iterdir()))} profiles agree"}
+    return {"ok": True, "detail": f"All {len(profiles)} profiles agree"}
 
 
 def get_hermes_health(candidate_vault_path: str = "") -> dict:
@@ -306,13 +316,11 @@ def _hermes_env_files_holding_the_vault_path(home: Path) -> list[Path]:
     on this machine, verified 2026-09-04) while the wizard reported success.
     """
     targets = [home / ".env"]
-    profiles_dir = home / "profiles"
-    if profiles_dir.is_dir():
-        for profile in sorted(profiles_dir.iterdir()):
-            env_file = profile / ".env"
-            contents = env_file.read_text(encoding="utf-8") if env_file.is_file() else ""
-            if any(key in contents for key in (_OBSIDIAN_VAULT_ENV_KEY, _SB_VAULT_ENV_KEY, _DATA_PATH_ENV_KEY)):
-                targets.append(env_file)
+    for profile in _profile_dirs(home):
+        env_file = profile / ".env"
+        contents = env_file.read_text(encoding="utf-8") if env_file.is_file() else ""
+        if any(key in contents for key in (_OBSIDIAN_VAULT_ENV_KEY, _SB_VAULT_ENV_KEY, _DATA_PATH_ENV_KEY)):
+            targets.append(env_file)
     return targets
 
 

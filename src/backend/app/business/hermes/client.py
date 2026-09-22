@@ -13,12 +13,12 @@ for the exception type.
 from __future__ import annotations
 
 from app.config import settings
-from app.hermes import HermesAgent, HermesClient, HermesSkill, HermesUnavailableError
+from app.hermes import HermesAgent, HermesClient, HermesSkill, HermesUnavailableError, is_real_profile
 from app.hermes.chat_session import HermesChatSession
 
 __all__ = [
     "get_client", "HermesUnavailableError", "HermesChatSession",
-    "HermesAgent", "HermesSkill",
+    "HermesAgent", "HermesSkill", "is_real_profile",
 ]
 
 _client: HermesClient | None = None

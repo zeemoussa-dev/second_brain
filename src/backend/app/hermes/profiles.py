@@ -99,7 +99,7 @@ def _deep_merge(base: dict, patch: dict) -> dict:
     return merged
 
 
-def _is_real_profile(path) -> bool:
+def is_real_profile(path) -> bool:
     """A profile directory, not one of Hermes' own bookkeeping folders.
 
     `hermes profile delete` does not erase a profile, it TOMBSTONES it: the
@@ -162,7 +162,7 @@ class HermesProfiles:
         agents = [self._read_agent(_PRIMARY_PROFILE_ID, home)]
         profiles_root = home / "profiles"
         if profiles_root.is_dir():
-            for profile_dir in sorted(p for p in profiles_root.iterdir() if _is_real_profile(p)):
+            for profile_dir in sorted(p for p in profiles_root.iterdir() if is_real_profile(p)):
                 agents.append(self._read_agent(profile_dir.name, profile_dir))
         return agents
 

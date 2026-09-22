@@ -311,6 +311,29 @@ def test_no_profiles_yet_is_not_drift(monkeypatch, tmp_path: Path) -> None:
     assert setup_wizard._check_profile_env_drift(home)["ok"] is True
 
 
+# BUG-072: deleting an Agent made Hermes tombstone it into profiles/.deleted/,
+# and every check here then counted `.deleted` as a profile -- one more in the
+# total, and a failed path-agreement check that "saving" would have answered by
+# writing settings into the tombstone. The Skill count is asserted too, so a
+# tombstone's Skills never start counting as deployed.
+def test_the_deleted_profiles_tombstone_is_not_a_profile(monkeypatch, tmp_path: Path) -> None:
+    home = _hermes_home_with_profiles(tmp_path, _HOME_ENV, {"a": _HOME_ENV})
+    (home / "profiles" / "a" / "skills" / "vault" / "kept").mkdir(parents=True)
+    (home / "profiles" / "a" / "skills" / "vault" / "kept" / "SKILL.md").write_text("", encoding="utf-8")
+    tombstoned = home / "profiles" / ".deleted" / "gone" / "skills" / "vault" / "old"
+    tombstoned.mkdir(parents=True)
+    (tombstoned / "SKILL.md").write_text("", encoding="utf-8")
+    (home / "profiles" / ".deleted" / "gone" / ".env").write_text(
+        _HOME_ENV.replace("C:\vault", "C:\old-vault"), encoding="utf-8")
+    monkeypatch.setattr(settings, "hermes_home_path", home)
+
+    assert setup_wizard._check_profile_env_drift(home) == {"ok": True, "detail": "All 1 profiles agree"}
+    assert ".deleted" not in setup_wizard._check_profiles(home)["detail"]
+    assert setup_wizard._check_profiles(home)["detail"].startswith("2 profiles")
+    assert "1 skill" in setup_wizard._check_deployed_skills(home)["detail"]
+    assert all(".deleted" not in str(path) for path in setup_wizard._hermes_env_files_holding_the_vault_path(home))
+
+
 def test_the_data_folder_is_offered_beside_the_vault(unconfigured) -> None:
     """Not buried in a later "change these only if you need to" step.
 
