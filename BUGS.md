@@ -57,6 +57,7 @@ is a thin status mirror of the index table below.
 | BUG-068 | The backend launcher can leave an orphaned uvicorn worker holding port 8001, so pulled framework code never loads and every relaunch silently fails to bind while `/health` still answers 200 | Logic | Major | Open | 2026-09-18 | — |
 | BUG-069 | Skills moved to agent repositories cannot run their tests: they find the framework's master Templates and shared managers by counting parent folders, true only inside the framework's own tree | Logic | Major | Open | 2026-09-18 | — |
 | BUG-070 | A stopped backend leaves its launcher's `cmd.exe` alive holding `backend.log` open, so the next launcher cannot open the log and starts nothing, with no error anywhere | Logic | Major | Open | 2026-09-21 | — |
+| BUG-071 | A plugin installed from its own repository cannot be put back onto the published package of the same version -- the "already installed" refusal compared version strings alone, so the operator had to uninstall first | Logic | Major | Fixed | 2026-09-21 | `7e7ac7c` |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
