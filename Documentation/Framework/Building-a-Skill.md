@@ -165,14 +165,54 @@ Two consequences:
   `company_index.py`), and `deploy_shared_managers` copies those into the same
   folder — refusing any file named like a framework manager, which would
   silently replace the framework's engine for every Skill.
-- **A test conftest should look in both**, and skip rather than fail when neither
-  is present: this repository's own `data/managers/`, then the install's
-  (`HERMES_HOME`, else `%LOCALAPPDATA%/hermes`). The same applies to Master
-  Templates: this repository's `data/Templates/<id>/`, then the install's.
+- **Its tests run against the framework's source**, through the framework's own
+  resolver -- see [Testing a Skill outside the framework](#testing-a-skill-outside-the-framework).
 
 > **Known gap.** The framework deploys Skills from its **own** catalog only. A
 > Skill living in an agent repository has to be deployed by hand today; there is
 > no "deploy from the config folder" path yet.
+
+### Testing a Skill outside the framework
+
+A Skill in an agent repository imports what it imports when deployed -- the
+framework's shared engines, its own repository's engines, Master Templates -- and
+none of them sit beside it. The framework answers "where are they" once, in
+`src/backend/skill_testing.py` (`BUG-069`). **One setting** points at it:
+
+| Setting | Meaning |
+|---|---|
+| `SECOND_BRAIN_FRAMEWORK` | The framework checkout to test against. Unset: a `second_brain` checkout in any folder above the Skill. |
+
+Each Skill's `scripts/conftest.py` finds the checkout, loads the resolver by path,
+and calls `configure(__file__)`:
+
+```python
+_PATHS = _load_resolver().configure(__file__)
+
+master_template = _PATHS.master_template    # Path to <id>/Template.json
+shared_engine = _PATHS.shared_engine        # Path to a shared engine file
+engine_roots = _PATHS.engine_roots          # folders, for a subprocess's PYTHONPATH
+framework_skill = _PATHS.framework_skill    # a framework Skill's scripts/, from the catalog
+```
+
+`sb-pss-agent` carries the full conftest; copy it rather than writing another. What
+`configure` does:
+
+- puts the Skill's own `scripts/`, the repository's `data/managers/` and the
+  framework's shared managers on `sys.path`, **in that order**;
+- finds the repository by its `.git` folder, never by counting parent folders;
+- looks a Master Template up in the repository's `data/Templates/`, then the
+  framework's masters, then each Marketplace plugin's newest package -- where
+  business Templates such as `customer` moved with the Entities plugin.
+
+Two deliberate choices:
+
+- **The source, not a deployment.** Testing against the engines deployed to Hermes
+  tests yesterday's deployment and passes on a stale copy; it also leaves a machine
+  without an install testing nothing.
+- **Missing is an error, not a skip.** A framework that cannot be found stops the
+  run with the setting to fix. A suite that skips itself reports green while
+  checking nothing -- which is how 24 tests went unrun.
 
 ---
 
@@ -186,6 +226,8 @@ Two consequences:
 | Hardcoding a path | Absolute paths break on the next machine; a **relative** one survives export substitution and breaks quietly. |
 | `"20m"` as a schedule | That is a **one-time** job. Only `"every 20m"` recurs. |
 | A Skill that reaches for another Skill's folder | Search every category, and the install's deployed Skills, not just your own. |
+| An agent Skill's test counting `parents[N]` to reach the framework | True only inside the framework's tree. Use `skill_testing.py`. |
+| A test that skips when the framework or an install is absent | Reports green while testing nothing. Fail with the setting to fix instead. |
 
 ---
 

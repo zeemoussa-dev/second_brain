@@ -18,6 +18,7 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix(skills): an agent repository's Skill tests have a supported way to find the framework (`BUG-069`). `src/backend/skill_testing.py`, located by `SECOND_BRAIN_FRAMEWORK` (default: a `second_brain` checkout above the Skill), puts the Skill, its repository's engines and the framework's shared engines on `sys.path`, and resolves Master Templates across the repository, the framework's masters and the Marketplace packages -- from source, not a Hermes deployment, and failing loudly rather than skipping. Documented in Building-a-Skill.md, "Testing a Skill outside the framework".{nl}
 - fix(tooling): `tools\backend.cmd status|stop|start|restart` stops and restarts the backend safely (`BUG-068`, `BUG-070`). Stopping finds the whole backend -- launcher shell, uvicorn reloader and `spawn_main` worker, including a worker whose reloader is dead -- and never touches a port-8001 holder that is not a Second Brain backend, naming it instead. `start` and `run-backend.cmd` refuse while 8001 is held; `start` falls back to a timestamped log when `backend.log` is still held, and waits for `/health`. `/health` now reports the commit the running code was loaded from, so a stale backend is visible.
 
 - chore: VERSION 0.2.0 -> 0.3.0. MINOR, because installing a plugin from its own repository (`REQ-SB-92`) is a new feature; `/health` reports it.

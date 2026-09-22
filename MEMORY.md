@@ -301,6 +301,8 @@ Where a rule does not belong here:
 
 - **Stop and restart the backend only with `tools\backend.cmd stop|restart`, never by killing "uvicorn".** A `--reload` worker's command line says `spawn_main(parent_pid=N)`, not uvicorn, and it keeps serving old code after its reloader dies while Windows names the dead reloader as the port's owner; the launcher shell or the worker can also keep `backend.log` open so the next launch starts nothing (`BUG-068`, `BUG-070`). `/health` reports the commit the process loaded -- compare it with `git rev-parse HEAD` before trusting that a pull is live.
 
+- **An agent repository's Skill tests reach the framework only through `src/backend/skill_testing.py`, located by `SECOND_BRAIN_FRAMEWORK`.** Never by counting parent folders (true only inside this tree) and never through the engines deployed to Hermes (tests a stale deployment, and nothing at all on a machine without one). Renaming or moving the shared managers, the masters or `src/marketplace/` means updating that resolver in the same change (`BUG-069`).
+
 - **A machine-specific literal in a Hermes cron-wrapper script must be read from an environment variable with the current value as fallback, never left as a bare constant.** A copied runner would otherwise run silently against the original machine's vault.
 
 - **A command that succeeds in the agent's shell but fails in the operator's, on the same machine, is a network-path difference, not a flaky command.** Never build a theory on a result the operator's own shell has not reproduced.

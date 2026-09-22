@@ -55,7 +55,7 @@ is a thin status mirror of the index table below.
 | BUG-066 | Attaching a file in Chat fails — the paperclip posts to `/agents/{id}/chat/attachment`, a route that has not existed since the 2026-08-20 redesign, so the backend answers 404 and the Chat panel shows "Something went wrong" | UI | Major | Fixed | 2026-09-17 | this change |
 | BUG-067 | Importing an artifact bundle empties an existing `Settings/Entities.md` — the seed-data writer wrote an empty file whenever a deployed Skill mentioned it, without checking whether the file already held the operator's registry | Logic | Critical | Fixed | 2026-09-17 | this change |
 | BUG-068 | The backend launcher can leave an orphaned uvicorn worker holding port 8001, so pulled framework code never loads and every relaunch silently fails to bind while `/health` still answers 200 | Logic | Major | Fixed | 2026-09-18 | `39725f0` |
-| BUG-069 | Skills moved to agent repositories cannot run their tests: they find the framework's master Templates and shared managers by counting parent folders, true only inside the framework's own tree | Logic | Major | Open | 2026-09-18 | — |
+| BUG-069 | Skills moved to agent repositories cannot run their tests: they find the framework's master Templates and shared managers by counting parent folders, true only inside the framework's own tree | Logic | Major | Fixed | 2026-09-18 | `1b03723` |
 | BUG-070 | A stopped backend leaves its launcher's `cmd.exe` alive holding `backend.log` open, so the next launcher cannot open the log and starts nothing, with no error anywhere | Logic | Major | Fixed | 2026-09-21 | `39725f0` |
 | BUG-071 | A plugin installed from its own repository cannot be put back onto the published package of the same version -- the "already installed" refusal compared version strings alone, so the operator had to uninstall first | Logic | Major | Fixed | 2026-09-21 | `7e7ac7c` |
 
@@ -1093,13 +1093,14 @@ is a thin status mirror of the index table below.
 
 - **Area:** Logic
 - **Severity:** Major
-- **Status:** Open
+- **Status:** Fixed
 - **Found:** 2026-09-18, running the company Skills' tests from `sb-cbo-agent`; `sb-pss-agent` fails identically.
 - **Root cause:** tests in `create-companies-partners` and `summarize-and-tag-threads` use `Path(__file__).parents[6] / "templates" / "masters"` and `parents[5] / "managers"`, and every moved Skill's `conftest.py` uses `parents[3] / "managers"` -- all true only inside `src/backend/app/business/core/skills/catalog/<tool>/<skill>/`. ADR-021's move gate ran the suites that STAYED in the framework, not the ones that moved. The `customer`/`partner` masters have also left the framework for the Entities plugin package.
 - **Repro:** in `sb-pss-agent`, with the framework managers and `data/managers` on `PYTHONPATH`, run `pytest` in `data/Tools/vault/Skills/summarize-and-tag-threads/scripts` (24 errors) and `create-companies-partners/scripts` (2 failed, 4 errors).
 - **Expected:** an agent repository's Skill tests run against the framework through a documented setting.
 - **Actual:** 31 tests error with `FileNotFoundError` on `data/templates/masters/...` and `Tools/managers`.
 - **Note:** worked around in `sb-cbo-agent` @ `4e625d3` (a shared `conftest.py` resolving `SECOND_BRAIN_FRAMEWORK` and a `shipped_template` fixture that also searches the Marketplace packages); `sb-pss-agent` is still affected. The framework has no supported way for an agent repository's tests to find it.
+- **Fix:** the framework ships one resolver, `src/backend/skill_testing.py`, found through one documented setting, `SECOND_BRAIN_FRAMEWORK` (unset: a `second_brain` checkout above the Skill). `configure(__file__)` puts the Skill, its repository's `data/managers/` and the framework's shared managers on `sys.path`; finds the repository by its `.git`, never by counting; and looks Master Templates up in the repository, the framework's masters, then each Marketplace plugin's newest package. It points at the framework's source rather than a Hermes deployment, and a missing framework is an error rather than a skipped suite. `sb-pss-agent`'s five conftests now delegate to it (`sb-pss-agent b8d7d75`): 150 tests pass with or without a Hermes install -- before, 24 sat in modules that skipped at import, and without an install nothing ran. Documented in Building-a-Skill.md. `sb-cbo-agent` keeps its own workaround until it adopts this. `1b03723`.
 
 ### BUG-070 — A stopped backend's launcher shell keeps the log locked, so the next launch silently starts nothing
 
