@@ -11,4 +11,9 @@ if not exist "%~dp0..\src\backend\.venv\Scripts\uvicorn.exe" (
     pause
     exit /b 1
 )
+rem A backend already on 8001 -- often an orphaned --reload worker serving old code --
+rem would make this one fail to bind while /health kept answering (BUG-068). Name it
+rem and stop, rather than start a second one. No pause: a hidden launch would hang on it.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0backend.ps1" preflight
+if errorlevel 1 exit /b 1
 "%~dp0..\src\backend\.venv\Scripts\uvicorn.exe" app.main:app --reload --port 8001
