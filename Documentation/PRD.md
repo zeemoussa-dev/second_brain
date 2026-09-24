@@ -5274,6 +5274,11 @@ wants a browser and renders asynchronously; it is normally loaded lazily, only w
 actually contains a diagram. An alternative is to keep drawing the subset these notes use,
 as the plugin does now, and accept that an unusual diagram falls back to its source.
 
+**Checked from the install, 2026-09-24.** `mermaid` is reachable from `cbo-agent01` --
+the corporate proxy does not block it -- and the current release is 12.0.0: 26 MB packed,
+124 MB unpacked, 1319 files. That is worth lazy-loading rather than putting in the main
+bundle, and it is a real `npm install` on every install machine the day it lands.
+
 **Acceptance.** A note containing `flowchart TD` shows a diagram in the vault browser; a
 plugin can render the same note the same way without importing anything the installer
 refuses; and the CBO install's Strategic Entities plugin deletes its own `Flowchart.tsx`.
