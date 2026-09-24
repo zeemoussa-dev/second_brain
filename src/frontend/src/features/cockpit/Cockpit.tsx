@@ -1,15 +1,14 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { fetchAgentList, isBackgroundAgent, type AgentSummary } from '../agents-map/agentsApiClient';
 import { getVisualIconName } from '../agents-map/visualOptions';
-import { Link } from 'react-router';
 import {
   bringInAgent, fetchCockpit, removeAgent, streamMessage, uploadDocument,
-  type CockpitChatMessage, type CockpitData, type CockpitDocument, type CockpitMessage,
+  type CockpitChatMessage, type CockpitData, type CockpitDocument,
 } from './cockpitApiClient';
 import { NoteLinkedText } from '../../components/NoteLinkedText';
 import { PersonNotePanel } from './PersonNotePanel';
 import { ChatMessageText } from '../../components/ChatMessageText';
-import { withPluginCockpitInfoFields } from '../../pluginHost/registry';
+import { pluginCockpitTabs, withPluginCockpitInfoFields } from '../../pluginHost/registry';
 
 // Same auto-grow ceiling as the established multiline chat input
 // (AgentChatPanel.tsx, operator: "need to grow bigger to show at least 3
@@ -22,14 +21,14 @@ const _CHAT_INPUT_MAX_HEIGHT_PX = 132;
 // ADR-012 points 4/5, not a shared component.
 const _REPLY_PREVIEW_MAX_CHARS = 140;
 
-type CockpitTab = 'overview' | 'chat' | 'emails' | 'people' | 'documents' | 'articles';
+// The Cockpit's own tabs. Anything that needs to know what an email or a meeting
+// IS -- a Thread's own messages, say -- is a plugin's tab, not one of these.
+type CockpitOwnTab = 'overview' | 'chat' | 'people' | 'documents' | 'articles';
+type CockpitTab = CockpitOwnTab | string;
 
-const NAV_ITEMS: { tab: CockpitTab; icon: string; label: string; emailOnly?: boolean }[] = [
+const NAV_ITEMS: { tab: CockpitOwnTab; icon: string; label: string }[] = [
   { tab: 'overview', icon: '▦', label: 'Overview' },
   { tab: 'chat', icon: '\u{1F4AC}', label: 'Chat' },
-  // A Thread's own emails. A Meeting has no `messages/` folder, so the tab is
-  // not offered there rather than offered empty.
-  { tab: 'emails', icon: '\u{2709}', label: 'Emails', emailOnly: true },
   { tab: 'people', icon: '\u{1F465}', label: 'People' },
   { tab: 'documents', icon: '\u{1F4C4}', label: 'Documents' },
   { tab: 'articles', icon: '\u{1F4F0}', label: 'Articles' },
@@ -104,21 +103,6 @@ function LoadingLine({ label }: { label: string }) {
       <span className="cockpit-loading-dots" aria-hidden="true"><span /><span /><span /></span>
       {label}…
     </p>
-  );
-}
-
-function MessageRow({ message }: { message: CockpitMessage }) {
-  return (
-    <Link className="item-row cockpit-message-row" to={`/browse/${encodeURIComponent(message.stem)}`}>
-      <span className="material-symbols-outlined cockpit-person-icon" aria-hidden="true">mail</span>
-      <span className="item-row-main">
-        <span className="item-row-title">{message.subject}</span>
-        <span className="item-row-meta">
-          {message.sender || message.sender_email}
-          {message.received ? ` · ${message.received.slice(0, 16)}` : ''}
-        </span>
-      </span>
-    </Link>
   );
 }
 
@@ -352,6 +336,9 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
   // in the meantime reads as "there is nothing here", which is a different claim
   // from "not known yet" -- and it made every panel flash empty before jumping to
   // real content (operator, 2026-09-24).
+  // A plugin's own Cockpit tabs for this kind of subject -- what an email or a
+  // meeting IS belongs to the plugin that understands it, not to this component.
+  const pluginTabs = pluginCockpitTabs(subjectKind);
   const loading = data === null;
   const expertsLoading = experts === null;
   const count = (value: number | undefined) => (loading ? '' : ` (${value ?? 0})`);
@@ -385,7 +372,9 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
   return (
     <div className="cockpit-layout">
       <nav className="cockpit-nav">
-        {NAV_ITEMS.filter((item) => !item.emailOnly || subjectKind === 'email').map((item) => (
+        {[...NAV_ITEMS, ...pluginTabs.map((pluginTab) => ({
+          tab: `${pluginTab.pluginId}:${pluginTab.id}`, icon: pluginTab.icon ?? '\u{1F9E9}', label: pluginTab.label,
+        }))].map((item) => (
           <button
             type="button"
             key={item.tab}
@@ -589,20 +578,11 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
           </div>
         )}
 
-        {tab === 'emails' && (
-          <div className="cockpit-panel">
-            <h3>Emails in this thread{count(data?.messages.length)}</h3>
-            {loading ? <LoadingLine label="Loading the emails" /> : data?.messages.length ? (
-              <div className="item-list">
-                {data.messages.map((message) => <MessageRow message={message} key={message.stem} />)}
-              </div>
-            ) : (
-              <div className="empty-state">
-                <p className="text-muted">No captured emails for this thread yet.</p>
-              </div>
-            )}
+        {pluginTabs.map((pluginTab) => tab === `${pluginTab.pluginId}:${pluginTab.id}` && (
+          <div className="cockpit-panel" key={`${pluginTab.pluginId}:${pluginTab.id}`}>
+            <pluginTab.component subjectKind={subjectKind} subjectNoteStem={subjectNoteStem} />
           </div>
-        )}
+        ))}
 
         {tab === 'people' && (
           <div className="cockpit-panel">

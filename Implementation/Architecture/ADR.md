@@ -2719,3 +2719,47 @@ install, because installing meant committing a package here (`REQ-SB-92`).
   breaks, not malice, and the provenance record says exactly what was pulled.
 - A plugin tracked from a branch has no version discipline of its own. The recorded commit is
   what identifies it; the version string is the plugin author's claim.
+
+
+---
+
+## ADR-025: The Cockpit is a generic component; what a subject IS belongs to a plugin
+
+**Status:** Accepted
+**Date:** 2026-09-24
+
+**Context:** The Cockpit is the framework's surface for chatting with agents about one
+subject -- a meeting or an email. `ADR-022` gave plugins one way into it: a row in its
+info panel (`cockpitInfoFields`). Asked for a Thread's own emails in the Cockpit, we put
+the tab and its reader in the framework, which meant the framework knew that a Thread is
+a folder whose `messages/` subfolder holds one note per email. The operator rejected
+that reading of the architecture: "Cockpit is the framework Peice as Component for Agents
+to chat its Used inside myDay which understands Emails and Calendar."
+
+**Decision:**
+
+- **The Cockpit owns the conversation, not the subject.** Its own tabs are the ones that
+  hold for any subject: Overview, Chat, People, Documents, Articles. A view that requires
+  knowing what an email or a meeting IS is a plugin's.
+- **A plugin may contribute a Cockpit tab** -- `PluginUi.cockpitTabs`: `subjectKind`, an
+  `id` unique within the plugin, a label, an optional icon, and a screen given
+  `{ subjectKind, subjectNoteStem }`. Plugin tabs are appended after the framework's own,
+  in plugin-id order. A malformed one is skipped and reported on System Health, the same
+  rule the other contributions follow.
+- **`FRAMEWORK_API` moves 2 -> 3.** The host loads only plugins built for its exact
+  version, so this refuses every installed plugin until it is republished -- deliberately:
+  a plugin built against v2 cannot know whether the host will render its tab.
+- **A Thread's emails are My Day's.** The reader and the tab live in `sb-plugins-my-day`
+  (1.4.0), served from `/plugins/my-day/threads/{stem}/emails`. The framework's Cockpit
+  read model carries no `messages` field.
+
+**Consequences:**
+
+- Pulling this update refuses `my-day` and `entities` until both are reinstalled at their
+  republished versions (`my-day` 1.4.0, `entities` 1.0.1) -- exactly what the version gate
+  is for, and what the System Health rows say while it is true.
+- The framework gains an extension point instead of a feature: the next plugin that needs
+  a subject-specific view adds a tab rather than a patch to `Cockpit.tsx`.
+- A plugin tab renders inside a framework screen, so a plugin can now break a framework
+  surface visually. The host already isolates a contribution that breaks the rules; it
+  cannot isolate one that renders badly.

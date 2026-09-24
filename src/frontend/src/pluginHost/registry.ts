@@ -1,5 +1,6 @@
 import type {
   MountedCockpitInfoField,
+  MountedCockpitTab,
   MountedNavEntry,
   MountedRoute,
   MountedSettingsPage,
@@ -33,11 +34,14 @@ interface Collected {
   nav: MountedNavEntry[];
   settingsPages: MountedSettingsPage[];
   cockpitInfoFields: MountedCockpitInfoField[];
+  cockpitTabs: MountedCockpitTab[];
   problems: string[];
 }
 
 function collectPluginContributions(): Collected {
-  const collected: Collected = { routes: [], nav: [], settingsPages: [], cockpitInfoFields: [], problems: [] };
+  const collected: Collected = {
+    routes: [], nav: [], settingsPages: [], cockpitInfoFields: [], cockpitTabs: [], problems: [],
+  };
 
   for (const modulePath of Object.keys(pluginModules).sort()) {
     const pluginId = pluginIdFromModulePath(modulePath);
@@ -83,6 +87,20 @@ function collectPluginContributions(): Collected {
       collected.settingsPages.push({ ...page, path, pluginId });
     }
 
+    const seenTabIds = new Set<string>();
+    for (const tab of ui.cockpitTabs ?? []) {
+      if (!COCKPIT_SUBJECT_KINDS.has(tab.subjectKind) || !tab.id || !tab.label || !tab.component) {
+        collected.problems.push(`${pluginId}: Cockpit tab "${tab.label ?? tab.id}" is not a valid email or meeting tab and was not shown`);
+        continue;
+      }
+      if (seenTabIds.has(`${tab.subjectKind}:${tab.id}`)) {
+        collected.problems.push(`${pluginId}: two Cockpit tabs share the id "${tab.id}"; only the first was shown`);
+        continue;
+      }
+      seenTabIds.add(`${tab.subjectKind}:${tab.id}`);
+      collected.cockpitTabs.push({ ...tab, pluginId });
+    }
+
     for (const field of ui.cockpitInfoFields ?? []) {
       if (COCKPIT_SUBJECT_KINDS.has(field.subjectKind) && field.key && field.label) {
         collected.cockpitInfoFields.push({ ...field, pluginId });
@@ -121,6 +139,12 @@ export function withPluginCockpitInfoFields(
   }
   return fields;
 }
+/** The plugin tabs for one Cockpit subject kind, in plugin-id order, shown after
+ * the Cockpit's own tabs. */
+export function pluginCockpitTabs(subjectKind: 'email' | 'meeting'): MountedCockpitTab[] {
+  return collected.cockpitTabs.filter((tab) => tab.subjectKind === subjectKind);
+}
+
 /** Contributions that broke the rules above and were skipped. Shown on the
  * System Health page, because a skipped screen is otherwise just missing. */
 export const pluginUiProblems: readonly string[] = collected.problems;

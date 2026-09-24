@@ -12,8 +12,15 @@ v1 was exactly what the first plugin (My Day) used. v2 adds what the Entities
 plugin needs, so the framework can stop knowing its business concepts: Cockpit
 agent matchers, services between plugins, People folders, seed data files and
 reading/writing them (`api.data`), read access to Expert agents and Sections --
-and, in a package, Templates. A
-new capability is added here when a plugin needs one. The host loads only
+and, in a package, Templates.
+
+v3 lets a plugin contribute a Cockpit TAB, not just a row in its info panel
+(`PluginUi.cockpitTabs`, frontend-side). The Cockpit is a generic component for
+chatting with agents about a subject; what an email or a meeting IS belongs to
+the plugin that understands it (operator, 2026-09-24: "Cockpit is the framework
+Peice as Component for Agents to chat its Used inside myDay which understands
+Emails and Calendar"). A Thread's own emails is My Day's tab, not a framework
+one. A new capability is added here when a plugin needs one. The host loads only
 plugins built for its exact `FRAMEWORK_API`, so a plugin that relies on a
 capability is never loaded by a framework that lacks it, and every installed
 plugin is republished when the version moves.
@@ -31,7 +38,7 @@ from app.business.core.vault.vault_manager import VaultManager
 from app.business.hermes.client import get_client
 from app.data_access import seed_data, vault_writer
 
-FRAMEWORK_API = 2
+FRAMEWORK_API = 3
 
 # `enricher(subject_kind, frontmatter, tags) -> {field: value}`. Cockpit calls it
 # while composing a view of a note (`BUG-063` seam).

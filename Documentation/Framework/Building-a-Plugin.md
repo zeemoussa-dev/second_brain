@@ -35,7 +35,7 @@ tests/                       its own tests: run on publish, never packaged
   "name": "My Day",
   "description": "Your day at a glance.",
   "version": "1.3.0",
-  "framework_api": 2,
+  "framework_api": 3,
   "requires": ["graph|outlook"]
 }
 ```
@@ -68,7 +68,7 @@ def register(api) -> None:
     api.register_router(build_router(EntitiesRegistry(api)))
 ```
 
-### What the API offers (v2)
+### What the API offers (v3)
 
 | Call | What it gives you |
 |---|---|
@@ -114,6 +114,7 @@ const ui: PluginUi = {
   nav: [{ to: '/my-day', label: 'My Day', icon: '☀' }],
   settingsPages: [{ path: '', label: 'Entities', component: EntitiesPage }],
   cockpitInfoFields: [{ subjectKind: 'email', label: 'Customer', key: 'customer' }],
+  cockpitTabs: [{ subjectKind: 'email', id: 'emails', label: 'Emails', icon: '✉', component: EmailsTab }],
 };
 export default ui;
 ```
@@ -123,6 +124,12 @@ export default ui;
   and reported on System Health rather than silently mounted.
 - Cockpit info fields are appended after the Cockpit's own rows; a key already
   shown is left out, so a field never appears twice.
+- **Cockpit tabs** (v3) are appended after the Cockpit's own tabs, for one
+  `subjectKind`. The tab's screen is given `{ subjectKind, subjectNoteStem }` and
+  owns everything inside it. This is how a plugin adds a view the Cockpit itself
+  must not have: the Cockpit is a generic component for chatting with agents
+  about a subject, and what an email or a meeting IS belongs to the plugin that
+  understands it. A Thread's own emails is My Day's tab.
 - **Screens may import only their own files, `src/pluginHost/`, and react /
   react-router.** `pluginHost/api` gives `apiFetch`; `pluginHost/types` gives the
   contract. Importing a framework feature is refused at publish time — it would

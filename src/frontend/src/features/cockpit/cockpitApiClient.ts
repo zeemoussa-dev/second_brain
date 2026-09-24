@@ -48,21 +48,9 @@ export interface CockpitThread {
   recommended_agent_ids: string[];
 }
 
-/** One real email inside a captured Thread -- its own note under the Thread's
- * `messages/` folder. */
-export interface CockpitMessage {
-  stem: string;
-  subject: string;
-  sender: string;
-  sender_email: string;
-  received: string;
-}
-
 export interface CockpitData {
   subject: Record<string, unknown>;
   people: CockpitPersonChip[];
-  // The emails this Thread is made of; empty for a Meeting.
-  messages: CockpitMessage[];
   overview: CockpitOverview;
   thread: CockpitThread;
 }

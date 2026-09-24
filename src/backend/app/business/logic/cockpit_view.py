@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import re
 
-from app.business.cockpit import chat_store, documents, messages, people
+from app.business.cockpit import chat_store, documents, people
 from app.business.core.plugins.plugin_manager import PluginManager
 from app.business.core.vault.vault_manager import VaultManager
 from app.obsidian import sections
@@ -122,7 +122,6 @@ def build_cockpit_view(subject_kind: str, subject_note_stem: str) -> dict:
     return {
         "subject": _enriched_subject(subject_kind, entry),
         "people": people.resolve_people_chips(subject_kind, subject_note_stem),
-        "messages": messages.list_messages(subject_note_stem),
         "overview": {
             "summary": summary,
             "summary_links": _summary_links(summary),

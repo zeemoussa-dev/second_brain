@@ -18,6 +18,12 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat(plugins)!: a plugin can contribute a Cockpit tab, and the Emails tab moves to My Day (`ADR-025`, framework API v3). The Cockpit is a generic component for chatting with agents about a subject; the Emails tab shipped yesterday made the framework know that a Thread is a folder whose `messages/` subfolder holds one note per email -- business knowledge `ADR-021` keeps out (operator: "Cockpit is the framework Peice as Component for Agents to chat its Used inside myDay which understands Emails and Calendar"). `PluginUi.cockpitTabs` lets a plugin add a tab for one `subjectKind`, rendered after the Cockpit's own; the reader and the tab now live in `sb-plugins-my-day` 1.4.0, served from `/plugins/my-day/threads/{stem}/emails`, and the framework's read model carries no `messages`.
+
+  **Breaking for installs:** `FRAMEWORK_API` 2 -> 3 refuses every installed plugin until it is republished. `my-day` 1.4.0 and `entities` 1.0.1 are published here; install both after pulling, or System Health will show them refused with that reason.
+
+- chore: VERSION 0.4.0 -> 0.5.0. The plugin host contract broke (API v3), which by this repo's own rule is a MAJOR; kept at MINOR only because the product is pre-1.0, and called out here instead: a pull needs both plugins reinstalled.
+
 - chore: VERSION 0.3.0 -> 0.4.0. MINOR: the Cockpit gained a streamed chat turn, an @mention picker, an Emails tab and a Template editor since 0.3.0. Bumped late -- 19 commits and six pushes went out at 0.3.0, against this repo's own rule that the version moves with every real push.
 
 - feat(cockpit): the chat turn streams (operator: "The Cockpit Gets Stuck at Sending Now Streaming like the rest of the System"). Routing asks the LLM moderator who should answer, and that call ran inside the POST, so the composer sat on "Sending…" for a whole model round-trip; the reply then arrived by 5-second polling, in one lump. `POST /cockpit/{kind}/{stem}/message/stream` emits `routing` before any model call, then who is answering, then `activity`/`delta`/`complete` from `agent_chat_stream` -- the same path every other chat surface uses -- then `done` with the persisted thread. `send_user_message` gained `dispatch=False` so the streaming turn owns the reply rather than racing a background task that would persist it twice; a turn that fails before producing text is persisted as a message saying so. The frontend's polling machinery is gone rather than left as a second mechanism.

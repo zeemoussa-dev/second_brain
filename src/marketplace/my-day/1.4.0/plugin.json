@@ -1,0 +1,10 @@
+{
+  "id": "my-day",
+  "name": "My Day",
+  "description": "Your day at a glance: recent email, meetings around today, and open tasks.",
+  "version": "1.4.0",
+  "framework_api": 3,
+  "requires": [
+    "graph|outlook"
+  ]
+}

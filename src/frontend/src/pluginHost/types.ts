@@ -35,11 +35,32 @@ export interface PluginCockpitInfoField {
   key: string;
 }
 
+/** What a Cockpit tab's screen is given: which subject it is looking at. The
+ * Cockpit is a generic component for chatting with agents about a subject; what
+ * an email or a meeting IS belongs to the plugin that understands it (operator,
+ * 2026-09-24: "Cockpit is the framework Peice as Component for Agents to chat
+ * its Used inside myDay which understands Emails and Calendar"). */
+export interface PluginCockpitTabProps {
+  subjectKind: 'email' | 'meeting';
+  subjectNoteStem: string;
+}
+
+/** A tab in the Cockpit, after the framework's own. `id` must be unique within
+ * the plugin and becomes part of no URL -- the Cockpit's tabs are local state. */
+export interface PluginCockpitTab {
+  subjectKind: 'email' | 'meeting';
+  id: string;
+  label: string;
+  icon?: string;
+  component: ComponentType<PluginCockpitTabProps>;
+}
+
 export interface PluginUi {
   routes?: PluginRoute[];
   nav?: PluginNavEntry[];
   settingsPages?: PluginSettingsPage[];
   cockpitInfoFields?: PluginCockpitInfoField[];
+  cockpitTabs?: PluginCockpitTab[];
 }
 
 export interface MountedRoute extends PluginRoute {
@@ -55,5 +76,9 @@ export interface MountedSettingsPage extends PluginSettingsPage {
 }
 
 export interface MountedCockpitInfoField extends PluginCockpitInfoField {
+  pluginId: string;
+}
+
+export interface MountedCockpitTab extends PluginCockpitTab {
   pluginId: string;
 }
