@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Link } from 'react-router';
 import { MarkdownPre } from './markdownBlocks';
+import { wikilinksToMarkdown } from '../features/vault-browser/wikilinks';
+import { useResolvedWikilinks } from './wikilinkResolution';
 
 export interface ChatMessageTextProps {
   text: string;
@@ -38,6 +41,10 @@ const IMAGE_URL_PATTERN = /\.(png|jpe?g|gif|webp|svg|avif)(\?.*)?$/i;
  * surface. */
 export function ChatMessageText({ text }: ChatMessageTextProps) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  // Agents cite notes as `[[wikilinks]]` -- it is how the Skills are told to refer
+  // to them -- and chat showed the brackets, because nothing here knew which
+  // targets were real notes (`BUG-079`). It asks now, like every other surface.
+  const resolvedStems = useResolvedWikilinks(text);
 
   // Escape closes regardless of what currently has focus -- the
   // backdrop's own onKeyDown only fires when IT is focused, which isn't
@@ -71,6 +78,9 @@ export function ChatMessageText({ text }: ChatMessageTextProps) {
               </button>
             ) : null,
           a: ({ href, children }) => {
+            if (href && href.startsWith('/browse/')) {
+              return <Link to={href}>{children}</Link>;
+            }
             if (href && IMAGE_URL_PATTERN.test(href)) {
               return (
                 <button
@@ -91,7 +101,7 @@ export function ChatMessageText({ text }: ChatMessageTextProps) {
           },
         }}
       >
-        {text}
+        {wikilinksToMarkdown(text, resolvedStems)}
       </ReactMarkdown>
       {lightboxSrc && (
         <div

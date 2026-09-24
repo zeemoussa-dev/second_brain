@@ -301,6 +301,21 @@ class VaultManager:
         the question is "all the notes" rather than "the note called X"."""
         return _vault_entries
 
+    def resolve_wikilink_targets(self, targets: list[str]) -> dict[str, str]:
+        """The targets that are real notes, as `<target as asked> -> <real stem>`.
+
+        Matching is case-insensitive because that is how Obsidian resolves a
+        `[[wikilink]]`, and what the vault browser has always done. A target that
+        is not a note is simply absent: rendering it as a link would promise a
+        note the vault does not have (`BUG-079`)."""
+        by_lower = {stem.lower(): stem for stem in _vault_index}
+        resolved = {}
+        for target in targets:
+            stem = by_lower.get(target.strip().lower())
+            if stem is not None:
+                resolved[target] = stem
+        return resolved
+
     def get_last_rebuilt_at(self) -> str | None:
         """ISO-8601 UTC timestamp of the most recent successful
         rebuild_index() call this process lifetime, or None if the

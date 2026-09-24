@@ -2,6 +2,7 @@ import ReactMarkdown from 'react-markdown';
 import { Link } from 'react-router';
 import { MarkdownPre } from '../components/markdownBlocks';
 import { wikilinksToMarkdown } from '../features/vault-browser/wikilinks';
+import { useResolvedWikilinks } from '../components/wikilinkResolution';
 
 // Rendering vault text -- part of the host contract, not a framework internal
 // (`BUG-078`). Before this, a plugin screen could import neither the renderer nor
@@ -18,13 +19,18 @@ export interface NoteTextProps {
   text: string;
   /** Wikilink targets that are real notes on this install: those become links into
    * the note view, and everything else renders as plain text rather than a link the
-   * vault cannot honour. A screen that has no index simply passes nothing. */
+   * vault cannot honour.
+   *
+   * Optional, and normally omitted -- the component asks the backend which of the
+   * text's own targets exist (`BUG-079`). Pass it only when the caller already
+   * knows, to save the round trip. */
   resolvedStems?: string[];
 }
 
 /** One note's text, rendered the way the rest of the app renders it: markdown, real
  * links, and ```mermaid fences as diagrams. */
-export function NoteText({ text, resolvedStems = [] }: NoteTextProps) {
+export function NoteText({ text, resolvedStems }: NoteTextProps) {
+  const stems = useResolvedWikilinks(text, resolvedStems);
   return (
     <ReactMarkdown
       components={{
@@ -37,7 +43,7 @@ export function NoteText({ text, resolvedStems = [] }: NoteTextProps) {
           ),
       }}
     >
-      {wikilinksToMarkdown(text, resolvedStems)}
+      {wikilinksToMarkdown(text, stems)}
     </ReactMarkdown>
   );
 }

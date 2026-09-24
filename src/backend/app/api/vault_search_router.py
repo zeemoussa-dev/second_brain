@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from app.business.core.semantic.semantic_manager import (
     SemanticIndexUnavailableError,
@@ -17,6 +18,10 @@ from app.data_access.compass_client import CompassClientError
 router = APIRouter(prefix="/vault-search")
 _vault_manager = VaultManager()
 _semantic_manager = SemanticManager(_vault_manager)
+
+
+class WikilinkTargets(BaseModel):
+    targets: list[str]
 
 
 @router.get("/status")
@@ -113,6 +118,18 @@ def get_scope_suggestions() -> dict:
     """REQ-SB-50-US-01-T01 -- feeds the Agent Settings Vault Scope field's
     own typeahead (T02) with a real, vault-derived tag/folder snapshot."""
     return _vault_manager.list_scope_suggestions()
+
+
+@router.post("/resolve")
+def post_resolve(payload: WikilinkTargets) -> dict:
+    """Which of these `[[wikilink]]` targets are real notes (`BUG-079`).
+
+    Every surface that shows vault text needs this answer, and each one used to
+    find it for itself -- so a wikilink linked only where somebody remembered.
+    A text mentions a dozen notes at most, whereas an install can index tens of
+    thousands, so the browser asks about the targets it actually holds instead of
+    downloading the index."""
+    return {"resolved": _vault_manager.resolve_wikilink_targets(payload.targets)}
 
 
 @router.get("/graph")
