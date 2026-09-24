@@ -256,6 +256,7 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 | BUG-074 | A scheduled job in a profile whose gateway is stopped never runs, and nothing says so | Logic | Open | — |
 | BUG-075 | The Outlook capture Skills exist only as deployed copies; the catalog would replace them with Graph | Logic | Open | — |
 | BUG-076 | The vault index keeps one note per file name, so a same-named note hides another | Logic | Open | — |
+| BUG-077 | The Cockpit fails with a 500 for any subject with a long attachment path | Logic | Open | — |
 
 > **Emptied 2026-09-06** with `BUGS.md`, which this mirrors — 42 rows.
 > History: `git show d64dcb4:BACKLOG.md`. Next id is **`BUG-043`**.

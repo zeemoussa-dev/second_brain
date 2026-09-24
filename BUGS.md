@@ -63,6 +63,7 @@ is a thin status mirror of the index table below.
 | BUG-074 | A scheduled job in a profile whose gateway is stopped never runs, and nothing says so -- meeting capture silently stopped for three weeks while every health check stayed green | Logic | Blocker | Open | 2026-09-22 | — |
 | BUG-075 | The Outlook capture Skills exist only as deployed copies -- `822a5f6` rewrote meeting-capture from Outlook to Graph in place, so a redeploy from the catalog would break an install without Graph | Logic | Major | Open | 2026-09-22 | — |
 | BUG-076 | The vault index keeps one note per file name, so a same-named note hides another -- a meeting and its same-named invitation message collide, and the meeting disappears from My Day | Logic | Major | Open | 2026-09-22 | — |
+| BUG-077 | The Cockpit fails with a 500 for any subject with a long attachment path -- `cockpit/documents.py` sorts by `Path.stat()` without `long_path`, so one file past Windows' 260 characters takes down the whole Cockpit read | Logic | Critical | Open | 2026-09-24 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -1193,6 +1194,18 @@ is a thin status mirror of the index table below.
 - **Actual:** the redeploy replaces the working Outlook copy with the Graph version, which cannot run there.
 - **Note:** the Outlook 0.1.0 source is recoverable from `822a5f6^`. Where it belongs -- back in the framework catalog under `outlook/`, beside the Graph version, or in the agent repository whose install uses Outlook -- is an operator decision. Until then, do not redeploy either capture Skill to such an install.
 - **Progress (2026-09-22):** the operator placed the Outlook engine in the agent repository: `sb-pss-agent` `4a15074`, `data/Tools/outlook/Skills/meeting-capture` 0.3.0 -- the framework's current engine with `outlook_lib.py` restored (the engine core never changed; only the calendar import did). It was verified against a scratch copy of the vault and deployed by hand to the default profile, the stale copy quarantined. Still open for the framework: its deploy path knows only its own catalog, so a framework redeploy of `meeting-capture` would still overwrite the install's copy; 40 other profiles on that install still carry the stale Outlook copy; `email-thread-capture` has the same shape.
+
+### BUG-077 — The Cockpit fails with a 500 for any subject with a long attachment path
+
+- **Area:** Logic
+- **Severity:** Critical
+- **Status:** Open
+- **Found:** 2026-09-24, on the CBO install, opening the Cockpit for a thread linked from the Action Center right after updating to 0.5.0.
+- **Root cause:** `business/cockpit/documents.py::list_documents` sorts the description notes with `key=lambda p: p.stat().st_mtime`, and `iterdir()`/`read_note` walk the same paths, none of them through `vault_manager.long_path()` -- the module does not use it at all. A captured attachment's folder repeats the attachment's own long subject twice (`Files/<long name>/<long name>.md`), so a thread whose subject is long enough puts that note past Windows' 260-character limit, `stat()` raises `FileNotFoundError` (WinError 3), and `build_cockpit_view` has nothing to catch it: the whole Cockpit read returns 500, so the subject has no summary, no people, no chat -- not merely no documents.
+- **Repro:** on the reporting install, `GET /cockpit/email/2026-09-09 DFS_10014135 - INJAZAT DATA SYSTEMS LLC - Credit Hold`; its `Files/` holds a note whose path is 271 characters.
+- **Expected:** the Cockpit opens; a document it cannot reach is skipped or listed without its date.
+- **Actual:** 500 for every read of that subject. **171 of the install's threads and meetings have at least one such file**, so the Cockpit is unusable for them -- including every one the Action Center links to.
+- **Note:** `vault_manager.long_path()` already exists and is what `read_note`/`write_note` use (framework `2026-09-11`, the same class of defect). This is the read side of it, in a module written without it.
 
 ### BUG-076 — The vault index keeps one note per file name, so a same-named note hides another
 
