@@ -77,6 +77,14 @@ document is out of date.
 
 ## How to do things
 
+### Draw a diagram in an answer or a note
+
+Write a ```mermaid fence. It renders as a real diagram everywhere the framework
+renders markdown -- an agent's chat reply, a note body in Browse, a Cockpit
+summary -- with no setup and no plugin (`ADR-026`). A diagram that does not parse
+shows the reason and the source it was written from, so a malformed one is
+visible rather than silently dropped.
+
 ### Capture a new kind of thing (emails, meetings, tickets…)
 
 Write a **Template**, then point something at it. No engine changes.

@@ -2763,3 +2763,48 @@ to chat its Used inside myDay which understands Emails and Calendar."
 - A plugin tab renders inside a framework screen, so a plugin can now break a framework
   surface visually. The host already isolates a contribution that breaks the rules; it
   cannot isolate one that renders badly.
+
+
+---
+
+## ADR-026: Mermaid diagrams render wherever the framework renders markdown
+
+**Status:** Accepted
+**Date:** 2026-09-24
+
+**Context:** Agents write ```mermaid fences constantly -- the CBO install leans on them
+heavily -- and every framework surface rendered them as literal code. The question was
+whether this belongs in a plugin. It does not: rendering a fenced block is what the
+markdown renderer does, the same as an image or a code block, and it carries no
+knowledge of anyone's business (`ADR-021`). A plugin could not do it anyway -- chat,
+note bodies and Cockpit summaries are framework components, and a plugin cannot reach
+inside them.
+
+**Decision:**
+
+- **`mermaid` is a framework frontend dependency**, pinned to **11.17.2**. Version 12
+  pulls `chevrotain` -> `lodash-es` with two high-severity advisories (code injection via
+  `_.template`, prototype pollution via `_.unset`/`_.omit`); 11.17.2 with `lodash-es`
+  4.18.1 audits clean. This is code that runs in the operator's browser, so "clean" is
+  the bar, not "probably unreachable".
+- **One rule, shared.** `components/markdownBlocks.tsx` overrides `<pre>` for every
+  markdown surface: a ```mermaid fence draws, everything else stays a code block. Chat,
+  note bodies and Cockpit summaries all get it from the same place.
+- **Loaded on demand.** mermaid and its diagram grammars are dynamically imported, so
+  they are separate chunks and pages without a diagram never pay for them.
+- **`securityLevel: 'strict'`.** Mermaid renders to SVG, which must be inserted as
+  markup -- the one `dangerouslySetInnerHTML` in the app, against `ADR-050`'s
+  zero-raw-HTML posture. Strict mode sanitizes the diagram's own labels and refuses
+  click/script directives, so a diagram an agent wrote cannot smuggle HTML through the
+  fence. The exception is here and nowhere else.
+- **A diagram that does not parse shows the reason and the source.** An agent that wrote
+  a malformed diagram still wrote something; dropping it silently would hide that.
+
+**Consequences:**
+
+- Any agent, on any install, can draw a diagram by writing a fence -- no per-install
+  setup, no plugin.
+- The framework now carries a large third-party renderer. It is isolated behind one
+  component and one `<pre>` override, so replacing it touches two files.
+- `npm audit` must stay part of dependency changes: this one was clean only after
+  pinning below the current major.

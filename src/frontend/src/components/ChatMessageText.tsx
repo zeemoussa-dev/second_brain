@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { MarkdownPre } from './markdownBlocks';
 
 export interface ChatMessageTextProps {
   text: string;
@@ -56,6 +57,8 @@ export function ChatMessageText({ text }: ChatMessageTextProps) {
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
+          // A ```mermaid fence draws as a diagram; every other fence stays a code block.
+          pre: MarkdownPre,
           img: ({ src, alt }) =>
             typeof src === 'string' ? (
               <button

@@ -18,6 +18,10 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat(ui): ```mermaid fences render as diagrams wherever the framework renders markdown -- agent chat, note bodies in Browse, Cockpit summaries (`ADR-026`, operator: the CBO agent writes them a lot). One `<pre>` override in `components/markdownBlocks.tsx` serves every surface; `MermaidDiagram` loads mermaid on demand, so pages without a diagram never pay for it. A diagram that does not parse shows the reason and the source rather than vanishing, and a non-mermaid fence stays a code block. mermaid is pinned to 11.17.2: v12 pulls `lodash-es` with two high-severity advisories, while this pins clean (`npm audit`: 0). `securityLevel: 'strict'` is what makes inserting mermaid's generated SVG safe -- the only `dangerouslySetInnerHTML` in the app, and the one documented exception to `ADR-050`.
+
+- chore: VERSION 0.5.0 -> 0.6.0. MINOR: diagram rendering is a new capability, and nothing installed has to change.
+
 - feat(plugins)!: a plugin can contribute a Cockpit tab, and the Emails tab moves to My Day (`ADR-025`, framework API v3). The Cockpit is a generic component for chatting with agents about a subject; the Emails tab shipped yesterday made the framework know that a Thread is a folder whose `messages/` subfolder holds one note per email -- business knowledge `ADR-021` keeps out (operator: "Cockpit is the framework Peice as Component for Agents to chat its Used inside myDay which understands Emails and Calendar"). `PluginUi.cockpitTabs` lets a plugin add a tab for one `subjectKind`, rendered after the Cockpit's own; the reader and the tab now live in `sb-plugins-my-day` 1.4.0, served from `/plugins/my-day/threads/{stem}/emails`, and the framework's read model carries no `messages`.
 
   **Breaking for installs:** `FRAMEWORK_API` 2 -> 3 refuses every installed plugin until it is republished. `my-day` 1.4.0 and `entities` 1.0.1 are published here; install both after pulling, or System Health will show them refused with that reason.

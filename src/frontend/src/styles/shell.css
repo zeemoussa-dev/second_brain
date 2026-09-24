@@ -123,3 +123,27 @@ html {
 .app-shell.sidebar-collapsed .nav-item .nav-icon {
   margin-right: 0;
 }
+
+/* Mermaid diagrams (2026-09-24): a ```mermaid fence rendered by MermaidDiagram,
+   in chat, note bodies and Cockpit summaries alike. A wide diagram scrolls inside
+   its own box rather than stretching the column it sits in. */
+.mermaid-diagram {
+  margin: var(--space-3) 0;
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+}
+
+.mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-diagram--failed pre {
+  margin: var(--space-2) 0 0;
+  overflow-x: auto;
+}
+
+.mermaid-diagram-loading { margin: var(--space-3) 0; }

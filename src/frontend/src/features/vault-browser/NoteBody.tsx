@@ -5,6 +5,7 @@ import { Link } from 'react-router';
 import type { NoteSummary } from './client';
 import { extractHeadings, type TocHeading } from './tableOfContents';
 import { wikilinksToMarkdown } from './wikilinks';
+import { MarkdownPre } from '../../components/markdownBlocks';
 
 interface NoteBodyProps {
   stem: string;
@@ -81,6 +82,7 @@ export function NoteBody({ stem, body, forwardLinks, onHeadingsExtracted }: Note
     <ReactMarkdown
       rehypePlugins={[rehypeSlug]}
       components={{
+        pre: MarkdownPre,
         img: ({ src, alt }) => (typeof src === 'string' ? <img className="note-body-image" src={src} alt={alt ?? ''} loading="lazy" /> : null),
         a: ({ href, children }) => {
           if (href && href.startsWith('/browse/')) {
