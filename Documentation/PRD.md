@@ -5237,3 +5237,44 @@ framework I don't know why you asked for extra feature for that").
 Kept as a record of the mistake rather than deleted: the next person reading
 `plugin_api.py` will reach for the same conclusion.
 
+
+### REQ-SB-94: Render the Vault's Mermaid Diagrams, and Let a Plugin Render Them Too
+
+Raised 2026-09-24 from the CBO install, while building the Strategic Entities plugin
+(operator: "Group Structure in Adnoc in strategic Entities is not rendered", then "There is
+no Mermaid Plugin to be added Seems we need it even if we should add it to the framework").
+
+**Finding 1 - the vault is full of diagrams nothing draws.** 337 company notes in that
+install carry a ```` ```mermaid ```` block, every one a `flowchart TD` of the group
+structure -- who owns the company, its subsidiaries, its JVs. The capture passes write
+them deliberately. `mermaid` is not a dependency of `src/frontend`, and no component
+renders it, so the vault browser, the Cockpit summary and every plugin show the same thing:
+thirty lines of `n4["ADNOC Drilling"]` in a code fence. A diagram written for a reader and
+never drawn is a feature half-built.
+
+**Finding 2 - a plugin cannot fix this for itself in the way the app would.** A plugin's
+screens may import only `react`, `react-router`, `react/jsx-runtime` and
+`src/pluginHost/` -- the installer checks and refuses the rest, including `react-markdown`,
+which the host itself depends on. The Strategic Entities plugin therefore ships its own
+small renderer for the `flowchart TD` dialect those notes use. It works, and it is a second
+renderer that will drift from whatever the app eventually does.
+
+**What is wanted.**
+
+- The app renders ```` ```mermaid ```` blocks wherever it renders a note -- the vault
+  browser first, since that is where a note is read whole.
+- Plugins can render one too, without each writing its own: either `pluginHost` exports the
+  app's own note renderer (which would also give plugins headings, tables and wikilinks for
+  free), or it exports a `Mermaid`/`Diagram` component.
+- Whatever is chosen, one renderer. Two that disagree about the same note is worse than
+  none.
+
+**Worth knowing before choosing.** `mermaid` is a large dependency (~2 MB minified) that
+wants a browser and renders asynchronously; it is normally loaded lazily, only when a note
+actually contains a diagram. An alternative is to keep drawing the subset these notes use,
+as the plugin does now, and accept that an unusual diagram falls back to its source.
+
+**Acceptance.** A note containing `flowchart TD` shows a diagram in the vault browser; a
+plugin can render the same note the same way without importing anything the installer
+refuses; and the CBO install's Strategic Entities plugin deletes its own `Flowchart.tsx`.
+
