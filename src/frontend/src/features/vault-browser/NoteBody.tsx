@@ -4,6 +4,7 @@ import rehypeSlug from 'rehype-slug';
 import { Link } from 'react-router';
 import type { NoteSummary } from './client';
 import { extractHeadings, type TocHeading } from './tableOfContents';
+import { wikilinksToMarkdown } from './wikilinks';
 
 interface NoteBodyProps {
   stem: string;
@@ -16,7 +17,6 @@ interface NoteBodyProps {
 }
 
 const EMBED_PATTERN = /!\[\[([^\]]+)\]\]/g;
-const WIKILINK_PATTERN = /\[\[([^\]]+)\]\]/g;
 
 // Duplicated from agentsApiClient.ts's own identical `ATTACHMENT_BASE_URL`
 // convention -- client.ts doesn't export its BASE_URL, so any call site
@@ -50,15 +50,8 @@ function resolveEmbedsAndWikilinks(body: string, forwardLinks: NoteSummary[], st
     const url = `${API_BASE_URL}/vault-search/notes/${encodeURIComponent(stem)}/assets/${encodeURIComponent(filename)}`;
     return `![${filename}](${url})`;
   });
-  const stemByLowerStem = new Map(forwardLinks.map((link) => [link.stem.toLowerCase(), link.stem]));
-  return withImages.replace(WIKILINK_PATTERN, (_match, inner: string) => {
-    const [rawTarget, rawAlias] = inner.split('|');
-    const target = rawTarget.trim();
-    const alias = (rawAlias ?? rawTarget).trim();
-    const resolvedStem = stemByLowerStem.get(target.toLowerCase());
-    if (!resolvedStem) return alias;
-    return `[${alias}](/browse/${encodeURIComponent(resolvedStem)})`;
-  });
+  // Same rule the Cockpit's own summary uses -- see wikilinks.ts.
+  return wikilinksToMarkdown(withImages, forwardLinks.map((link) => link.stem));
 }
 
 /** Renders one note's real markdown body as formatted rich text, with

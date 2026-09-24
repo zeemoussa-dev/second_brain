@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { fetchAgentList, isBackgroundAgent, type AgentSummary } from '../agents-map/agentsApiClient';
 import { getVisualIconName } from '../agents-map/visualOptions';
+import { Link } from 'react-router';
 import {
   bringInAgent, fetchCockpit, removeAgent, sendMessage, uploadDocument,
-  type CockpitChatMessage, type CockpitData, type CockpitDocument,
+  type CockpitChatMessage, type CockpitData, type CockpitDocument, type CockpitMessage,
 } from './cockpitApiClient';
+import { NoteLinkedText } from '../../components/NoteLinkedText';
 import { PersonNotePanel } from './PersonNotePanel';
 import { ChatMessageText } from '../../components/ChatMessageText';
 import { withPluginCockpitInfoFields } from '../../pluginHost/registry';
@@ -36,11 +38,14 @@ interface PendingAnswer {
   agentName: string;
 }
 
-type CockpitTab = 'overview' | 'chat' | 'people' | 'documents' | 'articles';
+type CockpitTab = 'overview' | 'chat' | 'emails' | 'people' | 'documents' | 'articles';
 
-const NAV_ITEMS: { tab: CockpitTab; icon: string; label: string }[] = [
+const NAV_ITEMS: { tab: CockpitTab; icon: string; label: string; emailOnly?: boolean }[] = [
   { tab: 'overview', icon: '▦', label: 'Overview' },
   { tab: 'chat', icon: '\u{1F4AC}', label: 'Chat' },
+  // A Thread's own emails. A Meeting has no `messages/` folder, so the tab is
+  // not offered there rather than offered empty.
+  { tab: 'emails', icon: '\u{2709}', label: 'Emails', emailOnly: true },
   { tab: 'people', icon: '\u{1F465}', label: 'People' },
   { tab: 'documents', icon: '\u{1F4C4}', label: 'Documents' },
   { tab: 'articles', icon: '\u{1F4F0}', label: 'Articles' },
@@ -115,6 +120,21 @@ function LoadingLine({ label }: { label: string }) {
       <span className="cockpit-loading-dots" aria-hidden="true"><span /><span /><span /></span>
       {label}…
     </p>
+  );
+}
+
+function MessageRow({ message }: { message: CockpitMessage }) {
+  return (
+    <Link className="item-row cockpit-message-row" to={`/browse/${encodeURIComponent(message.stem)}`}>
+      <span className="material-symbols-outlined cockpit-person-icon" aria-hidden="true">mail</span>
+      <span className="item-row-main">
+        <span className="item-row-title">{message.subject}</span>
+        <span className="item-row-meta">
+          {message.sender || message.sender_email}
+          {message.received ? ` · ${message.received.slice(0, 16)}` : ''}
+        </span>
+      </span>
+    </Link>
   );
 }
 
@@ -372,7 +392,7 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
   return (
     <div className="cockpit-layout">
       <nav className="cockpit-nav">
-        {NAV_ITEMS.map((item) => (
+        {NAV_ITEMS.filter((item) => !item.emailOnly || subjectKind === 'email').map((item) => (
           <button
             type="button"
             key={item.tab}
@@ -391,7 +411,10 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
             <div className="cockpit-section">
               <h3>{subjectKind === 'meeting' ? 'Meeting summary' : 'Email summary'}</h3>
               {loading ? <LoadingLine label="Loading the summary" /> : data?.overview.summary ? (
-                <p>{data.overview.summary}</p>
+                <NoteLinkedText
+                  text={data.overview.summary}
+                  resolvedStems={(data.overview.summary_links ?? []).map((link) => link.stem)}
+                />
               ) : (
                 <p className="text-muted">No prep summary yet.</p>
               )}
@@ -554,6 +577,21 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
                 {sending ? 'Sending…' : 'Send'}
               </button>
             </form>
+          </div>
+        )}
+
+        {tab === 'emails' && (
+          <div className="cockpit-panel">
+            <h3>Emails in this thread{count(data?.messages.length)}</h3>
+            {loading ? <LoadingLine label="Loading the emails" /> : data?.messages.length ? (
+              <div className="item-list">
+                {data.messages.map((message) => <MessageRow message={message} key={message.stem} />)}
+              </div>
+            ) : (
+              <div className="empty-state">
+                <p className="text-muted">No captured emails for this thread yet.</p>
+              </div>
+            )}
           </div>
         )}
 

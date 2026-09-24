@@ -14,11 +14,14 @@ export interface CockpitDocument {
 }
 
 export interface CockpitOverview {
-  // null = no prep pass has run yet for this meeting/email (Research
-  // Expert isn't wired up yet -- see BUG-037's own follow-up discussion).
-  // The frontend renders this as an honest "not prepped yet" state, never
-  // a fabricated summary.
+  // The subject note's own `## Summary` section (2026-09-24): written by
+  // `summarize-and-tag-threads` for a Thread, and still empty for a Meeting,
+  // where nothing writes one yet. null = the note has none; rendered as an
+  // honest "not prepped yet", never a fabricated summary.
   summary: string | null;
+  // The `[[targets]]` inside `summary` that are real notes here, so the screens
+  // can link them and leave the rest as plain text.
+  summary_links: { stem: string }[];
   related_documents: CockpitDocument[];
   articles: { title: string; url: string }[];
 }
@@ -45,9 +48,21 @@ export interface CockpitThread {
   recommended_agent_ids: string[];
 }
 
+/** One real email inside a captured Thread -- its own note under the Thread's
+ * `messages/` folder. */
+export interface CockpitMessage {
+  stem: string;
+  subject: string;
+  sender: string;
+  sender_email: string;
+  received: string;
+}
+
 export interface CockpitData {
   subject: Record<string, unknown>;
   people: CockpitPersonChip[];
+  // The emails this Thread is made of; empty for a Meeting.
+  messages: CockpitMessage[];
   overview: CockpitOverview;
   thread: CockpitThread;
 }

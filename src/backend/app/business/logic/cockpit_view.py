@@ -11,8 +11,9 @@ host's subject enrichers to fill in what a note does not carry itself.
 from __future__ import annotations
 
 import logging
+import re
 
-from app.business.cockpit import chat_store, documents, people
+from app.business.cockpit import chat_store, documents, messages, people
 from app.business.core.plugins.plugin_manager import PluginManager
 from app.business.core.vault.vault_manager import VaultManager
 from app.obsidian import sections
@@ -65,6 +66,28 @@ def _enriched_subject(subject_kind: str, entry: dict) -> dict:
 
 
 _SUMMARY_HEADER = "## Summary"
+_WIKILINK_PATTERN = re.compile(r"\[\[([^\]|#]+)(?:\|[^\]]*)?\]\]")
+
+
+def _summary_links(summary: str | None) -> list[dict]:
+    """Which `[[targets]]` in the summary are real notes on this install.
+
+    The screens turn a resolved target into a link into the note view and a
+    dangling one into plain text (the vault browser's own rule) -- they cannot
+    tell which is which without the index, so the read model says. A summary
+    written by a Skill names Customers and People that may or may not have notes
+    yet, and showing `[[Masdar]]` as raw brackets is what the operator saw
+    (2026-09-24)."""
+    if not summary:
+        return []
+    index = _vault_manager.get_index()
+    by_lower_stem = {stem.lower(): stem for stem in index}
+    resolved = {}
+    for target in _WIKILINK_PATTERN.findall(summary):
+        stem = by_lower_stem.get(target.strip().lower())
+        if stem:
+            resolved[stem] = {"stem": stem}
+    return list(resolved.values())
 
 
 def _note_summary(entry: dict) -> str | None:
@@ -95,11 +118,14 @@ def build_cockpit_view(subject_kind: str, subject_note_stem: str) -> dict:
     entry = _vault_manager.get_index().get(subject_note_stem)
     if entry is None:
         raise UnknownSubjectError(subject_note_stem)
+    summary = _note_summary(entry)
     return {
         "subject": _enriched_subject(subject_kind, entry),
         "people": people.resolve_people_chips(subject_kind, subject_note_stem),
+        "messages": messages.list_messages(subject_note_stem),
         "overview": {
-            "summary": _note_summary(entry),
+            "summary": summary,
+            "summary_links": _summary_links(summary),
             "related_documents": documents.list_documents(subject_note_stem),
             "articles": [],
         },
