@@ -2808,3 +2808,47 @@ inside them.
   component and one `<pre>` override, so replacing it touches two files.
 - `npm audit` must stay part of dependency changes: this one was clean only after
   pinning below the current major.
+
+
+---
+
+## ADR-027: Rendering vault text is part of the host contract, not something each plugin rebuilds
+
+**Status:** Accepted
+**Date:** 2026-09-24
+
+**Context:** `ADR-026` taught the framework's markdown renderer to draw ```mermaid
+fences. It did not widen the host contract, and a plugin screen may import only its own
+files, `src/pluginHost/`, and react/react-router -- so a plugin could import neither the
+renderer nor mermaid. Plugins that show vault text had always written their own markdown
+renderer; the moment the framework learned diagrams, those copies disagreed with it, and
+one app drew one note two different ways (`BUG-078`, reported from the CBO install, whose
+Strategic Entities plugin carries ~380 lines of duplicate renderer for this reason).
+`REQ-SB-94` had asked for both halves; only the first shipped.
+
+**Decision:**
+
+- **`pluginHost/noteText` is part of the contract.** It exports `NoteText` -- one note's
+  text rendered as the app renders it: markdown, real `[[wikilinks]]` into the note view,
+  and ```mermaid fences as diagrams -- and `MermaidDiagram` for a screen holding diagram
+  source rather than a note.
+- **The framework's own screens use it too.** The Cockpit summary renders through
+  `NoteText`; the duplicate `components/NoteLinkedText.tsx` is gone. "The way the app does
+  it" is not a claim to keep in sync, it is the same component.
+- **`mermaid` stays a host library.** A screen importing it directly is still refused: a
+  plugin bundling its own copy is exactly the drift the boundary exists to stop, and the
+  host already exports the diagram.
+- **`FRAMEWORK_API` moves 3 -> 4.** A plugin that renders a note through the host cannot
+  run on a framework without that export, so the version gate has to know.
+
+**Consequences:**
+
+- A plugin that shows vault text deletes its renderer. The CBO install's Strategic
+  Entities plugin can drop `Flowchart.tsx`, which is what `REQ-SB-94` asked for.
+- Every installed plugin is republished again (`my-day` 1.4.1, `entities` 1.0.2) -- the
+  second bump in a day. The gate makes that visible rather than silent, but two contract
+  changes in one day is a sign the contract was under-specified when `ADR-026` shipped:
+  teaching the framework a new way to render should have asked, in the same change,
+  whether a plugin can render it too.
+- `pluginHost/` now exports components, not just types and `apiFetch`. That is a wider
+  surface to keep stable: anything exported there is a promise to every installed plugin.

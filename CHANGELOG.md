@@ -18,6 +18,12 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat(plugins)!: a plugin screen renders a note the way the app does -- `pluginHost/noteText` exports `NoteText` and `MermaidDiagram` (`BUG-078`, `ADR-027`, framework API v4). Teaching the framework ```mermaid fences without widening the contract left plugins unable to import either the renderer or mermaid, so every plugin showing vault text wrote its own markdown renderer -- and those copies then drew the same note differently from the app (~380 duplicated lines in the reporting install's Strategic Entities plugin). The framework's Cockpit summary now renders through the same component, and the duplicate `NoteLinkedText` is gone. `mermaid` stays a host library: a screen importing it directly is still refused.
+
+  **Breaking for installs:** `FRAMEWORK_API` 3 -> 4. `my-day` 1.4.1 and `entities` 1.0.2 are published here; install both after pulling.
+
+- chore: VERSION 0.6.1 -> 0.7.0. MINOR: the host contract gained a capability; pre-1.0, with the reinstall called out above.
+
 - fix(cockpit): the Cockpit opens for a subject whose attachment path passes Windows' 260-character limit (`BUG-077`, reported from the CBO install where it made 171 subjects unusable). An attachment's folder repeats the attachment's own name, so a long subject line pushed `Files/<name>/<name>.md` past the limit; `list_documents` walked it without `long_path`, `stat()` raised, and the whole read returned 500 -- no summary, no people, no chat. It now walks through `long_path` and hands back ordinary paths, skipping an attachment it still cannot read. `build_cockpit_view` also reads its people and documents panels through a wrapper, so a broken panel comes back empty instead of taking the subject down.
 
 - chore: VERSION 0.6.0 -> 0.6.1. PATCH: a fix, nothing new.

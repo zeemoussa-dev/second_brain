@@ -35,7 +35,7 @@ tests/                       its own tests: run on publish, never packaged
   "name": "My Day",
   "description": "Your day at a glance.",
   "version": "1.3.0",
-  "framework_api": 3,
+  "framework_api": 4,
   "requires": ["graph|outlook"]
 }
 ```
@@ -68,7 +68,7 @@ def register(api) -> None:
     api.register_router(build_router(EntitiesRegistry(api)))
 ```
 
-### What the API offers (v3)
+### What the API offers (v4)
 
 | Call | What it gives you |
 |---|---|
@@ -134,6 +134,13 @@ export default ui;
   react-router.** `pluginHost/api` gives `apiFetch`; `pluginHost/types` gives the
   contract. Importing a framework feature is refused at publish time — it would
   break the next time that feature changed.
+- **Rendering vault text is the host's job** (v4). `pluginHost/noteText` exports
+  `NoteText` -- markdown, real `[[wikilinks]]`, and ```mermaid fences drawn as
+  diagrams -- and `MermaidDiagram` for a screen holding diagram source rather
+  than a note. The framework's own screens render through the same component, so
+  a plugin cannot drift from how the app draws the same file. Writing your own
+  markdown or mermaid renderer is the mistake this replaces; `mermaid` itself
+  stays a host library and a screen importing it is refused.
 - Global CSS classes (`card`, `item-row`, `btn`, `field-labeled`) are the host's
   and are fine to use; a plugin's own styles ship in its `ui/`.
 

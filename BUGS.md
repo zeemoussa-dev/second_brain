@@ -64,6 +64,7 @@ is a thin status mirror of the index table below.
 | BUG-075 | The Outlook capture Skills exist only as deployed copies -- `822a5f6` rewrote meeting-capture from Outlook to Graph in place, so a redeploy from the catalog would break an install without Graph | Logic | Major | Open | 2026-09-22 | — |
 | BUG-076 | The vault index keeps one note per file name, so a same-named note hides another -- a meeting and its same-named invitation message collide, and the meeting disappears from My Day | Logic | Major | Open | 2026-09-22 | — |
 | BUG-077 | The Cockpit fails with a 500 for any subject with a long attachment path -- `cockpit/documents.py` sorts by `Path.stat()` without `long_path`, so one file past Windows' 260 characters takes down the whole Cockpit read | Logic | Critical | Fixed | 2026-09-24 | `79a73e5` |
+| BUG-078 | A plugin screen cannot render a note, so the same diagram draws two different ways -- the host contract had no way to say "render this note", so every plugin shipped its own markdown and mermaid renderers | UI | Major | Fixed | 2026-09-24 | `293725c` |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -1199,13 +1200,14 @@ is a thin status mirror of the index table below.
 
 - **Area:** UI
 - **Severity:** Major
-- **Status:** Open
+- **Status:** Fixed
 - **Found:** 2026-09-24, on the CBO install, immediately after updating to 0.6.0 (`9faefdb`).
 - **Root cause:** `9faefdb` taught the framework's own markdown renderer one more block type, which is the right shape -- but the host contract was not widened with it. `plugins/import_rules.py::_ALLOWED_UI_PACKAGES` is still `react`, `react/jsx-runtime`, `react-router`, relative imports are confined to the plugin's own folder and `pluginHost/`, and `src/pluginHost/` exports only `api.ts`, `registry.ts` and `types.ts`. So a plugin screen can import neither `mermaid` nor `components/MermaidDiagram`, and there is no host component for rendering a note at all: a plugin that shows vault text has always had to write its own markdown renderer, and now that renderer disagrees with the app about the same file.
 - **Repro:** on the reporting install, open `Work/Customers/ADNOC/ADNOC.md` at `/browse/ADNOC` -- two mermaid diagrams, no code fences. Open the same company on a plugin screen (`/strategic-entities/ADNOC`): the plugin's own `Flowchart.tsx` draws its approximation of the same `flowchart TD`.
 - **Expected:** a plugin screen renders a note the way the app does, through the host contract -- `pluginHost` exporting the note renderer (which would also give plugins headings, tables, wikilinks and callouts) or, at least, the diagram component.
 - **Actual:** every plugin duplicates the renderer, and the duplicates now diverge from the framework's. The install's Strategic Entities plugin ships ~190 lines of markdown renderer and ~190 of mermaid renderer purely because the contract has no way to say "render this note".
 - **Note:** this is the second half of `REQ-SB-94`, whose acceptance was explicit -- "a plugin can render the same note the same way without importing anything the installer refuses; and the CBO install's Strategic Entities plugin deletes its own `Flowchart.tsx`". `9faefdb` delivered the first half only. Logged as a defect rather than left in the request because the divergence is live: two screens of one app now draw one vault note differently, which is the outcome the request was raised to prevent. Whichever way it is exported, it wants a `FRAMEWORK_API` note -- adding to `pluginHost` widens the contract plugins are checked against.
+- **Fix:** `pluginHost/noteText` is part of the contract now (`ADR-027`, framework API v4): `NoteText` renders one note's text the way the app does -- markdown, real `[[wikilinks]]` into the note view, ```mermaid fences as diagrams -- and `MermaidDiagram` is exported for a screen holding diagram source rather than a note. The framework's own Cockpit summary renders through the same component and the duplicate `components/NoteLinkedText.tsx` is deleted, so "the way the app does it" is the same code rather than a claim to keep in sync. `mermaid` itself stays a host library: a screen importing it is still refused, with a test for each half. `my-day` 1.4.1 and `entities` 1.0.2 are republished and installed here. The reporting install's Strategic Entities plugin can now delete its own `Flowchart.tsx` and markdown renderer, which is what `REQ-SB-94` asked for. `293725c`.
 
 ### BUG-077 — The Cockpit fails with a 500 for any subject with a long attachment path
 
