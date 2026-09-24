@@ -27,11 +27,18 @@ Second Brain's own backend this time.
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from app.business.core.vault.vault_manager import VaultManager
 from app.config import settings
 from app.vault import vault_manager as vm
+
+_logger = logging.getLogger(__name__)
+
+# What `vault_manager.long_path()` puts in front of a path to get past Windows'
+# 260-character limit; stripped again before a path leaves this module.
+_EXTENDED_PREFIX = "\\\\?\\"
 
 _FILE_TEMPLATE_ID = "file"
 
@@ -52,24 +59,54 @@ def _subject_note_name(subject_note_stem: str) -> str | None:
     return folder.relative_to(settings.vault_path / vm._NOTES_ROOT).as_posix()
 
 
+def _modified_at(path: Path) -> float:
+    """The note's mtime, or 0 when it cannot be stat'd -- an unreachable file
+    sorts last instead of taking the listing down with it."""
+    try:
+        return path.stat().st_mtime
+    except OSError as error:
+        _logger.warning("cockpit: could not stat %s: %s", path.name, error)
+        return 0.0
+
+
+def _plain(path: Path) -> str:
+    """The ordinary form of a path walked through the extended-length prefix, so
+    what leaves this module still compares against `vault_path` like any other."""
+    text = str(path)
+    return text[len(_EXTENDED_PREFIX):] if text.startswith(_EXTENDED_PREFIX) else text
+
+
 def list_documents(subject_note_stem: str) -> list[dict]:
+    """Every attachment captured under this subject's own `Files/` folder.
+
+    Walked through `long_path` (`BUG-077`): an attachment's folder repeats the
+    attachment's own name (`Files/<name>/<name>.md`), so a subject with a long
+    subject line puts that note past Windows' 260-character limit. Without the
+    prefix `stat()` raised `FileNotFoundError` and the whole Cockpit read
+    returned 500 -- no summary, no people, no chat, for 171 of the reporting
+    install's subjects. A document that still cannot be read is skipped, never
+    fatal: a missing attachment row is worth far less than the Cockpit."""
     subject_note_name = _subject_note_name(subject_note_stem)
     if subject_note_name is None:
         return []
-    files_root = settings.vault_path / vm._NOTES_ROOT / subject_note_name / "Files"
+    files_root = Path(vm.long_path(settings.vault_path / vm._NOTES_ROOT / subject_note_name / "Files"))
     if not files_root.is_dir():
         return []
     documents = []
-    for description_note in sorted(files_root.glob("*/*.md"), key=lambda p: p.stat().st_mtime, reverse=True):
+    for description_note in sorted(files_root.glob("*/*.md"), key=_modified_at, reverse=True):
         folder = description_note.parent
         if folder.name != description_note.stem:
             continue
-        frontmatter, _ = vm.read_note(description_note)
-        real_files = [p.name for p in folder.iterdir() if p.is_file() and p != description_note]
+        try:
+            frontmatter, _ = vm.read_note(description_note)
+            real_files = [p.name for p in folder.iterdir() if p.is_file() and p != description_note]
+        except OSError as error:
+            _logger.warning("cockpit: skipping unreadable attachment %s: %s", description_note.name, error)
+            continue
         documents.append({
             "title": frontmatter.get("title", description_note.stem),
             "filename": real_files[0] if real_files else None,
-            "note_path": str(description_note),
+            "note_path": _plain(description_note),
         })
     return documents
 

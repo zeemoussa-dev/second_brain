@@ -113,6 +113,22 @@ def _note_summary(entry: dict) -> str | None:
     return summary.strip() or None
 
 
+def _panel(read, name: str, *arguments) -> list:
+    """One panel's contents, or an empty list when reading it fails.
+
+    A panel is a part of this view, not the whole of it: `list_documents` raising
+    on a path past Windows' 260-character limit returned 500 for the entire
+    Cockpit -- no summary, no people, no chat, for 171 of the reporting install's
+    subjects (`BUG-077`). The underlying path handling is fixed; this makes the
+    shape of that failure impossible to repeat, so the worst a broken panel can
+    do is come back empty with the reason in the log."""
+    try:
+        return read(*arguments)
+    except Exception:
+        _logger.exception("cockpit: the %s panel failed for %r; shown empty", name, arguments[-1])
+        return []
+
+
 def build_cockpit_view(subject_kind: str, subject_note_stem: str) -> dict:
     """Raises UnknownSubjectError if the note isn't indexed."""
     entry = _vault_manager.get_index().get(subject_note_stem)
@@ -121,11 +137,11 @@ def build_cockpit_view(subject_kind: str, subject_note_stem: str) -> dict:
     summary = _note_summary(entry)
     return {
         "subject": _enriched_subject(subject_kind, entry),
-        "people": people.resolve_people_chips(subject_kind, subject_note_stem),
+        "people": _panel(people.resolve_people_chips, "people", subject_kind, subject_note_stem),
         "overview": {
             "summary": summary,
             "summary_links": _summary_links(summary),
-            "related_documents": documents.list_documents(subject_note_stem),
+            "related_documents": _panel(documents.list_documents, "documents", subject_note_stem),
             "articles": [],
         },
         "thread": chat_store.get_thread(subject_kind, subject_note_stem),
