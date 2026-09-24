@@ -18,6 +18,12 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix(vault)!: every note is indexed, not one per file name (`BUG-076`, `ADR-028`, framework API v5). The index was a single dict keyed by filename stem, and Obsidian allows the same name in different folders -- a meeting and the invitation email captured under the meeting's own name collide, and whichever the walk reached last erased the other from counts, listings, tags, the graph, search and both plugins. My Day listed four of the day's five meetings; 100 notes across 19 names collide on this install. The rebuild now keeps a list of every note beside the by-name map, everything that iterates reads the list, and the map's winner is a documented rule (the subject note, then the shallower path, then alphabetically) instead of walk order. Semantic search is deliberately untouched: its store is keyed by stem on disk and fixing it means re-embedding.
+
+  **Breaking for installs:** `FRAMEWORK_API` 4 -> 5, and `vault.entries()` joins `vault.index()`. `my-day` 1.5.0 and `entities` 1.0.3 are published here; install both after pulling.
+
+- chore: VERSION 0.7.0 -> 0.8.0. MINOR: the host contract gained a call and the index gained a view; pre-1.0, with the reinstall called out above.
+
 - feat(plugins)!: a plugin screen renders a note the way the app does -- `pluginHost/noteText` exports `NoteText` and `MermaidDiagram` (`BUG-078`, `ADR-027`, framework API v4). Teaching the framework ```mermaid fences without widening the contract left plugins unable to import either the renderer or mermaid, so every plugin showing vault text wrote its own markdown renderer -- and those copies then drew the same note differently from the app (~380 duplicated lines in the reporting install's Strategic Entities plugin). The framework's Cockpit summary now renders through the same component, and the duplicate `NoteLinkedText` is gone. `mermaid` stays a host library: a screen importing it directly is still refused.
 
   **Breaking for installs:** `FRAMEWORK_API` 3 -> 4. `my-day` 1.4.1 and `entities` 1.0.2 are published here; install both after pulling.
