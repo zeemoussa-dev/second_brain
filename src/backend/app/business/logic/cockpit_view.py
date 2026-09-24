@@ -15,6 +15,8 @@ import logging
 from app.business.cockpit import chat_store, documents, people
 from app.business.core.plugins.plugin_manager import PluginManager
 from app.business.core.vault.vault_manager import VaultManager
+from app.obsidian import sections
+from app.obsidian.notes import long_path
 
 _vault_manager = VaultManager()
 _plugin_manager = PluginManager()
@@ -62,6 +64,29 @@ def _enriched_subject(subject_kind: str, entry: dict) -> dict:
     return subject
 
 
+_SUMMARY_HEADER = "## Summary"
+
+
+def _note_summary(entry: dict) -> str | None:
+    """The subject note's own Summary section, or None when it has none yet.
+
+    Read from the note rather than composed here: a Thread's summary is written
+    by the `summarize-and-tag-threads` Skill, and showing it is just surfacing
+    what the vault already holds -- this stays an honest reader, never a
+    fabricated overview (operator, 2026-09-24: "Thread Summary is not
+    loading"). A Meeting note has the same section and nothing writes it yet,
+    so meetings keep reading empty until something does.
+
+    `long_path` because a recurring meeting's note sits deep enough to pass
+    Windows' 260-character limit, where a plain open() fails."""
+    try:
+        summary = sections.read_body_section(long_path(entry["path"]), _SUMMARY_HEADER)
+    except OSError as error:
+        _logger.warning("could not read the Summary section of %s: %s", entry.get("stem"), error)
+        return None
+    return summary.strip() or None
+
+
 def build_cockpit_view(subject_kind: str, subject_note_stem: str) -> dict:
     """Raises UnknownSubjectError if the note isn't indexed."""
     entry = _vault_manager.get_index().get(subject_note_stem)
@@ -71,7 +96,7 @@ def build_cockpit_view(subject_kind: str, subject_note_stem: str) -> dict:
         "subject": _enriched_subject(subject_kind, entry),
         "people": people.resolve_people_chips(subject_kind, subject_note_stem),
         "overview": {
-            "summary": None,
+            "summary": _note_summary(entry),
             "related_documents": documents.list_documents(subject_note_stem),
             "articles": [],
         },

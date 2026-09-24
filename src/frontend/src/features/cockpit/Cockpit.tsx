@@ -106,6 +106,18 @@ function ChatMessage({
   );
 }
 
+// "Still fetching" is not the same claim as "there is nothing here", and the
+// Cockpit used to make the second one while it made the first (operator,
+// 2026-09-24). `role="status"` so a screen reader hears it too.
+function LoadingLine({ label }: { label: string }) {
+  return (
+    <p className="text-muted cockpit-loading" role="status">
+      <span className="cockpit-loading-dots" aria-hidden="true"><span /><span /><span /></span>
+      {label}…
+    </p>
+  );
+}
+
 function DocumentRow({ doc }: { doc: CockpitDocument }) {
   return (
     <div className="item-row" key={doc.note_path}>
@@ -323,6 +335,14 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
   // Words may contain spaces between them ("@compass pricing"), but a trailing
   // space means the mention is finished and the question has started, so the
   // list closes rather than hanging over the rest of the sentence.
+  // `data`/`experts` are null until their fetch lands. Rendering the empty state
+  // in the meantime reads as "there is nothing here", which is a different claim
+  // from "not known yet" -- and it made every panel flash empty before jumping to
+  // real content (operator, 2026-09-24).
+  const loading = data === null;
+  const expertsLoading = experts === null;
+  const count = (value: number | undefined) => (loading ? '' : ` (${value ?? 0})`);
+
   const mentionQuery = /^@([\w.\-]*(?:[ \t]+[\w.\-]+)*)$/.exec(draft)?.[1]?.toLowerCase() ?? null;
   const mentionCandidates = mentionQuery === null ? [] : allExperts
     .filter((agent) => {
@@ -370,15 +390,15 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
           <div className="cockpit-panel">
             <div className="cockpit-section">
               <h3>{subjectKind === 'meeting' ? 'Meeting summary' : 'Email summary'}</h3>
-              {data?.overview.summary ? (
+              {loading ? <LoadingLine label="Loading the summary" /> : data?.overview.summary ? (
                 <p>{data.overview.summary}</p>
               ) : (
                 <p className="text-muted">No prep summary yet.</p>
               )}
             </div>
             <div className="cockpit-section">
-              <h3>People ({data?.people.length ?? 0})</h3>
-              {data?.people.length ? (
+              <h3>People{count(data?.people.length)}</h3>
+              {loading ? <LoadingLine label="Loading the people" /> : data?.people.length ? (
                 <div className="action-list">
                   {data.people.map((person) => <PersonChip person={person} onOpen={setOpenPersonStem} key={person.email} />)}
                 </div>
@@ -387,8 +407,8 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
               )}
             </div>
             <div className="cockpit-section">
-              <h3>Related documents ({data?.overview.related_documents.length ?? 0})</h3>
-              {data?.overview.related_documents.length ? (
+              <h3>Related documents{count(data?.overview.related_documents.length)}</h3>
+              {loading ? <LoadingLine label="Loading the documents" /> : data?.overview.related_documents.length ? (
                 <div className="item-list">
                   {data.overview.related_documents.map((doc) => <DocumentRow doc={doc} key={doc.note_path} />)}
                 </div>
@@ -397,8 +417,8 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
               )}
             </div>
             <div className="cockpit-section">
-              <h3>Articles ({data?.overview.articles.length ?? 0})</h3>
-              {data?.overview.articles.length ? (
+              <h3>Articles{count(data?.overview.articles.length)}</h3>
+              {loading ? <LoadingLine label="Loading the articles" /> : data?.overview.articles.length ? (
                 <div className="item-list">
                   {data.overview.articles.map((article) => (
                     <div className="item-row" key={article.url}>
@@ -428,7 +448,7 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
                 empty note, so the input row stays pinned at the bottom
                 either way. */}
             <div className="chat-thread">
-              {data?.thread.messages.length ? (
+              {loading ? <LoadingLine label="Loading the conversation" /> : data?.thread.messages.length ? (
                 data.thread.messages.map((message, index) => {
                   const parent = message.reply_to_message_id
                     ? data.thread.messages.find((m) => m.id === message.reply_to_message_id)
@@ -540,7 +560,7 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
         {tab === 'people' && (
           <div className="cockpit-panel">
             <h3>{subjectKind === 'meeting' ? 'Attendees' : 'People on this email'}</h3>
-            {data?.people.length ? (
+            {loading ? <LoadingLine label="Loading the people" /> : data?.people.length ? (
               <div className="action-list">
                 {data.people.map((person) => <PersonChip person={person} onOpen={setOpenPersonStem} key={person.email} />)}
               </div>
@@ -553,7 +573,7 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
         {tab === 'documents' && (
           <div className="cockpit-panel">
             <h3>Documents</h3>
-            {data?.overview.related_documents.length ? (
+            {loading ? <LoadingLine label="Loading the documents" /> : data?.overview.related_documents.length ? (
               <div className="item-list">
                 {data.overview.related_documents.map((doc) => <DocumentRow doc={doc} key={doc.note_path} />)}
               </div>
@@ -604,7 +624,7 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
           >
             {inChat.length > 0 ? 'Bring in another Expert' : 'Experts'}
           </div>
-          {available.length ? (
+          {expertsLoading ? <LoadingLine label="Loading the Experts" /> : available.length ? (
             <div className="item-list">
               {available.map((agent) => (
                 <ExpertRow agent={agent} key={agent.id} title="Bring into this chat" onClick={() => bringIn(agent.id)} />
@@ -617,11 +637,13 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
       ) : (
         <div className="cockpit-panel">
           <h3>{subjectKind === 'meeting' ? 'Meeting info' : 'Email info'}</h3>
-          <div className="kv-list">
-            {withPluginCockpitInfoFields(subjectKind, infoFields).map(({ label, key }) => (
-              <div className="kv-row" key={key}><span className="kv-key">{label}</span><span>{String(data?.subject[key] ?? '')}</span></div>
-            ))}
-          </div>
+          {loading ? <LoadingLine label="Loading" /> : (
+            <div className="kv-list">
+              {withPluginCockpitInfoFields(subjectKind, infoFields).map(({ label, key }) => (
+                <div className="kv-row" key={key}><span className="kv-key">{label}</span><span>{String(data?.subject[key] ?? '')}</span></div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
