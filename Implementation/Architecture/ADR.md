@@ -2852,3 +2852,51 @@ Strategic Entities plugin carries ~380 lines of duplicate renderer for this reas
   whether a plugin can render it too.
 - `pluginHost/` now exports components, not just types and `apiFetch`. That is a wider
   surface to keep stable: anything exported there is a promise to every installed plugin.
+
+
+---
+
+## ADR-028: The vault index is two views -- every note, and one note per name
+
+**Status:** Accepted
+**Date:** 2026-09-25
+
+**Context:** the vault index has always been one dict keyed by a note's filename stem.
+Obsidian allows the same name in different folders, and the capture pipeline produces
+exactly that: a meeting note `2026-09-22-Masdar-Core42.md` and, under its Thread's
+`messages/` folder, the invitation email captured under the same name. Whichever the
+walk reached last won the key and the other note ceased to exist for every reader --
+counts, listings, tags, the graph, search, and both plugins. My Day listed four of the
+day's five meetings (`BUG-076`); on the reporting install 100 notes across 19 names
+collide, three of them meetings.
+
+Re-keying the index by path was the obvious fix and the wrong one: the stem *is* the
+address elsewhere -- a `[[wikilink]]`, a Cockpit URL, a Thread's subject-note lookup all
+name a note by its stem. Re-keying would have broken every one of those.
+
+**Decision:**
+
+- **The index is two views of the same rebuild.** `get_entries()` is the list of every
+  note, one entry per file. `get_index()` stays a map keyed by stem, for looking a note
+  up by name.
+- **Iterating means `get_entries()`.** Counting, listing, filtering, tags, graph nodes
+  and search all read the list. Nothing that must see every note reads the map.
+- **The map's winner is deterministic and documented:** a note whose parent folder is
+  named after it wins (the subject note -- a meeting in its own folder beats a message
+  inside a Thread's folder), then the shallower path, then the path alphabetically. It
+  no longer depends on walk order, so a rebuild cannot silently change what a wikilink
+  resolves to.
+- **The Plugin API gains `vault.entries()` and `FRAMEWORK_API` moves 4 -> 5.** `index()`
+  keeps its meaning rather than quietly changing under installed plugins; its docstring
+  now says what it is not for.
+
+**Consequences:**
+
+- `my-day` 1.5.0 and `entities` 1.0.3 sweep `entries()`; the day view lists hidden
+  meetings again and a Customer hub sharing its name still resolves.
+- **Semantic search is not fixed by this.** Its vector store is keyed by stem on disk,
+  so a hidden note is still unsearchable there; changing that means re-embedding the
+  vault and is its own change.
+- Two notes may legitimately share a name, so "the note called X" is now a choice the
+  framework makes rather than a fact. The rule above is that choice, in one function
+  (`_is_preferred`), with a test that pins it against walk order.

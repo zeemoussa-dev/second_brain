@@ -26,8 +26,11 @@ v4 puts RENDERING VAULT TEXT in the contract: `pluginHost/noteText` exports
 `NoteText` (markdown, real links, ```mermaid fences as diagrams -- the same
 component the framework's own screens use) and `MermaidDiagram` on its own. Before
 it, a plugin showing a note had to write its own markdown renderer, and once the
-framework learned mermaid the two drew the same note differently (`BUG-078`). A new
-capability is added here when a plugin needs one. The host loads only
+framework learned mermaid the two drew the same note differently (`BUG-078`).
+
+v5 adds `vault.entries()`: every note, including ones that share a name. `index()`
+holds one note per name, so listing or counting through it silently drops the rest
+(`BUG-076`). A new capability is added here when a plugin needs one. The host loads only
 plugins built for its exact `FRAMEWORK_API`, so a plugin that relies on a
 capability is never loaded by a framework that lacks it, and every installed
 plugin is republished when the version moves.
@@ -45,7 +48,7 @@ from app.business.core.vault.vault_manager import VaultManager
 from app.business.hermes.client import get_client
 from app.data_access import seed_data, vault_writer
 
-FRAMEWORK_API = 4
+FRAMEWORK_API = 5
 
 # `enricher(subject_kind, frontmatter, tags) -> {field: value}`. Cockpit calls it
 # while composing a view of a note (`BUG-063` seam).
@@ -70,10 +73,24 @@ def _relative_path(path: str, what: str) -> str:
 
 class VaultApi:
     def index(self) -> dict[str, dict]:
-        """Every indexed note keyed by filename stem, each with `path`, `stem`,
-        `frontmatter`, `tags` and its wikilinks. The mapping is a copy, but its
-        entries are the framework's live index: treat them as read-only."""
+        """Notes by filename stem -- ONE per name -- each with `path`, `stem`,
+        `frontmatter`, `tags` and its wikilinks. For looking a note up by the name
+        a wikilink or a URL gives you.
+
+        **Not for listing or counting**: Obsidian allows the same name in
+        different folders, and this map can only hold one of them -- a meeting and
+        its own invitation email share a name, and My Day listed four of five
+        meetings for exactly that reason (`BUG-076`). Use `entries()` when the
+        question is "all the notes".
+
+        The mapping is a copy, but its entries are the framework's live index:
+        treat them as read-only."""
         return dict(VaultManager().get_index())
+
+    def entries(self) -> list[dict]:
+        """Every indexed note, including ones sharing a name with another (v5).
+        Same entry shape as `index()`, and the same read-only rule."""
+        return list(VaultManager().get_entries())
 
     def notes_in_kind(self, kind: str) -> list:
         """Paths of the notes in one kind folder under `Work/` (e.g. `Tasks`)."""

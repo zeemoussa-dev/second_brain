@@ -72,6 +72,9 @@ from app.data_access import vault_writer
 # ---------------------------------------------------------------------------
 
 _vault_index: dict[str, dict] = {}
+# Every indexed note, including ones whose name another note also has. The map
+# above can only hold one per name; this is what "all the notes" means.
+_vault_entries: list[dict] = []
 _last_rebuilt_at: str | None = None
 
 
@@ -220,6 +223,21 @@ def _bm25_term_score(term: str, doc_tokens: list[str], avg_len: float, doc_freq:
     return idf * (numerator / denominator)
 
 
+def _is_preferred(candidate: dict, current: dict) -> bool:
+    """Which of two notes sharing a name the by-stem map should hold.
+
+    A note whose folder is named after it is that folder's subject -- the
+    meeting, the thread, the customer. A note sitting inside someone else's
+    folder (an invitation email under a Thread's `messages/`) is a part of it, so
+    it loses. Ties break on depth then alphabetically, so the answer is stable
+    across rebuilds rather than an accident of walk order."""
+    def rank(entry: dict) -> tuple:
+        path = Path(entry["path"])
+        return (0 if path.parent.name == path.stem else 1, len(path.parts), str(path))
+
+    return rank(candidate) < rank(current)
+
+
 class VaultManager:
     def __init__(self) -> None:
         self._template_manager = TemplateManager()
@@ -234,14 +252,23 @@ class VaultManager:
         to end, then atomically reassigns the module-level reference --
         a single-reference rebind is safe under CPython's GIL, no
         explicit lock needed."""
-        global _vault_index, _last_rebuilt_at
+        global _vault_index, _vault_entries, _last_rebuilt_at
+        new_entries: list[dict] = [_build_entry(path) for path in vault_writer.list_all_note_paths()]
+
+        # Every note is kept in `new_entries`; the by-stem map holds one per name
+        # (`BUG-076`). Obsidian allows the same name in different folders, and the
+        # map used to keep whichever note was walked last -- a meeting and its own
+        # invitation email share a name, so the meeting simply vanished from every
+        # reader, My Day included. 100 notes across 19 names collide on the
+        # reporting install.
         new_index: dict[str, dict] = {}
-        for path in vault_writer.list_all_note_paths():
-            entry = _build_entry(path)
-            new_index[entry["stem"]] = entry
+        for entry in new_entries:
+            current = new_index.get(entry["stem"])
+            if current is None or _is_preferred(entry, current):
+                new_index[entry["stem"]] = entry
 
         stems_by_lower_stem = {stem.lower(): stem for stem in new_index}
-        for entry in new_index.values():
+        for entry in new_entries:
             for target in entry["outgoing_wikilinks"]:
                 matched_stem = stems_by_lower_stem.get(target.lower())
                 if matched_stem is None or matched_stem == entry["stem"]:
@@ -251,14 +278,28 @@ class VaultManager:
                     backlinks.append(entry["stem"])
 
         _vault_index = new_index
+        _vault_entries = new_entries
         _last_rebuilt_at = datetime.now(timezone.utc).isoformat()
         return _vault_index
 
     def get_index(self) -> dict[str, dict]:
-        """Plain whole-dict accessor -- no filter/query parameters.
-        Deliberately not a browse/search API itself (ADR-024's own
-        Non-Goals boundary) -- `vault_search.py` builds that on top."""
+        """Every note by name -- ONE per name, so a lookup by stem (a wikilink
+        target, a Cockpit subject in a URL) has a single answer.
+
+        Where two notes share a name, the subject note wins: the one whose folder
+        is named after it, then the shallowest path, then alphabetical -- always
+        the same note across rebuilds, never "whichever was walked last"
+        (`BUG-076`). **Counting or listing notes belongs in `get_entries()`**:
+        this map cannot hold the ones it loses to a collision.
+
+        Deliberately not a browse/search API itself (ADR-024's own Non-Goals
+        boundary) -- `vault_search.py` builds that on top."""
         return _vault_index
+
+    def get_entries(self) -> list[dict]:
+        """Every indexed note, collisions included -- what to iterate over when
+        the question is "all the notes" rather than "the note called X"."""
+        return _vault_entries
 
     def get_last_rebuilt_at(self) -> str | None:
         """ISO-8601 UTC timestamp of the most recent successful
@@ -272,7 +313,7 @@ class VaultManager:
         fresh disk scan."""
         work_root = settings.vault_path / "Work"
         folder_counts: dict[str, int] = {}
-        for entry in _vault_index.values():
+        for entry in _vault_entries:
             try:
                 relative = Path(entry["path"]).relative_to(work_root)
             except ValueError:
@@ -280,7 +321,7 @@ class VaultManager:
             top = relative.parts[0] if relative.parts else "(Work root)"
             folder_counts[top] = folder_counts.get(top, 0) + 1
         return Vault(
-            total_notes=len(_vault_index),
+            total_notes=len(_vault_entries),
             last_rebuilt_at=_last_rebuilt_at,
             folder_counts=dict(sorted(folder_counts.items(), key=lambda kv: -kv[1])),
         )
@@ -343,7 +384,7 @@ class VaultManager:
         Sorted by stem -- the one field every entry always has. An empty
         result (no notes at all, or a real tag with zero matches)
         returns "notes": [] honestly."""
-        entries = list(self.get_index().values())
+        entries = list(self.get_entries())
         if tag is not None:
             entries = [entry for entry in entries if tag in entry["tags"]]
         entries.sort(key=lambda entry: entry["stem"])
@@ -360,7 +401,7 @@ class VaultManager:
         """The real, current list of tags that actually exist in the
         index (with counts), sorted by count descending then tag name."""
         counts: dict[str, int] = {}
-        for entry in self.get_index().values():
+        for entry in self.get_entries():
             for tag in entry["tags"]:
                 counts[tag] = counts.get(tag, 0) + 1
         tags = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
@@ -430,7 +471,7 @@ class VaultManager:
         filtering and name search are the frontend's own client-side
         concern over this one fetched snapshot."""
         index = self.get_index()
-        nodes = [_summary(entry) for entry in index.values()]
+        nodes = [_summary(entry) for entry in self.get_entries()]
         edges = [
             {"source": entry["stem"], "target": matched_stem}
             for entry in index.values()
@@ -483,7 +524,7 @@ class VaultManager:
         code path."""
         query_tokens = _tokenize(query)
         index = self.get_index()
-        entries = list(index.values())
+        entries = list(self.get_entries())
         if not query_tokens or not entries:
             return {"query": query, "results": []}
 

@@ -35,7 +35,7 @@ tests/                       its own tests: run on publish, never packaged
   "name": "My Day",
   "description": "Your day at a glance.",
   "version": "1.3.0",
-  "framework_api": 4,
+  "framework_api": 5,
   "requires": ["graph|outlook"]
 }
 ```
@@ -68,11 +68,12 @@ def register(api) -> None:
     api.register_router(build_router(EntitiesRegistry(api)))
 ```
 
-### What the API offers (v4)
+### What the API offers (v5)
 
 | Call | What it gives you |
 |---|---|
-| `api.vault.index()` | Every indexed note by stem: `path`, `stem`, `frontmatter`, `tags`, wikilinks |
+| `api.vault.entries()` | **Every note**, one per file: `path`, `stem`, `frontmatter`, `tags`, wikilinks. Use this to list, count, filter or sweep |
+| `api.vault.index()` | **One note per name**, for looking a note up by stem (a wikilink, a URL). Notes sharing a name are not all in here -- never list or count from it |
 | `api.vault.notes_in_kind(kind)` | Paths of the notes in one `Work/<kind>/` folder |
 | `api.vault.read_note(path)` | `(frontmatter, body)` |
 | `api.pipelines.get(id)` | `id`, `name`, `cron_job_id`, `cron_profile_id`, or None |
