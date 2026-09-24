@@ -5218,40 +5218,22 @@ instruction. Findings 1-2 were re-verified against the code first. What shipped:
 
 ### REQ-SB-93: A Plugin Needs to Create and Delete the Expert Agent Its Feature Is Built On
 
-Raised 2026-09-24 from the CBO install, while building the Strategic Entities plugin
-(`sb-plugins-strategic-entities`: a short list of the companies that matter, where adding
-one creates an Expert scoped to that company's folder and tags, and removing one deletes
-it again).
+**WITHDRAWN 2026-09-24, raised in error the same day.** The framework already
+does this: `POST /agents` (`agents_router.py`) creates an agent through
+`AgentManager.create()` -- the real `hermes profile create` **and** the
+Registry's `Agent.json`/`soul.md` -- taking `id`, `name`, `section_id`, `type`,
+`prompt`, `scope`, `tools` and `clone_from`, and `DELETE /agents/{id}` undoes
+both halves. The Strategic Entities plugin now calls exactly that from its own
+screen, and its Expert appears in the Agents Map and answers in Cockpit.
 
-**Finding 1 - `api.agents` can only read.** `AgentsApi.list_experts()` returns every Expert
-agent; there is nothing that creates one, edits its soul or removes it. The whole point of
-this plugin is that adding an entity gives it an Expert, so the feature has no supported
-path at all.
+What was actually checked before raising this was `app/plugin_api.py`, whose
+`AgentsApi` only lists Experts. That facade is for a plugin's **backend**; a
+plugin's **screen** is handed `apiFetch` and may call the app's own API like any
+other part of the frontend. Looking at one half and reporting the feature
+missing wasted the operator's time and nearly bought a Hermes job nobody needed
+(operator, 2026-09-24: "the Plugin can use the API for Creating Agents in the
+framework I don't know why you asked for extra feature for that").
 
-**Finding 2 - a plugin cannot find where agents live, either.** An agent is
-`<data root>/Sections/<section>/Agents/<id>/{Agent.json, soul.md}` (`registry/loader.py`),
-and the data root is `settings.second_brain_data_path`. A plugin may import only
-`app.plugin_api` (`ADR-022`), which exposes no path: `api.data` reads and writes files the
-plugin registered, and never says where they are. `SECOND_BRAIN_DATA_PATH` is not an
-answer either -- the backend reads it through pydantic's `env_file`, so it is in
-`settings`, not in `os.environ`.
-
-**What the install does meanwhile.** The plugin asks a Hermes agent to do it: the request
-goes into the plugin's own data file and a cron job in the install's repository writes the
-agent folder. It works, and it is the same shape the Action Center's Chase button already
-uses -- but creating an agent is not a mail-sending job, and it should not need a model or
-a scheduler to happen.
-
-**What is wanted.**
-
-- `api.agents.create_expert(section_id, id, name, soul, *, icon=None, skill_ids=())` and
-  `api.agents.delete(agent_id)`, both refusing to touch an agent the plugin did not
-  create -- a plugin should no more be able to delete the Customers hub than it can
-  delete another plugin's data file.
-- Whatever the framework does for the registry's hot reload after such a write, so the
-  new Expert answers without a restart.
-
-**Acceptance.** A plugin creates an Expert, the agent appears in the Agents Map and answers
-in Cockpit within the registry's poll interval, the plugin deletes it again, and neither
-call can name an agent belonging to the framework or to another plugin.
+Kept as a record of the mistake rather than deleted: the next person reading
+`plugin_api.py` will reach for the same conclusion.
 
