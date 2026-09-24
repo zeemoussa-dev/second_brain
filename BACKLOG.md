@@ -116,6 +116,7 @@ the analyst at `/spec` and by the product-owner at `/plan-sprints`.
 | REQ-SB-90 | Deploy Skills Provisioned Into an Install's Config Folder, Not Only Skills Shipped in the Framework Catalog | — | — | — | Superseded by REQ-SB-91 (ADR-022) |
 | REQ-SB-91 | Plugin Host and Marketplace — Install Solution Pieces From Settings Instead of Shipping Them in the Framework | — | — | — | — |
 | REQ-SB-92 | Install a Plugin From Its Own Repository, Without Publishing Into the Framework | — | — | — | Delivered 2026-09-21 (ADR-024): install and update from a git repository at a ref, or a folder |
+| REQ-SB-93 | A Plugin Needs to Create and Delete the Expert Agent Its Feature Is Built On | — | — | — | — |
 
 ---
 
