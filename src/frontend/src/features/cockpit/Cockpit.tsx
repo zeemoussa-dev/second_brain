@@ -145,8 +145,14 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
   // selection state, never persisted itself -- only the resulting
   // `reply_to_message_id` sent with the next message is.
   const [replyToMessageId, setReplyToMessageId] = useState<string | null>(null);
+  // The @mention picker's highlighted row. The list of candidates is derived
+  // from the draft, so it needs no state of its own.
+  const [mentionHighlight, setMentionHighlight] = useState(0);
   const pollTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Picking an Expert from the @mention list puts focus back where the
+  // operator was typing.
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     fetchCockpit(subjectKind, subjectNoteStem).then(setData);
@@ -237,6 +243,27 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
   // auto-submit its form on Enter the way a single <input> does, so this
   // handler is what makes plain Enter still send.
   const handleDraftKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionCandidates.length > 0) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const step = event.key === 'ArrowDown' ? 1 : -1;
+        setMentionHighlight((current) =>
+          (current + step + mentionCandidates.length) % mentionCandidates.length);
+        return;
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        // Enter picks the highlighted Expert rather than sending a half-typed
+        // mention -- the message goes out on the next Enter.
+        event.preventDefault();
+        insertMention(mentionCandidates[Math.min(mentionHighlight, mentionCandidates.length - 1)].id);
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setDraft('');
+        return;
+      }
+    }
     if (event.key === 'Enter' && !event.shiftKey && !event.altKey) {
       event.preventDefault();
       handleSend(event);
@@ -247,6 +274,7 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
   // ceiling as AgentChatPanel.tsx.
   const handleDraftChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
     setDraft(event.target.value);
+    setMentionHighlight(0);
     const el = event.target;
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, _CHAT_INPUT_MAX_HEIGHT_PX)}px`;
@@ -286,6 +314,29 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
   const inChat = allExperts.filter((agent) => broughtInIds.has(agent.id));
   const recommended = allExperts.filter((agent) => recommendedIds.has(agent.id) && !broughtInIds.has(agent.id));
   const available = allExperts.filter((agent) => !broughtInIds.has(agent.id) && !recommendedIds.has(agent.id));
+
+  // The Experts an @mention could name, while the draft is still on its first
+  // word. The backend resolves a leading mention only (chat_turn._leading_mention),
+  // so the picker closes as soon as the mention is complete and a space is typed.
+  // Inserting the id rather than the display name is deliberate: an id has no
+  // spaces, so it survives editing the sentence around it.
+  // Words may contain spaces between them ("@compass pricing"), but a trailing
+  // space means the mention is finished and the question has started, so the
+  // list closes rather than hanging over the rest of the sentence.
+  const mentionQuery = /^@([\w.\-]*(?:[ \t]+[\w.\-]+)*)$/.exec(draft)?.[1]?.toLowerCase() ?? null;
+  const mentionCandidates = mentionQuery === null ? [] : allExperts
+    .filter((agent) => {
+      const query = mentionQuery.replace(/[^a-z0-9]/g, '');
+      return !query || agent.id.replace(/[^a-z0-9]/g, '').includes(query)
+        || agent.name.toLowerCase().replace(/[^a-z0-9]/g, '').includes(query);
+    })
+    .slice(0, 8);
+
+  const insertMention = (agentId: string) => {
+    setDraft(`@${agentId} `);
+    setMentionHighlight(0);
+    textareaRef.current?.focus();
+  };
 
   const bringIn = (id: string) => {
     bringInAgent(subjectKind, subjectNoteStem, id).then((thread) => {
@@ -406,8 +457,8 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
               ))}
             </div>
             <p className="chat-mention-hint text-muted">
-              Tip: start with <code>@expert-name</code> to send straight to a specific Expert.
-              Shift+Enter for a new line.
+              Tip: type <code>@</code> to pick an Expert and send straight to them —
+              ↑/↓ to choose, Enter to insert. Shift+Enter for a new line.
             </p>
             {/* REQ-SB-82-US-06-T07 -- Scenario 8: `replyToMessage` is
                 undefined the moment `replyToMessageId` no longer resolves
@@ -451,7 +502,26 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
               >
                 <span className="material-symbols-outlined" aria-hidden="true">attach_file</span>
               </button>
+              {mentionCandidates.length > 0 && (
+                <ul className="chat-mention-picker" data-testid="cockpit-mention-picker">
+                  {mentionCandidates.map((agent, index) => (
+                    <li key={agent.id}>
+                      <button
+                        type="button"
+                        className={`chat-mention-option${index === mentionHighlight ? ' chat-mention-option--active' : ''}`}
+                        data-testid={`cockpit-mention-${agent.id}`}
+                        onMouseEnter={() => setMentionHighlight(index)}
+                        onClick={() => insertMention(agent.id)}
+                      >
+                        <span className="chat-mention-name">{agent.name}</span>
+                        <span className="chat-mention-id">@{agent.id}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
               <textarea
+                ref={textareaRef}
                 className="input chat-message-input"
                 placeholder="Ask a question… (@mention to redirect)"
                 rows={3}

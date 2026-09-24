@@ -310,3 +310,51 @@
   padding: var(--space-3);
   margin-bottom: var(--space-3);
 }
+
+/* @mention picker (2026-09-24): the Cockpit chat told the operator to "start
+   with @expert-name" but never showed the names, and an Expert's display name
+   has spaces, so a mention typed by hand resolved to nothing. The list floats
+   above the composer rather than sitting in its flex row. */
+.chat-input-row { position: relative; }
+
+.chat-mention-picker {
+  position: absolute;
+  bottom: calc(100% + var(--space-2));
+  left: 0;
+  right: 0;
+  z-index: 5;
+  margin: 0;
+  padding: var(--space-1);
+  list-style: none;
+  max-height: 15rem;
+  overflow-y: auto;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--color-text) 18%, transparent);
+}
+
+.chat-mention-option {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-mention-option--active,
+.chat-mention-option:hover { background: var(--color-accent-muted); }
+
+.chat-mention-name { font-weight: 600; }
+
+.chat-mention-id {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+}

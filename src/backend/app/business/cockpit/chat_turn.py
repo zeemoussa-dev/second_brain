@@ -109,7 +109,18 @@ _RESEARCH_AGENT_ID = "research-agent"
 
 # A leading @mention only -- mirrors ordinary chat-mention UX and avoids
 # mis-firing on an unrelated "@" mid-sentence (e.g. a pasted email).
-_MENTION_RE = re.compile(r"^@([\w.-]+)\s*")
+#
+# What follows the "@" is a set of CANDIDATE words, not the mention itself: an
+# agent's display name has spaces in it ("Compass Pricing Expert"), and the
+# single-token pattern this replaces captured only "compass", which resolves to
+# no agent -- so a mention typed the way a person says the name was silently
+# ignored and the question went to the moderator instead (found live on a real
+# thread, 2026-09-24).
+_MENTION_RE = re.compile(r"^@([\w.\-]+(?:[ \t]+[\w.\-]+)*)")
+
+# The longest real display name is three words ("Compass Pricing Expert"); four
+# leaves room for one more without letting a mention swallow half a sentence.
+_MENTION_MAX_WORDS = 4
 
 # Decomposer-authored, pre-authorized detection vocabulary (story's own
 # "Decomposer-authored scope-internal judgement calls" section) -- a fixed
@@ -169,6 +180,25 @@ def _resolve_mention(token: str) -> str | None:
     for summary in agents_map_adapter.list_agent_summaries():
         if _mention_key(summary["id"]) == key or _mention_key(summary["name"]) == key:
             return summary["id"]
+    return None
+
+
+def _leading_mention(text: str) -> str | None:
+    """The agent a leading @mention names, or None.
+
+    Tries the longest run of words first, so "@Compass Pricing Expert what is
+    ..." resolves to that Expert rather than to a shorter agent whose name is a
+    prefix of it. Only whole words are considered, and only a real agent id or
+    display name resolves -- everything else leaves routing to the moderator,
+    exactly as before."""
+    match = _MENTION_RE.match(text)
+    if not match:
+        return None
+    words = match.group(1).split()
+    for count in range(min(_MENTION_MAX_WORDS, len(words)), 0, -1):
+        agent_id = _resolve_mention(" ".join(words[:count]))
+        if agent_id:
+            return agent_id
     return None
 
 
@@ -273,8 +303,7 @@ async def send_user_message(
             "answering": {"agent_id": last_answering_agent_id, "agent_name": _agent_name(last_answering_agent_id)},
         }
 
-    mention_match = _MENTION_RE.match(text)
-    mentioned_agent_id = _resolve_mention(mention_match.group(1)) if mention_match else None
+    mentioned_agent_id = _leading_mention(text)
 
     brought_in_agent_ids = list(thread["brought_in_agent_ids"])
     if mentioned_agent_id:
