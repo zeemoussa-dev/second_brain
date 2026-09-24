@@ -1196,6 +1196,19 @@ is a thin status mirror of the index table below.
 - **Note:** the Outlook 0.1.0 source is recoverable from `822a5f6^`. Where it belongs -- back in the framework catalog under `outlook/`, beside the Graph version, or in the agent repository whose install uses Outlook -- is an operator decision. Until then, do not redeploy either capture Skill to such an install.
 - **Progress (2026-09-22):** the operator placed the Outlook engine in the agent repository: `sb-pss-agent` `4a15074`, `data/Tools/outlook/Skills/meeting-capture` 0.3.0 -- the framework's current engine with `outlook_lib.py` restored (the engine core never changed; only the calendar import did). It was verified against a scratch copy of the vault and deployed by hand to the default profile, the stale copy quarantined. Still open for the framework: its deploy path knows only its own catalog, so a framework redeploy of `meeting-capture` would still overwrite the install's copy; 40 other profiles on that install still carry the stale Outlook copy; `email-thread-capture` has the same shape.
 
+### BUG-079 — A `[[wikilink]]` is a link only where a surface remembered to resolve it
+
+- **Area:** UI
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-09-25, on the CBO install (operator: "We need to work on a Generic Fix for the `[[ ]]` to be rendered as links").
+- **Root cause:** `wikilinksToMarkdown(text, stems)` asks its caller for the answer -- which targets are real notes -- so linking works only where somebody remembered to find them, and each surface finds them differently: the vault browser from the note's `forwardLinks`, the Cockpit summary from `summary_links`, and a plugin from whatever it can compute (the CBO install's Strategic Entities plugin added a `resolved_stems` field to its own API purely to answer this). Nothing resolves them centrally, so a new surface starts with brackets and stays that way until someone notices.
+- **Repro:** ask an agent anything in Chat that makes it cite a note; `ChatMessageText.tsx` renders markdown with `remark-gfm` and never calls `wikilinksToMarkdown`, so `[[ADNOC]]` shows as `[[ADNOC]]`. Agents write wikilinks constantly -- it is how the Skills are told to refer to notes.
+- **Expected:** a wikilink renders as a link to the note wherever vault text is shown -- chat, note bodies, Cockpit, plugin screens -- without the caller supplying anything; a target that is not a note still renders as its plain alias, as it does today.
+- **Actual:** it links in two of the framework's surfaces, and in a plugin only if that plugin builds its own resolver.
+- **Note:** the same defect as `BUG-078` one level up: the shared piece takes an answer instead of finding it. Resolving in `NoteText`/`ChatMessageText` needs a way to ask which of a handful of targets exist -- this install's vault indexes 18,808 notes, so shipping every stem to the browser is the wrong shape; a small batch resolve (`POST /vault-search/resolve` with the targets a text actually contains, cached per session) is enough, since a note mentions a dozen at most. `resolvedStems` can stay as an override for a caller that already knows.
+- **Acceptance:** `[[ADNOC]]` typed by an agent in Chat is a link; a plugin gets the same by rendering `NoteText` with nothing extra; and the CBO install's Strategic Entities plugin drops the `resolved_stems` it computes today.
+
 ### BUG-078 — A plugin screen cannot render a note, so the same diagram draws two different ways
 
 - **Area:** UI
