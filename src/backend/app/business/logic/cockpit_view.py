@@ -79,8 +79,11 @@ def _note_summary(entry: dict) -> str | None:
 
     `long_path` because a recurring meeting's note sits deep enough to pass
     Windows' 260-character limit, where a plain open() fails."""
+    path = entry.get("path")
+    if not path:
+        return None
     try:
-        summary = sections.read_body_section(long_path(entry["path"]), _SUMMARY_HEADER)
+        summary = sections.read_body_section(long_path(path), _SUMMARY_HEADER)
     except OSError as error:
         _logger.warning("could not read the Summary section of %s: %s", entry.get("stem"), error)
         return None
