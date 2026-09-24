@@ -1,4 +1,4 @@
-import { apiFetch } from '../../api/client';
+import { ApiError, apiFetch } from '../../api/client';
 
 export interface CockpitPersonChip {
   name: string;
@@ -139,4 +139,66 @@ export function addPersonNote(stem: string, text: string): Promise<{ line: strin
     method: 'POST',
     body: JSON.stringify({ text }),
   });
+}
+
+// Streaming turn (2026-09-24) -- the Cockpit's own twin of the agent chat's
+// `streamChatMessage`. Routing asks the LLM moderator who should answer, and
+// that used to happen inside the plain POST, so the composer sat on "Sending…"
+// for a whole model round-trip and the reply then arrived in one lump via
+// polling. This shows the turn as it happens.
+export type CockpitStreamEvent =
+  | { type: 'routing' }
+  | { type: 'answering'; answering: { agent_id: string; agent_name: string } | null; thread: CockpitThread }
+  | { type: 'activity'; text: string }
+  | { type: 'delta'; text: string }
+  | { type: 'complete'; text: string }
+  | { type: 'error'; detail: string }
+  | { type: 'done'; thread: CockpitThread };
+
+// Raw fetch rather than apiFetch, for the same reason agentsApiClient's own
+// streaming call uses one: apiFetch awaits and parses a whole JSON body.
+const STREAM_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8001';
+
+export async function streamMessage(
+  subjectKind: string,
+  stem: string,
+  text: string,
+  onEvent: (event: CockpitStreamEvent) => void,
+  replyToMessageId?: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch(
+    `${STREAM_BASE_URL}/cockpit/${subjectKind}/${encodeURIComponent(stem)}/message/stream`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(replyToMessageId ? { text, reply_to_message_id: replyToMessageId } : { text }),
+      signal,
+    },
+  );
+  if (!response.ok || !response.body) {
+    throw new ApiError(response.status, await response.text());
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    // A frame can arrive split across chunks, so only complete ones (ending in
+    // a blank line) are parsed; the remainder waits for the rest.
+    let separatorIndex: number;
+    while ((separatorIndex = buffer.indexOf('\n\n')) !== -1) {
+      const rawFrame = buffer.slice(0, separatorIndex);
+      buffer = buffer.slice(separatorIndex + 2);
+      const dataLine = rawFrame.split('\n').find((line) => line.startsWith('data: '));
+      if (!dataLine) continue;
+      try {
+        onEvent(JSON.parse(dataLine.slice('data: '.length)) as CockpitStreamEvent);
+      } catch {
+        // One malformed frame never kills the turn.
+      }
+    }
+  }
 }

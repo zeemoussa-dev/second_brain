@@ -93,11 +93,14 @@ concept of it and runs exactly as it always has.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import string
+from collections.abc import AsyncIterator
 
 from app.business.cockpit import chat_store, moderator
 from app.business.hermes import agents_map_adapter, chat_sessions
+from app.business.logic import agent_chat_stream
 from app.business.hermes.client import HermesUnavailableError
 from app.data_access import compass_client
 
@@ -269,8 +272,78 @@ async def _dispatch_reply(
     chat_store.set_last_answering_agent(subject_kind, subject_note_stem, agent_id, _agent_name(agent_id))
 
 
+def _sse(payload: dict) -> str:
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+async def stream_user_message(
+    subject_kind: str, subject_note_stem: str, text: str, reply_to_message_id: str | None = None,
+) -> AsyncIterator[str]:
+    """One turn, streamed: the same routing as `send_user_message`, then the
+    chosen Expert's reply as it is written, persisted when it completes.
+
+    Why this exists (operator, 2026-09-24: "The Cockpit Gets Stuck at Sending Now
+    Streaming like the rest of the System"): routing asks the LLM moderator which
+    Expert should answer, and that call ran INSIDE the POST, so the composer sat
+    on "Sending…" for a whole model round-trip with nothing on screen. Then the
+    reply itself arrived by 5-second polling, all at once. Every other chat
+    surface here streams (`agent_chat_stream`), and this now uses that same path.
+
+    Frames: `routing` (sent before any model call, so the UI can react at once),
+    `answering` with who was chosen and the thread including the user's own
+    message, then `activity`/`delta`/`complete`/`error` straight from
+    `agent_chat_stream`, and a final `done` carrying the persisted thread.
+
+    The reply is persisted HERE rather than by `_dispatch_reply`, which is why
+    routing runs with `dispatch=False`: two writers would append the answer
+    twice."""
+    yield _sse({"type": "routing"})
+
+    routed = await send_user_message(
+        subject_kind, subject_note_stem, text, reply_to_message_id=reply_to_message_id, dispatch=False,
+    )
+    answering = routed.get("answering")
+    yield _sse({"type": "answering", "answering": answering, "thread": routed["thread"]})
+    if answering is None:
+        # Scenario 6: nobody is in the room and there is no fallback. The system
+        # message explaining that is already in the thread above.
+        yield _sse({"type": "done", "thread": routed["thread"]})
+        return
+
+    agent_id = answering["agent_id"]
+    streamed: list[str] = []
+    final_text: str | None = None
+    failure: str | None = None
+    async for frame in agent_chat_stream.stream_chat_turn(agent_id, text):
+        yield frame
+        payload = json.loads(frame[len("data: "):])
+        if payload.get("type") == "delta":
+            streamed.append(payload.get("text", ""))
+        elif payload.get("type") == "complete":
+            final_text = payload.get("text", "")
+        elif payload.get("type") == "error":
+            failure = payload.get("detail", "the turn failed")
+
+    # Whatever actually arrived is what gets persisted: the complete frame when
+    # there was one, else the streamed pieces, else an honest note that the turn
+    # failed -- never a silent empty message.
+    reply_text = final_text if final_text is not None else "".join(streamed)
+    if not reply_text.strip():
+        reply_text = f"{_agent_name(agent_id)} couldn't be reached: {failure}" if failure else (
+            f"{_agent_name(agent_id)} didn't reply."
+        )
+    chat_store.append_message(
+        subject_kind, subject_note_stem, speaker="agent", text=reply_text,
+        agent_id=agent_id, agent_name=_agent_name(agent_id),
+        reply_to_message_id=routed.get("question_message_id"),
+    )
+    chat_store.set_last_answering_agent(subject_kind, subject_note_stem, agent_id, _agent_name(agent_id))
+    yield _sse({"type": "done", "thread": chat_store.get_thread(subject_kind, subject_note_stem)})
+
+
 async def send_user_message(
     subject_kind: str, subject_note_stem: str, text: str, reply_to_message_id: str | None = None,
+    dispatch: bool = True,
 ) -> dict:
     """Appends the user's turn, decides who answers, and dispatches that
     reply in the BACKGROUND -- returns almost immediately with
@@ -278,6 +351,11 @@ async def send_user_message(
     | None} so the caller can show "X is typing..." without waiting on the
     real Hermes turn. `answering` is None only for the honest no-Experts-
     brought-in case (Scenario 6), which needs no reply dispatch at all.
+
+    `dispatch=False` decides who answers and stops there, returning the same
+    shape plus `question_message_id`, so the streaming turn
+    (`stream_user_message`) can own the reply itself instead of racing a
+    background task that would persist the same answer twice.
 
     `reply_to_message_id` (REQ-SB-82-US-06-T05, optional) is resolved
     against the CURRENT thread's own messages into real text fed into the
@@ -295,12 +373,14 @@ async def send_user_message(
     # falls straight through to the unchanged routing logic below instead.
     last_answering_agent_id = thread.get("last_answering_agent_id")
     if last_answering_agent_id and _is_short_low_signal_reply(text):
-        asyncio.create_task(
-            _dispatch_reply(subject_kind, subject_note_stem, last_answering_agent_id, user_message["id"], text)
-        )
+        if dispatch:
+            asyncio.create_task(
+                _dispatch_reply(subject_kind, subject_note_stem, last_answering_agent_id, user_message["id"], text)
+            )
         return {
             "thread": chat_store.get_thread(subject_kind, subject_note_stem),
             "answering": {"agent_id": last_answering_agent_id, "agent_name": _agent_name(last_answering_agent_id)},
+            "question_message_id": user_message["id"],
         }
 
     mentioned_agent_id = _leading_mention(text)
@@ -344,7 +424,8 @@ async def send_user_message(
                     subject_kind, subject_note_stem, text, user_message["id"], brought_in_agent_ids,
                 )
                 if resolved_agent_id is None:
-                    return {"thread": chat_store.get_thread(subject_kind, subject_note_stem), "answering": None}
+                    return {"thread": chat_store.get_thread(subject_kind, subject_note_stem), "answering": None,
+                            "question_message_id": user_message["id"]}
                 agent_id = resolved_agent_id
             else:
                 agent_id = _RESEARCH_AGENT_ID
@@ -361,7 +442,8 @@ async def send_user_message(
                     subject_kind, subject_note_stem, text, user_message["id"], brought_in_agent_ids,
                 )
                 if resolved_agent_id is None:
-                    return {"thread": chat_store.get_thread(subject_kind, subject_note_stem), "answering": None}
+                    return {"thread": chat_store.get_thread(subject_kind, subject_note_stem), "answering": None,
+                            "question_message_id": user_message["id"]}
                 agent_id = resolved_agent_id
     else:
         # Phase 5: a brand-new conversation (nobody brought in yet) about a
@@ -380,12 +462,15 @@ async def send_user_message(
                 text="Bring in an Expert before asking a question — use the panel on the right, or @mention one.",
                 reply_to_message_id=user_message["id"],
             )
-            return {"thread": chat_store.get_thread(subject_kind, subject_note_stem), "answering": None}
+            return {"thread": chat_store.get_thread(subject_kind, subject_note_stem), "answering": None,
+                    "question_message_id": user_message["id"]}
 
-    asyncio.create_task(
-        _dispatch_reply(subject_kind, subject_note_stem, agent_id, user_message["id"], text)
-    )
+    if dispatch:
+        asyncio.create_task(
+            _dispatch_reply(subject_kind, subject_note_stem, agent_id, user_message["id"], text)
+        )
     return {
         "thread": chat_store.get_thread(subject_kind, subject_note_stem),
         "answering": {"agent_id": agent_id, "agent_name": _agent_name(agent_id)},
+        "question_message_id": user_message["id"],
     }

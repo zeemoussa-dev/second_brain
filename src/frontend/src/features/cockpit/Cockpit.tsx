@@ -3,7 +3,7 @@ import { fetchAgentList, isBackgroundAgent, type AgentSummary } from '../agents-
 import { getVisualIconName } from '../agents-map/visualOptions';
 import { Link } from 'react-router';
 import {
-  bringInAgent, fetchCockpit, removeAgent, sendMessage, uploadDocument,
+  bringInAgent, fetchCockpit, removeAgent, streamMessage, uploadDocument,
   type CockpitChatMessage, type CockpitData, type CockpitDocument, type CockpitMessage,
 } from './cockpitApiClient';
 import { NoteLinkedText } from '../../components/NoteLinkedText';
@@ -16,27 +16,11 @@ import { withPluginCockpitInfoFields } from '../../pluginHost/registry';
 // to 5 lines") -- reused verbatim so both chat surfaces behave the same.
 const _CHAT_INPUT_MAX_HEIGHT_PX = 132;
 
-// How long to keep polling for a dispatched reply -- EVERY reply (a
-// routed Expert or the Research Agent fallback) is dispatched in the
-// background now (REQ-SB-82-US-04), so this governs all of them, not just
-// research. Window (5s x 72 = 360s) matches chat_sessions.py's own
-// _CHAT_TURN_TIMEOUT_S -- found live that a real web-research turn
-// (actual tool calls, not a canned reply) routinely runs multiple
-// minutes, well past an initially-assumed 60s window.
-const _REPLY_POLL_INTERVAL_MS = 5000;
-const _REPLY_POLL_MAX_ATTEMPTS = 72;
-
 // Same "truncated quote" convention AgentChatPanel.tsx's own reply-to
 // preview (REQ-SB-82-US-06-T08, already Done) uses for its own,
 // independently-built mechanism -- same user-facing verb/shape per
 // ADR-012 points 4/5, not a shared component.
 const _REPLY_PREVIEW_MAX_CHARS = 140;
-
-interface PendingAnswer {
-  messageId: string;
-  agentId: string;
-  agentName: string;
-}
 
 type CockpitTab = 'overview' | 'chat' | 'emails' | 'people' | 'documents' | 'articles';
 
@@ -164,12 +148,6 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
   const [openPersonStem, setOpenPersonStem] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
-  // Who's currently being asked, keyed by the question's own message id --
-  // an array (not one value) since a second message can be sent, and
-  // routed to a DIFFERENT agent, while an earlier one is still pending
-  // (Scenario 3: never blocked). Rendered as "X is typing..." (operator,
-  // 2026-08-26: "You need to show me what's happening").
-  const [answering, setAnswering] = useState<PendingAnswer[]>([]);
   const [uploading, setUploading] = useState(false);
   // REQ-SB-82-US-06-T07 -- which earlier message the next Send should
   // mark as a reply-to hint (ADR-012 point 4: a strong hint into the
@@ -180,7 +158,12 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
   // The @mention picker's highlighted row. The list of candidates is derived
   // from the draft, so it needs no state of its own.
   const [mentionHighlight, setMentionHighlight] = useState(0);
-  const pollTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+  // The reply currently streaming in: its text so far and who is writing it.
+  // Replaced by the persisted message the moment the turn completes.
+  const [streamingReply, setStreamingReply] = useState<{ agentName: string; text: string } | null>(null);
+  // What the turn is doing before any text exists -- "Routing…", then Hermes'
+  // own activity notes. This is the part that used to be a silent "Sending…".
+  const [turnActivity, setTurnActivity] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Picking an Expert from the @mention list puts focus back where the
   // operator was typing.
@@ -189,35 +172,7 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
   useEffect(() => {
     fetchCockpit(subjectKind, subjectNoteStem).then(setData);
     fetchAgentList().then(setExperts);
-    return () => {
-      pollTimeoutsRef.current.forEach(clearTimeout);
-      pollTimeoutsRef.current.clear();
-    };
   }, [subjectKind, subjectNoteStem]);
-
-  // Every dispatched reply (a routed Expert or the Research Agent
-  // fallback) lands in the background with no push mechanism -- polls for
-  // its threaded reply, stopping once it's seen or after
-  // _REPLY_POLL_MAX_ATTEMPTS (also clearing its own "typing" entry either way).
-  const pollForAnswer = (pendingMessageId: string, attemptsLeft: number) => {
-    if (attemptsLeft <= 0) {
-      setAnswering((current) => current.filter((a) => a.messageId !== pendingMessageId));
-      return;
-    }
-    const timeoutId = setTimeout(() => {
-      pollTimeoutsRef.current.delete(timeoutId);
-      fetchCockpit(subjectKind, subjectNoteStem).then((fresh) => {
-        setData(fresh);
-        const arrived = fresh.thread.messages.some((m) => m.reply_to_message_id === pendingMessageId);
-        if (arrived) {
-          setAnswering((current) => current.filter((a) => a.messageId !== pendingMessageId));
-        } else {
-          pollForAnswer(pendingMessageId, attemptsLeft - 1);
-        }
-      });
-    }, _REPLY_POLL_INTERVAL_MS);
-    pollTimeoutsRef.current.add(timeoutId);
-  };
 
   const handleSend = (e: FormEvent | KeyboardEvent) => {
     e.preventDefault();
@@ -247,24 +202,62 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
         }],
       },
     } : current);
-    sendMessage(subjectKind, subjectNoteStem, text, replyToId).then(({ thread, answering: nowAnswering }) => {
-      setData((current) => (current ? { ...current, thread } : current));
-      setSending(false);
-      const userMessage = [...thread.messages].reverse().find((m) => m.speaker === 'user' && m.text === text);
-      if (userMessage?.id && nowAnswering) {
-        setAnswering((current) => [
-          ...current,
-          { messageId: userMessage.id!, agentId: nowAnswering.agent_id, agentName: nowAnswering.agent_name },
-        ]);
-        pollForAnswer(userMessage.id, _REPLY_POLL_MAX_ATTEMPTS);
+    // Streamed, not posted-and-polled: routing asks the LLM moderator who should
+    // answer, and waiting for that inside one request is what left the composer
+    // on "Sending…" with nothing on screen. Every frame is shown as it lands.
+    let answeringName = '';
+    setTurnActivity('Routing');
+    streamMessage(subjectKind, subjectNoteStem, text, (event) => {
+      switch (event.type) {
+        case 'routing':
+          setTurnActivity('Routing');
+          break;
+        case 'answering':
+          // The server's own thread replaces the optimistic append, real id and all.
+          setData((current) => (current ? { ...current, thread: event.thread } : current));
+          if (event.answering) {
+            answeringName = event.answering.agent_name;
+            setTurnActivity(null);
+            setStreamingReply({ agentName: answeringName, text: '' });
+          } else {
+            // Nobody is in the room and there is no fallback: the thread already
+            // carries the system message saying so.
+            setTurnActivity(null);
+          }
+          break;
+        case 'activity':
+          setTurnActivity(event.text);
+          break;
+        case 'delta':
+          setTurnActivity(null);
+          setStreamingReply((current) => ({
+            agentName: current?.agentName ?? answeringName,
+            text: (current?.text ?? '') + event.text,
+          }));
+          break;
+        case 'complete':
+          setStreamingReply({ agentName: answeringName, text: event.text });
+          break;
+        case 'error':
+          setTurnActivity(null);
+          setStreamingReply({ agentName: answeringName, text: event.detail });
+          break;
+        case 'done':
+          // The reply is persisted now, so the live copy gives way to the thread.
+          setStreamingReply(null);
+          setTurnActivity(null);
+          setData((current) => (current ? { ...current, thread: event.thread } : current));
+          break;
       }
-    }).catch(() => {
-      // The user's own message is persisted server-side regardless of
-      // whether routing/the Hermes turn itself failed (chat_turn.py
-      // appends it before routing) -- re-fetch so it shows up rather than
-      // leaving the input stuck on "Sending..." with no visible message.
-      setSending(false);
+    }, replyToId).catch(() => {
+      // The user's own message is persisted server-side regardless of whether
+      // routing or the Hermes turn failed (chat_turn.py appends it before
+      // routing) -- re-fetch so it shows up rather than vanishing.
       fetchCockpit(subjectKind, subjectNoteStem).then(setData);
+    }).finally(() => {
+      setSending(false);
+      setStreamingReply(null);
+      setTurnActivity(null);
     });
   };
 
@@ -490,14 +483,30 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
                   No messages yet. Bring in an Expert, then ask a question below.
                 </p>
               )}
-              {answering.map((a) => (
-                <div className="chat-message chat-message--agent chat-message--typing" key={a.messageId}>
-                  <span className="chat-message-author">{a.agentName}</span>
-                  <span className="typing-indicator" aria-label={`${a.agentName} is typing`}>
+              {/* What the turn is doing before any reply text exists: routing,
+                  then whatever Hermes reports it is up to. */}
+              {turnActivity && (
+                <div className="chat-message chat-message--agent chat-message--typing">
+                  <span className="chat-message-author">{turnActivity}</span>
+                  <span className="typing-indicator" aria-label={turnActivity}>
                     <span /><span /><span />
                   </span>
                 </div>
-              ))}
+              )}
+              {/* The reply as it is written. Replaced by the persisted message
+                  when the turn completes. */}
+              {streamingReply && (
+                <div className="chat-message chat-message--agent">
+                  <span className="chat-message-author">{streamingReply.agentName}</span>
+                  {streamingReply.text ? (
+                    <ChatMessageText text={streamingReply.text} />
+                  ) : (
+                    <span className="typing-indicator" aria-label={`${streamingReply.agentName} is typing`}>
+                      <span /><span /><span />
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             <p className="chat-mention-hint text-muted">
               Tip: type <code>@</code> to pick an Expert and send straight to them —

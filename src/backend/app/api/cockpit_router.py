@@ -21,6 +21,7 @@ no business logic)."""
 from __future__ import annotations
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.business.cockpit import chat_store, chat_turn, notes
@@ -93,6 +94,23 @@ async def send_message(subject_kind: str, subject_note_stem: str, body: SendMess
     _require_known_note(subject_note_stem)
     return await chat_turn.send_user_message(
         subject_kind, subject_note_stem, body.text, reply_to_message_id=body.reply_to_message_id,
+    )
+
+
+@router.post("/{subject_kind}/{subject_note_stem}/message/stream")
+async def stream_message(subject_kind: str, subject_note_stem: str, body: SendMessageBody) -> StreamingResponse:
+    """Streaming twin of `POST .../message` -- same routing, same persistence,
+    but the caller sees the turn as it happens: a `routing` frame before any
+    model call, then who is answering, then the reply as it is written
+    (`agent_chat_stream`'s own frames), then `done` with the persisted thread.
+
+    The non-streaming route stays for callers that want fire-and-forget."""
+    _require_known_note(subject_note_stem)
+    return StreamingResponse(
+        chat_turn.stream_user_message(
+            subject_kind, subject_note_stem, body.text, reply_to_message_id=body.reply_to_message_id,
+        ),
+        media_type="text/event-stream",
     )
 
 
