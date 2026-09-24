@@ -18,6 +18,10 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix(cockpit): the Cockpit opens for a subject whose attachment path passes Windows' 260-character limit (`BUG-077`, reported from the CBO install where it made 171 subjects unusable). An attachment's folder repeats the attachment's own name, so a long subject line pushed `Files/<name>/<name>.md` past the limit; `list_documents` walked it without `long_path`, `stat()` raised, and the whole read returned 500 -- no summary, no people, no chat. It now walks through `long_path` and hands back ordinary paths, skipping an attachment it still cannot read. `build_cockpit_view` also reads its people and documents panels through a wrapper, so a broken panel comes back empty instead of taking the subject down.
+
+- chore: VERSION 0.6.0 -> 0.6.1. PATCH: a fix, nothing new.
+
 - feat(ui): ```mermaid fences render as diagrams wherever the framework renders markdown -- agent chat, note bodies in Browse, Cockpit summaries (`ADR-026`, operator: the CBO agent writes them a lot). One `<pre>` override in `components/markdownBlocks.tsx` serves every surface; `MermaidDiagram` loads mermaid on demand, so pages without a diagram never pay for it. A diagram that does not parse shows the reason and the source rather than vanishing, and a non-mermaid fence stays a code block. mermaid is pinned to 11.17.2: v12 pulls `lodash-es` with two high-severity advisories, while this pins clean (`npm audit`: 0). `securityLevel: 'strict'` is what makes inserting mermaid's generated SVG safe -- the only `dangerouslySetInnerHTML` in the app, and the one documented exception to `ADR-050`.
 
 - chore: VERSION 0.5.0 -> 0.6.0. MINOR: diagram rendering is a new capability, and nothing installed has to change.
