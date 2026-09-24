@@ -2900,3 +2900,49 @@ name a note by its stem. Re-keying would have broken every one of those.
 - Two notes may legitimately share a name, so "the note called X" is now a choice the
   framework makes rather than a fact. The rule above is that choice, in one function
   (`_is_preferred`), with a test that pins it against walk order.
+
+
+---
+
+## ADR-029: Which wikilink targets are notes is one answer, asked for per text
+
+**Status:** Accepted
+**Date:** 2026-09-25
+
+**Context:** `wikilinksToMarkdown(text, stems)` takes the answer from its caller --
+which targets are real notes -- so a `[[wikilink]]` became a link only on a surface
+whose author had remembered to work that out, and each one worked it out differently:
+the note body from its own `forwardLinks`, the Cockpit summary from `summary_links`, a
+plugin from a `resolved_stems` field it added to its own API for the purpose. Chat
+resolved nothing, so the brackets showed -- and chat is where wikilinks are most
+common, because citing notes that way is what the Skills instruct agents to do
+(`BUG-079`). It is `ADR-027`'s defect one level up: the shared piece takes an answer
+instead of finding it.
+
+**Decision:**
+
+- **`POST /vault-search/resolve` answers it**, taking the targets a text contains and
+  returning those that are notes, matched case-insensitively as Obsidian resolves a
+  wikilink and returning the note's real stem.
+- **The renderers ask for themselves.** `NoteText` and `ChatMessageText` resolve the
+  targets in their own text, so a plugin gets working wikilinks by rendering `NoteText`
+  with nothing extra. `resolvedStems` stays as an override for a caller that already
+  holds the answer (the note body, the Cockpit summary).
+- **The text asks about its targets; the index is not shipped to the browser.** An
+  install can index tens of thousands of notes (18,808 on the reporting one) and a text
+  mentions a dozen. Answers are cached for the session and the asks of one render are
+  coalesced into a single request, so opening a chat costs one call, not one per
+  message.
+- **A target that is not a note stays plain text**, unchanged: a link to a note the
+  vault does not have is a promise it cannot keep.
+
+**Consequences:**
+
+- A new surface showing vault text gets wikilinks by default instead of starting with
+  brackets and waiting for someone to notice.
+- The contract is untouched -- `NoteText` was already exported and its new prop
+  behaviour is backwards-compatible -- so `FRAMEWORK_API` stays at 5 and no plugin is
+  republished. A plugin *may* now delete the resolver it built.
+- A note's existence is answered per session, so a note created after a chat is open
+  stays unlinked in messages already rendered until reload. Cheap and acceptable: the
+  alternative is asking again on every render.

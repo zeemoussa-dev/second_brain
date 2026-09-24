@@ -65,6 +65,7 @@ is a thin status mirror of the index table below.
 | BUG-076 | The vault index keeps one note per file name, so a same-named note hides another -- a meeting and its same-named invitation message collide, and the meeting disappears from My Day | Logic | Major | Fixed | 2026-09-22 | `dd2978f` |
 | BUG-077 | The Cockpit fails with a 500 for any subject with a long attachment path -- `cockpit/documents.py` sorts by `Path.stat()` without `long_path`, so one file past Windows' 260 characters takes down the whole Cockpit read | Logic | Critical | Fixed | 2026-09-24 | `79a73e5` |
 | BUG-078 | A plugin screen cannot render a note, so the same diagram draws two different ways -- the host contract had no way to say "render this note", so every plugin shipped its own markdown and mermaid renderers | UI | Major | Fixed | 2026-09-24 | `293725c` |
+| BUG-079 | A `[[wikilink]]` is a link only where a surface remembered to resolve it -- each one resolved targets differently and chat, where agents write them constantly, not at all | UI | Major | Fixed | 2026-09-25 | `eb01ddc` |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -1200,7 +1201,7 @@ is a thin status mirror of the index table below.
 
 - **Area:** UI
 - **Severity:** Major
-- **Status:** Open
+- **Status:** Fixed
 - **Found:** 2026-09-25, on the CBO install (operator: "We need to work on a Generic Fix for the `[[ ]]` to be rendered as links").
 - **Root cause:** `wikilinksToMarkdown(text, stems)` asks its caller for the answer -- which targets are real notes -- so linking works only where somebody remembered to find them, and each surface finds them differently: the vault browser from the note's `forwardLinks`, the Cockpit summary from `summary_links`, and a plugin from whatever it can compute (the CBO install's Strategic Entities plugin added a `resolved_stems` field to its own API purely to answer this). Nothing resolves them centrally, so a new surface starts with brackets and stays that way until someone notices.
 - **Repro:** ask an agent anything in Chat that makes it cite a note; `ChatMessageText.tsx` renders markdown with `remark-gfm` and never calls `wikilinksToMarkdown`, so `[[ADNOC]]` shows as `[[ADNOC]]`. Agents write wikilinks constantly -- it is how the Skills are told to refer to notes.
@@ -1208,6 +1209,7 @@ is a thin status mirror of the index table below.
 - **Actual:** it links in two of the framework's surfaces, and in a plugin only if that plugin builds its own resolver.
 - **Note:** the same defect as `BUG-078` one level up: the shared piece takes an answer instead of finding it. Resolving in `NoteText`/`ChatMessageText` needs a way to ask which of a handful of targets exist -- this install's vault indexes 18,808 notes, so shipping every stem to the browser is the wrong shape; a small batch resolve (`POST /vault-search/resolve` with the targets a text actually contains, cached per session) is enough, since a note mentions a dozen at most. `resolvedStems` can stay as an override for a caller that already knows.
 - **Acceptance:** `[[ADNOC]]` typed by an agent in Chat is a link; a plugin gets the same by rendering `NoteText` with nothing extra; and the CBO install's Strategic Entities plugin drops the `resolved_stems` it computes today.
+- **Fix:** resolution is central (`ADR-029`): `POST /vault-search/resolve` takes the targets a text contains and returns those that are notes, matched case-insensitively as Obsidian does. `NoteText` and `ChatMessageText` ask for themselves, so an agent's `[[ADNOC]]` in Chat is a link and a plugin gets the same by rendering `NoteText` with nothing extra; `resolvedStems` stays an override for a caller that already knows (the note body, the Cockpit summary). The index is deliberately not shipped to the browser -- answers are cached per session and one render's asks are coalesced into one request, so opening a chat costs a single call rather than one per message. A target that is not a note still renders as its plain alias, and an unreachable backend leaves the text readable. Four backend tests; verified in the browser against this install: `[[ADNOC]]` and `[[adnoc|the customer]]` both link to `/browse/Adnoc` (the real stem's casing) and an unknown target stays plain text. The contract is unchanged, so `FRAMEWORK_API` stays at 5 and no plugin needs republishing -- the CBO install's Strategic Entities plugin can drop its `resolved_stems` by simply not passing it. `eb01ddc`.
 
 ### BUG-078 — A plugin screen cannot render a note, so the same diagram draws two different ways
 
