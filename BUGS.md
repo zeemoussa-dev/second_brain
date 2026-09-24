@@ -1195,6 +1195,18 @@ is a thin status mirror of the index table below.
 - **Note:** the Outlook 0.1.0 source is recoverable from `822a5f6^`. Where it belongs -- back in the framework catalog under `outlook/`, beside the Graph version, or in the agent repository whose install uses Outlook -- is an operator decision. Until then, do not redeploy either capture Skill to such an install.
 - **Progress (2026-09-22):** the operator placed the Outlook engine in the agent repository: `sb-pss-agent` `4a15074`, `data/Tools/outlook/Skills/meeting-capture` 0.3.0 -- the framework's current engine with `outlook_lib.py` restored (the engine core never changed; only the calendar import did). It was verified against a scratch copy of the vault and deployed by hand to the default profile, the stale copy quarantined. Still open for the framework: its deploy path knows only its own catalog, so a framework redeploy of `meeting-capture` would still overwrite the install's copy; 40 other profiles on that install still carry the stale Outlook copy; `email-thread-capture` has the same shape.
 
+### BUG-078 — A plugin screen cannot render a note, so the same diagram draws two different ways
+
+- **Area:** UI
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-09-24, on the CBO install, immediately after updating to 0.6.0 (`9faefdb`).
+- **Root cause:** `9faefdb` taught the framework's own markdown renderer one more block type, which is the right shape -- but the host contract was not widened with it. `plugins/import_rules.py::_ALLOWED_UI_PACKAGES` is still `react`, `react/jsx-runtime`, `react-router`, relative imports are confined to the plugin's own folder and `pluginHost/`, and `src/pluginHost/` exports only `api.ts`, `registry.ts` and `types.ts`. So a plugin screen can import neither `mermaid` nor `components/MermaidDiagram`, and there is no host component for rendering a note at all: a plugin that shows vault text has always had to write its own markdown renderer, and now that renderer disagrees with the app about the same file.
+- **Repro:** on the reporting install, open `Work/Customers/ADNOC/ADNOC.md` at `/browse/ADNOC` -- two mermaid diagrams, no code fences. Open the same company on a plugin screen (`/strategic-entities/ADNOC`): the plugin's own `Flowchart.tsx` draws its approximation of the same `flowchart TD`.
+- **Expected:** a plugin screen renders a note the way the app does, through the host contract -- `pluginHost` exporting the note renderer (which would also give plugins headings, tables, wikilinks and callouts) or, at least, the diagram component.
+- **Actual:** every plugin duplicates the renderer, and the duplicates now diverge from the framework's. The install's Strategic Entities plugin ships ~190 lines of markdown renderer and ~190 of mermaid renderer purely because the contract has no way to say "render this note".
+- **Note:** this is the second half of `REQ-SB-94`, whose acceptance was explicit -- "a plugin can render the same note the same way without importing anything the installer refuses; and the CBO install's Strategic Entities plugin deletes its own `Flowchart.tsx`". `9faefdb` delivered the first half only. Logged as a defect rather than left in the request because the divergence is live: two screens of one app now draw one vault note differently, which is the outcome the request was raised to prevent. Whichever way it is exported, it wants a `FRAMEWORK_API` note -- adding to `pluginHost` widens the contract plugins are checked against.
+
 ### BUG-077 — The Cockpit fails with a 500 for any subject with a long attachment path
 
 - **Area:** Logic
