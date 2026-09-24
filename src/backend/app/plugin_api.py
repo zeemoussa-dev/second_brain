@@ -20,7 +20,14 @@ chatting with agents about a subject; what an email or a meeting IS belongs to
 the plugin that understands it (operator, 2026-09-24: "Cockpit is the framework
 Peice as Component for Agents to chat its Used inside myDay which understands
 Emails and Calendar"). A Thread's own emails is My Day's tab, not a framework
-one. A new capability is added here when a plugin needs one. The host loads only
+one.
+
+v4 puts RENDERING VAULT TEXT in the contract: `pluginHost/noteText` exports
+`NoteText` (markdown, real links, ```mermaid fences as diagrams -- the same
+component the framework's own screens use) and `MermaidDiagram` on its own. Before
+it, a plugin showing a note had to write its own markdown renderer, and once the
+framework learned mermaid the two drew the same note differently (`BUG-078`). A new
+capability is added here when a plugin needs one. The host loads only
 plugins built for its exact `FRAMEWORK_API`, so a plugin that relies on a
 capability is never loaded by a framework that lacks it, and every installed
 plugin is republished when the version moves.
@@ -38,7 +45,7 @@ from app.business.core.vault.vault_manager import VaultManager
 from app.business.hermes.client import get_client
 from app.data_access import seed_data, vault_writer
 
-FRAMEWORK_API = 3
+FRAMEWORK_API = 4
 
 # `enricher(subject_kind, frontmatter, tags) -> {field: value}`. Cockpit calls it
 # while composing a view of a note (`BUG-063` seam).

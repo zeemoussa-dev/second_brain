@@ -5,7 +5,7 @@ import {
   bringInAgent, fetchCockpit, removeAgent, streamMessage, uploadDocument,
   type CockpitChatMessage, type CockpitData, type CockpitDocument,
 } from './cockpitApiClient';
-import { NoteLinkedText } from '../../components/NoteLinkedText';
+import { NoteText } from '../../pluginHost/noteText';
 import { PersonNotePanel } from './PersonNotePanel';
 import { ChatMessageText } from '../../components/ChatMessageText';
 import { pluginCockpitTabs, withPluginCockpitInfoFields } from '../../pluginHost/registry';
@@ -393,7 +393,7 @@ export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitPro
             <div className="cockpit-section">
               <h3>{subjectKind === 'meeting' ? 'Meeting summary' : 'Email summary'}</h3>
               {loading ? <LoadingLine label="Loading the summary" /> : data?.overview.summary ? (
-                <NoteLinkedText
+                <NoteText
                   text={data.overview.summary}
                   resolvedStems={(data.overview.summary_links ?? []).map((link) => link.stem)}
                 />

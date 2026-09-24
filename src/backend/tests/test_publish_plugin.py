@@ -245,12 +245,38 @@ def test_screens_may_import_their_own_files_the_host_contract_and_react(tmp_path
         import { Link } from 'react-router';
         import type { PluginUi } from '../../../../pluginHost/types';
         import { apiFetch } from '../../../../pluginHost/api';
+        import { NoteText, MermaidDiagram } from '../../../../pluginHost/noteText';
         import { helper } from '../../helper';
         import './Screen.css';
         const lazy = import('./Other');
     '''))
 
     assert check_plugin_imports.check_plugin_ui(ui, "my-day") == []
+
+
+def test_a_screen_renders_a_note_through_the_host_not_its_own_renderer(tmp_path):
+    """BUG-078: rendering vault text is part of the contract. A plugin that shows a
+    note must be able to render it the way the app does -- the alternative, which
+    the reporting install lived, is every plugin shipping its own markdown and
+    mermaid renderers and then disagreeing with the app about the same file."""
+    ui = write_ui(tmp_path, "Company.tsx", textwrap.dedent('''
+        import { NoteText } from '../../pluginHost/noteText';
+        export function Company({ text }: { text: string }) {
+          return <NoteText text={text} />;
+        }
+    '''))
+
+    assert check_plugin_imports.check_plugin_ui(ui, "strategic-entities") == []
+
+
+def test_a_screen_still_may_not_import_mermaid_itself(tmp_path):
+    """The library stays the host's: a plugin bundling its own copy is the drift
+    the boundary exists to stop, and the host already exports the diagram."""
+    ui = write_ui(tmp_path, "Flowchart.tsx", "import mermaid from 'mermaid';\n")
+
+    [violation] = check_plugin_imports.check_plugin_ui(ui, "strategic-entities")
+
+    assert "mermaid" in violation
 
 
 def test_screens_may_not_escape_into_another_plugin_or_the_framework(tmp_path):
