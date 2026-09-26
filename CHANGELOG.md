@@ -18,6 +18,14 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat(plugins)!: a plugin can read a subject the way the Cockpit does -- `vault.attachments()` and `vault.read_section()`, plus `pluginHost/apiUrl` (`ADR-030`, framework API v6). Both reads are vault conventions with traps in them (an attachment folder repeats its own long name and passes Windows' path limit), so a plugin re-deriving them drifts from the framework -- My Day had already copied one workaround. `resolve_asset_path` walks through `long_path` with them: without it every attachment on a subject with a long subject line 404s, the read side of `BUG-077`.
+
+  My Day 1.6.1 turns the Emails tab into a reader with them: the thread's summary, its emails opening in place to read the captured text, and the files that came attached opening as the real file (operator, 2026-09-25: "We need to make the email more useful").
+
+  **Breaking for installs:** `FRAMEWORK_API` 5 -> 6. `my-day` 1.6.1 and `entities` 1.0.4 are published here; install both after pulling.
+
+- chore: VERSION 0.8.1 -> 0.9.0. MINOR: the host contract gained capabilities; pre-1.0, with the reinstall called out above.
+
 - fix(vault): a `[[wikilink]]` is a link wherever vault text is shown (`BUG-079`, `ADR-029`). `wikilinksToMarkdown` asked its caller which targets were real notes, so linking worked only where somebody had remembered to find them and each surface found them differently -- chat, where agents write wikilinks constantly, resolved nothing and showed the brackets. `POST /vault-search/resolve` answers it centrally; `NoteText` and `ChatMessageText` ask for themselves, so a plugin gets working wikilinks by rendering `NoteText` with nothing extra. Answers are cached per session and one render's asks are coalesced into one request -- an install with 18,808 notes never ships its index to the browser. No contract change: `FRAMEWORK_API` stays at 5 and no plugin needs republishing.
 
 - chore: VERSION 0.8.0 -> 0.8.1. PATCH: a fix, with no contract or feature change.

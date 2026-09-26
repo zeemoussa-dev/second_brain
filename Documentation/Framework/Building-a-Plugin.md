@@ -35,7 +35,7 @@ tests/                       its own tests: run on publish, never packaged
   "name": "My Day",
   "description": "Your day at a glance.",
   "version": "1.3.0",
-  "framework_api": 5,
+  "framework_api": 6,
   "requires": ["graph|outlook"]
 }
 ```
@@ -68,7 +68,7 @@ def register(api) -> None:
     api.register_router(build_router(EntitiesRegistry(api)))
 ```
 
-### What the API offers (v5)
+### What the API offers (v6)
 
 | Call | What it gives you |
 |---|---|
@@ -76,6 +76,8 @@ def register(api) -> None:
 | `api.vault.index()` | **One note per name**, for looking a note up by stem (a wikilink, a URL). Notes sharing a name are not all in here -- never list or count from it |
 | `api.vault.notes_in_kind(kind)` | Paths of the notes in one `Work/<kind>/` folder |
 | `api.vault.read_note(path)` | `(frontmatter, body)` |
+| `api.vault.read_section(path, header)` | One named body section (`"Summary"`), or None. The `##` is optional |
+| `api.vault.attachments(stem)` | The files captured under a subject's own `Files/` folder: `title`, `filename`, `note_path` |
 | `api.pipelines.get(id)` | `id`, `name`, `cron_job_id`, `cron_profile_id`, or None |
 | `api.hermes.run_cron_job(job, profile)` | Fires a cron job now; returns when the trigger is sent |
 | `api.agents.list_experts()` | Expert agents: `id`, `name`, `description`, `section_id` |
@@ -132,9 +134,10 @@ export default ui;
   about a subject, and what an email or a meeting IS belongs to the plugin that
   understands it. A Thread's own emails is My Day's tab.
 - **Screens may import only their own files, `src/pluginHost/`, and react /
-  react-router.** `pluginHost/api` gives `apiFetch`; `pluginHost/types` gives the
-  contract. Importing a framework feature is refused at publish time — it would
-  break the next time that feature changed.
+  react-router.** `pluginHost/api` gives `apiFetch` and `apiUrl` (an absolute
+  backend URL, for an `<a href>` or `<img src>` the browser fetches for itself —
+  v6); `pluginHost/types` gives the contract. Importing a framework feature is
+  refused at publish time — it would break the next time that feature changed.
 - **Rendering vault text is the host's job** (v4). `pluginHost/noteText` exports
   `NoteText` -- markdown, real `[[wikilinks]]`, and ```mermaid fences drawn as
   diagrams -- and `MermaidDiagram` for a screen holding diagram source rather

@@ -2946,3 +2946,48 @@ instead of finding it.
 - A note's existence is answered per session, so a note created after a chat is open
   stays unlinked in messages already rendered until reload. Cheap and acceptable: the
   alternative is asking again on every render.
+
+
+---
+
+## ADR-030: A subject's attachments and a note's sections are host reads, not plugin ones
+
+**Status:** Accepted
+**Date:** 2026-09-26
+
+**Context:** My Day's Emails tab listed subjects and linked away; reading the mail,
+its summary or what came attached meant opening the Cockpit (operator, 2026-09-25:
+"the emails tab should include the related documents ... as well as the emails it
+self the thread summary. We need to make the email more useful"). Two of those three
+are vault conventions the framework already reads for its own Cockpit: an attachment
+lives at `Files/<name>/<name>.md` beside the real file, and a note's `Summary` is a
+markdown section a Skill writes. Both carry traps -- an attachment folder repeats its
+own long name and passes Windows' 260-character limit (`BUG-077`) -- and the plugin
+had already copied one workaround (`_long_path`) for the `messages/` folder.
+
+**Decision:**
+
+- **`vault.attachments(stem)` and `vault.read_section(path, header)` join the Plugin
+  API (v6).** The first is the Cockpit's own `list_documents`; the second the section
+  reader its summary uses. A plugin asks rather than re-derives.
+- **`pluginHost/apiUrl` joins the frontend contract.** A screen that links to a file
+  the backend serves needs an absolute URL, and the base URL is the framework's
+  configuration, not a plugin's to guess.
+- **What a Thread IS stays the plugin's.** My Day still knows that a Thread is made of
+  emails in `messages/`, that `thread_name` is its subject line and that its stem is a
+  conversation id. `ADR-025`'s line holds: the vault's shape is the framework's, the
+  meaning of an email is My Day's.
+- **`FRAMEWORK_API` moves 5 -> 6.**
+
+**Consequences:**
+
+- The Emails tab is a reader: list beside thread, summary and bodies rendered through
+  `NoteText` (so `[[wikilinks]]` in a summary are links, `ADR-029`), attachments opening
+  as the real file.
+- `resolve_asset_path` walks through `long_path` now. Without it, every attachment on a
+  subject with a long subject line would have 404'd -- the read side of `BUG-077`, found
+  by building on it rather than by a report.
+- Fourth contract bump in three days (`my-day` 1.6.1, `entities` 1.0.4 republished). Each
+  one has been a capability a plugin genuinely needed, but the pattern says the v1 surface
+  was drawn around one plugin's first screen. Worth a deliberate pass over what a plugin
+  should be able to read, rather than another bump per screen.
