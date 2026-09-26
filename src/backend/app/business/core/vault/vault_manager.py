@@ -65,6 +65,7 @@ from app.business.core.vault.vault import Vault
 from app.config import settings
 from app.data_access import vault_index_config as vault_index_config_data
 from app.data_access import vault_writer
+from app.obsidian.notes import long_path
 
 # ---------------------------------------------------------------------------
 # In-memory note index (folded in from vault_indexing.py) -- module-level
@@ -526,7 +527,11 @@ class VaultManager:
             return None
         note_dir = Path(entry["path"]).resolve().parent
         candidate = (note_dir / filename).resolve()
-        if candidate.parent != note_dir or not candidate.is_file():
+        # A captured attachment's folder repeats the attachment's own name, so a
+        # long subject line puts the real file past Windows' 260-character limit,
+        # where `is_file()` answers False instead of raising -- the file would
+        # simply 404 (`BUG-077`'s shape, on the read side of an asset).
+        if candidate.parent != note_dir or not Path(long_path(candidate)).is_file():
             return None
         return candidate
 

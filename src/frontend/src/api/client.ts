@@ -4,6 +4,12 @@
 // absent -- rendered a blank screen with only ERR_CONNECTION_REFUSED to go on.
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8001';
 
+/** The absolute URL of a backend path, for an <a href> or <img src> that the
+ * browser fetches for itself rather than `apiFetch` returning JSON. */
+export function apiUrl(path: string): string {
+  return `${BASE_URL}${path}`;
+}
+
 export class ApiError extends Error {
   status: number;
 

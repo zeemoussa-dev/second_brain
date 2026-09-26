@@ -30,25 +30,39 @@ framework learned mermaid the two drew the same note differently (`BUG-078`).
 
 v5 adds `vault.entries()`: every note, including ones that share a name. `index()`
 holds one note per name, so listing or counting through it silently drops the rest
-(`BUG-076`). A new capability is added here when a plugin needs one. The host loads only
+(`BUG-076`).
+
+v6 lets a plugin show a subject the way the Cockpit does: `vault.attachments()` (the
+files captured under a subject's own `Files/` folder) and `vault.read_section()` (a
+named body section, such as the `Summary` a Skill wrote). Both are vault conventions
+with real traps in them -- an attachment folder repeats its own long name and passes
+Windows' path limit (`BUG-077`) -- so a plugin that re-derives them drifts from the
+framework. `pluginHost/apiUrl` comes with it, for linking to a file the backend
+serves rather than fetching it. A new capability is added here when a plugin needs one. The host loads only
 plugins built for its exact `FRAMEWORK_API`, so a plugin that relies on a
 capability is never loaded by a framework that lacks it, and every installed
 plugin is republished when the version moves.
 """
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 
 from fastapi import APIRouter
 
+from app.business.cockpit import documents
 from app.business.core.agents.agent_manager import AgentManager
 from app.business.core.pipelines.pipeline_manager import PipelineManager
 from app.business.core.sections.section_manager import SectionManager
 from app.business.core.vault.vault_manager import VaultManager
 from app.business.hermes.client import get_client
 from app.data_access import seed_data, vault_writer
+from app.obsidian import sections
+from app.obsidian.notes import long_path
 
-FRAMEWORK_API = 5
+FRAMEWORK_API = 6
+
+_logger = logging.getLogger(__name__)
 
 # `enricher(subject_kind, frontmatter, tags) -> {field: value}`. Cockpit calls it
 # while composing a view of a note (`BUG-063` seam).
@@ -99,6 +113,35 @@ class VaultApi:
     def read_note(self, path) -> tuple[dict, str]:
         """`(frontmatter, body)` for one note."""
         return vault_writer.read_note(path)
+
+    def read_section(self, path, header: str) -> str | None:
+        """One named section of a note's body (`"Summary"`, `"Details"`), or None
+        when the note has no such section (v6). The name may be given with or
+        without its `##`, so a plugin need not know what level a section is.
+
+        A section is where a Skill writes what it learned -- a Thread's summary is
+        the `Summary` section, written by `summarize-and-tag-threads` -- so a
+        plugin showing one is surfacing what the vault already holds. Reading it
+        through here rather than parsing the body keeps one definition of what a
+        section is, and gets Windows' 260-character limit handled for free."""
+        header_line = header if header.lstrip().startswith("#") else f"## {header}"
+        try:
+            section = sections.read_body_section(long_path(path), header_line)
+        except OSError as error:
+            _logger.warning("plugin api: could not read section %r of %s: %s", header, path, error)
+            return None
+        return section.strip() or None
+
+    def attachments(self, subject_note_stem: str) -> list[dict]:
+        """The files captured under a subject's own `Files/` folder (v6), newest
+        first: `title`, `filename` (the real file beside the note, or None) and
+        `note_path`.
+
+        An attachment is a vault convention, not one plugin's idea of one: the
+        Cockpit's uploads and `capture-files` both write this shape, and walking
+        it correctly means knowing about `Files/<name>/<name>.md` and Windows'
+        path limit (`BUG-077`). A plugin re-deriving that drifts from it."""
+        return documents.list_documents(subject_note_stem)
 
 
 class PipelinesApi:
