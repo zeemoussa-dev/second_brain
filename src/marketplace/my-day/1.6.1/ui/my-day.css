@@ -1,0 +1,134 @@
+/* My Day's own layout. The list vocabulary it renders with (.item-list,
+   .item-row, .btn-link, .card, .empty-state) belongs to the framework. */
+
+.my-day-navigator {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-3) 0 var(--space-4);
+}
+
+.my-day-navigator-current {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.my-day-navigator-day {
+  font-weight: 600;
+  font-size: var(--font-size-lg);
+}
+
+.my-day-window-range {
+  margin-left: auto;
+  font-size: var(--font-size-sm);
+}
+
+.day-section-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+}
+
+.day-section-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.day-section-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-accent);
+}
+
+.day-section-count {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  margin: var(--space-2) 0;
+}
+
+/* The Emails tab: a list beside a reader. Below ~900px the reader simply
+   follows the list, so a narrow window keeps both rather than hiding one. */
+
+.my-day-emails-split {
+  display: grid;
+  grid-template-columns: minmax(240px, 340px) 1fr;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .my-day-emails-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.my-day-email-index {
+  position: sticky;
+  top: var(--space-4);
+  max-height: calc(100vh - 8rem);
+  overflow-y: auto;
+}
+
+.my-day-email-index-row {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.my-day-email-index-row.is-selected {
+  border-color: var(--color-accent);
+  background: var(--color-surface-2, rgba(127, 127, 127, 0.08));
+}
+
+.my-day-thread-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.my-day-thread-section {
+  margin-top: var(--space-4);
+}
+
+.my-day-email-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.my-day-email-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: var(--space-2) 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.my-day-email-head-main {
+  display: flex;
+  flex-direction: column;
+}
+
+.my-day-email-body {
+  padding: 0 0 var(--space-3) var(--space-5);
+  border-left: 2px solid var(--color-border);
+  margin-left: var(--space-3);
+}
+
+.my-day-email-from {
+  font-size: var(--font-size-sm);
+  margin-top: 0;
+}
