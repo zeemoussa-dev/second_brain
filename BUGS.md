@@ -1197,6 +1197,18 @@ is a thin status mirror of the index table below.
 - **Note:** the Outlook 0.1.0 source is recoverable from `822a5f6^`. Where it belongs -- back in the framework catalog under `outlook/`, beside the Graph version, or in the agent repository whose install uses Outlook -- is an operator decision. Until then, do not redeploy either capture Skill to such an install.
 - **Progress (2026-09-22):** the operator placed the Outlook engine in the agent repository: `sb-pss-agent` `4a15074`, `data/Tools/outlook/Skills/meeting-capture` 0.3.0 -- the framework's current engine with `outlook_lib.py` restored (the engine core never changed; only the calendar import did). It was verified against a scratch copy of the vault and deployed by hand to the default profile, the stale copy quarantined. Still open for the framework: its deploy path knows only its own catalog, so a framework redeploy of `meeting-capture` would still overwrite the install's copy; 40 other profiles on that install still carry the stale Outlook copy; `email-thread-capture` has the same shape.
 
+### BUG-080 — A note's tables and callouts render as raw markdown; chat renders them properly
+
+- **Area:** UI
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-09-26, on the CBO install (operator: "The md file Mark down has different Markers When Displayed in HTML it is a mess").
+- **Root cause:** `remark-gfm` is a dependency of `src/frontend` and is passed by `ChatMessageText.tsx` — and by nothing else. Neither `features/vault-browser/NoteBody.tsx` nor `pluginHost/noteText.tsx` passes `remarkPlugins`, so every surface that renders a NOTE runs plain CommonMark: no tables, no strikethrough, no task lists, no autolinks. Obsidian callouts (`> [!abstract]`) are not CommonMark either and nothing translates them, so the marker prints as text inside a quote. The same file therefore reads correctly when an agent quotes it in chat and badly in the note view.
+- **Repro:** open `/browse/ADNOC` on the reporting install. The DOM has **0 `<table>` elements** and 7 blocks of raw `| … |` text run together into paragraphs — the group table reads `| Entity | What it does | Stake | |---|---|---| | XRG | …` — and `[!abstract]`, `[!info]`, `[!success]` appear as literal text.
+- **Expected:** a note renders as the note it is: tables as tables, callouts as callouts, task lists as checkboxes.
+- **Actual:** the vault browser, the Cockpit summary and every plugin screen show raw markers. **364 of this vault's 19,662 notes contain a table and 367 contain a callout** — every company profile the capture passes write has both, so this is the normal reading experience for the entity notes, not an edge case.
+- **Note:** the fix is wiring, not a new capability: `remarkPlugins={[remarkGfm]}` in `NoteBody.tsx` and `pluginHost/noteText.tsx` (the plugin is already installed and already trusted in chat). Callouts want a second one — `remark-obsidian-callout` or an equivalent remark transform emitting AST nodes rather than HTML, which keeps ADR-050's no-raw-HTML rule intact; the vault browser already pre-processes wikilinks the same way, so the precedent exists. `remark-breaks` is worth a thought separately, since agents write single-newline lists, but that changes existing rendering and should be decided rather than slipped in.
+
 ### BUG-079 — A `[[wikilink]]` is a link only where a surface remembered to resolve it
 
 - **Area:** UI
