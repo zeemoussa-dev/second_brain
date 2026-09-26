@@ -172,14 +172,17 @@ button.item-row:hover {
 .note-body p,
 .note-body ul,
 .note-body ol,
-.note-body blockquote { margin: 0 0 var(--space-3); }
+.note-body blockquote:not(.callout) { margin: 0 0 var(--space-3); }
 
 .note-body ul,
 .note-body ol { padding-left: var(--space-6); }
 
 .note-body a { color: var(--color-accent); }
 
-.note-body blockquote {
+/* `:not(.callout)` -- a callout is a blockquote too, and these rules would
+   grey out its text and paint over its accent (`BUG-080`). Callouts are styled
+   once, for every surface, in markdown.css. */
+.note-body blockquote:not(.callout) {
   border-left: 3px solid var(--color-border);
   padding-left: var(--space-3);
   color: var(--color-text-muted);

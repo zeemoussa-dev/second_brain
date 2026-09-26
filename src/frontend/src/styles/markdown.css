@@ -1,0 +1,137 @@
+/* How vault markdown looks, wherever it is rendered: the note view, a Cockpit
+   summary, a plugin screen, a chat message. Tables and callouts had no styling at
+   all because nothing rendered them -- `remark-gfm` was passed by chat alone and
+   callouts by nobody, so 364 of the reporting vault's notes printed their tables
+   as runs of `| … |` text and 367 printed `[!abstract]` as words (`BUG-080`).
+
+   Deliberately not scoped to `.note-body`: the same note is read in four places,
+   and a rule that only covers one of them is how they drifted apart. */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--space-4) 0;
+  font-size: var(--font-size-sm);
+  display: block;
+  overflow-x: auto;
+}
+
+th,
+td {
+  border: 1px solid var(--color-border);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: var(--color-surface-raised);
+  font-weight: 600;
+}
+
+/* A wide table in a narrow pane scrolls rather than pushing the layout out. */
+tbody tr:nth-child(even) {
+  background: rgba(127, 127, 127, 0.04);
+}
+
+/* A task list is a list without its bullets, which is what GFM's checkboxes want. */
+li:has(> input[type="checkbox"]) {
+  list-style: none;
+  margin-left: calc(-1 * var(--space-4));
+}
+
+li > input[type="checkbox"] {
+  margin-right: var(--space-2);
+}
+
+/* -- callouts ------------------------------------------------------------------
+   `> [!info] Title` becomes a blockquote carrying `callout callout-<type>` and a
+   title paragraph (see `remarkCallouts.ts`). The accent says which kind it is;
+   the symbol is CSS so no icon library is involved. */
+
+blockquote.callout {
+  margin: var(--space-4) 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--callout-accent, var(--color-accent));
+  border-radius: var(--radius-sm, 6px);
+  background: var(--color-surface-raised);
+}
+
+blockquote.callout > p {
+  margin: 0 0 var(--space-2);
+}
+
+blockquote.callout > p:last-child {
+  margin-bottom: 0;
+}
+
+blockquote.callout > .callout-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-weight: 600;
+  color: var(--callout-accent, var(--color-accent));
+}
+
+blockquote.callout > .callout-title::before {
+  content: var(--callout-symbol, "•");
+  font-weight: 700;
+}
+
+/* An untitled callout still shows its own type's name, as Obsidian does. */
+blockquote.callout > .callout-title:empty::after {
+  content: var(--callout-label, "Note");
+}
+
+blockquote.callout-note { --callout-symbol: "i"; --callout-label: "Note"; }
+blockquote.callout-info { --callout-symbol: "i"; --callout-label: "Info"; }
+blockquote.callout-abstract,
+blockquote.callout-summary,
+blockquote.callout-tldr {
+  --callout-symbol: "≡";
+  --callout-label: "Summary";
+}
+blockquote.callout-tip,
+blockquote.callout-hint,
+blockquote.callout-important {
+  --callout-symbol: "★";
+  --callout-label: "Tip";
+  --callout-accent: var(--color-accent);
+}
+blockquote.callout-success,
+blockquote.callout-check,
+blockquote.callout-done {
+  --callout-symbol: "✓";
+  --callout-label: "Success";
+  --callout-accent: var(--color-success);
+}
+blockquote.callout-question,
+blockquote.callout-help,
+blockquote.callout-faq {
+  --callout-symbol: "?";
+  --callout-label: "Question";
+}
+blockquote.callout-warning,
+blockquote.callout-caution,
+blockquote.callout-attention {
+  --callout-symbol: "!";
+  --callout-label: "Warning";
+  --callout-accent: var(--color-warning);
+}
+blockquote.callout-failure,
+blockquote.callout-fail,
+blockquote.callout-missing,
+blockquote.callout-danger,
+blockquote.callout-error,
+blockquote.callout-bug {
+  --callout-symbol: "×";
+  --callout-label: "Danger";
+  --callout-accent: var(--color-danger);
+}
+blockquote.callout-example { --callout-symbol: "❝"; --callout-label: "Example"; }
+blockquote.callout-quote,
+blockquote.callout-cite {
+  --callout-symbol: "❞";
+  --callout-label: "Quote";
+}

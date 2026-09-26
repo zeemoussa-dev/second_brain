@@ -285,7 +285,7 @@
 .chat-message p,
 .chat-message ul,
 .chat-message ol,
-.chat-message blockquote { margin: 0 0 var(--space-2); }
+.chat-message blockquote:not(.callout) { margin: 0 0 var(--space-2); }
 .chat-message p:last-child,
 .chat-message ul:last-child,
 .chat-message ol:last-child { margin-bottom: 0; }

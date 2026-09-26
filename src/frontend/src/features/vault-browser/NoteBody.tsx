@@ -5,7 +5,7 @@ import { Link } from 'react-router';
 import type { NoteSummary } from './client';
 import { extractHeadings, type TocHeading } from './tableOfContents';
 import { wikilinksToMarkdown } from './wikilinks';
-import { MarkdownPre } from '../../components/markdownBlocks';
+import { MarkdownPre, NOTE_MARKDOWN_PLUGINS } from '../../components/markdownBlocks';
 
 interface NoteBodyProps {
   stem: string;
@@ -80,6 +80,7 @@ export function NoteBody({ stem, body, forwardLinks, onHeadingsExtracted }: Note
 
   return (
     <ReactMarkdown
+      remarkPlugins={NOTE_MARKDOWN_PLUGINS}
       rehypePlugins={[rehypeSlug]}
       components={{
         pre: MarkdownPre,

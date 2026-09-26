@@ -1,6 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import { Link } from 'react-router';
-import { MarkdownPre } from '../components/markdownBlocks';
+import { MarkdownPre, NOTE_MARKDOWN_PLUGINS } from '../components/markdownBlocks';
 import { wikilinksToMarkdown } from '../features/vault-browser/wikilinks';
 import { useResolvedWikilinks } from '../components/wikilinkResolution';
 
@@ -33,6 +33,7 @@ export function NoteText({ text, resolvedStems }: NoteTextProps) {
   const stems = useResolvedWikilinks(text, resolvedStems);
   return (
     <ReactMarkdown
+      remarkPlugins={NOTE_MARKDOWN_PLUGINS}
       components={{
         pre: MarkdownPre,
         a: ({ href, children }) =>

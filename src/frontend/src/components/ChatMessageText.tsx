@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { Link } from 'react-router';
-import { MarkdownPre } from './markdownBlocks';
+import { MarkdownPre, NOTE_MARKDOWN_PLUGINS } from './markdownBlocks';
 import { wikilinksToMarkdown } from '../features/vault-browser/wikilinks';
 import { useResolvedWikilinks } from './wikilinkResolution';
 
@@ -62,7 +61,7 @@ export function ChatMessageText({ text }: ChatMessageTextProps) {
   return (
     <>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={NOTE_MARKDOWN_PLUGINS}
         components={{
           // A ```mermaid fence draws as a diagram; every other fence stays a code block.
           pre: MarkdownPre,
