@@ -18,6 +18,12 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix(ui): a note's tables and callouts render as tables and callouts (`BUG-080`, `ADR-031`). `remark-gfm` was passed by chat and by nothing else, so the same file read correctly when an agent quoted it and badly in the note view, the Cockpit summary and every plugin screen -- and Obsidian callouts, which nothing translated, printed their `[!abstract]` markers as words. 364 of the reporting vault's notes hold a table, 367 hold a callout. One exported pipeline (`NOTE_MARKDOWN_PLUGINS`) now serves every surface, and callouts are a remark transform emitting ordinary AST -- the off-the-shelf plugin emits raw HTML, which react-markdown drops without `rehype-raw`, so it would have swallowed the callout's own first line. `remark-breaks` is deliberately left out: it would change how every existing note renders.
+
+  **No reinstall:** the contract is unchanged, `FRAMEWORK_API` stays at 6, and an installed plugin rendering through `NoteText` gets this by pulling the framework.
+
+- chore: VERSION 0.9.0 -> 0.9.1. PATCH: a fix, with no contract change.
+
 - feat(plugins)!: a plugin can read a subject the way the Cockpit does -- `vault.attachments()` and `vault.read_section()`, plus `pluginHost/apiUrl` (`ADR-030`, framework API v6). Both reads are vault conventions with traps in them (an attachment folder repeats its own long name and passes Windows' path limit), so a plugin re-deriving them drifts from the framework -- My Day had already copied one workaround. `resolve_asset_path` walks through `long_path` with them: without it every attachment on a subject with a long subject line 404s, the read side of `BUG-077`.
 
   My Day 1.6.1 turns the Emails tab into a reader with them: the thread's summary, its emails opening in place to read the captured text, and the files that came attached opening as the real file (operator, 2026-09-25: "We need to make the email more useful").

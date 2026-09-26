@@ -2991,3 +2991,51 @@ had already copied one workaround (`_long_path`) for the `messages/` folder.
   one has been a capability a plugin genuinely needed, but the pattern says the v1 surface
   was drawn around one plugin's first screen. Worth a deliberate pass over what a plugin
   should be able to read, rather than another bump per screen.
+
+
+---
+
+## ADR-031: Vault markdown has one pipeline, and callouts are AST, not HTML
+
+**Status:** Accepted
+**Date:** 2026-09-26
+
+**Context:** `remark-gfm` was passed by `ChatMessageText` and by nothing else, so the
+same note read correctly when an agent quoted it in chat and badly everywhere it was
+actually read: no tables, no task lists, no strikethrough, no autolinks in the note
+view, the Cockpit summary, or any plugin screen. Obsidian callouts are not CommonMark
+either and nothing translated them, so `[!abstract]` printed as words inside a quote.
+364 of the reporting vault's 19,662 notes hold a table and 367 hold a callout -- every
+company profile the capture writes has both (`BUG-080`). It was also a regression on
+plugin screens: adopting `NoteText` (`ADR-027`) replaced a plugin's own renderer that
+had drawn tables and callouts, so that screen went backwards.
+
+**Decision:**
+
+- **One exported pipeline, `NOTE_MARKDOWN_PLUGINS`**, used by every surface that
+  renders vault text: the note view, `NoteText` (Cockpit summaries and every plugin
+  screen), and chat. A `remarkPlugins` list assembled per caller is exactly how the
+  surfaces drifted apart; the shared list is the fix, not adding the plugin three
+  times.
+- **Callouts are a remark transform of our own** (`remarkCallouts.ts`), marking the
+  blockquote with `callout callout-<type>` and a title paragraph. The off-the-shelf
+  plugin replaces the first paragraph with a raw `html` node, which react-markdown
+  drops unless `rehype-raw` is enabled -- the callout's own first line would vanish,
+  and `ADR-050`'s no-raw-HTML posture would have to go. A transform emitting ordinary
+  AST keeps both.
+- **Their styling is shared too** (`styles/markdown.css`), not scoped to one screen.
+  A screen's own quote rules now say `:not(.callout)` rather than painting over it.
+- **`remark-breaks` is deliberately NOT included.** Agents write single-newline lists
+  and it would help them, but it changes how every existing note renders; that is a
+  decision to take on its own, not to slip in with a fix.
+
+**Consequences:**
+
+- The contract is unchanged, so `FRAMEWORK_API` stays at 6 and **no plugin is
+  republished** -- an installed plugin rendering through `NoteText` gets tables and
+  callouts by pulling the framework.
+- A plugin that still ships its own renderer now differs from the app in the other
+  direction. That is the same argument `ADR-027` made, and the reason the pipeline is
+  exported rather than duplicated.
+- Chat renders callouts too. It shared the gfm half already; sharing all of it means
+  one answer to "how does this app draw markdown".
