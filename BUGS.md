@@ -1198,6 +1198,18 @@ is a thin status mirror of the index table below.
 - **Note:** the Outlook 0.1.0 source is recoverable from `822a5f6^`. Where it belongs -- back in the framework catalog under `outlook/`, beside the Graph version, or in the agent repository whose install uses Outlook -- is an operator decision. Until then, do not redeploy either capture Skill to such an install.
 - **Progress (2026-09-22):** the operator placed the Outlook engine in the agent repository: `sb-pss-agent` `4a15074`, `data/Tools/outlook/Skills/meeting-capture` 0.3.0 -- the framework's current engine with `outlook_lib.py` restored (the engine core never changed; only the calendar import did). It was verified against a scratch copy of the vault and deployed by hand to the default profile, the stale copy quarantined. Still open for the framework: its deploy path knows only its own catalog, so a framework redeploy of `meeting-capture` would still overwrite the install's copy; 40 other profiles on that install still carry the stale Outlook copy; `email-thread-capture` has the same shape.
 
+### BUG-081 — An email body is HTML, and every note view renders it as markdown
+
+- **Area:** UI
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-09-29, on the CBO install (operator: "Most of Emails Shows as HTML ... the content need to be aware what type of content I am getting if HTML or Md or whatever and render based on it").
+- **Root cause:** a captured message's body IS the original HTML -- deliberately, so the evidence is faithful and conversion happens on the way out (that install's `MEMORY.md`, 2026-09-10). Nothing converts it on the way out. `NoteBody.tsx` and `pluginHost/noteText.tsx` hand every note to `react-markdown`, which renders no raw HTML by design (`ADR-050`), so the tags are shown as text: a mail note opens with `<html><head>` and reads as markup for its whole length.
+- **Repro:** `/browse/2026-09-09-ToDo 17-57-2` on the reporting install, or any of its 10,219 captured messages.
+- **Expected:** a note view shows an email as an email -- the text, its paragraphs and its links -- whatever the capture stored.
+- **Actual:** **9,999 of 10,219 message notes (98%)** render as raw markup. Every thread the Cockpit, My Day or the Action Center links to opens this way.
+- **Note:** the reporting install has now recorded what each body is: `body_type: "html"` or `"text"` in the message's own frontmatter, written at capture from Graph's `body.contentType` and backfilled across all 10,219 existing notes. So a renderer need not sniff -- it can read the field and decide. **`rehype-raw` is not the answer** (`ADR-050`'s no-raw-HTML rule is what keeps an agent-written note from smuggling markup); converting HTML to text at the READ is, which is what that install's own Skills already do with `HTMLParser` before handing a body to a model. A `body_type` the framework's capture also writes would make this a field read rather than a convention.
+
 ### BUG-080 — A note's tables and callouts render as raw markdown; chat renders them properly
 
 - **Area:** UI

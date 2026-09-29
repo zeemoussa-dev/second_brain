@@ -262,6 +262,7 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 | BUG-078 | A plugin screen cannot render a note, so the same diagram draws two different ways | UI | Fixed | `293725c` |
 | BUG-079 | A `[[wikilink]]` is a link only where a surface remembered to resolve it | UI | Fixed | `eb01ddc` |
 | BUG-080 | A note's tables and callouts render as raw markdown; chat renders them properly | UI | Fixed | `e094658` |
+| BUG-081 | An email body is HTML, and every note view renders it as markdown | UI | Open | — |
 
 > **Emptied 2026-09-06** with `BUGS.md`, which this mirrors — 42 rows.
 > History: `git show d64dcb4:BACKLOG.md`. Next id is **`BUG-043`**.
