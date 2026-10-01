@@ -67,6 +67,7 @@ is a thin status mirror of the index table below.
 | BUG-078 | A plugin screen cannot render a note, so the same diagram draws two different ways -- the host contract had no way to say "render this note", so every plugin shipped its own markdown and mermaid renderers | UI | Major | Fixed | 2026-09-24 | `293725c` |
 | BUG-079 | A `[[wikilink]]` is a link only where a surface remembered to resolve it -- each one resolved targets differently and chat, where agents write them constantly, not at all | UI | Major | Fixed | 2026-09-25 | `eb01ddc` |
 | BUG-080 | A note's tables and callouts render as raw markdown; chat renders them properly -- `remark-gfm` was passed by chat alone, and nothing translated Obsidian callouts | UI | Major | Fixed | 2026-09-26 | `e094658` |
+| BUG-082 | The backend indexes the vault at boot and never again, so a long-running app stops seeing new notes -- 73 notes invisible after 44 hours of uptime | Logic | Major | Open | 2026-10-01 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -1197,6 +1198,18 @@ is a thin status mirror of the index table below.
 - **Actual:** the redeploy replaces the working Outlook copy with the Graph version, which cannot run there.
 - **Note:** the Outlook 0.1.0 source is recoverable from `822a5f6^`. Where it belongs -- back in the framework catalog under `outlook/`, beside the Graph version, or in the agent repository whose install uses Outlook -- is an operator decision. Until then, do not redeploy either capture Skill to such an install.
 - **Progress (2026-09-22):** the operator placed the Outlook engine in the agent repository: `sb-pss-agent` `4a15074`, `data/Tools/outlook/Skills/meeting-capture` 0.3.0 -- the framework's current engine with `outlook_lib.py` restored (the engine core never changed; only the calendar import did). It was verified against a scratch copy of the vault and deployed by hand to the default profile, the stale copy quarantined. Still open for the framework: its deploy path knows only its own catalog, so a framework redeploy of `meeting-capture` would still overwrite the install's copy; 40 other profiles on that install still carry the stale Outlook copy; `email-thread-capture` has the same shape.
+
+### BUG-082 — The backend indexes the vault at boot and never again, so a long-running app stops seeing new notes
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-10-01, checking the services on the PSS install: everything was up, and My Day was quietly two days behind.
+- **Root cause:** `main.py`'s lifespan rebuilds the in-memory index once at startup, and nothing else refreshes it. `POST /vault-index/rebuild` exists and does the right thing, but only a human calls it. The `vault-index-rebuild` cron job does NOT reach it -- it ran at 08:41 that morning while the backend's `last_rebuilt_at` still read `2026-09-29T09:26`, the moment the process started. So every reader built on `get_index()`/`get_entries()` -- browse, search, tags, the graph, My Day, the Cockpit -- sees the vault as it was when the backend last started, while capture keeps writing.
+- **Repro:** leave the backend running while capture runs; compare `GET /vault/overview`'s `last_rebuilt_at` with the newest note on disk.
+- **Expected:** a note captured while the app is running is visible without restarting the backend.
+- **Actual:** after ~44 hours of uptime, **73 notes written since boot were invisible**. `GET /plugins/my-day/summary` reported 17 emails and 26 meetings for the current window; a manual `POST /vault-index/rebuild` took it to 28 and 30 — 11 emails and 4 meetings the operator could not see, with nothing on screen to suggest anything was missing.
+- **Note:** the gap is the trigger, not the rebuild: the rebuild itself is sound and already dual-writes the agent-facing disk index (`business/logic/vault_index_rebuild.py`). Candidates, cheapest first: have the `vault-index-rebuild` cron job call the endpoint it is named after; or give the backend its own periodic refresh; or rebuild on a filesystem watch. Worth deciding rather than patching — a scheduled rebuild on a large vault is a repeated full scan (2,773 notes here, 19,662 on the CBO install), and the capture pipelines already know when they have written something.
 
 ### BUG-081 — An email body is HTML, and every note view renders it as markdown
 
