@@ -18,6 +18,12 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix(vault): the index refreshes while the app runs (`BUG-082`). The backend indexed the vault at startup and never again, so browse, search, tags, the graph, My Day and the Cockpit showed the vault as it was at boot while capture kept writing -- 250 notes invisible after three days of uptime, with My Day's Emails tab reading empty rather than stale. The `vault-index-rebuild` cron job now POSTs to a new `/vault-index/refresh` once it has written the agent-facing disk index. Not `/vault-index/rebuild`: that one fires the same cron job, so the job would trigger itself. Best-effort with a short timeout -- a scheduled run with the app closed is the normal case.
+
+  Also removes a stale duplicate of `build_vault_index.py` that had been shipped to every install as a shared manager since the catalog migration, shadowing the real script on `PYTHONPATH`.
+
+- chore: VERSION 0.9.1 -> 0.9.2. PATCH: a fix; the new endpoint is additive and no plugin contract changed.
+
 - fix(ui): a note's tables and callouts render as tables and callouts (`BUG-080`, `ADR-031`). `remark-gfm` was passed by chat and by nothing else, so the same file read correctly when an agent quoted it and badly in the note view, the Cockpit summary and every plugin screen -- and Obsidian callouts, which nothing translated, printed their `[!abstract]` markers as words. 364 of the reporting vault's notes hold a table, 367 hold a callout. One exported pipeline (`NOTE_MARKDOWN_PLUGINS`) now serves every surface, and callouts are a remark transform emitting ordinary AST -- the off-the-shelf plugin emits raw HTML, which react-markdown drops without `rehype-raw`, so it would have swallowed the callout's own first line. `remark-breaks` is deliberately left out: it would change how every existing note renders.
 
   **No reinstall:** the contract is unchanged, `FRAMEWORK_API` stays at 6, and an installed plugin rendering through `NoteText` gets this by pulling the framework.
