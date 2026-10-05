@@ -25,3 +25,16 @@ def rebuild_vault_index() -> dict:
     *vault-writing* capture runs, a concern this read-only, side-effect-
     free rebuild does not share (ADR-024)."""
     return vault_index_rebuild.rebuild_vault_index()
+
+
+@router.post("/refresh")
+def refresh_vault_index() -> dict:
+    """Re-reads the vault into the backend's own index, and triggers nothing
+    else -- what the `vault-index-rebuild` cron job calls once it has written the
+    agent-facing disk index (`BUG-082`).
+
+    `/rebuild` above fires that same cron job, so the job cannot call it without
+    triggering itself. The split is the whole point: `/rebuild` is "rebuild
+    everything, I am a human pressing a button", `/refresh` is "my own index is
+    behind the vault"."""
+    return vault_index_rebuild.refresh_in_process_index()

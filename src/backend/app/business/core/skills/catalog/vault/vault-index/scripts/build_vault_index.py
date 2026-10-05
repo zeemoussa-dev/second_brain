@@ -36,12 +36,19 @@ from __future__ import annotations
 import argparse
 import os
 import json
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
 from vault_manager import read_note
 
 _WORK_ROOT = "Work"
+
+# Short: the backend's own rebuild is a sub-second in-memory scan, and this job
+# must not sit waiting on an app that is closed or busy.
+_NOTIFY_TIMEOUT_SECONDS = 30
+_DEFAULT_API_URL = "http://127.0.0.1:8001"
 
 # Same three exclusions app/data_access/vault_writer.py's own canonical
 # list_all_note_paths() applies (mirrored here, not imported -- this
@@ -166,6 +173,35 @@ def write_index(data_path: Path, folders: dict[str, list[dict]]) -> dict:
     }
 
 
+def notify_backend(api_url: str) -> dict:
+    """Tells the running backend to re-read the vault (`BUG-082`).
+
+    The backend indexed the vault when it started and never again, so everything
+    built on its index -- browse, search, tags, the graph, My Day, the Cockpit --
+    kept showing the vault as it was at boot while this job wrote a fresh one to
+    disk for the agents. 250 notes were invisible after three days of uptime, and
+    My Day's Emails tab read empty rather than stale, which looks like capture is
+    broken rather than like a stale index.
+
+    `/vault-index/refresh`, not `/vault-index/rebuild`: the latter fires THIS cron
+    job, so calling it here would make the job trigger itself.
+
+    Best-effort by design -- the disk index is written either way, and this job
+    runs whether or not a backend happens to be up (a machine where the app is
+    closed is the normal case for a scheduled run)."""
+    if not (api_url or "").strip():
+        return {"notified": False, "reason": "no api url"}
+    request = urllib.request.Request(
+        api_url.rstrip("/") + "/vault-index/refresh", data=b"", method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=_NOTIFY_TIMEOUT_SECONDS) as response:
+            return {"notified": True, "backend": json.loads(response.read().decode("utf-8"))}
+    except (urllib.error.URLError, OSError, ValueError, json.JSONDecodeError) as error:
+        # Including "connection refused", which simply means the app is closed.
+        return {"notified": False, "reason": str(error)}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -177,6 +213,13 @@ def main() -> int:
         default=os.environ.get("SECOND_BRAIN_VAULT_PATH", ""),
     )
     parser.add_argument("--data-path", required=True)
+    parser.add_argument(
+        "--api-url",
+        # The backend to tell once the index is written (`BUG-082`). Same
+        # convention as --vault-path: an env var the setup wizard can write, so a
+        # Skill never carries a machine-specific value. Pass "" to skip.
+        default=os.environ.get("SECOND_BRAIN_API_URL", _DEFAULT_API_URL),
+    )
     args = parser.parse_args()
     if not (args.vault_path or "").strip():
         # An empty value would become Path("") -> the CWD, which is exactly the
@@ -190,6 +233,7 @@ def main() -> int:
     data_path = Path(args.data_path)
     folders = build_index(vault_path, data_path)
     result = write_index(data_path, folders)
+    result["backend_refresh"] = notify_backend(args.api_url)
     print(json.dumps(result, ensure_ascii=False))
     return 0
 
