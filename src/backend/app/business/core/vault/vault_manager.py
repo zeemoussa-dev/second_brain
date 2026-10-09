@@ -65,6 +65,7 @@ from app.business.core.vault.vault import Vault
 from app.config import settings
 from app.data_access import vault_index_config as vault_index_config_data
 from app.data_access import vault_writer
+from app.business.core.vault import note_text
 from app.obsidian.notes import long_path
 
 # ---------------------------------------------------------------------------
@@ -503,10 +504,15 @@ class VaultManager:
         entry = index.get(stem)
         if entry is None:
             return None
-        body = vault_writer.read_note(Path(entry["path"]))[1]
+        frontmatter, body = vault_writer.read_note(Path(entry["path"]))
+        # A captured email's body is the original HTML, kept faithful on disk and
+        # converted on the way out -- which nothing did, so every note view showed
+        # the markup (`BUG-081`). The note on disk is untouched.
+        kind = note_text.body_kind(frontmatter, body)
         return {
             "stem": entry["stem"], "title": _title_for(entry), "kind": _kind_for(entry),
-            "frontmatter": entry["frontmatter"], "tags": entry["tags"], "body": body,
+            "frontmatter": entry["frontmatter"], "tags": entry["tags"],
+            "body": note_text.readable_body(frontmatter, body), "body_type": kind,
             "forward_links": _resolve_forward_links(entry, index),
             "backlinks": _resolve_backlinks(entry, index),
         }

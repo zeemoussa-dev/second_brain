@@ -30,7 +30,7 @@ FIXTURES = json.loads((Path(__file__).parent / "fixtures" / "graph_messages.json
 # Outlook path changed and both capture routes must move together.
 EXPECTED_KEYS = {
     "id", "subject", "sender_name", "sender_email", "sender_department",
-    "sender_job_title", "sender_company_name", "received", "body",
+    "sender_job_title", "sender_company_name", "received", "body", "body_type",
     "attachments", "conversation_id", "recipients", "direction",
 }
 
@@ -216,3 +216,43 @@ def test_named_mailbox_is_used_not_me():
     url = graph_lib._folder_url("sherif.tawfik@core42.ai", "inbox", 5, None, None)
     assert "/users/sherif.tawfik%40core42.ai/" in url
     assert "/me/" not in url
+
+
+# -- what the body IS (`BUG-081`) ----------------------------------------------------
+
+
+def test_the_body_type_graph_reports_is_carried_through():
+    """The body is stored as the server sent it, so a reader has to know whether
+    it is HTML. Graph says; nothing downstream has to guess."""
+    message = _inbox()
+    message["body"] = {"contentType": "HTML", "content": "<html><body><p>hi</p></body></html>"}
+
+    assert graph_lib.message_to_record(message, "received")["body_type"] == "html"
+
+
+def test_a_plain_text_body_says_text():
+    message = _inbox()
+    message["body"] = {"contentType": "text", "content": "hi"}
+
+    assert graph_lib.message_to_record(message, "received")["body_type"] == "text"
+
+
+def test_a_preview_fallback_is_text_whatever_the_real_body_was():
+    """`bodyPreview` is plain text even for an HTML mail, so labelling it from
+    the message's own contentType would be a lie."""
+    message = _inbox()
+    message["body"] = {"contentType": "html"}
+    message["bodyPreview"] = "hi from the preview"
+
+    record = graph_lib.message_to_record(message, "received")
+
+    assert record["body"] == "hi from the preview"
+    assert record["body_type"] == "text"
+
+
+def test_a_message_with_no_body_at_all_is_text():
+    message = _inbox()
+    message.pop("body", None)
+    message.pop("bodyPreview", None)
+
+    assert graph_lib.message_to_record(message, "received")["body_type"] == "text"

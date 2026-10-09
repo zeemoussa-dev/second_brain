@@ -477,6 +477,10 @@ def ingest_email(vault_path: Path, data: dict) -> dict:
             "direction": direction,
             "to_recipients": to_recipient_emails,
             "cc_recipients": cc_recipient_emails,
+            # "html" or "text", from Graph's own `body.contentType`. The body is
+            # stored as the server sent it; this is how a reader knows what it is
+            # looking at instead of guessing (`BUG-081`).
+            "body_type": data.get("body_type") or "text",
         },
         body=body,
     )

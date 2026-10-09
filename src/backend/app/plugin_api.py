@@ -38,7 +38,13 @@ named body section, such as the `Summary` a Skill wrote). Both are vault convent
 with real traps in them -- an attachment folder repeats its own long name and passes
 Windows' path limit (`BUG-077`) -- so a plugin that re-derives them drifts from the
 framework. `pluginHost/apiUrl` comes with it, for linking to a file the backend
-serves rather than fetching it. A new capability is added here when a plugin needs one. The host loads only
+serves rather than fetching it.
+
+v7 makes `vault.read_note()` return a body a renderer can show: a captured email's
+body is the original HTML, and every surface was handing that markup to a markdown
+renderer (`BUG-081`). Converting here rather than in each plugin is `ADR-027`'s rule
+again -- one answer, not one per screen. A new capability is added here when a plugin
+needs one. The host loads only
 plugins built for its exact `FRAMEWORK_API`, so a plugin that relies on a
 capability is never loaded by a framework that lacks it, and every installed
 plugin is republished when the version moves.
@@ -54,13 +60,14 @@ from app.business.cockpit import documents
 from app.business.core.agents.agent_manager import AgentManager
 from app.business.core.pipelines.pipeline_manager import PipelineManager
 from app.business.core.sections.section_manager import SectionManager
+from app.business.core.vault import note_text
 from app.business.core.vault.vault_manager import VaultManager
 from app.business.hermes.client import get_client
 from app.data_access import seed_data, vault_writer
 from app.obsidian import sections
 from app.obsidian.notes import long_path
 
-FRAMEWORK_API = 6
+FRAMEWORK_API = 7
 
 _logger = logging.getLogger(__name__)
 
@@ -111,8 +118,17 @@ class VaultApi:
         return vault_writer.list_notes_in_kind_folder(kind)
 
     def read_note(self, path) -> tuple[dict, str]:
-        """`(frontmatter, body)` for one note."""
-        return vault_writer.read_note(path)
+        """`(frontmatter, body)` for one note, the body as something a renderer
+        can show (v7).
+
+        A captured email's body is the original HTML -- kept faithful on disk,
+        converted on the way out. Nothing converted it, so a plugin showing a
+        message note handed markup to `NoteText` and the reader got `<html><head>`
+        (`BUG-081`). The conversion happens here rather than in each plugin for
+        the same reason rendering does (`ADR-027`): one answer, not one per
+        screen. A markdown note is returned untouched."""
+        frontmatter, body = vault_writer.read_note(path)
+        return frontmatter, note_text.readable_body(frontmatter, body)
 
     def read_section(self, path, header: str) -> str | None:
         """One named section of a note's body (`"Summary"`, `"Details"`), or None

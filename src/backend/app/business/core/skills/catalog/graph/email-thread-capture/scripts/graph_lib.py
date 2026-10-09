@@ -509,9 +509,16 @@ def message_to_record(message: dict, direction: str, attachments: list[dict] | N
 
     Pure: no network, no environment. This is the function the fixtures
     exercise, because it is where every field-mapping mistake would live."""
-    body_content = ((message.get("body") or {}).get("content")
-                    or message.get("bodyPreview") or "")
+    message_body = message.get("body") or {}
+    body_content = message_body.get("content") or message.get("bodyPreview") or ""
     body = body_content.strip()[:_MAX_BODY_CHARS]
+    # What Graph says the body IS, carried through to the note's own frontmatter
+    # (`BUG-081`). The body is stored as the server sent it, so a reader has to
+    # know whether it is HTML -- and the server's answer beats any later sniff.
+    # A `bodyPreview` fallback is plain text, whatever the real body was.
+    body_type = (message_body.get("contentType") or "").strip().lower()
+    if not message_body.get("content"):
+        body_type = "text"
     sender = ((message.get("from") or message.get("sender") or {}).get("emailAddress") or {})
     signature = parse_signature_fields(body)
     return {
@@ -524,6 +531,7 @@ def message_to_record(message: dict, direction: str, attachments: list[dict] | N
         "sender_company_name": signature["sender_company_name"],
         "received": _iso_to_outlook_stamp(message.get("receivedDateTime") or ""),
         "body": body,
+        "body_type": body_type or "text",
         "attachments": attachments if attachments is not None else [],
         "conversation_id": message.get("conversationId") or "",
         "recipients": _recipients(message),
