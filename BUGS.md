@@ -69,6 +69,8 @@ is a thin status mirror of the index table below.
 | BUG-080 | A note's tables and callouts render as raw markdown; chat renders them properly -- `remark-gfm` was passed by chat alone, and nothing translated Obsidian callouts | UI | Major | Fixed | 2026-09-26 | `e094658` |
 | BUG-081 | An email body is HTML, and every note view renders it as markdown -- 98% of one install's message notes open as `<html><head>` | UI | Major | Fixed | 2026-09-29 | `2a25be8` |
 | BUG-082 | The backend indexes the vault at boot and never again, so a long-running app stops seeing new notes -- 73 notes invisible after 44 hours of uptime | Logic | Major | Fixed | 2026-10-01 | `d538b33` |
+| BUG-083 | The app polls `/boot-status` once a second forever, long after it is ready -- ~86,400 requests a day per tab, and a backend log nothing else is legible in | Logic | Minor | Open | 2026-10-09 | — |
+| BUG-084 | An unknown URL renders a blank page, not a "no such page" -- `App.tsx` has no catch-all route | UI | Minor | Open | 2026-10-09 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -1199,6 +1201,30 @@ is a thin status mirror of the index table below.
 - **Actual:** the redeploy replaces the working Outlook copy with the Graph version, which cannot run there.
 - **Note:** the Outlook 0.1.0 source is recoverable from `822a5f6^`. Where it belongs -- back in the framework catalog under `outlook/`, beside the Graph version, or in the agent repository whose install uses Outlook -- is an operator decision. Until then, do not redeploy either capture Skill to such an install.
 - **Progress (2026-09-22):** the operator placed the Outlook engine in the agent repository: `sb-pss-agent` `4a15074`, `data/Tools/outlook/Skills/meeting-capture` 0.3.0 -- the framework's current engine with `outlook_lib.py` restored (the engine core never changed; only the calendar import did). It was verified against a scratch copy of the vault and deployed by hand to the default profile, the stale copy quarantined. Still open for the framework: its deploy path knows only its own catalog, so a framework redeploy of `meeting-capture` would still overwrite the install's copy; 40 other profiles on that install still carry the stale Outlook copy; `email-thread-capture` has the same shape.
+
+### BUG-084 — An unknown URL renders a blank page, not a "no such page"
+
+- **Area:** UI
+- **Severity:** Minor
+- **Status:** Open
+- **Found:** 2026-10-09, sweeping the screens: `/entities` (a plugin's settings page lives at `/settings/plugins/entities`, so that URL is not a route) rendered an empty `<main>` with no hint that the address was wrong.
+- **Root cause:** `App.tsx` declares a `<Route>` per screen and no catch-all, so react-router matches nothing and the shell renders with an empty content area.
+- **Repro:** open `/definitely-not-a-route-xyz`. The sidebar renders; `main` holds 0 characters.
+- **Expected:** a short "no such page" with a way back, the way an unknown note already gets one.
+- **Actual:** a blank panel that reads as a broken screen rather than a wrong address. Most likely to be hit through a stale link or a plugin's own nav entry after an uninstall.
+- **Note:** one `<Route path="*">` in `App.tsx`. Worth pairing with a check that a plugin's `nav` entry still resolves after that plugin is removed.
+
+### BUG-083 — The app polls `/boot-status` once a second forever, long after it is ready
+
+- **Area:** Logic
+- **Severity:** Minor
+- **Status:** Open
+- **Found:** 2026-10-09, sweeping the system: `backend.log` was wall-to-wall `GET /boot-status 200`, which is also what buried the real entries while debugging `BUG-082`.
+- **Root cause:** `features/boot/BootGate.tsx` starts `setInterval(poll, POLL_MS)` with `POLL_MS = 1000` in a `useEffect` with no dependencies and no stop condition. Nothing slows or stops it when `state` reaches `ready`; the same poll doubles as the "backend unreachable" detector (two consecutive failures), which is why it never ends.
+- **Repro:** open any screen, wrap `window.fetch`, count: **10 calls to `/boot-status` in 10 seconds**, with the app fully booted.
+- **Expected:** a liveness check paced for liveness -- fast while booting, occasional once ready.
+- **Actual:** ~86,400 requests per day per open tab, each a real boot-status read, and a backend log in which nothing else is legible.
+- **Note:** the fix is a backoff, not a removal: the poll is also how the UI notices the backend going away. Fast (1s) until `state` is `ready` or `failed`, then something like 15-30s, keeps both properties. Measured on this install, not inferred.
 
 ### BUG-082 — The backend indexes the vault at boot and never again, so a long-running app stops seeing new notes
 
