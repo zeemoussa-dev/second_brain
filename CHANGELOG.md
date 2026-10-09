@@ -18,6 +18,12 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix(vault)!: a note whose body is HTML reads as a note, not as markup (`BUG-081`). A captured email's body is the original HTML, kept faithful on disk and converted on the way out -- which nothing did, so every note view handed markup to a markdown renderer and a mail opened with `<html><head>`: 98% of the reporting install's 10,219 message notes. Converted at the read instead (`rehype-raw` is what the no-raw-HTML rule exists to prevent), with the capture now recording Graph's `body.contentType` as `body_type` so a reader reads a field rather than guessing.
+
+  **Breaking for installs:** `FRAMEWORK_API` 6 -> 7 -- `vault.read_note()` returns a renderable body. `my-day` 1.6.2 and `entities` 1.0.5 are published here; install both after pulling, and redeploy `email-thread-capture` so new mail records its body type.
+
+- chore: VERSION 0.9.2 -> 0.10.0. MINOR: a contract call changed meaning and the capture writes a new field; pre-1.0, with the reinstall called out above.
+
 - fix(vault): the index refreshes while the app runs (`BUG-082`). The backend indexed the vault at startup and never again, so browse, search, tags, the graph, My Day and the Cockpit showed the vault as it was at boot while capture kept writing -- 250 notes invisible after three days of uptime, with My Day's Emails tab reading empty rather than stale. The `vault-index-rebuild` cron job now POSTs to a new `/vault-index/refresh` once it has written the agent-facing disk index. Not `/vault-index/rebuild`: that one fires the same cron job, so the job would trigger itself. Best-effort with a short timeout -- a scheduled run with the app closed is the normal case.
 
   Also removes a stale duplicate of `build_vault_index.py` that had been shipped to every install as a shared manager since the catalog migration, shadowing the real script on `PYTHONPATH`.

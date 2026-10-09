@@ -35,7 +35,7 @@ tests/                       its own tests: run on publish, never packaged
   "name": "My Day",
   "description": "Your day at a glance.",
   "version": "1.3.0",
-  "framework_api": 6,
+  "framework_api": 7,
   "requires": ["graph|outlook"]
 }
 ```
@@ -68,14 +68,14 @@ def register(api) -> None:
     api.register_router(build_router(EntitiesRegistry(api)))
 ```
 
-### What the API offers (v6)
+### What the API offers (v7)
 
 | Call | What it gives you |
 |---|---|
 | `api.vault.entries()` | **Every note**, one per file: `path`, `stem`, `frontmatter`, `tags`, wikilinks. Use this to list, count, filter or sweep |
 | `api.vault.index()` | **One note per name**, for looking a note up by stem (a wikilink, a URL). Notes sharing a name are not all in here -- never list or count from it |
 | `api.vault.notes_in_kind(kind)` | Paths of the notes in one `Work/<kind>/` folder |
-| `api.vault.read_note(path)` | `(frontmatter, body)` |
+| `api.vault.read_note(path)` | `(frontmatter, body)`, the body as something a renderer can show: a captured email's HTML arrives as markdown (v7) |
 | `api.vault.read_section(path, header)` | One named body section (`"Summary"`), or None. The `##` is optional |
 | `api.vault.attachments(stem)` | The files captured under a subject's own `Files/` folder: `title`, `filename`, `note_path` |
 | `api.pipelines.get(id)` | `id`, `name`, `cron_job_id`, `cron_profile_id`, or None |
