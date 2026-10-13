@@ -71,6 +71,7 @@ is a thin status mirror of the index table below.
 | BUG-082 | The backend indexes the vault at boot and never again, so a long-running app stops seeing new notes -- 73 notes invisible after 44 hours of uptime | Logic | Major | Fixed | 2026-10-01 | `d538b33` |
 | BUG-083 | The app polls `/boot-status` once a second forever, long after it is ready -- ~86,400 requests a day per tab, and a backend log nothing else is legible in | Logic | Minor | Open | 2026-10-09 | — |
 | BUG-084 | An unknown URL renders a blank page, not a "no such page" -- `App.tsx` has no catch-all route | UI | Minor | Open | 2026-10-09 | — |
+| BUG-085 | Email capture failed for four days while every status said "ok" -- an agent-mediated job swallows the script's non-zero exit, and nothing on screen shows capture freshness | Logic | Critical | Open | 2026-10-13 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -1201,6 +1202,18 @@ is a thin status mirror of the index table below.
 - **Actual:** the redeploy replaces the working Outlook copy with the Graph version, which cannot run there.
 - **Note:** the Outlook 0.1.0 source is recoverable from `822a5f6^`. Where it belongs -- back in the framework catalog under `outlook/`, beside the Graph version, or in the agent repository whose install uses Outlook -- is an operator decision. Until then, do not redeploy either capture Skill to such an install.
 - **Progress (2026-09-22):** the operator placed the Outlook engine in the agent repository: `sb-pss-agent` `4a15074`, `data/Tools/outlook/Skills/meeting-capture` 0.3.0 -- the framework's current engine with `outlook_lib.py` restored (the engine core never changed; only the calendar import did). It was verified against a scratch copy of the vault and deployed by hand to the default profile, the stale copy quarantined. Still open for the framework: its deploy path knows only its own catalog, so a framework redeploy of `meeting-capture` would still overwrite the install's copy; 40 other profiles on that install still carry the stale Outlook copy; `email-thread-capture` has the same shape.
+
+### BUG-085 — Email capture failed for four days while every status said "ok"
+
+- **Area:** Logic
+- **Severity:** Critical
+- **Status:** Open
+- **Found:** 2026-10-13, checking the services: everything was up, every cron job read `ok`, and My Day showed **0 emails** for the whole 2026-10-10 → 2026-10-16 window.
+- **Root cause:** the Graph delegated refresh token (`<DATA_PATH>/graph-delegated-token.json`) is gone, so `run_delta_capture.py` exits 2 on its first page with "no Graph refresh token ... needs a one-time interactive sign-in". The cron job is agent-mediated (`no_agent: false`): the agent runs the script through `terminal`, the script's non-zero exit does not fail the session, and Hermes records `last_status: "ok"`, `failure_streak: 0`. 834 runs completed; the last 190-odd of them captured nothing and said so to nobody.
+- **Repro:** remove or expire the token store and wait for `email-delta-capture`. The job reports `ok` every 30 minutes; `email_capture_state.json` stops being written; no note appears.
+- **Expected:** a capture that cannot authenticate is visibly broken -- a failed job, a System Health row, or a My Day banner. "0 emails this week" must not be indistinguishable from "a quiet week".
+- **Actual:** the newest captured email on this install is **2026-10-09 17:11**, four days before anyone noticed, and the only reason it was noticed is that a service check compared the window's count against the vault. Meetings kept flowing, which made the app look healthy.
+- **Note:** two separate things to fix, neither of them the token (re-authorising is the operator's own one-time `python authorize_graph.py`): (1) an agent-mediated capture job must surface a script's non-zero exit as a failed run rather than an `ok` one -- the Skill can be told to fail the session, or the job can run the script with `no_agent: true` as the index jobs do; (2) **freshness belongs on screen** -- System Health knows every pipeline, and "last captured email: 4 days ago" next to "last run: 12 minutes ago" is what would have made this visible on day one. `BUG-082` was the same shape (a stale index behind healthy-looking services) and argues for the same remedy.
 
 ### BUG-084 — An unknown URL renders a blank page, not a "no such page"
 
