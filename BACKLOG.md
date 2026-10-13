@@ -267,6 +267,7 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 | BUG-083 | The app polls `/boot-status` once a second forever, long after it is ready | Logic | Open | — |
 | BUG-084 | An unknown URL renders a blank page, not a "no such page" | UI | Open | — |
 | BUG-085 | Email capture failed for four days while every status said "ok" | Logic | Fixed | `08028d2` |
+| BUG-086 | The Agents Map takes seconds to show anything | Logic | Fixed | `dfd5f6e` |
 
 > **Emptied 2026-09-06** with `BUGS.md`, which this mirrors — 42 rows.
 > History: `git show d64dcb4:BACKLOG.md`. Next id is **`BUG-043`**.

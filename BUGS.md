@@ -72,6 +72,7 @@ is a thin status mirror of the index table below.
 | BUG-083 | The app polls `/boot-status` once a second forever, long after it is ready -- ~86,400 requests a day per tab, and a backend log nothing else is legible in | Logic | Minor | Open | 2026-10-09 | — |
 | BUG-084 | An unknown URL renders a blank page, not a "no such page" -- `App.tsx` has no catch-all route | UI | Minor | Open | 2026-10-09 | — |
 | BUG-085 | Email capture failed for four days while every status said "ok" -- an agent-mediated job swallows the script's non-zero exit, and nothing on screen shows capture freshness | Logic | Critical | Fixed | 2026-10-13 | `08028d2` |
+| BUG-086 | The Agents Map takes seconds to show anything -- listing agents parsed every SKILL.md of every profile and the page asked for the same data four times at once | Logic | Major | Fixed | 2026-10-13 | `dfd5f6e` |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -1202,6 +1203,18 @@ is a thin status mirror of the index table below.
 - **Actual:** the redeploy replaces the working Outlook copy with the Graph version, which cannot run there.
 - **Note:** the Outlook 0.1.0 source is recoverable from `822a5f6^`. Where it belongs -- back in the framework catalog under `outlook/`, beside the Graph version, or in the agent repository whose install uses Outlook -- is an operator decision. Until then, do not redeploy either capture Skill to such an install.
 - **Progress (2026-09-22):** the operator placed the Outlook engine in the agent repository: `sb-pss-agent` `4a15074`, `data/Tools/outlook/Skills/meeting-capture` 0.3.0 -- the framework's current engine with `outlook_lib.py` restored (the engine core never changed; only the calendar import did). It was verified against a scratch copy of the vault and deployed by hand to the default profile, the stale copy quarantined. Still open for the framework: its deploy path knows only its own catalog, so a framework redeploy of `meeting-capture` would still overwrite the install's copy; 40 other profiles on that install still carry the stale Outlook copy; `email-thread-capture` has the same shape.
+
+### BUG-086 — The Agents Map takes seconds to show anything
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Fixed
+- **Found:** 2026-10-13, operator: "The Agent Map take a very long time to load agents now".
+- **Root cause:** two, both measured rather than guessed. (1) **Listing agents read every skill of every profile.** `profiles._read_agent` calls `skills.get_all(profile_id)`, which parses every `SKILL.md` that profile has — 2,788 files across this install's 41 profiles, **4.4 of the call's 6 seconds** — and the summary the map renders (`to_summary_dict`) has never carried skills, so every one of those reads was discarded. It grew with the install: more profiles and more deployed Skills each made the listing slower. (2) **The map asked for the same data several times at once** — `/agents` twice, `/sections` twice, `/pipelines` four times, all in the same instant, because several components load the same data and React's StrictMode runs every effect twice in dev. Concurrent identical calls then queued behind each other: the second `/agents` took 5.5s against 1.4s on its own.
+- **Repro:** open the Agents Map and watch the network panel; or time `GET /agents` (4.07s) against `profiles.get_all(include_skills=False)` (0.48s).
+- **Expected:** listing agents costs what a summary costs.
+- **Actual:** ~6s before anything renders, growing with every Skill deployed to every profile.
+- **Fix:** `profiles.get_all(include_skills=False)` for the listing path, with `find_by_id` still reading skills so `/agents/{id}` and its capabilities list are unchanged; `tests/test_agent_listing_cost.py` fails if a listing ever touches skills again. `apiFetch` shares one in-flight GET per path — not a cache, the entry is dropped the moment the request settles, so nothing serves a stale answer, and only GETs without a body are shared. Measured in the browser opening the map: **16 requests with four duplicated paths → 7 with none; slowest call 5.5s → 2.5s**; `/agents` 4.07s → 1.39s, `/sections` 4.04s → 1.27s. The ~0.5s that remains is two small YAML files plus a soul file per profile; a short-lived cache keyed on the profiles directory would take it further and was left alone rather than introducing staleness for half a second. `dfd5f6e`.
 
 ### BUG-085 — Email capture failed for four days while every status said "ok"
 

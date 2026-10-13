@@ -18,6 +18,10 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- perf(agents): the Agents Map loads in a fraction of the time (`BUG-086`). Listing agents parsed every `SKILL.md` of every profile -- 2,788 files here, 4.4 of the call's 6 seconds -- for a summary that has never carried skills; the listing path skips them now and the detail path still reads them. The map also asked for the same data up to four times at once, so `apiFetch` shares one in-flight GET per path (dropped the moment it settles -- not a cache).
+
+- chore: VERSION 0.11.0 -> 0.11.1. PATCH: a performance fix; no contract or behaviour change.
+
 - fix(health): capture freshness on screen, and a Skill that names the right script (`BUG-085`). Email capture failed for four days while every job status read `ok` -- the Graph token was gone, the script exited 2 on its first page, and an agent-mediated job reported success anyway. System Health now shows when each capture last actually brought a note in, read from the vault rather than from any job's own report, so "0 emails this week" can no longer pass for a quiet week. Separately, five Skills told agents to run `${HERMES_SKILL_DIR}\scripts\<script>` while the deploy writes those scripts beside SKILL.md; they now name the real path, and a test pins every documented command against what the deploy writes.
 
   **Operator action, not shipped here:** re-authorise Graph with `python authorize_graph.py` in the deployed `email-thread-capture` folder. Capture cannot resume without it.
