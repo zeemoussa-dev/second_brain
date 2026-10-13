@@ -266,7 +266,7 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 | BUG-082 | The backend indexes the vault at boot and never again, so a long-running app stops seeing new notes | Logic | Fixed | `d538b33` |
 | BUG-083 | The app polls `/boot-status` once a second forever, long after it is ready | Logic | Open | — |
 | BUG-084 | An unknown URL renders a blank page, not a "no such page" | UI | Open | — |
-| BUG-085 | Email capture failed for four days while every status said "ok" | Logic | Open | — |
+| BUG-085 | Email capture failed for four days while every status said "ok" | Logic | Fixed | `08028d2` |
 
 > **Emptied 2026-09-06** with `BUGS.md`, which this mirrors — 42 rows.
 > History: `git show d64dcb4:BACKLOG.md`. Next id is **`BUG-043`**.

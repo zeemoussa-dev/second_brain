@@ -18,6 +18,12 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix(health): capture freshness on screen, and a Skill that names the right script (`BUG-085`). Email capture failed for four days while every job status read `ok` -- the Graph token was gone, the script exited 2 on its first page, and an agent-mediated job reported success anyway. System Health now shows when each capture last actually brought a note in, read from the vault rather than from any job's own report, so "0 emails this week" can no longer pass for a quiet week. Separately, five Skills told agents to run `${HERMES_SKILL_DIR}\scripts\<script>` while the deploy writes those scripts beside SKILL.md; they now name the real path, and a test pins every documented command against what the deploy writes.
+
+  **Operator action, not shipped here:** re-authorise Graph with `python authorize_graph.py` in the deployed `email-thread-capture` folder. Capture cannot resume without it.
+
+- chore: VERSION 0.10.0 -> 0.11.0. MINOR: System Health gained a check and `/system-health` a field; no contract change, so no plugin reinstall.
+
 - fix(vault)!: a note whose body is HTML reads as a note, not as markup (`BUG-081`). A captured email's body is the original HTML, kept faithful on disk and converted on the way out -- which nothing did, so every note view handed markup to a markdown renderer and a mail opened with `<html><head>`: 98% of the reporting install's 10,219 message notes. Converted at the read instead (`rehype-raw` is what the no-raw-HTML rule exists to prevent), with the capture now recording Graph's `body.contentType` as `body_type` so a reader reads a field rather than guessing.
 
   **Breaking for installs:** `FRAMEWORK_API` 6 -> 7 -- `vault.read_note()` returns a renderable body. `my-day` 1.6.2 and `entities` 1.0.5 are published here; install both after pulling, and redeploy `email-thread-capture` so new mail records its body type.
