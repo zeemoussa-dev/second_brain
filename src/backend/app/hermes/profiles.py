@@ -125,7 +125,7 @@ class HermesProfiles:
         home = self._config.home_path
         return home if agent_id == _PRIMARY_PROFILE_ID else home / "profiles" / agent_id
 
-    def _read_agent(self, profile_id: str, profile_dir: Path) -> HermesAgent:
+    def _read_agent(self, profile_id: str, profile_dir: Path, *, include_skills: bool = True) -> HermesAgent:
         is_primary = profile_id == _PRIMARY_PROFILE_ID
         profile_meta = _read_yaml_file(profile_dir / "profile.yaml")
         description = str(profile_meta.get("description") or "").strip()
@@ -147,23 +147,33 @@ class HermesProfiles:
             provider=provider,
             reasoning_effort=reasoning_effort,
             is_primary=is_primary,
-            skills=self._skills.get_all(profile_id),
+            # Reading one profile's skills means parsing every SKILL.md it has;
+            # across an install's profiles that is thousands of files, and a
+            # listing throws every one of them away (`BUG-086`).
+            skills=self._skills.get_all(profile_id) if include_skills else [],
             icon="hub" if is_primary else "smart_toy",
         )
 
-    def get_all(self) -> list[HermesAgent]:
+    def get_all(self, *, include_skills: bool = True) -> list[HermesAgent]:
         """Every real profile found on disk -- "default" plus every
         profiles/<name> directory. Returns [] (never raises) if home_path
         doesn't exist, e.g. running somewhere without a local Hermes
-        install."""
+        install.
+
+        `include_skills=False` leaves every agent's `skills` empty and makes the
+        call a cheap read of two small YAML files per profile. Loading them means
+        parsing every SKILL.md of every profile -- 2,788 files on the reporting
+        install, 4.4 of the Agents Map's 6 seconds, every one of them discarded by
+        a caller that only wanted names (`BUG-086`). Ask for a single agent's
+        skills with `find_by_id`, which still reads them."""
         home = self._config.home_path
         if not home.is_dir():
             return []
-        agents = [self._read_agent(_PRIMARY_PROFILE_ID, home)]
+        agents = [self._read_agent(_PRIMARY_PROFILE_ID, home, include_skills=include_skills)]
         profiles_root = home / "profiles"
         if profiles_root.is_dir():
             for profile_dir in sorted(p for p in profiles_root.iterdir() if is_real_profile(p)):
-                agents.append(self._read_agent(profile_dir.name, profile_dir))
+                agents.append(self._read_agent(profile_dir.name, profile_dir, include_skills=include_skills))
         return agents
 
     def find_by_id(self, agent_id: str) -> HermesAgent | None:

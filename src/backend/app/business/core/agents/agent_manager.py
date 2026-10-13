@@ -209,7 +209,12 @@ class AgentManager:
         rendered as its Section's own SectionHub center node) is never
         even in the response, rather than the frontend filtering one out
         after the fact."""
-        agents = [self._to_agent(agent) for agent in get_client().profiles.get_all()]
+        # `include_skills=False`: a listed Agent's `skill_ids` is always empty --
+        # the summary the Agents Map renders has no skills in it, and loading them
+        # meant parsing every SKILL.md of every profile and discarding the lot
+        # (`BUG-086`, 4.4 of the map's 6 seconds). Ask `get_by_id` when you want an
+        # agent's skills; that path still reads them.
+        agents = [self._to_agent(agent) for agent in get_client().profiles.get_all(include_skills=False)]
         if exclude_types:
             agents = [a for a in agents if a.type not in exclude_types]
         return agents
