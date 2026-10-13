@@ -118,7 +118,7 @@ Run it as a background process so you can keep checking in rather than
 blocking on it:
 
 ```
-terminal(command="python \"${HERMES_SKILL_DIR}\scripts\run_full_capture.py\"", background=true)
+terminal(command="python \"${HERMES_SKILL_DIR}\run_full_capture.py\"", background=true)
 ```
 
 Poll its progress periodically (it prints one `PAGE N done: ...` line per
@@ -143,8 +143,19 @@ never a full-history redo (that's `run_full_capture.py`'s own, separate,
 one-time job) and never blind trust in "now".
 
 ```
-terminal(command="python \"${HERMES_SKILL_DIR}\scripts\run_delta_capture.py\" [--max-minutes 50]")
+terminal(command="python \"${HERMES_SKILL_DIR}\run_delta_capture.py\" [--max-minutes 50]")
 ```
+
+**If the script exits non-zero, or prints a failure instead of its JSON, say so
+as the outcome of this run — never "capture completed" or "no new mail".** A
+cron run of this Skill is nobody's conversation: the only trace it leaves is
+what you report, and a run that reports success while capturing nothing is
+indistinguishable from a quiet inbox. Email capture once failed for four days
+behind an `ok` status that way (`BUG-085`): the Graph refresh token was gone,
+every run exited 2 on its first page, and the operator found out by counting
+notes. Quote the script's own last line — "no Graph refresh token ... run
+`python authorize_graph.py`" is an instruction the operator can act on, and
+only reaches them if you repeat it.
 
 Stops itself after `--max-minutes` (default 50, inside Hermes' 3600s
 script limit). Prints `{"status", "more_to_capture", "pages",

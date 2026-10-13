@@ -21,9 +21,23 @@ export interface SystemHealthPlugin {
   routes_prefix: string | null;
 }
 
+// When a capture last actually brought a note in, read from the vault rather
+// than from a job's own report (`BUG-085`): email capture failed for four days
+// while every job status said `ok`, because "0 emails this week" looks exactly
+// like a quiet week.
+export interface SystemHealthCapture {
+  id: string;
+  label: string;
+  last_captured_at: string | null;
+  age_hours: number | null;
+  state: 'fresh' | 'stale' | 'nothing';
+  stale_after_hours: number;
+}
+
 export interface SystemHealthResponse {
   providers: SystemHealthProvider[];
   plugins: SystemHealthPlugin[];
+  captures: SystemHealthCapture[];
 }
 
 export function fetchSystemHealth(): Promise<SystemHealthResponse> {

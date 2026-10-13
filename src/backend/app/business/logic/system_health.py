@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from app.business.core.plugins.plugin_manager import PluginManager
 from app.business.core.provider.provider_manager import ProviderManager
+from app.business.logic import capture_freshness
 
 _plugin_manager = PluginManager()
 _provider_manager = ProviderManager()
@@ -51,4 +52,9 @@ def get_system_health() -> dict:
             }
             for p in _plugin_manager.get_load_report()
         ],
+        # When each capture last actually brought a note in, read from the vault
+        # rather than from any job's own report (`BUG-085`): email capture failed
+        # for four days while every job status said `ok`, and nothing on screen
+        # contradicted it. "Did the job run" was already answered, and wrong.
+        "captures": capture_freshness.get_capture_freshness(),
     }

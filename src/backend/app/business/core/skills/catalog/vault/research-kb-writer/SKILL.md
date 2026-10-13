@@ -87,7 +87,7 @@ write something anyway.
 3. Call the script as a PLAIN, direct `terminal` call using its own full
    absolute path:
    ```
-   terminal(command="python \"${HERMES_SKILL_DIR}\scripts\write_research_doc.py\" --input-file <scratch path>")
+   terminal(command="python \"${HERMES_SKILL_DIR}\write_research_doc.py\" --input-file <scratch path>")
    ```
 
 ## This script NEVER overwrites an existing note

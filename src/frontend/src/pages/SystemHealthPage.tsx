@@ -13,6 +13,16 @@ const PLUGIN_STATUS_BADGE: Record<string, string> = {
   disabled: 'badge-danger',
 };
 
+/** "3 hours", "4 days" -- the number is the point, so it is never rounded away
+ * to a vague "a while ago". */
+function formatAge(hours: number | null): string {
+  if (hours === null) return 'unknown';
+  if (hours < 1) return 'under an hour';
+  if (hours < 48) return `${Math.round(hours)} hour${Math.round(hours) === 1 ? '' : 's'}`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'}`;
+}
+
 function AppStatusTab({ health, onRefresh }: { health: SystemHealthResponse; onRefresh: () => void }) {
   return (
     <>
@@ -60,6 +70,44 @@ function AppStatusTab({ health, onRefresh }: { health: SystemHealthResponse; onR
                 <span className="item-row-meta">
                   {provider.endpoint} · {provider.model} ·{' '}
                   {provider.credential_set ? 'credential set' : 'no credential set'}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
+        <h2>Capture</h2>
+        <p
+          className="text-muted"
+          style={{ fontSize: 'var(--font-size-sm)', marginTop: 'calc(-1 * var(--space-3))' }}
+        >
+          When each capture last actually brought a note into the vault — not
+          whether its job ran. Email capture once failed for four days while
+          every job status read “ok”, because nothing on screen could tell “0
+          emails this week” apart from a quiet week (BUG-085).
+        </p>
+        <div className="item-list">
+          {health.captures.map((capture) => (
+            <div className="item-row" key={capture.id}>
+              <div className="item-row-main">
+                <span className="item-row-title">
+                  {capture.label}{' '}
+                  {capture.state === 'stale' && (
+                    <span className="badge badge-danger">Nothing for {formatAge(capture.age_hours)}</span>
+                  )}
+                  {capture.state === 'fresh' && (
+                    <span className="badge badge-success">Last {formatAge(capture.age_hours)} ago</span>
+                  )}
+                  {capture.state === 'nothing' && (
+                    <span className="badge badge-warning">Nothing captured yet</span>
+                  )}
+                </span>
+                <span className="item-row-meta">
+                  {capture.last_captured_at
+                    ? `Newest note: ${capture.last_captured_at.slice(0, 16).replace('T', ' ')} · flagged after ${formatAge(capture.stale_after_hours)}`
+                    : 'No note of this kind in the vault yet'}
                 </span>
               </div>
             </div>

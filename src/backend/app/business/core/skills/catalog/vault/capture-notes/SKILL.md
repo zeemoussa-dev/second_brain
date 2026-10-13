@@ -64,7 +64,7 @@ mechanical and doesn't understand the content):
 using its own full absolute path:
 
 ```
-terminal(command="python \"${HERMES_SKILL_DIR}\scripts\capture_note.py\" --input-file <scratch path>")
+terminal(command="python \"${HERMES_SKILL_DIR}\capture_note.py\" --input-file <scratch path>")
 ```
 
 The script best-effort wikilinks any real Customer/Partner name it
