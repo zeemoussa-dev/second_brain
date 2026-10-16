@@ -18,6 +18,10 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- fix(index): the vault index is written where the readers look (`BUG-087`). The `vault-index` Skill named the pre-move data path in prose, so the agent-facing index went to `<vault>/.second-brain/index` while every reader resolved `SECOND_BRAIN_DATA_PATH` and read the new folder — two indexes, the live one staler than the dead one, and no error because the old folder still existed. `--data-path` now defaults from the environment and the Skill passes nothing; a missing value stops instead of guessing.
+
+- chore: VERSION 0.11.1 -> 0.11.2. PATCH: a fix; no contract change.
+
 - perf(agents): the Agents Map loads in a fraction of the time (`BUG-086`). Listing agents parsed every `SKILL.md` of every profile -- 2,788 files here, 4.4 of the call's 6 seconds -- for a summary that has never carried skills; the listing path skips them now and the detail path still reads them. The map also asked for the same data up to four times at once, so `apiFetch` shares one in-flight GET per path (dropped the moment it settles -- not a cache).
 
 - chore: VERSION 0.11.0 -> 0.11.1. PATCH: a performance fix; no contract or behaviour change.

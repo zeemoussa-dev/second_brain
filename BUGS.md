@@ -73,6 +73,7 @@ is a thin status mirror of the index table below.
 | BUG-084 | An unknown URL renders a blank page, not a "no such page" -- `App.tsx` has no catch-all route | UI | Minor | Open | 2026-10-09 | — |
 | BUG-085 | Email capture failed for four days while every status said "ok" -- an agent-mediated job swallows the script's non-zero exit, and nothing on screen shows capture freshness | Logic | Critical | Fixed | 2026-10-13 | `08028d2` |
 | BUG-086 | The Agents Map takes seconds to show anything -- listing agents parsed every SKILL.md of every profile and the page asked for the same data four times at once | Logic | Major | Fixed | 2026-10-13 | `dfd5f6e` |
+| BUG-087 | The vault index is written to the pre-move data path, where nothing reads it -- two index folders, the live one staler than the dead one | Logic | Major | Fixed | 2026-10-16 | `88fdcb4` |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -1203,6 +1204,18 @@ is a thin status mirror of the index table below.
 - **Actual:** the redeploy replaces the working Outlook copy with the Graph version, which cannot run there.
 - **Note:** the Outlook 0.1.0 source is recoverable from `822a5f6^`. Where it belongs -- back in the framework catalog under `outlook/`, beside the Graph version, or in the agent repository whose install uses Outlook -- is an operator decision. Until then, do not redeploy either capture Skill to such an install.
 - **Progress (2026-09-22):** the operator placed the Outlook engine in the agent repository: `sb-pss-agent` `4a15074`, `data/Tools/outlook/Skills/meeting-capture` 0.3.0 -- the framework's current engine with `outlook_lib.py` restored (the engine core never changed; only the calendar import did). It was verified against a scratch copy of the vault and deployed by hand to the default profile, the stale copy quarantined. Still open for the framework: its deploy path knows only its own catalog, so a framework redeploy of `meeting-capture` would still overwrite the install's copy; 40 other profiles on that install still carry the stale Outlook copy; `email-thread-capture` has the same shape.
+
+### BUG-087 — The vault index is written to the pre-move data path, where nothing reads it
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Fixed
+- **Found:** 2026-10-16, while tracing why company discovery had stopped: the operator noted "entities.md is in config since we moved the .second-brain to config", and the legacy folder turned out to be **actively written** — its `index/vault_index.json` was timestamped 40 minutes NEWER than the one in `config/index`.
+- **Root cause:** `build_vault_index.py` required `--data-path`, so the Skill had to name one, and `SKILL.md` named `"$SECOND_BRAIN_VAULT_PATH\.second-brain"` — correct before the App Database Folder moved out of the vault, wrong after. The prose did not follow the move and the agent passed what it was told. Every reader resolves `SECOND_BRAIN_DATA_PATH` and looks in the new folder, so writes and reads went to different places. **Nothing errored**, because the legacy folder still existed: the index just answered from a file that stopped being updated.
+- **Repro:** compare `generated_at` in `<vault>/.second-brain/index/vault_index.json` against `<DATA_PATH>/index/vault_index.json` — 2026-10-16T07:10 vs 06:30 on this install.
+- **Expected:** one index, written where it is read.
+- **Actual:** two, with the live one the staler of the pair, for as long as the folder has been moved.
+- **Fix:** the path is no longer something a caller can get wrong. `--data-path` defaults from `SECOND_BRAIN_DATA_PATH` (the convention `--vault-path` already used) and the Skill passes nothing at all; a missing value stops with a message instead of guessing `<vault>/.second-brain`, since that guess is exactly what made this silent. Verified on the live install by running the deployed copy the way `SKILL.md` now tells the agent to: the live index was written, the legacy one untouched. Three tests, one of which reads `SKILL.md` and fails if a data path ever reappears in the command. Redeployed to all 41 profiles. **Left in place:** the legacy `<vault>/.second-brain/index` folder (2.9 MB of now-dead files) — deleting vault content is the operator's call.
 
 ### BUG-086 — The Agents Map takes seconds to show anything
 
