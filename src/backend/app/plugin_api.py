@@ -53,6 +53,15 @@ contributes `.tsx` compiled into the framework's own frontend, and its package.j
 is never installed -- so "the libraries the host provides" is the only way a plugin
 can draw a chart at all. One copy, one version, deduped across every plugin.
 
+v9 gives BACKENDS a spreadsheet library: the host provides `openpyxl` (`ADR-040`).
+The reason is v8's, one layer down -- a plugin's backend is imported into the
+framework's own process and venv, and nothing installs a `requirements.txt` of its
+own, so a library the host does not provide is an `ImportError` at registration.
+Note the asymmetry this exposes: the screens are governed by an allowlist, while
+`check_plugin` polices only `app.*` internals and other plugins' packages, so a
+backend's third-party import is refused by nothing and simply fails at runtime when
+the package is absent. The version gate is what keeps that from happening.
+
 A new capability is added here when a plugin
 needs one. The host loads only
 plugins built for its exact `FRAMEWORK_API`, so a plugin that relies on a
@@ -77,7 +86,7 @@ from app.data_access import seed_data, vault_writer
 from app.obsidian import sections
 from app.obsidian.notes import long_path
 
-FRAMEWORK_API = 8
+FRAMEWORK_API = 9
 
 _logger = logging.getLogger(__name__)
 

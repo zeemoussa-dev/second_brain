@@ -15,6 +15,10 @@ langchain-openai
 # Second Brain ever becomes an MCP server again, which is not the design.
 anthropic
 pypdf
+# Host-provided for plugins (`ADR-040`): a plugin's backend runs inside this
+# venv and cannot install anything of its own, so reading or writing a
+# spreadsheet is only possible if the host provides the library.
+openpyxl
 python-multipart
 pyyaml
 websockets>=13

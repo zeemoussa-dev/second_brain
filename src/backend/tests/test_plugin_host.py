@@ -434,6 +434,45 @@ def test_a_plugin_reads_and_writes_only_its_own_registered_data_files(data_path)
     assert "not a data file this plugin registered" in client.get("/plugins/stores/unregistered").json()["refused"]
 
 
+_SPREADSHEET_BACKEND = '''
+from fastapi import APIRouter
+from openpyxl import Workbook
+
+
+def register(api):
+    router = APIRouter()
+
+    @router.get("/sheet")
+    def sheet():
+        book = Workbook()
+        book.active["A1"] = "written by a plugin"
+        return {"cell": book.active["A1"].value}
+
+    api.register_router(router)
+'''
+
+
+def test_a_plugin_backend_may_read_and_write_a_spreadsheet(data_path):
+    """ADR-040: a plugin's backend is imported into the framework's own process
+    and venv and installs nothing of its own, so a library the host does not
+    provide is an ImportError at registration -- the plugin never loads at all,
+    rather than failing when someone opens the screen."""
+    install(data_path, "exports", backend=_SPREADSHEET_BACKEND)
+
+    client = app_with(PluginManager().load_all())
+
+    assert client.get("/plugins/exports/sheet").json() == {"cell": "written by a plugin"}
+
+
+def test_the_spreadsheet_library_is_declared_not_merely_present(data_path):
+    """Installed on this machine is not the promise; `requirements.txt` is. A
+    fresh install that does not pull openpyxl would refuse every plugin that
+    imports it, with the version gate saying the API matched."""
+    requirements = (Path(__file__).resolve().parents[1] / "requirements.txt").read_text(encoding="utf-8")
+
+    assert any(line.strip() == "openpyxl" for line in requirements.splitlines())
+
+
 def test_reloading_does_not_duplicate_a_plugins_enrichers(data_path):
     install(data_path, "owners", backend=_ENRICHING_BACKEND)
 
