@@ -303,6 +303,8 @@ Where a rule does not belong here:
 
 - **A package allowlist that matches specifiers exactly forbids subpaths.** `echarts/core` is not `echarts`. For a library whose whole cost story is tree-shaking, exact matching makes the allowance useless, so roots are matched with a trailing `/` -- which deliberately does not match a neighbouring package like `echarts-gl`.
 
+- **A plugin screen takes the chart wrapper from `echarts-for-react/esm/core`, never `lib/core`.** `lib/` is CommonJS: under the Vite dev server its default import is the module object and the page goes blank with "Element type is invalid ... got: object". The publish and install gates type-check and build but never render, so they pass it; only opening the page catches it (`azure-cost-manager` 0.1.2, 2026-10-16).
+
 ## Windows host and environment
 
 - **On this Windows host every `Path.exists()`/`is_file()`/`is_dir()` silently returns `False` once the full path exceeds about 260 characters.** Two of them on the same long path can therefore contradict the branch logic that decided its type. `iterdir()` still lists such files - never gate on a path predicate alone for deep vault paths.

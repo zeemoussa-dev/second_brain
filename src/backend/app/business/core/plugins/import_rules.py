@@ -103,7 +103,8 @@ _ALLOWED_UI_PACKAGES = {"react", "react/jsx-runtime", "react-router",
 # Packages a screen may also import INTO: `echarts` is only affordable when a
 # screen pulls the pieces it uses (`echarts/core`, `echarts/charts`,
 # `echarts/components`, `echarts/renderers`) instead of the whole library, and
-# the wrapper's tree-shaken entry point is `echarts-for-react/lib/core`. Listing
+# the wrapper's tree-shaken entry point is `echarts-for-react/esm/core` (its
+# `lib/core` twin is CommonJS and renders as an invalid element under Vite). Listing
 # every subpath the way `react/jsx-runtime` is listed would make the allowlist a
 # moving target, so these two are allowed by root -- which is sound because the
 # whole package is already allowed, and a subpath of it is not a wider reach.

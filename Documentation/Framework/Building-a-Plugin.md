@@ -148,10 +148,15 @@ export default ui;
   import { LineChart } from 'echarts/charts';
   import { GridComponent, TooltipComponent } from 'echarts/components';
   import { CanvasRenderer } from 'echarts/renderers';
-  import ReactEChartsCore from 'echarts-for-react/lib/core';
+  import ReactEChartsCore from 'echarts-for-react/esm/core';
 
   echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
   ```
+
+  Take the wrapper from **`esm/core`, never `lib/core`**. `lib/` is CommonJS: under the
+  Vite dev server its default import arrives as the module object, and the page goes
+  blank with React's "Element type is invalid ... got: object". Publishing type-checks
+  and builds but never renders a screen, so it cannot catch this — open the page.
 
   A plugin cannot bring its own library — its `package.json` is never installed
   — so a chart is drawn with these or by hand in SVG. Being a framework

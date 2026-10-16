@@ -3704,3 +3704,10 @@ a charting library to be added to the framework (2026-10-16).
 - **Let each plugin bundle its own.** Not actually possible: a plugin's `package.json` is
   never installed. It would also mean several copies and several versions of a megabyte-class
   library in one bundle.
+
+**Note (2026-10-16):** the wrapper's entry point for a screen is `echarts-for-react/esm/core`,
+not the `lib/core` named above. `lib/core` stays permitted -- the decision allows by root --
+but it is CommonJS, and under the Vite dev server its default import is the module object:
+`azure-cost-manager` 0.1.2 went blank with "Element type is invalid" on every account with
+data. The publish gate builds but never renders a screen, so it passed. The decision itself
+is unchanged.

@@ -301,7 +301,7 @@ def test_a_screen_may_import_only_the_chart_pieces_it_draws(tmp_path):
         import { LineChart } from 'echarts/charts';
         import { GridComponent, TooltipComponent } from 'echarts/components';
         import { CanvasRenderer } from 'echarts/renderers';
-        import ReactEChartsCore from 'echarts-for-react/lib/core';
+        import ReactEChartsCore from 'echarts-for-react/esm/core';
     '''))
 
     assert check_plugin_imports.check_plugin_ui(ui, "my-day") == []
