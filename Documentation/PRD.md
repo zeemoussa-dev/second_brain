@@ -5283,3 +5283,74 @@ bundle, and it is a real `npm install` on every install machine the day it lands
 plugin can render the same note the same way without importing anything the installer
 refuses; and the CBO install's Strategic Entities plugin deletes its own `Flowchart.tsx`.
 
+
+---
+
+### REQ-SB-95: An Agent Can Only Do What the App Can Do — Operator Profile, Actions, Workflows, Entity Resolution
+
+Raised 2026-10-16 from the CBO install, from three requests the agent could not serve
+(operator: "Give me the list of Actions Assigned to my Team and send it to me by Mail",
+"Make Adobe a Strategic Entity", "Give me the Updates about Adobe").
+
+**Finding 1 - the agent does not know who it acts for.** "My team" is stored nowhere, and
+`self_email` -- which does exist, as a backend setting -- never reaches the agent. An
+agent's context is composed into SOUL.md from `prompt` + `guardrails` + `scope`, and
+nothing puts operator facts through it. So a request naming the operator's own
+organisation cannot be served at all, and the agent has no honest way to say why.
+
+**Finding 2 - the agent cannot see what the app can do.** "Make Adobe a Strategic Entity"
+is a real feature, implemented in a screen. Skills are the only agent-invocable things,
+and they are a separate list from what the UI offers. So the app has capabilities the
+agent cannot reach, and the agent has no way to enumerate the ones it can -- which is also
+why it recommends actions that do not exist: nothing tells it what does.
+
+**Finding 3 - retrieval searches everything because searching is the only verb.** Asked
+for "the updates about Adobe", the agent searches the whole vault. Adobe is a Customer or
+a Partner; everything about it already carries `customer/adobe`; its synthesis lives in a
+hub note and its evidence in tagged Threads and Meetings. The install already proves the
+mechanism -- three Index artifacts scoped by exactly that tag (`customer/adnoc`,
+`customer/masdar`, `customer/taqa`), rebuilt hourly -- but they were made by hand, there is
+none for Adobe, and nothing tells the agent to prefer them. Given one hammer, every
+question is a search.
+
+**What is wanted.**
+
+- **An Operator Profile.** One place for who the agent acts for: the operator's identity
+  and mail addresses, and their team as a list of emails and roles. Published into every
+  agent's context. It holds *membership*, not copies of people -- the vault already has
+  865 Person notes filenamed by email, so an email resolves to the real person and
+  everything known about them.
+- **Actions, as a first-class artifact kind.** One invocable operation: id, description,
+  typed inputs with required flags, who may run it, whether it needs confirmation, and
+  exactly one implementation (a Skill, an HTTP route, or an in-app feature). The UI renders
+  from the same catalogue, so a feature in a screen *is* an action rather than something
+  someone also remembered to expose. Plugins contribute actions the way they already
+  contribute Cockpit tabs.
+- **Workflows, as a first-class artifact kind.** An intent with multiple actions: how the
+  agent should behave when a particular kind of request arrives -- the ordered steps, which
+  need confirmation, what is reported back. Documented by the operator, not inferred by the
+  model.
+- **Entity resolution instead of search.** A name resolves against the Entities registry
+  (names, aliases, domains) to a kind, a tag and a hub; the tag scopes the read; the read
+  goes synthesis-first then evidence, newest first. One tag-keyed index serves every entity
+  rather than one index per entity.
+- **Enforcement, not instruction.** An action call is validated against the catalogue:
+  an unknown id is refused, a missing required input means ask rather than guess. Publishing
+  the catalogue makes the agent likely to be right; validating the call is what makes it
+  true. "I cannot do that" must be a first-class answer -- that is how a missing capability
+  gets discovered instead of fabricated.
+
+**Worth knowing before choosing.** `artifacts_inventory.py` currently states that five
+kinds "are the only 5"; adding two touches inventory, export, import and the dependency
+resolver. Pipeline already exists as a step-based artifact describing a scheduled cron job
+and is deliberately left alone here -- a Workflow is intent-triggered, a Pipeline is
+time-triggered, and they may converge later rather than now. The Operator Profile is a
+singleton, so it is install configuration with a screen, not a sixth catalogue; it carries
+personal data about named colleagues and must be excluded from artifact export by default.
+
+**Acceptance.** The operator asks "give me the updates about Adobe" and the agent resolves
+Adobe to a Customer and reads its hub and recent tagged evidence rather than searching the
+vault; "make Adobe a Strategic Entity" runs the same operation the UI runs; an agent asked
+for something with no matching action says so instead of inventing one, and a call naming
+an action that does not exist is refused by the framework rather than by the prompt; and
+"who is my team" is answerable from the Operator Profile without the operator being asked.

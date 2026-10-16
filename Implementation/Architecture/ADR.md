@@ -3039,3 +3039,75 @@ had drawn tables and callouts, so that screen went backwards.
   exported rather than duplicated.
 - Chat renders callouts too. It shared the gfm half already; sharing all of it means
   one answer to "how does this app draw markdown".
+
+
+---
+
+## ADR-032: An agent acts from a published catalogue, not from its own imagination
+
+**Status:** Accepted
+**Date:** 2026-10-16
+
+**Context:** three requests the CBO install could not serve exposed one shape of gap
+(`REQ-SB-95`). The agent does not know who it acts for -- `self_email` exists as a setting
+and never reaches it, "my team" is stored nowhere. It cannot see what the app can do --
+"Make Adobe a Strategic Entity" is a screen, Skills are a separate list, so UI features are
+invisible and invented actions are unprovable. And it searches the whole vault for "updates
+about Adobe" when Adobe is a tagged entity whose evidence is already scoped, because search
+is the only verb it has.
+
+**Decision:**
+
+- **`Action` becomes the sixth artifact kind.** One invocable operation: `id`,
+  `description`, typed `inputs` (with required flags), who may run it, whether it needs
+  confirmation, and exactly ONE `implementation` -- `skill` (a deployed Skill), `http` (a
+  backend or plugin route), or `ui` (an in-app feature the agent can point to but not
+  perform). The implementation is resolved when the Action is SAVED, not when it is called,
+  so a broken action cannot sit in the catalogue waiting to fail in front of the operator.
+- **`Workflow` becomes the seventh.** An intent with multiple actions: the ordered steps
+  the operator wants taken when a kind of request arrives, which steps need confirmation,
+  what is reported. Each step references an Action id, so the editor cannot produce a
+  workflow pointing at an action that does not exist -- invalid by construction rather than
+  by review.
+- **`Pipeline` is left exactly as it is.** It already carries ordered steps with
+  `depends_on`, and it describes a scheduled Hermes cron job. A Workflow is
+  intent-triggered, a Pipeline is time-triggered. They may converge later -- "a Pipeline is
+  a Workflow with a schedule" -- and that is not worth rebuilding a working thing for now.
+- **Both reside in the data path**, beside the kinds that already do:
+  `<DATA_PATH>/data/Actions/<id>/Action.json` and `<DATA_PATH>/data/Workflows/<id>/Workflow.json`.
+  Instance data, edited in the app, never the repository. The framework may ship starters
+  the way it ships Master Templates.
+- **The Operator Profile is configuration, not a catalogue.** One record at
+  `<DATA_PATH>/data/Operator/Profile.json`, edited in Settings, published into every
+  agent's context. It **absorbs `self_email`** rather than sitting beside it -- a second
+  place for the same fact is how the vault path, the index path and the Entities path each
+  drifted this autumn. It holds the team as emails and roles, never copies of people: the
+  vault's Person notes are filenamed by email, so an email is already the join key.
+- **Entity scoping is ONE tag-keyed index, not one index per entity.** A single artifact
+  groups every `customer/*` and `partner/*` tag, so resolution is a dict lookup and a new
+  entity needs no provisioning. The existing per-entity Indexes stay available for the few
+  accounts that deserve a custom scope.
+- **Enforcement lives at the call.** Publishing the catalogue into agent context -- by the
+  same mechanism that already publishes the section-access map -- makes the agent likely to
+  be right. Validating the call is what makes it true: an unknown action id is refused, a
+  missing required input means ask rather than guess, and "I cannot do that" is a
+  first-class answer.
+- **The Operator Profile is excluded from artifact export by default.** Actions and
+  Workflows should travel between installs; a named colleague's email should not.
+
+**Consequences:**
+
+- `artifacts_inventory.py` says today that five kinds "are the only 5". Two more touch
+  inventory, export, import and the dependency resolver -- the Index precedent (`ADR-019`)
+  is the template for how much work that is.
+- A UI feature becomes a catalogue entry plus a screen that renders it. That is more
+  ceremony per feature, and it is the only way the agent and the UI can stop disagreeing
+  about what the app can do.
+- Prompt-only grounding was considered and rejected. Everything that broke on this install
+  this autumn broke silently -- a stale index, a paused job, a capture that reported `ok`
+  while failing -- and an agent inventing an action is the same failure wearing a different
+  coat. A gate is what we have learned to trust.
+- Entity resolution replaces search as the default for entity questions, which means the
+  answer depends on the registry being current. Discovery was paused for 41 days before
+  anyone noticed; this makes that staleness matter more, and argues for the pipeline
+  freshness surface already proposed under `BUG-085`.

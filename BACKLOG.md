@@ -118,6 +118,7 @@ the analyst at `/spec` and by the product-owner at `/plan-sprints`.
 | REQ-SB-92 | Install a Plugin From Its Own Repository, Without Publishing Into the Framework | — | — | — | Delivered 2026-09-21 (ADR-024): install and update from a git repository at a ref, or a folder |
 | REQ-SB-93 | A Plugin Needs to Create and Delete the Expert Agent Its Feature Is Built On | — | — | — | Withdrawn 2026-09-24, raised in error: `POST /agents` already does this and a plugin's screen may call it |
 | REQ-SB-94 | Render the Vault's Mermaid Diagrams, and Let a Plugin Render Them Too | — | — | — | — |
+| REQ-SB-95 | An Agent Can Only Do What the App Can Do — Operator Profile, Actions, Workflows, Entity Resolution | — | — | — | — |
 
 ---
 
