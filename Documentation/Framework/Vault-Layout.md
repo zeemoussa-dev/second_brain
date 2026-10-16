@@ -43,11 +43,11 @@ repeated filenames**:
 
 ```
 Work/Customers/<Name>/<Name>.md            the hub note
-Work/Customers/<Name>/<Name>-log.md        the running log
+Work/Customers/<Name>/<Name>-history.md    what has happened with it
 Work/Customers/<Name>/<Name>-captures.md   what was captured about it
 ```
 
-> **Not `index.md` / `log.md` / `captures.md`.** Every file carries the entity's
+> **Not `index.md` / `history.md` / `captures.md`.** Every file carries the entity's
 > own name, so no two folders produce the same bare filename. This matters
 > because parts of the system still key on filename stems — see the collision
 > rule in `MEMORY.md`.
@@ -105,21 +105,30 @@ per-day layout shipped first and was corrected.
 
 ---
 
-## Child notes — when one note needs a log
+## Child notes — when one note needs a history
 
-An entity that needs a running log and a captures list uses Template `children`
-rather than more sections:
+An entity that needs a running record and a captures list uses Template
+`children` rather than more sections:
 
 ```json
 "root": {
-  "children": ["log", "captures"],
-  "children_index_section": "Log & Captures"
+  "children": ["history", "captures"],
+  "children_index_section": "History & Captures"
 }
 ```
 
 The parent's body then carries `## Summary`, `## Actions`, `## Related` and
-`## Log & Captures`, and the engine writes into a child via `modify_section()`'s
-`child_suffix` parameter.
+`## History & Captures`, and the engine writes into a child via
+`modify_section()`'s `child_suffix` parameter.
+
+> **It was `log` until 2026-09-11** (operator: "Log" reads as machine output,
+> "History" is what the note actually holds). A Template only shapes notes
+> created *after* it changes, so an install carries both names until its hubs are
+> migrated — and a writer deployed before the change keeps appending to the old
+> one. Both were true on the reporting install as late as 2026-10-16: every
+> deployed copy of `apply_thread_review.py` still wrote `-log.md` while the
+> Templates had moved on. If you see both files under one hub, that is which
+> half has not caught up.
 
 > **Availability trap.** Child notes need `create_dynamic_child()`, which exists
 > only in the canonical engine at `Hermes-Provisioning/shared/vault_manager.py`.

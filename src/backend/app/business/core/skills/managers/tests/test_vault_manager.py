@@ -278,7 +278,7 @@ def _write_opportunity_template(vault: Path, on_missing: str = "create", with_ch
         # off the root note the same way Customer/Partner's own log/
         # captures already do.
         root["children"] = [
-            {"suffix": "log", "frontmatter_defaults": {"type": "Log"}, "name_template": "{title} Log"},
+            {"suffix": "history", "frontmatter_defaults": {"type": "History"}, "name_template": "{title} History"},
             {"suffix": "captures", "frontmatter_defaults": {"type": "Captures"}, "name_template": "{title} Captures"},
         ]
     template_path.write_text(json.dumps({
@@ -385,7 +385,7 @@ def test_modify_section_by_title_and_parent_value_finds_the_real_note(vault):
 
     # alias resolution works here too, same as create's own
     result2 = vm.modify_section(
-        vault, template, section="Log", content="first entry", mode="append",
+        vault, template, section="History", content="first entry", mode="append",
         title="Renewal", parent_value="Acme",
     )
     assert result2["id"] == created["id"]
@@ -403,7 +403,7 @@ def test_modify_section_by_title_refuses_to_fabricate_when_on_missing_is_error(v
 
     with pytest.raises(vm.VaultManagerError):
         vm.modify_section(
-            vault, template, section="Log", content="should never write",
+            vault, template, section="History", content="should never write",
             mode="append", title="Does Not Exist", parent_value="Acme",
         )
     assert not (vault / "Work" / "Customers" / "Acme" / "Opportunities").exists()
@@ -419,16 +419,16 @@ def test_modify_section_with_child_suffix_writes_the_sibling_file_not_the_root(v
     root_path = Path(created["path"])
 
     result = vm.modify_section(
-        vault, template, section="Log", content="2026-08-31: first entry", mode="append",
-        title="Renewal", parent_value="Acme", child_suffix="log",
+        vault, template, section="History", content="2026-08-31: first entry", mode="append",
+        title="Renewal", parent_value="Acme", child_suffix="history",
     )
     assert result["id"] == created["id"]
-    log_path = root_path.parent / f"{root_path.stem}-log.md"
-    assert result["path"] == str(log_path)
-    assert vm.get_section_content(log_path, "Log") == "2026-08-31: first entry"
+    history_path = root_path.parent / f"{root_path.stem}-history.md"
+    assert result["path"] == str(history_path)
+    assert vm.get_section_content(history_path, "History") == "2026-08-31: first entry"
     # the root's own Summary is untouched -- the write really landed on the child
     assert vm.get_section_content(root_path, "Summary") == "v1"
-    assert vm.get_section_content(root_path, "Log") == ""
+    assert vm.get_section_content(root_path, "History") == ""
 
 
 def test_modify_section_with_child_suffix_appends_across_repeated_calls(vault):
@@ -438,15 +438,15 @@ def test_modify_section_with_child_suffix_appends_across_repeated_calls(vault):
     root_path = Path(created["path"])
 
     vm.modify_section(
-        vault, template, section="Log", content="entry one", mode="append",
-        title="Renewal", parent_value="Acme", child_suffix="log",
+        vault, template, section="History", content="entry one", mode="append",
+        title="Renewal", parent_value="Acme", child_suffix="history",
     )
     vm.modify_section(
-        vault, template, section="Log", content="entry two", mode="append",
-        title="Renewal", parent_value="Acme", child_suffix="log",
+        vault, template, section="History", content="entry two", mode="append",
+        title="Renewal", parent_value="Acme", child_suffix="history",
     )
-    log_path = root_path.parent / f"{root_path.stem}-log.md"
-    content = vm.get_section_content(log_path, "Log")
+    history_path = root_path.parent / f"{root_path.stem}-history.md"
+    content = vm.get_section_content(history_path, "History")
     assert "entry one" in content
     assert "entry two" in content
     assert content.index("entry one") < content.index("entry two")
@@ -461,7 +461,7 @@ def test_modify_section_with_unknown_child_suffix_refuses(vault):
 
     with pytest.raises(vm.VaultManagerError, match="typo"):
         vm.modify_section(
-            vault, template, section="Log", content="x", mode="append",
+            vault, template, section="History", content="x", mode="append",
             title="Renewal", parent_value="Acme", child_suffix="typo",
         )
 
@@ -700,7 +700,7 @@ def _write_customer_style_template(vault: Path, **parent_overrides) -> dict:
             "frontmatter_defaults": {"type": "Customer", "affiliate_of": ""},
             "sections": [{"name": "Affiliates", "access": "machine_write"}],
             "children": [
-                {"suffix": "log", "frontmatter_defaults": {"type": "Log"}, "name_template": "{title} Log"},
+                {"suffix": "history", "frontmatter_defaults": {"type": "History"}, "name_template": "{title} History"},
                 {"suffix": "captures", "frontmatter_defaults": {"type": "Captures"}, "name_template": "{title} Captures"},
             ],
         },
@@ -715,19 +715,19 @@ def test_create_with_children_writes_fixed_sibling_files(vault):
     assert root_path.name == "Adnoc.md"
     assert root_path.parent.name == "Adnoc"  # own_folder + plain_folder -- no date
 
-    log_path = root_path.parent / "Adnoc-log.md"
+    history_path = root_path.parent / "Adnoc-history.md"
     captures_path = root_path.parent / "Adnoc-captures.md"
-    assert log_path.is_file()
+    assert history_path.is_file()
     assert captures_path.is_file()
 
-    log_frontmatter, log_body = vm.read_note(log_path)
-    assert log_frontmatter["type"] == "Log"
-    assert log_frontmatter["name"] == "Adnoc Log"
-    assert log_frontmatter["parent"] == "[[Adnoc]]"
-    assert log_body.strip() == "# Adnoc"
+    history_frontmatter, history_body = vm.read_note(history_path)
+    assert history_frontmatter["type"] == "History"
+    assert history_frontmatter["name"] == "Adnoc History"
+    assert history_frontmatter["parent"] == "[[Adnoc]]"
+    assert history_body.strip() == "# Adnoc"
     # frontmatter comes BEFORE the heading -- deliberate correction of
     # the original hand-rolled script's own header-above-frontmatter bug
-    assert log_path.read_text(encoding="utf-8").startswith("---\n")
+    assert history_path.read_text(encoding="utf-8").startswith("---\n")
 
     captures_frontmatter, _ = vm.read_note(captures_path)
     assert captures_frontmatter["name"] == "Adnoc Captures"
@@ -790,18 +790,18 @@ def test_children_index_section_auto_lists_child_wikilinks(vault):
             "on_existing_title": "error", "own_folder": True,
             "plain_filename": True, "plain_folder": True,
             "frontmatter_defaults": {"type": "Customer"},
-            "sections": [{"name": "Log & Captures", "access": "machine_write"}],
-            "children_index_section": "Log & Captures",
+            "sections": [{"name": "History & Captures", "access": "machine_write"}],
+            "children_index_section": "History & Captures",
             "children": [
-                {"suffix": "log", "display_label": "Log"},
+                {"suffix": "history", "display_label": "History"},
                 {"suffix": "captures", "display_label": "Captures"},
             ],
         },
     }), encoding="utf-8")
     template = vm.load_template(vault, "customer2")
     result = vm.create(vault, template, title="Adnoc", note_name="Customers")
-    section = vm.get_section_content(Path(result["path"]), "Log & Captures")
-    assert section == "- [[Adnoc-log|Log]]\n- [[Adnoc-captures|Captures]]"
+    section = vm.get_section_content(Path(result["path"]), "History & Captures")
+    assert section == "- [[Adnoc-history|History]]\n- [[Adnoc-captures|Captures]]"
 
 
 def test_merge_tags_is_additive_and_idempotent(vault):
@@ -964,7 +964,7 @@ def test_growth_defaults_to_fixed_and_existing_fixed_children_are_unaffected(vau
         assert "growth" not in entry  # real Template.json shape, unedited
     result = vm.create(vault, template, title="Adnoc", note_name="Customers")
     root_path = Path(result["path"])
-    assert (root_path.parent / "Adnoc-log.md").is_file()
+    assert (root_path.parent / "Adnoc-history.md").is_file()
     assert (root_path.parent / "Adnoc-captures.md").is_file()
 
 
@@ -977,7 +977,7 @@ def test_dynamic_child_declared_alongside_fixed_children_is_skipped_at_root_crea
         vault, name="items", folder="items", growth="dynamic",
     )
     template["root"]["children"].insert(0, {
-        "suffix": "log", "frontmatter_defaults": {"type": "Log"}, "name_template": "{title} Log",
+        "suffix": "history", "frontmatter_defaults": {"type": "History"}, "name_template": "{title} History",
     })
     import json
     template_path = vault / ".second-brain" / "data" / "Templates" / "thread-fixture" / "Template.json"
@@ -989,7 +989,7 @@ def test_dynamic_child_declared_alongside_fixed_children_is_skipped_at_root_crea
 
     result = vm.create(vault, template, note_name="Threads", title="Vendor Renewal")
     root_path = Path(result["path"])
-    assert (root_path.parent / f"{root_path.stem}-log.md").is_file()
+    assert (root_path.parent / f"{root_path.stem}-history.md").is_file()
     assert not (root_path.parent / "items").exists()
 
     child = vm.create_dynamic_child(
