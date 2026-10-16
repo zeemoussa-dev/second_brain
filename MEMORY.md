@@ -297,6 +297,12 @@ Where a rule does not belong here:
 
 - **A blob download can report `receivedBytes` reaching `totalBytes` and then land in a terminal `canceled` state with no file on disk.** Under headless CDP download interception this is an environment quirk - confirm against an already-working sibling flow before treating it as a defect in new code.
 
+- **A library the framework depends on is NOT available to a plugin.** `import_rules._ALLOWED_UI_PACKAGES` is the contract, not `package.json`: `mermaid` sits in both the framework's dependencies and the refusal path, reachable only through `pluginHost/noteText`. Adding a dependency without adding it to the allowlist changes nothing for plugins; adding it to the allowlist is a `FRAMEWORK_API` bump (`ADR-039`).
+
+- **Adding anything to what the host provides is a multi-repository change.** The version gate is exact-match and refuses a plugin at load, so bumping `FRAMEWORK_API` takes every installed plugin offline until each one's manifest is bumped and reinstalled -- four of them on 2026-10-16. Budget the plugin republishes as part of the change, never as follow-up.
+
+- **A package allowlist that matches specifiers exactly forbids subpaths.** `echarts/core` is not `echarts`. For a library whose whole cost story is tree-shaking, exact matching makes the allowance useless, so roots are matched with a trailing `/` -- which deliberately does not match a neighbouring package like `echarts-gl`.
+
 ## Windows host and environment
 
 - **On this Windows host every `Path.exists()`/`is_file()`/`is_dir()` silently returns `False` once the full path exceeds about 260 characters.** Two of them on the same long path can therefore contradict the branch logic that decided its type. `iterdir()` still lists such files - never gate on a path predicate alone for deep vault paths.

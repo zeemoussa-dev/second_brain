@@ -219,8 +219,11 @@ screens, endpoints, Templates and logic. Source lives in its own repository;
 - **`framework_api` must match the host exactly.** A plugin built for another
   version is refused, with the reason on System Health, rather than half-loaded.
 - **The backend may import `app.plugin_api` and nothing else**; screens may
-  import only their own files, `src/pluginHost/` and react / react-router. Both
-  rules are checked at publish time.
+  import only their own files, `src/pluginHost/` and the libraries the host
+  provides — react, react-router, and `echarts` / `echarts-for-react` for charts
+  (subpaths included, v8). Both rules are checked at publish time. A library the
+  framework merely depends on is **not** available: `mermaid` is in the same
+  `package.json` and is reachable only through `pluginHost/noteText`.
 - **Installing** copies the backend into `<app data>/plugins/<id>/` and the
   screens into the frontend's `src/plugins/<id>/`, records what it owns in
   `plugins/installed.json`, and needs a backend restart. A Template already on

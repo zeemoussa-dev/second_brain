@@ -133,11 +133,29 @@ export default ui;
   must not have: the Cockpit is a generic component for chatting with agents
   about a subject, and what an email or a meeting IS belongs to the plugin that
   understands it. A Thread's own emails is My Day's tab.
-- **Screens may import only their own files, `src/pluginHost/`, and react /
-  react-router.** `pluginHost/api` gives `apiFetch` and `apiUrl` (an absolute
-  backend URL, for an `<a href>` or `<img src>` the browser fetches for itself —
-  v6); `pluginHost/types` gives the contract. Importing a framework feature is
-  refused at publish time — it would break the next time that feature changed.
+- **Screens may import only their own files, `src/pluginHost/`, and the
+  libraries the host provides.** `pluginHost/api` gives `apiFetch` and `apiUrl`
+  (an absolute backend URL, for an `<a href>` or `<img src>` the browser fetches
+  for itself — v6); `pluginHost/types` gives the contract. Importing a framework
+  feature is refused at publish time — it would break the next time that feature
+  changed.
+- **Charts are a host library** (v8, `ADR-039`): `echarts` and
+  `echarts-for-react`, subpaths included, so import `echarts/core` plus the
+  chart types you draw rather than the whole library —
+
+  ```tsx
+  import * as echarts from 'echarts/core';
+  import { LineChart } from 'echarts/charts';
+  import { GridComponent, TooltipComponent } from 'echarts/components';
+  import { CanvasRenderer } from 'echarts/renderers';
+  import ReactEChartsCore from 'echarts-for-react/lib/core';
+
+  echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
+  ```
+
+  A plugin cannot bring its own library — its `package.json` is never installed
+  — so a chart is drawn with these or by hand in SVG. Being a framework
+  dependency is not enough: `mermaid` is one and stays refused.
 - **Rendering vault text is the host's job** (v4). `pluginHost/noteText` exports
   `NoteText` -- markdown, real `[[wikilinks]]`, and ```mermaid fences drawn as
   diagrams -- and `MermaidDiagram` for a screen holding diagram source rather

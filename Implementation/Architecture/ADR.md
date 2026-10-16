@@ -3650,3 +3650,57 @@ install before any screen could explain why. Put to the operator with both readi
   possible change. Rejected because the agent must publish *who it acts for* as one
   coherent fact; splitting "me" from "my team" across two sources is the shape of
   divergence this requirement exists to remove.
+
+---
+
+## ADR-039: The host provides the charting library, and plugins import it by root
+
+**Status:** Accepted
+**Date:** 2026-10-16
+
+**Context:** A plugin contributes `.tsx` that is compiled into the framework's own
+frontend; its repository has no `package.json` that an install ever runs `npm install`
+against. So a plugin cannot bring a library with it, and `import_rules._ALLOWED_UI_PACKAGES`
+says as much: a screen may import only its own files, `src/pluginHost/`, and the libraries
+the host provides -- today `react`, `react/jsx-runtime` and `react-router`. The practical
+consequence showed up in `azure-cost-manager` 0.1.0, whose cost page draws hand-rolled SVG
+charts because drawing them by hand was the only option open to it. The operator asked for
+a charting library to be added to the framework (2026-10-16).
+
+**Decision:**
+
+- **The host provides `echarts` and `echarts-for-react`** as real frontend dependencies,
+  and `import_rules` allows both.
+- **They are allowed by ROOT, not by exact specifier**: `echarts/core`, `echarts/charts`,
+  `echarts/components`, `echarts/renderers` and `echarts-for-react/lib/core` are all
+  permitted. ECharts is only affordable when a screen imports the pieces it draws rather
+  than the whole library, so refusing subpaths would have made the allowance useless in
+  the one way that matters. A root allows `<root>/...` and nothing else -- `echarts-gl` is
+  a different package and stays refused.
+- **`FRAMEWORK_API` moves 7 -> 8.** The gate is exact-match and refuses a plugin at load,
+  so a plugin that draws a chart must never be loaded by a framework without the library.
+  All four installed plugins were republished in the same change; that cost is the gate
+  working, not an accident.
+- **Being a framework dependency does not make a library available to plugins.** `mermaid`
+  is in the same `package.json` and stays refused, reachable only through
+  `pluginHost/noteText`. The allowlist, not the dependency list, is the contract.
+
+**Alternatives considered:**
+
+- **Recharts.** One dependency, declarative React/SVG components that read like the TSX
+  plugin authors already write, and the lightest to expose. Rejected by the operator in
+  favour of reach: ECharts carries zoom, brush, dataZoom, canvas rendering for large
+  series and far more chart types, and the first real consumer is a cost explorer.
+- **Chart.js + react-chartjs-2.** Light canvas charts, very mature. Rejected for the same
+  reason, and canvas output is not inspectable DOM, so a chart cannot be asserted on in a
+  structural test the way the frontend's other screens are.
+- **Wrap charts behind `pluginHost/`, the way `NoteText` wraps mermaid.** A single
+  `<Chart>` component would hide the library and avoid an API bump later if it is swapped.
+  Rejected for now: `NoteText` wraps *one* opinionated thing (render this note the way the
+  app does), whereas charting is a broad surface whose whole value is the options a screen
+  passes. A wrapper would either re-expose the full option object -- the same coupling with
+  more indirection -- or arbitrarily limit what a plugin can draw. Revisit if several
+  plugins converge on one chart shape.
+- **Let each plugin bundle its own.** Not actually possible: a plugin's `package.json` is
+  never installed. It would also mean several copies and several versions of a megabyte-class
+  library in one bundle.
