@@ -1,14 +1,14 @@
 ---
 id: SPRINT-087
 title: Action as the sixth artifact kind — the catalogue, its CRUD API, plugin contributions and its screen
-status: Ready                      # Draft | Ready | In Progress | Blocked | Done
+status: In Progress                      # Draft | Ready | In Progress | Blocked | Done
 gate: clear                        # clear | flagged — flagged ⇒ parked in REVIEW-QUEUE.md
 gate_reason: ""                    # the MUST-FLAG trigger that fired, when gate: flagged
 phase: P2                          # single phase only — a sprint never mixes phases
 depends_on_sprints: []             # SPRINT-NNN IDs that must be Done before this can start
 sizing_estimate: "~6 tasks, L"     # effort estimate (e.g. "~6 tasks, M"); checked vs actual in retro
 created: 2026-10-16
-started: ""                        # YYYY-MM-DD when status → In Progress
+started: 2026-10-16                        # YYYY-MM-DD when status → In Progress
 completed: ""                      # YYYY-MM-DD when status → Done
 ---
 
@@ -82,7 +82,7 @@ bidirectional link, written at sprint creation. Order by implementation dependen
 
 | Story | Title | Phase | Status |
 |---|---|---|---|
-| [REQ-SB-95-US-02](../UserStories/REQ-SB-95-US-02-action-sixth-artifact-kind.md) | Action as the sixth artifact kind — one catalogue of what this app can actually do | P2 | Ready |
+| [REQ-SB-95-US-02](../UserStories/REQ-SB-95-US-02-action-sixth-artifact-kind.md) | Action as the sixth artifact kind — one catalogue of what this app can actually do | P2 | In Progress (T01 Done) |
 
 Build order inside the sprint, read from the task files' own `depends_on`:
 `T01 → T02 → T03`, `T01 → T04`, `T02 → T05`, `(T03, T04, T05) → T06`.

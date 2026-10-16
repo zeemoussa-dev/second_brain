@@ -4,12 +4,12 @@ title: Action as the sixth artifact kind — one catalogue of what this app can 
 requirement_ids: [REQ-SB-95]
 requirement_section: "REQ-SB-95: An Agent Can Only Do What the App Can Do — Operator Profile, Actions, Workflows, Entity Resolution"
 phase: P2
-status: Ready
+status: In Progress
 gate: flagged
 gate_reason: "trigger-3 (ADR-033 created — it decides the Action fields this story stores: allowed_callers as agent ids, and the confirmation flag's meaning)"
 sprint: SPRINT-087
 created: 2026-10-16
-updated: 2026-10-16  # product-owner: grouped into SPRINT-087 (alone — root of the REQ-SB-95 spine, three sprints depend on it)
+updated: 2026-10-16  # coder: T01 Done (Action entity + ActionManager + data access); T02-T06 outstanding
 ---
 
 # REQ-SB-95-US-02 — Action as the sixth artifact kind — one catalogue of what this app can actually do
