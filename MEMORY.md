@@ -305,6 +305,10 @@ Where a rule does not belong here:
 
 - **A plugin screen takes the chart wrapper from `echarts-for-react/esm/core`, never `lib/core`.** `lib/` is CommonJS: under the Vite dev server its default import is the module object and the page goes blank with "Element type is invalid ... got: object". The publish and install gates type-check and build but never render, so they pass it; only opening the page catches it (`azure-cost-manager` 0.1.2, 2026-10-16).
 
+- **A plugin's backend runs in the framework's own venv and installs nothing.** A third-party library it needs must be in `src/backend/requirements.txt`, and adding one is a `FRAMEWORK_API` bump exactly like a frontend library (`ADR-040`). Declaring it in `requirements.txt` is the promise; "installed on this machine" is not.
+
+- **The plugin boundary is an allowlist on the frontend and a denylist on the backend.** `_ALLOWED_UI_PACKAGES` refuses any screen import it does not name; `check_plugin` refuses only `app.*` internals and `sb_plugins_*`, so a backend importing `anthropic`, `langgraph` or any other framework dependency passes publishing and couples itself to an internal. Know which half you are reasoning about before claiming an import is checked.
+
 ## Windows host and environment
 
 - **On this Windows host every `Path.exists()`/`is_file()`/`is_dir()` silently returns `False` once the full path exceeds about 260 characters.** Two of them on the same long path can therefore contradict the branch logic that decided its type. `iterdir()` still lists such files - never gate on a path predicate alone for deep vault paths.

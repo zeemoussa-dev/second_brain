@@ -218,7 +218,11 @@ screens, endpoints, Templates and logic. Source lives in its own repository;
 
 - **`framework_api` must match the host exactly.** A plugin built for another
   version is refused, with the reason on System Health, rather than half-loaded.
-- **The backend may import `app.plugin_api` and nothing else**; screens may
+- **The backend may import `app.plugin_api` and nothing else from the
+  framework**, plus the third-party libraries the host installs — `fastapi`,
+  `pydantic`, `httpx` and `openpyxl` for spreadsheets (v9). It runs inside the
+  framework's own venv and installs nothing of its own, so anything else is an
+  `ImportError` at registration and the plugin does not load. Screens may
   import only their own files, `src/pluginHost/` and the libraries the host
   provides — react, react-router, and `echarts` / `echarts-for-react` for charts
   (subpaths included, v8). Both rules are checked at publish time. A library the

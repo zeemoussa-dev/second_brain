@@ -3711,3 +3711,55 @@ but it is CommonJS, and under the Vite dev server its default import is the modu
 `azure-cost-manager` 0.1.2 went blank with "Element type is invalid" on every account with
 data. The publish gate builds but never renders a screen, so it passed. The decision itself
 is unchanged.
+
+---
+
+## ADR-040: The host provides `openpyxl`, and a backend's third-party imports are governed by the version gate alone
+
+**Status:** Accepted
+**Date:** 2026-10-16
+
+**Context:** `ADR-039` settled the screens' half a few hours earlier. The operator then
+asked for `openpyxl` as well (2026-10-16), which is the same need one layer down: a
+plugin's backend is imported into the framework's own process and venv
+(`plugins_data.import_backend_package`), and nothing ever installs a `requirements.txt`
+belonging to the plugin. A library the host does not provide is therefore an
+`ImportError` at registration -- the plugin does not load at all.
+
+Checking the gate made an asymmetry visible that was not obvious before. The screens are
+governed by an **allowlist** (`_ALLOWED_UI_PACKAGES`): anything not named is refused at
+publish time. A backend is governed by a **denylist of two shapes** (`check_plugin`):
+`app.*` that is not the facade, and another plugin's package. A backend's third-party
+import is refused by nothing. `import openpyxl`, `import pandas`, even `import anthropic`
+all pass the boundary check today and simply fail at runtime if the package is absent.
+
+**Decision:**
+
+- **The host provides `openpyxl`**, declared in `src/backend/requirements.txt` rather
+  than merely installed, so a fresh install has it too.
+- **`FRAMEWORK_API` moves 8 -> 9**, for `ADR-039`'s reason: the exact-match gate is the
+  only thing standing between a plugin that imports a host library and a framework that
+  lacks it. All four installed plugins were republished again -- the second cascade in
+  one day, which is the real cost of adding host libraries one at a time rather than in
+  a batch.
+- **The backend boundary is left as a denylist for now, deliberately, and the version
+  gate is named as what carries the guarantee.** Converting it to an allowlist would be
+  a genuine tightening -- it would catch a plugin quietly importing `anthropic` or
+  `langgraph`, framework internals in every sense that matters -- but it changes what
+  publishing accepts for every existing plugin and belongs in its own change, with its
+  own list of what a backend may legitimately use (`fastapi` and `pydantic` at minimum,
+  which today's four plugins already import).
+
+**Alternatives considered:**
+
+- **Fold `openpyxl` into API 8 instead of bumping to 9.** Avoids a second cascade an hour
+  after the first. Rejected because 8 is already published as "charts" -- framework 0.12.0
+  is pushed -- so an install sitting at 8 without `openpyxl` would happily load a plugin
+  declaring 8 and importing it, which is precisely the failure the gate exists to prevent.
+  Redefining a released API number is worse than another bump.
+- **Let the plugin vendor the library into its own package.** A pure-Python wheel could in
+  principle be copied in. Rejected: several plugins would carry several copies and
+  versions inside one process, and the framework would have no say over any of them.
+- **`xlsxwriter` or `pandas` instead.** `xlsxwriter` writes but cannot read, and reading an
+  operator's spreadsheet is half the point. `pandas` is a far larger dependency whose
+  spreadsheet support is `openpyxl` underneath anyway.

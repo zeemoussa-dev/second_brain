@@ -94,6 +94,17 @@ Rules the host enforces:
 
 - **The backend may import `app.plugin_api` and nothing else** from the
   framework. Its own modules import each other relatively.
+- **Third-party libraries are the host's too** (`ADR-040`). The backend is
+  imported into the framework's own process and venv and never installs a
+  `requirements.txt` of its own, so you may use what the host installs —
+  `fastapi` and `pydantic` for the router, `httpx` to call out, and `openpyxl`
+  to read or write a spreadsheet (v9). Anything else raises `ImportError` at
+  registration and the plugin does not load at all. Note this is *not* checked
+  at publish time the way the screens' imports are: the boundary check refuses
+  only framework internals and other plugins' packages, so an import of
+  something the host happens to have — `anthropic`, `langgraph` — passes the
+  gate and quietly couples you to a framework internal. Ask for a library to be
+  added rather than reaching for one that happens to be there.
 - **A plugin that fails is isolated.** A `register` that raises disables that
   plugin, records the reason in System Health, and leaves every other plugin
   loaded. Nothing it registered before raising is kept.
