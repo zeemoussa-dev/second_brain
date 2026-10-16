@@ -4,9 +4,9 @@ title: Save-time implementation resolution for skill / http / ui, plus the broke
 parent_story: REQ-SB-95-US-02
 requirement_id: REQ-SB-95
 type: backend
-status: Blocked
-gate: flagged
-gate_reason: "ESC-064 -- the new save-time gate makes T01's own AC-01 round-trip test fail (it saves against the catalogued-but-undeployed `vault-search` Skill). The fix is ~5 lines in src/backend/tests/test_action_artifact_kind.py, which is not in this task's Files to Modify. Both locked ACs (AC-02, AC-07) are verified green on 9 new AC-tagged tests."
+status: Done
+gate: clear
+gate_reason: ""
 phase: P2
 depends_on: [REQ-SB-95-US-02-T01]
 created: 2026-10-16
@@ -263,3 +263,11 @@ and nothing else; `("POST", "/vault-index/refresh")` was absent. Walking into
 down, returns **101** (METHOD, path) pairs and finds it. Any future code that
 reads this app's own route table must recurse, or it will silently see almost
 nothing.
+
+## Unblocked — 2026-10-16
+
+`ESC-064` resolved by the operator's delegate driving this sprint. The gate this task added was **correct**: it refused an implementation naming a Skill that is catalogued but not deployed, which is precisely what `AC-02` requires. What was wrong was `tests/test_action_artifact_kind.py` (T01's file), whose fixtures named `vault-search` — catalogued, undeployed here — so a test about round-tripping had quietly become a test of the local deployment.
+
+Fix: one autouse fixture in that file monkeypatching `deployed_skill_ids`, the same source `tests/test_action_resolution.py` already controls. **No AC-01 assertion was changed, weakened or removed** — the file asserts exactly what it asserted before. Suite restored to green: **424 passed**.
+
+Authorising the edit rather than minting a T02a: it is five lines of test scaffolding in the file the new gate invalidated, the coder was right to refuse it as out of its own scope, and leaving the suite red would have blocked T03 and T04.

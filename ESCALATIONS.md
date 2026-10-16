@@ -108,5 +108,5 @@ so `AC-01`'s meaning is untouched either way. Whoever authorises it should add
 that file to `T02`'s `## Files to Modify` (or mint a `T02a`) rather than letting
 a coder reach outside its scope by precedent.
 
-**Resolving artefact:** —
+**Resolving artefact:** `REQ-SB-95-US-02-T02` (2026-10-16)
 **Status:** Open

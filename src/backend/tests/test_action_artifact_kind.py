@@ -24,6 +24,23 @@ from app.config import settings
 from app.data_access import actions as actions_data
 
 
+@pytest.fixture(autouse=True)
+def _implementations_resolve(monkeypatch) -> None:
+    """These tests are about round-tripping and the exactly-one rule, not about
+    what happens to be deployed on the machine running them.
+
+    `T02` added a save-time resolution gate (`AC-02`), which correctly refuses an
+    implementation naming a Skill that is catalogued but not deployed -- and
+    `vault-search`, the one these fixtures name, is exactly that on the reporting
+    install. Without this the assertions below would silently become a test of
+    the local deployment, and would fail on any machine where that Skill is
+    absent. The same three sources `tests/test_action_resolution.py` controls."""
+    monkeypatch.setattr(
+        "app.business.core.actions.action_manager.deployed_skill_ids",
+        lambda: {"vault-search"},
+    )
+
+
 @pytest.fixture
 def stored_actions(monkeypatch) -> dict:
     """The whole store, in memory, keyed by action id."""
