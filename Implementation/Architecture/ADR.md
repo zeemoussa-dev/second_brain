@@ -3045,7 +3045,7 @@ had drawn tables and callouts, so that screen went backwards.
 
 ## ADR-032: An agent acts from a published catalogue, not from its own imagination
 
-**Status:** Accepted
+**Status:** Accepted — operator sign-off 2026-10-16
 **Date:** 2026-10-16
 
 **Context:** three requests the CBO install could not serve exposed one shape of gap
