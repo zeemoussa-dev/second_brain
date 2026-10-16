@@ -21,6 +21,12 @@ scan, the export payload folder and the import dispatch. Those tests
 live below the `-- The sixth kind across the artifact machinery --`
 banner and pin, above all, that adding the sixth kind changed nothing
 about the five that were already there.
+
+`REQ-SB-95-US-02-T07` added the last banner, `-- The import conflict
+gate --`, closing `ESC-065`. Those tests deliberately drive
+`preview_import`/`commit_import` rather than `_deploy_one`: testing the
+dispatcher directly is exactly what let the gate in front of it keep a
+four-kind vocabulary unnoticed.
 """
 import json
 from pathlib import Path
@@ -32,10 +38,13 @@ from app.business.core.actions.action_manager import (
     ActionImplementationCardinalityError,
     ActionManager,
 )
+from app.business.core.index.index_manager import IndexManager
+from app.business.core.skills.skill_manager import SkillManager
 from app.business.logic import (
     artifact_dependency_resolver,
     artifact_export,
     artifact_import,
+    artifact_import_conflicts,
     artifact_secret_scan,
     artifacts_inventory,
     sbf_archive,
@@ -510,3 +519,249 @@ def test_importing_an_action_whose_id_exists_never_silently_overwrites(action_st
     assert overwritten["status"] == "deployed"
     assert overwritten["deployed_as"] is None
     assert action_store["make-strategic-entity"]["description"] == "the incoming one"
+
+
+# -- The import conflict gate (REQ-SB-95-US-02-T07, ESC-065) --------------
+#
+# `artifact_import_conflicts._MANAGER_BY_KIND` knew four kinds, and
+# `detect_conflicts` raises for anything else. Both `preview_import` and
+# `commit_import` run it over the WHOLE manifest before deploying, so a
+# single `action` entry -- or an `index`, broken the same way since
+# 2026-09-06 -- failed the entire bundle and nothing in it was imported.
+#
+# The tests above never saw it because they call `_deploy_one` directly,
+# which is the one call that bypasses the gate. Everything below goes in
+# through `preview_import`/`commit_import` instead.
+
+
+class _FakeHermes:
+    """The Hermes client both the import orchestrator and SkillManager
+    reach for: profile listing on the preview side, the per-profile skill
+    push on the commit side. Records the pushes so "the skill really was
+    deployed" is an assertion rather than an absence of an error."""
+
+    def __init__(self, pushes: list) -> None:
+        self.profiles = SimpleNamespace(get_all=lambda: [SimpleNamespace(id="default")])
+        self.skills = SimpleNamespace(
+            create=lambda profile_id, category, skill_id, content, scripts: pushes.append(
+                (profile_id, skill_id),
+            ),
+        )
+
+
+@pytest.fixture
+def in_memory_install(monkeypatch, action_store) -> dict:
+    """Every store the REAL import route reads or writes, held in memory.
+
+    `preview_import`/`commit_import` compose six Managers, a Hermes client
+    and the Sections store, so without this the test would measure
+    whatever happens to be installed on the machine running it -- and
+    `commit_import` would deploy into it for real. Returns the stores so a
+    test can both seed them and read them back afterwards."""
+    skill_markdown: dict[str, str] = {}
+    skill_scripts: dict[str, dict] = {}
+    skill_registry_entries: dict[str, dict] = {}
+    index_definitions: dict[str, dict] = {}
+    hermes_pushes: list = []
+
+    def read_index(index_id: str) -> dict:
+        if index_id not in index_definitions:
+            raise FileNotFoundError(f"No Index.json for {index_id!r}")
+        return index_definitions[index_id]
+
+    monkeypatch.setattr(
+        "app.data_access.skills.category_of",
+        lambda skill_id: "vault" if skill_id in skill_markdown else None,
+    )
+    monkeypatch.setattr("app.data_access.skills.list_skill_ids", lambda: sorted(skill_markdown))
+    monkeypatch.setattr("app.data_access.skills.read_skill_md", skill_markdown.get)
+    monkeypatch.setattr(
+        "app.data_access.skills.list_scripts", lambda skill_id: dict(skill_scripts.get(skill_id, {})),
+    )
+    monkeypatch.setattr(
+        "app.data_access.skills.write_skill_md",
+        lambda category, skill_id, content: skill_markdown.update({skill_id: content}),
+    )
+    monkeypatch.setattr(
+        "app.data_access.skills.write_script",
+        lambda category, skill_id, rel_path, content: skill_scripts.setdefault(skill_id, {}).update(
+            {rel_path: content},
+        ),
+    )
+    monkeypatch.setattr(
+        "app.data_access.tools.find_tool_id_for_skill",
+        lambda skill_id: "jarvis" if skill_id in skill_registry_entries else None,
+    )
+    monkeypatch.setattr(
+        "app.data_access.tools.read_skill_entry",
+        lambda tool_id, skill_id: skill_registry_entries.get(skill_id),
+    )
+    monkeypatch.setattr("app.data_access.tools.read_skill_visual", lambda tool_id, skill_id: {})
+    monkeypatch.setattr(
+        "app.data_access.tools.write_skill_entry",
+        lambda tool_id, skill_id, data, visual: skill_registry_entries.update({skill_id: data}),
+    )
+    monkeypatch.setattr(SkillManager, "_ensure_jarvis_tool", lambda self: None)
+    monkeypatch.setattr(
+        "app.business.core.skills.skill_manager.get_client", lambda: _FakeHermes(hermes_pushes),
+    )
+
+    monkeypatch.setattr("app.data_access.indexes.read_index_json", read_index)
+    monkeypatch.setattr(
+        "app.data_access.indexes.write_index_json",
+        lambda index_id, data: index_definitions.update({index_id: data}),
+    )
+    monkeypatch.setattr("app.data_access.indexes.list_index_ids", lambda: sorted(index_definitions))
+
+    # The resolver's Skill->Template coupling check would otherwise read this
+    # machine's real Templates; no bundle below carries one.
+    monkeypatch.setattr(artifact_dependency_resolver, "_template_manager", _FixedManager([]))
+    monkeypatch.setattr(artifact_import, "get_client", lambda: _FakeHermes(hermes_pushes))
+    monkeypatch.setattr(artifact_import, "SectionManager", lambda: _FixedManager([]))
+
+    return {
+        "skills": skill_markdown, "skill_registry_entries": skill_registry_entries,
+        "indexes": index_definitions, "actions": action_store, "hermes_pushes": hermes_pushes,
+    }
+
+
+A_BUNDLED_SKILL_MD = "---\nname: Vault Search\ndescription: Search the vault\n---\nSearches the vault.\n"
+
+
+def _seed_the_three_artifacts(install: dict, storage_path: str) -> None:
+    install["skills"]["vault-search"] = A_BUNDLED_SKILL_MD
+    install["indexes"]["adnoc"] = {
+        "id": "adnoc", "name": "ADNOC", "folders": ["Work"], "tags": [], "depth": None,
+        "storage_path": storage_path, "schedule": None, "cron_job_id": None, "cron_profile_id": None,
+    }
+    ActionManager().create(
+        "make-strategic-entity",
+        description="Promote a customer to a Strategic Entity",
+        implementation=A_SKILL_IMPLEMENTATION,
+    )
+
+
+def _export_the_mixed_bundle(tmp_path: Path) -> str:
+    """A real `.sbf`, written by the real export, carrying an `action`,
+    an `index` and (pulled in as the Action's own dependency) a `skill`.
+    Copied out of the scratch path the exporter owns so the caller can
+    import it after the exporter's own cleanup contract."""
+    scratch_sbf = artifact_export.commit_export(
+        [{"kind": "index", "id": "adnoc"}, {"kind": "action", "id": "make-strategic-entity"}], {},
+    )
+    try:
+        bundle_path = tmp_path / "mixed-kinds.sbf"
+        bundle_path.write_bytes(Path(scratch_sbf).read_bytes())
+    finally:
+        Path(scratch_sbf).unlink(missing_ok=True)
+    return str(bundle_path)
+
+
+def test_the_gate_accepts_every_kind_the_export_can_emit(in_memory_install) -> None:
+    """[REQ-SB-95-US-02-AC-05] The defect in one assertion: the set of
+    kinds the conflict gate accepts has to BE the set the export can put
+    in a manifest, not a subset frozen at four. `pipeline` is the one
+    exportable kind absent from the payload-folder map -- `commit_export`
+    gives it its own branch, since it ships as `pipelines/<id>.json`
+    rather than a per-artifact folder."""
+    kinds_the_export_can_emit = set(artifact_export._PAYLOAD_FOLDER) | {"pipeline"}
+
+    assert set(artifact_import_conflicts._MANAGER_BY_KIND) == kinds_the_export_can_emit
+
+    checked = artifact_import_conflicts.detect_conflicts([
+        {"kind": kind, "id": f"no-{kind}-by-this-id"} for kind in sorted(kinds_the_export_can_emit)
+    ])
+
+    assert [entry["kind"] for entry in checked] == sorted(kinds_the_export_can_emit)
+    assert [entry["conflicts"] for entry in checked] == [False] * len(kinds_the_export_can_emit)
+
+
+def test_a_mixed_kind_bundle_previews_through_the_real_import_route(
+    in_memory_install, tmp_path,
+) -> None:
+    """[REQ-SB-95-US-02-AC-05] `preview_import` is the call that raised
+    `ValueError: unrecognized artifact kind 'action'` and took the whole
+    bundle down with it. It now reports a conflict decision per entry --
+    the `index` id is already on this machine, the other two are not, and
+    each is decided on its own."""
+    _seed_the_three_artifacts(in_memory_install, str(tmp_path / "adnoc.json"))
+    bundle_path = _export_the_mixed_bundle(tmp_path)
+
+    # The receiving machine: same Index id already here, neither of the others.
+    in_memory_install["skills"].clear()
+    in_memory_install["actions"].clear()
+
+    preview = artifact_import.preview_import(bundle_path)
+
+    assert {(entry["kind"], entry["id"]): entry["conflicts"] for entry in preview["artifacts"]} == {
+        ("index", "adnoc"): True,
+        ("action", "make-strategic-entity"): False,
+        ("skill", "vault-search"): False,
+    }
+    assert {(a["kind"], a["id"]) for a in preview["manifest"]["artifacts"]} == {
+        ("index", "adnoc"), ("action", "make-strategic-entity"), ("skill", "vault-search"),
+    }
+
+
+def test_a_mixed_kind_bundle_commits_every_entry_through_the_real_import_route(
+    in_memory_install, tmp_path,
+) -> None:
+    """[REQ-SB-95-US-02-AC-05] The other half of the gate: `commit_import`
+    re-detects conflicts itself, so it failed the same way even when a
+    preview had somehow succeeded. All three kinds now deploy and read
+    back from their own Manager, and the Action already on the receiving
+    machine -- which the bundle never names -- is left exactly as it
+    was."""
+    _seed_the_three_artifacts(in_memory_install, str(tmp_path / "adnoc.json"))
+    bundle_path = _export_the_mixed_bundle(tmp_path)
+
+    # A clean receiving machine, carrying one unrelated Action of its own.
+    in_memory_install["skills"].clear()
+    in_memory_install["indexes"].clear()
+    in_memory_install["actions"].clear()
+    ActionManager().create(
+        "open-the-artifacts-page", description="the operator's own", implementation=A_UI_IMPLEMENTATION,
+    )
+
+    outcomes = artifact_import.commit_import(bundle_path, {}, {})
+
+    assert {(o["kind"], o["id"]): o["status"] for o in outcomes} == {
+        ("index", "adnoc"): "deployed",
+        ("action", "make-strategic-entity"): "deployed",
+        ("skill", "vault-search"): "deployed",
+    }
+
+    imported_action = ActionManager().get_by_id("make-strategic-entity")
+    assert imported_action.description == "Promote a customer to a Strategic Entity"
+    assert imported_action.implementation.skill_id == "vault-search"
+    assert IndexManager().get_by_id("adnoc").name == "ADNOC"
+    assert SkillManager().get_by_id("vault-search").name == "Vault Search"
+    assert in_memory_install["hermes_pushes"] == [("default", "vault-search")]
+
+    untouched = ActionManager().get_by_id("open-the-artifacts-page")
+    assert untouched.description == "the operator's own"
+    assert untouched.implementation.kind == "ui"
+
+
+def test_a_genuinely_unknown_kind_still_fails_the_bundle_by_name(in_memory_install, tmp_path) -> None:
+    """[REQ-SB-95-US-02-AC-05] This task widened the accepted set; it did
+    not remove the guard. A manifest naming a kind nothing here can deploy
+    still raises, and still says which kinds it would have accepted --
+    which is how the next kind's author finds this map."""
+    bundle_path = str(tmp_path / "from-the-future.sbf")
+    sbf_archive.write_archive(
+        bundle_path,
+        {
+            "format_version": 1, "generated_at": "2026-10-16T00:00:00+00:00",
+            "artifacts": [{"kind": "workflow", "id": "monday-sweep"}],
+            "secret_scan": {"findings_decided": 0, "redacted_count": 0},
+        },
+        {"workflows/monday-sweep/Workflow.json": b"{}"},
+    )
+
+    with pytest.raises(ValueError) as refusal:
+        artifact_import.preview_import(bundle_path)
+
+    assert "unrecognized artifact kind 'workflow'" in str(refusal.value)
+    for accepted_kind in ("skill", "template", "agent", "pipeline", "index", "action"):
+        assert accepted_kind in str(refusal.value)

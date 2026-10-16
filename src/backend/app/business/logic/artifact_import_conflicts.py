@@ -10,20 +10,29 @@ per-artifact choice, applied by `T05`, never by this module).
 """
 from __future__ import annotations
 
+from app.business.core.actions.action_manager import ActionManager
 from app.business.core.agents.agent_manager import AgentManager
+from app.business.core.index.index_manager import IndexManager
 from app.business.core.pipelines.pipeline_manager import PipelineManager
 from app.business.core.skills.skill_manager import SkillManager
 from app.business.core.templates.template_manager import TemplateManager
 
-# Real Manager per manifest `kind` -- every kind an `.sbf` bundle's own
-# manifest can name, matching `sbf_archive`/`artifact_export`'s own 4-kind
-# vocabulary. A `kind` outside this set is a real defect in the manifest/
-# caller, never silently treated as "no conflict."
+# Real Manager per manifest `kind` -- this map must name EVERY kind
+# `artifact_export` can put in a manifest, which is not a fixed four: `index`
+# joined on 2026-09-06 and `action` on 2026-10-16, and `workflow` is next.
+# `preview_import`/`commit_import` both run `detect_conflicts` over the whole
+# manifest before deploying anything, so a kind missing here does not degrade
+# that one artifact -- it fails the entire bundle, and nothing in it is
+# imported (`ESC-065`, fixed by `REQ-SB-95-US-02-T07`). A `kind` outside this
+# set is still a real defect in the manifest/caller, never silently treated as
+# "no conflict."
 _MANAGER_BY_KIND: dict[str, type] = {
     "skill": SkillManager,
     "template": TemplateManager,
     "agent": AgentManager,
     "pipeline": PipelineManager,
+    "index": IndexManager,
+    "action": ActionManager,
 }
 
 
