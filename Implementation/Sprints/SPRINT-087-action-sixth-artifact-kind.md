@@ -82,7 +82,7 @@ bidirectional link, written at sprint creation. Order by implementation dependen
 
 | Story | Title | Phase | Status |
 |---|---|---|---|
-| [REQ-SB-95-US-02](../UserStories/REQ-SB-95-US-02-action-sixth-artifact-kind.md) | Action as the sixth artifact kind — one catalogue of what this app can actually do | P2 | In Progress (T01 Done) |
+| [REQ-SB-95-US-02](../UserStories/REQ-SB-95-US-02-action-sixth-artifact-kind.md) | Action as the sixth artifact kind — one catalogue of what this app can actually do | P2 | In Progress (T01, T02, T04 Done; T03, T05, T06 outstanding) |
 
 Build order inside the sprint, read from the task files' own `depends_on`:
 `T01 → T02 → T03`, `T01 → T04`, `T02 → T05`, `(T03, T04, T05) → T06`.
@@ -114,6 +114,21 @@ Build order inside the sprint, read from the task files' own `depends_on`:
   failed`) until then, and `T03` builds directly on `T02`, so the sprint cannot
   advance past this. `T04` (`depends_on: [T01]` only) is the one task still
   reachable without the decision.
+
+  **Resolved 2026-10-16** — the fixture was authorised and corrected in `T01`'s
+  test file (commit `a82273d`), the suite went green, and `T02` is `Done`.
+  `ESC-064` is closed.
+- **FLAGGED TASK (2026-10-16, coder): `REQ-SB-95-US-02-T04` is `Done` with
+  `gate: flagged`** — both its locked ACs (`AC-04`, `AC-05`) are verified green
+  on eight AC-tagged tests plus a live `GET /artifacts` check, and the suite is
+  `432 passed`. It is flagged because it *found* and deliberately did not fix an
+  out-of-scope defect: `artifact_import_conflicts._MANAGER_BY_KIND` knows only
+  four kinds and raises for anything else, and `preview_import`/`commit_import`
+  run it over the whole manifest first — so the real import route still rejects
+  a bundle containing an `action`, **or an `index`**, which has carried the same
+  hole since 2026-09-06. Two-line fix, needs a task that owns the file;
+  `ESC-065`, `REVIEW-QUEUE.md`. **Nothing is blocked by it** — `T03`, `T05` and
+  `T06` are all reachable.
 
 ---
 

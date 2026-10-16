@@ -9,7 +9,7 @@ gate: flagged
 gate_reason: "trigger-3 (ADR-033 created — it decides the Action fields this story stores: allowed_callers as agent ids, and the confirmation flag's meaning)"
 sprint: SPRINT-087
 created: 2026-10-16
-updated: 2026-10-16  # coder: T01 Done; T02 built and both its locked ACs green but BLOCKED on ESC-064 (its gate breaks a T01 test in a file outside T02's scope); T03-T06 outstanding
+updated: 2026-10-16  # coder: T01, T02 and T04 Done (suite 432 passing). T04 is gate: flagged on ESC-065 — an out-of-scope file (artifact_import_conflicts.py) still rejects both the new `action` kind and the existing `index` kind on the real import route; T04's own locked ACs are verified green. T03, T05, T06 outstanding
 ---
 
 # REQ-SB-95-US-02 — Action as the sixth artifact kind — one catalogue of what this app can actually do
