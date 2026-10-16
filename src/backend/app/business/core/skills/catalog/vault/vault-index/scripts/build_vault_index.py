@@ -212,7 +212,16 @@ def main() -> int:
         # import. Pass it only to override.
         default=os.environ.get("SECOND_BRAIN_VAULT_PATH", ""),
     )
-    parser.add_argument("--data-path", required=True)
+    parser.add_argument(
+        "--data-path",
+        # Same convention as --vault-path: Second Brain's setup wizard writes
+        # this into Hermes' own .env. It used to be required, so the Skill had
+        # to name a path in prose -- and after the App Database Folder moved out
+        # of the vault, that prose still said `<vault>\.second-brain`, so the
+        # index was written where nothing reads it (`BUG-087`). A value the
+        # agent cannot pass is a value it cannot get wrong.
+        default=os.environ.get("SECOND_BRAIN_DATA_PATH", ""),
+    )
     parser.add_argument(
         "--api-url",
         # The backend to tell once the index is written (`BUG-082`). Same
@@ -227,6 +236,13 @@ def main() -> int:
         raise SystemExit(
             "No vault path. Set SECOND_BRAIN_VAULT_PATH in Hermes' own .env "
             "(Second Brain's setup wizard writes it) or pass --vault-path."
+        )
+
+    if not (args.data_path or "").strip():
+        raise SystemExit(
+            "No App Database Folder. Set SECOND_BRAIN_DATA_PATH in Hermes' own .env "
+            "(Second Brain's setup wizard writes it) or pass --data-path. Guessing "
+            "`<vault>/.second-brain` is what wrote the index where nothing read it."
         )
 
     vault_path = Path(args.vault_path)

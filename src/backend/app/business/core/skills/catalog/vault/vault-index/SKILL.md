@@ -38,13 +38,13 @@ folder).
 
 - Vault path (pass as `--vault-path` below):
   `$SECOND_BRAIN_VAULT_PATH`
-- App Database Folder (pass as `--data-path` below) -- Second Brain's
-  own data root, independently configurable from Settings > System since
-  2026-08-27, defaults to `<vault>/.second-brain`:
-  ``$SECOND_BRAIN_DATA_PATH``. **If the operator
-  ever relocates the App Database Folder from that Settings page, this
-  literal value in this file must be updated to match** -- this Skill has
-  no way to read that backend setting itself.
+- App Database Folder -- Second Brain's own data root, independently
+  configurable from Settings > System since 2026-08-27. **Do not pass it
+  and do not name it here**: the script reads `SECOND_BRAIN_DATA_PATH`
+  from Hermes' own .env itself. This file used to carry the path in prose,
+  and when the operator moved that folder out of the vault the prose did
+  not follow -- so the index was written to the old `<vault>/.second-brain`
+  for weeks while every reader looked in the new one (`BUG-087`).
 
 ## How to run
 
@@ -56,7 +56,7 @@ cron-triggered run with no one there to approve it (confirmed live,
 `email-thread-capture`'s own SKILL.md, 2026-08-21):
 
 ```
-terminal(command="python build_vault_index.py --data-path \"$SECOND_BRAIN_VAULT_PATH\\.second-brain\"")
+terminal(command="python build_vault_index.py")
 ```
 
 Run from this Skill's own `scripts/` folder (so the sibling
