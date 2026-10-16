@@ -7,9 +7,9 @@ phase: P2
 status: Ready
 gate: flagged
 gate_reason: "trigger-3 (ADR-033 created — it decides the Action fields this story stores: allowed_callers as agent ids, and the confirmation flag's meaning)"
-sprint: ""
+sprint: SPRINT-087
 created: 2026-10-16
-updated: 2026-10-16
+updated: 2026-10-16  # product-owner: grouped into SPRINT-087 (alone — root of the REQ-SB-95 spine, three sprints depend on it)
 ---
 
 # REQ-SB-95-US-02 — Action as the sixth artifact kind — one catalogue of what this app can actually do

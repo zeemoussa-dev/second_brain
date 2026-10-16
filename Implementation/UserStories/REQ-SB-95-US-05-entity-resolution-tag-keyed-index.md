@@ -7,9 +7,9 @@ phase: P2
 status: Ready
 gate: flagged
 gate_reason: "trigger-3 (ADR-037 created) — the tag-keyed index is a projection rebound inside VaultManager.rebuild_index() rather than a new Index artifact with its own cron job, a plugin registers a namespace as a callable, and the FRAMEWORK_API bump is taken once for all of REQ-SB-95; plus trigger-7 (decomposer, 2026-10-16) — the sibling US-02 task files carry no FRAMEWORK_API instruction, so the single bump is owed by whichever story lands last and only this story's T02 currently knows it"
-sprint: ""
+sprint: SPRINT-090
 created: 2026-10-16
-updated: 2026-10-16  # decomposer re-pass: 5 tasks rewritten, AC coverage re-checked (AC-02/AC-06 gap closed), Draft -> Ready
+updated: 2026-10-16  # product-owner: grouped into SPRINT-090 (alone — depends_on_sprints: [SPRINT-087, SPRINT-088]; that ordering also takes the FRAMEWORK_API bump via T02's conditional read)
 ---
 
 # REQ-SB-95-US-05 — Entity resolution instead of search — one tag-keyed index, synthesis first then evidence

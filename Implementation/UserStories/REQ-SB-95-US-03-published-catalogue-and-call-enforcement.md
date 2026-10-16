@@ -7,9 +7,9 @@ phase: P2
 status: Ready
 gate: flagged
 gate_reason: "trigger-3 (ADR-033 created — the call lands on one loopback route on this app's own API, reached by a shipped runner Skill; confirmation is an app-owned single-use grant)"
-sprint: ""
+sprint: SPRINT-088
 created: 2026-10-16
-updated: 2026-10-16
+updated: 2026-10-16  # product-owner: grouped into SPRINT-088 (alone — depends_on_sprints: [SPRINT-087])
 ---
 
 # REQ-SB-95-US-03 — The catalogue is published into agent context and enforced at the call — "I cannot do that" becomes a real answer
