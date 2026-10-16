@@ -3111,3 +3111,260 @@ is the only verb it has.
   answer depends on the registry being current. Discovery was paused for 41 days before
   anyone noticed; this makes that staleness matter more, and argues for the pipeline
   freshness surface already proposed under `BUG-085`.
+
+## ADR-033: An Action is called over loopback on the app's own route -- the caller is a profile id, the confirmation is a single-use grant
+
+**Status:** Accepted
+**Date:** 2026-10-16
+**Extends:** `ADR-032` (does not supersede it -- `ADR-032` decided that enforcement lives
+at the call; this decides which surface "the call" is, who the caller is, and how a
+confirmation requirement is honoured end to end).
+
+**Context:** `ADR-032` settled the Action kind, its store, its one implementation and
+save-time resolution, and that "validating the call is what makes it true". It did not say
+where that validation sits, and the obvious chokepoint does not exist:
+
+- **The inbound direction was removed.** `app/config.py`'s own comment records the removed
+  inbound MCP direction (Hermes authenticating IN); `architecture.md` states "Second Brain
+  exposes nothing over MCP, and that layer was deleted on 2026-09-04". `hermes_mcp_shared_secret`
+  survives as a setting with nothing behind it.
+- **The in-app chat path cannot refuse anything.** `business/logic/agent_chat_stream.py` is
+  an SSE relay over a live Hermes session: it *observes* `tool.start`/`tool.complete` and
+  turns them into friendly activity text. Tool execution happens inside the Hermes process.
+  There is no interception point there, only a display one.
+- **But a loopback call from the Hermes side into this app already exists, and is shipped.**
+  `business/core/skills/catalog/vault/vault-search/scripts/search_vault.py` calls
+  `GET /vault-search/...` at `os.environ.get("SECOND_BRAIN_API_URL", "http://127.0.0.1:8001")`,
+  and `vault-index/scripts/build_vault_index.py` POSTs `/vault-index/refresh` (`BUG-082`).
+  A Skill script calling this app's own HTTP API over loopback is an existing, proven,
+  narrow pattern -- not a reintroduction of the deleted MCP surface.
+- **Two things `ADR-032` names were never represented.** "Who may run it" has no precedent
+  beyond per-agent `skill_ids` and the derived `section_access.json` caller lists, and the
+  confirmation surface the stories assumed is not live: `pending_approvals_router.py` is
+  archived (no such file in the repo), `GET /agents/{id}/history` returns `[]` with a
+  comment naming it, and `Agent.working_mode`'s own comment says `human_in_loop` maps onto
+  Hermes' `approval.request`/`respond` mechanism "not yet wired".
+
+**Decision:**
+
+- **One call surface: `POST /actions/{action_id}/call`**, a new `app/api/actions_router.py`
+  over a new `app/business/logic/action_invocation.py`. The gate (unknown id, unknown or
+  missing required input, caller not permitted, confirmation outstanding, implementation no
+  longer resolving) lives in that business module, so the refusal comes from the framework
+  and no prompt text can route around it. An agent reaches it through ONE shipped runner
+  Skill that posts over loopback, exactly as `vault-search` already does. The same route
+  serves the in-app UI, so the screen and the agent cannot disagree about what exists.
+- **Dispatch by implementation kind, and the app does not perform what it does not own.**
+  `http` is performed by the app. `ui` is never performed -- the response names where the
+  operator does it, which is what `ADR-032` means by "point to but not perform". `skill` is
+  **authorised, not performed**: the response carries a single-use grant naming the deployed
+  Skill and the validated inputs, and the runner performs it in the profile where Skills
+  already run. The app does not become a second executor of Skill payload (`ADR-019` keeps
+  `skills/catalog/` as payload the app never imports).
+- **"Who may run it" is a list of agent ids.** `allowed_callers: ["*"]` or
+  `["<agent-id>", ...]` on the Action. The Registry agent id IS the Hermes profile id
+  everywhere in this codebase (`SkillManager.deploy(skill_id, profile_id)`,
+  `client.cli.enable_tools(..., profile_id=agent_id)`), so it is the one identifier both
+  sides already share and the caller can name itself with. Shape borrowed from the derived
+  `section_access.json` caller lists, which already answer "may this caller do this".
+- **Confirmation is app-owned and per call, in one Action-call ledger.** The first call of a
+  confirmation-required Action performs nothing: the invocation layer opens
+  `<DATA_PATH>/data/ActionCalls/<call_id>.json` at `awaiting_confirmation` and refuses with
+  that id. The operator confirms or declines on an app surface; a confirmed record is a
+  **single-use grant** that the agent's re-call consumes exactly once; a declined one
+  refuses with `declined`. The same ledger records every refusal and every unmet-request
+  report, which is the PRD's "so a missing capability gets discovered instead of fabricated".
+- **Publication is the derived-republish PATTERN, not a second copy of the catalogue.**
+  `ADR-032` says the catalogue reaches agent context "by the same mechanism that already
+  publishes the section-access map". Read as the pattern that mechanism embodies -- derived
+  by the backend, never hand-authored, republished on every change (`MEMORY.md`,
+  2026-09-06: "derived beats authored") -- not as a literal second JSON file: nothing in an
+  agent's context ever reads `section_access.json`; the shared `vault_manager` does, at
+  write time. So the catalogue is published as a marker-delimited, auto-generated block in
+  the agent's own SOUL.md, the exact idempotent shape `_SPECIALISTS_BEGIN/END` and
+  `_INDEX_GUIDANCE_BEGIN/END` already use in `AgentManager`, regenerated whenever the
+  catalogue changes. **The gate never reads the published text** -- it reads the live
+  catalogue -- so a stale publication can mislead an agent but can never let a call through.
+
+**Alternatives Considered:**
+
+- **Enforce inside a shared engine deployed into every Hermes profile** (the literal
+  `section_access.json` shape: ship `action_runner.py` beside `vault_manager.py`, read a
+  published `action_catalogue.json`). Rejected: it ships business rules as copies, which is
+  the failure this install has already paid for twice -- 228 stale `vault_manager.py` copies
+  across 41 profiles, and the 2026-09-04 outage where a hardcoded data root silently
+  swallowed 54 emails. The confirmation surface and the refusal ledger need the app anyway.
+- **Intercept the tool call on the in-app chat path.** Rejected as impossible rather than
+  undesirable: tools run inside Hermes and `agent_chat_stream.py` learns of them after the
+  fact.
+- **Re-introduce an inbound MCP server.** Rejected: deleted 2026-09-04 for good reasons; one
+  narrow POST route reusing an already-proven loopback client shape is a fraction of that
+  surface.
+- **Hermes' own `approval.request`/`respond` for confirmation.** Rejected for now: the
+  respond leg was never wired here, the chat stream currently ENDS the turn on an approval
+  request, and a Hermes approval is a per-tool risk decision made by Hermes -- not the
+  per-Action decision the operator records in the catalogue.
+- **Revive the archived `pending_approvals_router.py` / `agent_pending_approvals.json`.**
+  Rejected: reviving a dormant subsystem with its own schema is larger than the story asking
+  for it, and would make a brand-new ledger depend on the semantics of a retired one.
+- **Represent "who may run it" by Section, by agent type, or by per-agent grant lists.**
+  Rejected: `Agent.section_id` is legitimately `None` for an unplaced agent, so a
+  Section-keyed rule is unenforceable for exactly the agents most likely to be new; type is
+  too coarse; a per-agent grant list puts the permission in a second place from the Action
+  it governs.
+
+**Consequences:**
+
+- **The trust boundary is loopback, and should be described honestly.** The runner names its
+  own profile id and the app believes it, exactly as `/vault-search` believes any local
+  caller today. An agent with a terminal can still run a deployed Skill directly, as it can
+  now. This makes the *Action surface* truthful; it does not sandbox Hermes.
+- **The app must be running for any Action call to succeed.** A cron-fired agent calling an
+  Action while the backend is closed gets a connection failure, not a silent success -- the
+  same condition `/vault-search` already has.
+- **"Action" now names two different things.** `section_access.json` already calls a Skill's
+  declared write caller an "Action". The catalogued artifact kind is unrelated to it. Any
+  code or doc touching both must say which it means.
+- A confirmed-but-never-re-called Action leaves a visible `approved` record rather than
+  silently performing nothing -- the ledger is the place staleness shows up.
+- The Action-call ledger is instance data and personal: like the Operator Profile
+  (`ADR-032`), it is excluded from artifact export.
+
+## ADR-034: A Workflow is run by the framework, one step at a time -- not recited to the model
+
+**Status:** Accepted
+**Date:** 2026-10-16
+**Extends:** `ADR-032` (Workflow as the seventh kind, its store, and step-references-Action)
+and `ADR-033` (every step is dispatched through the Action call gate).
+
+**Context:** `ADR-032` made `Workflow` the seventh artifact kind and settled that each step
+references an Action id, "invalid by construction rather than by review". It did not say
+what happens when a request of that kind actually arrives. `REQ-SB-95-US-04` asks for the
+documented steps in their documented order, confirmation at exactly the marked steps, the
+documented report back, and no invented or silently skipped step. If a published Workflow
+were only text in the agent's context, all four are promises by a model -- which is the
+prompt-only grounding `ADR-032` already rejected, one level up.
+
+**Decision:**
+
+- **Publication says which Workflows exist and when each applies; the framework runs them.**
+  The agent recognises the intent and starts a run (`POST /workflows/{workflow_id}/run`);
+  it does not drive the order.
+- **A run is a record, not a conversation.** `<DATA_PATH>/data/WorkflowRuns/<run_id>.json`
+  holds the workflow id, the ordered steps, each step's status and outcome, and the call ids
+  it produced. The framework hands back exactly ONE next step at a time and refuses to
+  advance until the current step's outcome is recorded, so order and no-skip hold by
+  construction rather than by instruction.
+- **Every step goes through the `ADR-033` Action gate** -- same validation, same refusals,
+  same ledger. A `skill` step is returned as the same single-use authorised directive the
+  runner performs in its profile; an `http` step is performed by the app; a `ui` step is
+  reported to the operator as theirs to do and does not block the run from recording it.
+- **Confirmation is per step, reusing `ADR-033`'s mechanism unchanged** -- a step marked for
+  confirmation opens an `awaiting_confirmation` call record and the run pauses there, visibly.
+- **The report back is composed from recorded step outcomes**, never from the agent's
+  recollection, so a failed step cannot be reported as done.
+- **Referential integrity runs one direction only.** A Workflow step names an Action; an
+  Action knows nothing about Workflows. Save-time validation rejects a step naming an
+  unknown Action id; Action deletion asks the Workflow side for referencing Workflows and
+  reports them before anything is removed. Same one-directional discipline `MEMORY.md`
+  records for Skill-needs-Template (`2026-09-06`), which is what keeps each kind shippable
+  on its own.
+
+**Alternatives Considered:**
+
+- **Publish the Workflow as instructions and let the model follow them** (much the cheapest,
+  and all that `ADR-032` strictly required). Rejected: it makes "did not skip a step" a
+  claim nobody can check -- the same silent-failure shape `ADR-032`'s own Consequences call
+  out.
+- **Make a Workflow a Pipeline with an intent trigger.** Rejected: `ADR-032` explicitly
+  leaves Pipeline exactly as it is, and `REQ-SB-95-US-04` Scenario 7 locks that in.
+- **Run every step server-side inside one call.** Rejected: a `skill` step executes in a
+  Hermes profile (`ADR-033`), and a confirmation pause inside a single long HTTP request
+  would be invisible and un-resumable.
+- **Record runs in the Action-call ledger.** Rejected: a run has its own lifecycle; keeping
+  one record per call and letting the run reference call ids keeps both readable.
+- **Let a Workflow step name anything other than a catalogued Action** (a raw route, a free
+  instruction). Rejected: it reopens exactly the gap `REQ-SB-95` exists to close.
+
+**Consequences:**
+
+- A workflow run is resumable, inspectable and auditable; an abandoned run stays open and
+  visible instead of looking complete.
+- More round trips per intent than a recited list of steps, and a new store
+  (`WorkflowRuns/`) that is instance data -- excluded from artifact export, like the
+  Action-call ledger.
+- Branching and loops stay out (`REQ-SB-95-US-04` scopes them out); a run record makes them
+  a later, additive change rather than a rewrite.
+- Deleting an Action becomes a cross-kind question. That reverse lookup is new work this
+  requirement owns -- nothing in `artifact_dependency_resolver.py` asks it today.
+
+
+---
+
+## ADR-035: Two corrections review made to ADR-032 -- the resolver's boundary, and where `self_email` lives
+
+**Status:** Accepted
+**Date:** 2026-10-16
+
+**Context:** `ADR-032` was signed off, and then specing it found two places where it
+had decided something it did not have the right to decide alone. Both corrections come
+from the operator, 2026-10-16. Recording them as a separate ADR rather than editing
+`ADR-032` keeps visible what review actually changed.
+
+**Decision 1 -- the resolver is framework, the Customer is the plugin's.**
+
+`ADR-032` wrote the `customer/*`/`partner/*` resolver as framework work. `ADR-022`
+(Accepted) had already moved Customer, Partner, `Entities.md` and its Settings page into
+`sb-plugins-entities`, under "core never imports, names or knows a plugin" and the
+operator's own test that *a second brain built for a CFO cares nothing about Partners and
+Customers*. The two readings put `REQ-SB-95-US-05` in different repositories (`ESC-063`).
+
+- **The framework ships a tag-keyed resolver that is generic over any tag namespace.** It
+  indexes `<namespace>/<slug>` tags and answers two questions: which notes carry this tag,
+  and which tag does this name mean. It knows nothing about Customers, Partners or
+  Entities, and never names a plugin.
+- **A plugin registers a namespace through the Plugin API** -- its tag prefix, where its
+  names and aliases come from, how a display name maps to a slug. The entities plugin
+  registers `customer/` and `partner/`; nothing in core mentions either.
+- So `US-05` builds **here**, as mechanism; the namespace registration is the entities
+  plugin's own work in its own repository, and the two meet at a contract line.
+
+`ADR-022` therefore stands unamended: core offers a seam, the plugin fills it.
+
+**Decision 2 -- `self_email` lives in both the Profile and Hermes' `.env`, written through.**
+
+`ADR-032` said the Operator Profile "absorbs `self_email` rather than sitting beside it".
+Specing found it is load-bearing in four places at once: a startup-required setting, a
+setup-wizard step, a Settings field, and a variable read by capture scripts already
+deployed into live Hermes worker profiles. Retiring it would have required redeploying
+those scripts to keep own-message detection working -- a silent break if missed.
+
+- **The Profile holds it** and is what reaches agent context.
+- **Provisioning keeps writing it to Hermes' `.env`**, through the existing
+  `setup_wizard.sync_settings_to_hermes(vault_path, data_path, self_email)`, which is
+  already the one thing the wizard writes outside its own `.env` and already carries this
+  value. Every deployed script keeps reading the variable it reads today; nothing
+  redeploys.
+- **One editable source, two written locations.** The distinction from the drift
+  `ADR-032` warned about is exactly this: the vault path, the index path and the Entities
+  path each had two *writers*. This has one writer and one copy, and a test holds them
+  together.
+- **Accepted limitation:** a running gateway does not re-read `.env`
+  (`sync_settings_to_hermes`'s own docstring), so a changed address reaches running agents
+  only after a gateway restart. The operator's call, 2026-10-16: "you don't change your
+  email every day". Recorded so nobody later rebuilds this into a live-reload mechanism
+  nobody asked for.
+
+**Consequences:**
+
+- The namespace registration is another `FRAMEWORK_API` addition and another republish of
+  every installed plugin -- the eighth contract bump this autumn. Worth batching with
+  whatever `US-02`/`US-03`/`US-04` need from the contract rather than taking one bump per
+  story.
+- An install with no entities plugin gets a resolver with no namespaces registered, and the
+  entity path degrades to nothing rather than to a wrong answer. That is the CFO test
+  passing.
+- The alternative -- putting the resolver inside the entities plugin -- was rejected
+  because scoping retrieval by a tag is generic: `project/`, `initiative/` and whatever a
+  later install invents want the same mechanism, and a plugin cannot offer it to the
+  framework's own readers.

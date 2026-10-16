@@ -705,7 +705,216 @@ capability `ADR-017` already built (per-caller `allowed_callers` allow-list on
   Opportunity-specific business logic, not mechanics, per the story's own
   Constraints.
 
-**Last reviewed:** 2026-09-02 (architect pass, `REQ-SB-88-US-01`/`US-02` —
+## An Agent Acts From a Published Catalogue (`REQ-SB-95`)
+
+`ADR-032` settles the shape: `Action` is the sixth artifact kind, `Workflow` the
+seventh, both instance data in the App Database Folder, `Pipeline` untouched,
+one implementation per Action resolved at save time, enforcement at the call.
+`ADR-033` and `ADR-034` settle the three things it left open — which surface
+"the call" lands on, how "who may run it" and "needs confirmation" are
+represented end to end, and what actually happens when a Workflow matches.
+
+Two facts bound everything below, both confirmed by direct reading:
+
+- **The agent runtime is Hermes, out of process.** `business/logic/
+  agent_chat_stream.py` is an SSE relay over a live Hermes session; its
+  `tool.start`/`tool.complete` handling is display text, not interception.
+  Nothing on that path can refuse a tool call.
+- **A Hermes-side script already calls this app over loopback.**
+  `skills/catalog/vault/vault-search/scripts/search_vault.py` calls
+  `GET /vault-search/...` at `SECOND_BRAIN_API_URL` (default
+  `http://127.0.0.1:8001`); `vault-index/scripts/build_vault_index.py` POSTs
+  `/vault-index/refresh`. The removed inbound MCP direction (`app/config.py`'s
+  own comment, and "Second Brain exposes nothing over MCP" above) is not what
+  this reuses.
+
+### §Action Catalogue — the Sixth Artifact Kind (`REQ-SB-95-US-02`, `ADR-032`)
+
+- **New:** `app/business/core/actions/action.py` (the `Action` entity: `id`,
+  `description`, `inputs` as typed entries with a required flag,
+  `allowed_callers`, `needs_confirmation`, exactly one `implementation` of
+  `skill` | `http` | `ui`) and `action_manager.py` — the sole gateway onto
+  Action data, same shape as `IndexManager`.
+- **New:** `app/data_access/actions.py` — raw I/O only, over
+  `settings.second_brain_data_path / "data" / "Actions" / <id> / "Action.json"`,
+  mirroring `data_access/indexes.py` function for function
+  (`list_action_ids`/`read_action_json`/`write_action_json`/`delete_action_definition`).
+- **Save-time resolution, not call-time** (`ADR-032`). `skill` resolves against
+  `SkillManager` (deployed, not merely catalogued); `http` resolves against the
+  running app's own route table, which includes a plugin's routes already
+  mounted under `/plugins/<plugin_id>/`; `ui` resolves against the registered
+  front-end feature key. A save that cannot resolve is refused naming what did
+  not resolve; zero or two implementations is the same refusal. The precedent
+  for the refuse-rather-than-ship stance is `SkillManager.deploy()`, which
+  refuses on `validate_declared_writes` problems rather than shipping something
+  that fails only when it runs.
+- **Re-resolution report** (`US-02` Scenario 7): a read-side status per Action
+  (`resolves` | `broken`, with what no longer resolves), exactly the shape
+  `SkillManager`'s deployment report already returns
+  (`current`/`stale`/`missing`/`modified` per skill+profile). Computed on read,
+  never cached — the catalogue is small and `business/logic/`'s own no-caching
+  convention applies.
+- **API:** `app/api/actions_router.py` — flat, single-purpose, same convention
+  as `skills_router.py`/`index_router.py`. CRUD plus the call route below.
+- **Frontend:** a new Settings page for the catalogue and the one-Action editor,
+  on the already-approved `.item-list`/`.item-row` + `.input`/`Save changes`
+  families, plus one more card in `SettingsPage.tsx`'s live `SETTINGS_SECTIONS`
+  grid.
+
+### §Adding a Kind — the Measured Touch Points (`REQ-SB-95-US-02`/`US-04`)
+
+The `Index` precedent (`ADR-019`, 2026-09-06) is the template, and these are the
+exact places a sixth/seventh kind lands (read directly, not estimated):
+
+- `business/logic/artifacts_inventory.py` — compose one more Manager and
+  **correct the module header**, which today states `kind` is always one of five
+  and "no 6th value is ever produced". The comment is part of the change, not
+  collateral.
+- `business/logic/artifact_dependency_resolver.py` — a new `elif kind ==`
+  branch, and the genuinely new edges: Action → its implementation Skill,
+  Workflow → every Action its steps name (recursing into those Actions' own
+  Skills).
+- `business/logic/artifact_export.py` — a `_PAYLOAD_FOLDER` entry per kind
+  (`"action": "actions"`, `"workflow": "workflows"` — naive pluralisation is
+  what the existing `"index": "indexes"` entry exists to prevent) and the
+  payload-writing branch.
+- `business/logic/artifact_import.py` — the `_deploy_<kind>` dispatch
+  (`raise ValueError(f"unrecognized artifact kind {kind!r}")` is the current
+  fall-through), conflict detection, and the `_next_alternate_id` keep-both path.
+- `business/logic/artifact_secret_scan.py` — the new JSON bytes are
+  Second-Brain-owned, so they are in the scan's surface.
+- No new ADR for any of this: it is `ADR-013`/`ADR-015`'s machinery extended the
+  way `Index` already extended it.
+
+### §Plugin-Contributed Actions (`REQ-SB-95-US-02`, `ADR-022`)
+
+- `app/plugin_api.py` gains `register_action(...)` alongside
+  `register_router`/`register_subject_enricher`/`register_seed_data_file` — the
+  same per-plugin-instance collection shape, so every contributed Action is
+  attributable to its `plugin_id` without core naming any plugin.
+- A plugin's Actions are **composed at read time**, never written into
+  `<DATA_PATH>/data/Actions/`: `ActionManager.get_all()` returns stored Actions
+  plus whatever the loaded plugins registered. Uninstalling a plugin therefore
+  removes its Actions by construction (they only ever existed while it was
+  loaded) and cannot touch the install's own — which is exactly `US-02`
+  Scenario 6.
+- A plugin Action's `http` implementation names its own mounted
+  `/plugins/<plugin_id>/...` route.
+
+### §Catalogue Publication Into Agent Context (`REQ-SB-95-US-03`, `ADR-033`)
+
+- `AgentManager` gains a third auto-generated, marker-delimited block beside
+  `_SPECIALISTS_BEGIN/END` and `_INDEX_GUIDANCE_BEGIN/END` — same idempotent
+  replace-own-block shape, same "do not hand-edit" marker, removed entirely when
+  the agent may call nothing. It lists only the Actions that agent is permitted
+  to call, and the one way to call them.
+- Regeneration is triggered by the catalogue, not by a human: `ActionManager`
+  calls it on every create/update/delete, the way `SkillManager` calls
+  `publish_section_access_map()` on every deploy/undeploy. That is `US-03`
+  Scenario 8 — editing the catalogue is enough, no prompt is hand-edited.
+- **`ADR-033` reads `ADR-032`'s "same mechanism that already publishes the
+  section-access map" as the derived-republish *pattern*, not as a second JSON
+  file.** Nothing in agent context reads `section_access.json`; the shared
+  `vault_manager` does, at write time. The gate below reads the live catalogue,
+  never the published text, so a stale block can mislead an agent but can never
+  let a call through.
+
+### §The Action Call Gate (`REQ-SB-95-US-03`, `ADR-033`)
+
+- **New:** `app/business/logic/action_invocation.py` — the one validating door.
+  Refuses an unknown id, an unknown or missing required input (naming it, never
+  defaulting it), a caller not in `allowed_callers`, an implementation that no
+  longer resolves, and a confirmation-required call with no consumed grant.
+  Nothing is half-performed: validation completes before dispatch begins.
+- **New route:** `POST /actions/{action_id}/call` on `actions_router.py`.
+- **The agent's only door is one shipped runner Skill** that posts to it over
+  loopback, exactly as `search_vault.py` already reaches `/vault-search`. The
+  same route backs the in-app UI, so the screen and the agent cannot disagree
+  about what exists.
+- **Dispatch by kind:** `http` performed by the app; `ui` never performed —
+  the response names where the operator does it; `skill` **authorised, not
+  performed** — the response carries a single-use grant naming the deployed
+  Skill and the validated inputs, and the runner performs it in the profile
+  where Skills already run. The app does not execute `skills/catalog/` payload
+  (`ADR-019`).
+- **Caller identity is the agent id**, which is the Hermes profile id throughout
+  this codebase (`SkillManager.deploy(skill_id, profile_id)`,
+  `cli.enable_tools(..., profile_id=agent_id)`). `allowed_callers: ["*"]` means
+  every agent. Not Sections (`Agent.section_id` is legitimately `None` for an
+  unplaced agent) and not agent type.
+- **Trust boundary, stated plainly:** the runner names its own profile id and the
+  app believes it, as `/vault-search` believes any local caller today. An agent
+  with a terminal can still run a deployed Skill directly. This makes the Action
+  surface honest; it does not sandbox Hermes.
+- `REQ-SB-33-US-01`'s global honest-uncertainty instruction stays where it is —
+  this gate is the enforced version of it, not a second instruction beside it.
+
+### §Confirmation and the Action-Call Ledger (`REQ-SB-95-US-03`, `ADR-033`)
+
+- **New store:** `<DATA_PATH>/data/ActionCalls/<call_id>.json` — one record per
+  call: who called, which Action, the validated inputs, the outcome
+  (`performed` | `refused:<reason>` | `awaiting_confirmation` | `declined`), and
+  the unmet-request text when an agent reports that nothing covers a request.
+  This is `US-03` Scenario 5's "recorded so a missing capability can be
+  discovered"; the reviewable surface over it is explicitly later work.
+- **Confirmation flow:** first call of a confirmation-required Action performs
+  nothing and returns `awaiting_confirmation` plus the `call_id`; the operator
+  confirms or declines on an app surface; a confirmed record is a **single-use
+  grant** the re-call consumes exactly once; declining refuses with `declined`.
+- **Why not the existing approvals machinery:** `pending_approvals_router.py` is
+  archived — not present in the repo — and `GET /agents/{id}/history` returns
+  `[]` with a comment naming it as the reason; only
+  `load_pending_approvals_state`/`save_pending_approvals_state` survive in
+  `data_access/vault_writer.py`. `Agent.working_mode`'s own comment records that
+  `human_in_loop`'s Hermes `approval.request`/`respond` path is "not yet wired",
+  and `chat_sessions.format_approval_request` currently ENDS the turn. An
+  Action's confirmation flag is a per-operation operator decision and is
+  orthogonal to `working_mode`, which stays what it is.
+- The framework may ship a starter `report-unmet-request` Action (`ADR-032`
+  allows shipped starters) so "I cannot do that" leaves a record rather than only
+  a sentence.
+
+### §Workflow — the Seventh Artifact Kind (`REQ-SB-95-US-04`, `ADR-032`)
+
+- **New:** `app/business/core/workflows/workflow.py` + `workflow_manager.py` and
+  `app/data_access/workflows.py` over
+  `<DATA_PATH>/data/Workflows/<id>/Workflow.json` — same Manager/data-access
+  split and the same file-per-id shape as Actions and Indexes.
+- **Referential integrity, one direction only** (`ADR-034`): a step names an
+  Action id; an Action knows nothing about Workflows. Save-time validation
+  rejects a step naming an unknown Action; Action deletion asks the Workflow side
+  for referencing Workflows and reports them before anything is removed
+  (`US-04` Scenario 6). The editor offers only catalogued Actions, so the invalid
+  state is hard to reach in the first place.
+- `PipelineManager` is the nearest step-based shape to read for reference and is
+  **not** shared, extended or migrated (`ADR-032`; `US-04` Scenario 7).
+
+### §Workflow Runs — Ordered by the Framework (`REQ-SB-95-US-04`, `ADR-034`)
+
+- **New store:** `<DATA_PATH>/data/WorkflowRuns/<run_id>.json` — the workflow id,
+  the ordered steps, each step's status and outcome, and the Action-call ids it
+  produced.
+- **New routes:** start a run, fetch the one next step, report that step's
+  outcome. The framework hands back exactly ONE step at a time and will not
+  advance until the current step's outcome is recorded — that is what makes
+  "in order", "no skipped step" and "no invented step" properties of the run
+  record rather than promises by the model.
+- Every step is dispatched through §The Action Call Gate; a confirmation-marked
+  step opens the same `awaiting_confirmation` record and the run pauses there,
+  visibly. The report back is composed from recorded step outcomes, so a failed
+  step cannot be reported as done.
+- `ActionCalls/` and `WorkflowRuns/` are instance data and are excluded from
+  artifact export, alongside the Operator Profile (`ADR-032`) — a run is not a
+  capability.
+
+**Last reviewed:** 2026-10-16 (architect pass, `REQ-SB-95-US-02`/`US-03`/`US-04`
+— `ADR-033`/`ADR-034` appended on top of the already-Accepted `ADR-032`: the
+Action call surface is one loopback route on this app's own API, the caller is an
+agent/profile id, confirmation is a single-use grant in a new Action-call ledger,
+and a Workflow is run step-by-step by the framework rather than recited to the
+model).
+
+Earlier: 2026-09-02 (architect pass, `REQ-SB-88-US-01`/`US-02` —
 no new ADR, both stories confirmed purely additive/consumptive of `ADR-017`'s
 already-built per-caller `allowed_callers` mechanism plus ordinary
 Template.json data edits; 2026-09-01 architect pass, `REQ-SB-87-US-01`/`US-03`/
