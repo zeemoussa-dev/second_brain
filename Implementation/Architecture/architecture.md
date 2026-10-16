@@ -713,6 +713,99 @@ one implementation per Action resolved at save time, enforcement at the call.
 `ADR-033` and `ADR-034` settle the three things it left open — which surface
 "the call" lands on, how "who may run it" and "needs confirmation" are
 represented end to end, and what actually happens when a Workflow matches.
+`ADR-035` records the operator's two corrections (the resolver is framework and
+generic; `self_email` lives in the Profile *and* Hermes' `.env`), and `ADR-036`
+/`ADR-037` settle what those corrections left open — how the Profile reaches
+agent context, and where the tag-keyed index lives and how a namespace is
+registered. `ADR-038` (operator decision, 2026-10-16) then **supersedes the
+`SELF_EMAIL` retirement in `ADR-036`**: the setting stays exactly as it is and
+the Profile *mirrors* it. `ADR-036`'s marker-block decision stands untouched.
+
+### §Operator Profile — the Singleton Record, and the Address It Mirrors (`REQ-SB-95-US-01`, `ADR-032`/`ADR-035`/`ADR-036`/`ADR-038`)
+
+- **New:** `app/business/core/operator/operator_profile.py` (the `OperatorProfile`
+  entity: the operator's name, their own mail addresses, and the team as
+  `email` + `role` entries and nothing more) and `operator_profile_manager.py`
+  — the sole gateway onto it, same Manager shape as `IndexManager`, but a
+  **singleton**: `get()`/`save()`, no list, no create, no delete, no id
+  namespace.
+- **New:** `app/data_access/operator_profile.py` — raw I/O only over
+  `settings.second_brain_data_path / "data" / "Operator" / "Profile.json"`.
+- **Membership, not copies** (`ADR-032`). A team entry is an email and a role.
+  The vault's Person notes are filenamed by email, so the email IS the join key
+  and the Profile never holds a second description of a colleague (`US-01`
+  Scenario 3 is satisfied by *not* storing anything, not by copying).
+- **The operator's own address is MIRRORED, not owned** (`ADR-038`, superseding
+  `ADR-036`'s retirement). `SELF_EMAIL` stays exactly as it is: a startup-required
+  env setting, present in `system_settings._FIELDS` ("Your Email Address",
+  `env_key: SELF_EMAIL`, `_check_email` validation), editable on Settings → System,
+  with its setup-wizard step unchanged. The Profile **reads** that setting for the
+  operator's own address and publishes it into agent context with the rest of the
+  profile — it never writes it and never offers a second editor for it.
+- **The fresh-install boot path is out of this story's blast radius entirely**
+  (`ADR-038`). `config.REQUIRED_FOR_STARTUP` is **not** touched, no startup gate
+  moves, `missing_required_settings` keeps naming `self_email`, and
+  `setup_wizard.sync_settings_to_hermes(vault_path, data_path, self_email)` keeps
+  its **current** source — a Profile save does not call it. `REQ-SB-89`'s
+  fresh-install path is untouched by `REQ-SB-95`.
+- **The Profile solely owns everything the setting does not**: the operator's
+  name, their *other* mail addresses, the team roster as `email` + `role` entries,
+  and timezone. Exactly one editable place per fact still holds — it is just two
+  surfaces for two different sets of facts, not two writers of one fact.
+- **Nothing redeploys, and nothing changes for the deployed scripts.**
+  `ingest_email.py`, `ingest_meeting.py`, `retrofit_conversation_index.py` and the
+  Graph libs keep reading `SECOND_BRAIN_SELF_EMAIL` from Hermes' `.env`, which
+  keeps being written by the same wizard call as today. A running gateway not
+  re-reading `.env` is `ADR-035`'s accepted limitation, not a problem to engineer
+  around.
+- **Excluded from artifact export by default** (`ADR-032`) — the same exclusion
+  that already covers `ActionCalls/` and `WorkflowRuns/`.
+- **Frontend:** a new Operator Profile Settings page on the live
+  `.item-list`/`.item-row`/`.input`/`Save changes` families plus one more card in
+  `SettingsPage.tsx`'s `SETTINGS_SECTIONS` grid. `SettingsSystemPage.tsx` is
+  **unchanged** — it keeps "Your Email Address" and remains the one editor of it;
+  the Profile page shows that address read-only, as a mirror, pointing at
+  Settings → System for editing.
+
+### §Operator Facts in Agent Context — the Fourth Marker Block (`REQ-SB-95-US-01`, `ADR-036`)
+
+`ADR-038` leaves this whole sub-section standing: it narrowed only where the
+operator's own address lives, not how operator facts reach an agent.
+
+- **The Profile rides the same mechanism as the Action catalogue**: a fourth
+  auto-generated, marker-delimited block in the agent's own SOUL.md, beside
+  `_SPECIALISTS_*`, `_INDEX_GUIDANCE_*` and `ADR-033`'s catalogue block. The
+  reason is structural, not cosmetic: **SOUL.md is the store.** `_to_agent()`
+  reads it back through `_split_soul_sections()`, and that is where
+  `Agent.prompt` comes from — so anything composed at write time without an
+  inverse at read time is absorbed into the prompt and becomes hand-editable.
+- **Three deliberate differences from the two precedents:**
+  - *Fan-out, not recompute* — the Profile is a singleton, so one save
+    republishes every agent with identical text.
+  - *The block is never removed when empty.* An unconfigured Profile emits a
+    short block saying so and naming where to configure it; that block is what
+    makes `US-01` Scenario 5 answerable at all.
+  - *Its heading is `## Who you work for`* — never `## Guardrails` or
+    `## Scope`, which `_split_soul_sections()` matches exactly and would cut the
+    body out into the wrong field.
+- **One republish pass, shared with `US-03`.** A dedicated `AgentManager`
+  republish walks every agent once, writes each soul, and reloads the Registry
+  ONCE — not `update()` per agent, whose `_reload_registry()` is
+  `asyncio.run(registry_loader.boot())`, i.e. a full Registry boot per agent (41
+  on the reporting install). `US-01` builds this seam; `US-03`'s catalogue
+  publication reuses it unchanged, because an Action with
+  `allowed_callers: ["*"]` is the same fan-out.
+- **Triggered by the save**, the way `SkillManager` calls
+  `publish_section_access_map()` on every deploy/undeploy. Editing the Profile is
+  enough; no prompt is hand-edited (`US-01`'s "derived, not hand-copied").
+- **The operator's own address in the block is read from the `SELF_EMAIL`
+  setting** (`ADR-038`), published alongside the Profile-owned facts so agent
+  context carries one coherent "who you work for" whichever surface holds which
+  fact. Publication *reads* that setting; it never writes it, and changing it on
+  Settings → System is what makes the block restate it.
+- Publication writes colleague names and addresses into every Hermes profile's
+  SOUL.md on this machine. That is local instance data; the export exclusion is
+  about bundles and still holds.
 
 Two facts bound everything below, both confirmed by direct reading:
 
@@ -907,14 +1000,98 @@ exact places a sixth/seventh kind lands (read directly, not estimated):
   artifact export, alongside the Operator Profile (`ADR-032`) — a run is not a
   capability.
 
-**Last reviewed:** 2026-10-16 (architect pass, `REQ-SB-95-US-02`/`US-03`/`US-04`
+### §Entity Resolution — a Generic Tag Resolver, No Plugin Named (`REQ-SB-95-US-05`, `ADR-035`/`ADR-037`)
+
+- **New:** `app/business/logic/tag_resolution.py` (name indicative) — the
+  resolver. It is generic over any `<namespace>/<slug>` tag and answers two
+  questions only: *which notes carry this tag*, and *which tag does this name
+  mean*. It knows nothing of Customers, Partners or Entities and **names no
+  plugin** (`ADR-035`, `ADR-022`, `ADR-023`).
+- **A name, an alias or a domain** resolves to `(kind, tag, hub)`. Matching is
+  case-insensitive, against registered entries only — never a fuzzy search over
+  note titles (`US-05` Scenario 1). Two entries matching one name is reported
+  **ambiguous**, never silently resolved to one of them (Scenario 3).
+- `kind` is an **opaque string** supplied by whoever registered the namespace.
+  Core never enumerates kinds — that is `ADR-022`'s CFO test expressed in code.
+
+### §The One Tag-Keyed Index — a Projection, Not an Artifact (`REQ-SB-95-US-05`, `ADR-037`)
+
+- The index is **computed inside `VaultManager.rebuild_index()` and rebound
+  alongside `_vault_entries`**, from the `tags` each entry already carries. It
+  therefore cannot be newer or older than the notes it groups.
+- **No new `Index` artifact, no new cron job, no second refresh trigger.** It
+  refreshes exactly when the vault index does — which, since `BUG-082`, is every
+  `POST /vault-index/refresh` the `vault-index-rebuild` job makes once it has
+  written the disk index, plus every explicit rebuild. `BUG-082` is the whole
+  reason this is a projection rather than a stored artifact: the backend's own
+  index rebuilt only at boot, and 250 notes were invisible for three days.
+- **Keys are every `<namespace>/<slug>` tag present in the vault**, grouped
+  regardless of registration — so Scenario 7 holds on an install with no plugins
+  at all. Registration turns a *name* into a tag; it does not populate the index.
+  A tag key with no registered entry is **reported unknown**, not dropped.
+- `ADR-032`'s "a single artifact" is honoured in what it decided — one index, a
+  dict lookup, no per-entity provisioning — and is deliberately not read as "an
+  `Index` kind instance". The three hand-made per-customer Indexes and their
+  hourly jobs are untouched (`US-05` Scenario 4).
+- **The scoped read** — hub synthesis first, then tagged evidence newest first —
+  is framework business logic over the projection, and the agent reaches it
+  through §The Action Call Gate as the `http` implementation of a shipped
+  Action (`US-05` Scenario 6). Nothing is published as a file for agents to read.
+
+### §Registering a Tag Namespace (`REQ-SB-95-US-05`, `ADR-035`/`ADR-037`)
+
+- `app/plugin_api.py` gains `register_tag_namespace(namespace, entries)`, where
+  `entries() -> list[dict]` yields `slug`, `name`, `aliases`, `domains`, `hub`
+  and `kind`. It is a **callable, called at resolution time** — never a list
+  captured at register time, because the plugin's own registry
+  (`Settings/Entities.md`, already plugin seed data via
+  `register_seed_data_file`) is edited while the app runs.
+- Same shape as `register_subject_enricher`/`register_agent_matcher`, same
+  facade rule: plain dicts out, never a framework entity class.
+- **One namespace, one owner** — a second registration of the same prefix is
+  refused naming both plugins (the `provide_service` precedent). A callable that
+  raises is skipped and logged, and the resolver answers "did not resolve"
+  rather than a wrong answer (the `register_agent_matcher` precedent).
+- Zero registered namespaces means nothing resolves — `ADR-035`'s "degrades to
+  nothing rather than to a wrong answer". The entities plugin registering
+  `customer/` and `partner/` is its own work in `sb-plugins-entities`.
+
+### §One Contract Bump for All of `REQ-SB-95` (`REQ-SB-95-US-02`/`US-05`, `ADR-037`)
+
+- `register_action` (`US-02`) and `register_tag_namespace` (`US-05`) are the
+  **only two** additions `REQ-SB-95` makes to `plugin_api.py`; `US-03` and
+  `US-04` add none.
+- Both land **additively while `FRAMEWORK_API` stays 7**. The constant moves to
+  **8 exactly once**, in whichever of the two stories lands last, and no plugin
+  may depend on either capability until it does. One republish of every
+  installed plugin, not two — the operator has taken seven bumps this autumn.
+- This is a **planning constraint, not just a coding one**: `US-02` and `US-05`
+  carry a cross-story edge on `plugin_api.py`, and the decomposer/product-owner
+  must place the single bump in the later of the two rather than discover it.
+
+**Last reviewed:** 2026-10-16 (architect re-pass, `REQ-SB-95-US-01` only, on the
+operator's `ADR-038` decision: `SELF_EMAIL` stays exactly as it is — a
+startup-required setting, in `system_settings._FIELDS`, editable on
+Settings → System, wizard step unchanged — and the Operator Profile **mirrors**
+it rather than retiring it, so the fresh-install boot path leaves this story's
+blast radius entirely. The §Operator Profile sub-section is rewritten around the
+mirror; `ADR-036`'s fourth-marker-block decision, and every other section, are
+untouched. No new ADR — `ADR-038` already records the decision.)
+
+Earlier: 2026-10-16 (architect pass, `REQ-SB-95-US-01`/`US-05`, both
+cleared by operator decisions recorded in `ADR-035` — `ADR-036`/`ADR-037`
+appended: the Operator Profile reaches agent context as a fourth SOUL.md marker
+block through one shared republish pass and is the single writer of the
+operator's own address, the tag-keyed index is a projection rebound inside
+`VaultManager.rebuild_index()` rather than a new Index artifact with a second
+refresh trigger, a plugin registers a tag namespace as a callable, and the
+`FRAMEWORK_API` bump is taken once for all of `REQ-SB-95`); 2026-10-16
+(architect pass, `REQ-SB-95-US-02`/`US-03`/`US-04`
 — `ADR-033`/`ADR-034` appended on top of the already-Accepted `ADR-032`: the
 Action call surface is one loopback route on this app's own API, the caller is an
 agent/profile id, confirmation is a single-use grant in a new Action-call ledger,
 and a Workflow is run step-by-step by the framework rather than recited to the
-model).
-
-Earlier: 2026-09-02 (architect pass, `REQ-SB-88-US-01`/`US-02` —
+model); 2026-09-02 (architect pass, `REQ-SB-88-US-01`/`US-02` —
 no new ADR, both stories confirmed purely additive/consumptive of `ADR-017`'s
 already-built per-caller `allowed_callers` mechanism plus ordinary
 Template.json data edits; 2026-09-01 architect pass, `REQ-SB-87-US-01`/`US-03`/

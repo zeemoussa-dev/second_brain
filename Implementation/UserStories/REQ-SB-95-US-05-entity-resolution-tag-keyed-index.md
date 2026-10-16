@@ -4,12 +4,12 @@ title: Entity resolution instead of search — one tag-keyed index, synthesis fi
 requirement_ids: [REQ-SB-95]
 requirement_section: "REQ-SB-95: An Agent Can Only Do What the App Can Do — Operator Profile, Actions, Workflows, Entity Resolution"
 phase: P2
-status: Draft
-gate: clear
-gate_reason: ""
+status: Ready
+gate: flagged
+gate_reason: "trigger-3 (ADR-037 created) — the tag-keyed index is a projection rebound inside VaultManager.rebuild_index() rather than a new Index artifact with its own cron job, a plugin registers a namespace as a callable, and the FRAMEWORK_API bump is taken once for all of REQ-SB-95; plus trigger-7 (decomposer, 2026-10-16) — the sibling US-02 task files carry no FRAMEWORK_API instruction, so the single bump is owed by whichever story lands last and only this story's T02 currently knows it"
 sprint: ""
 created: 2026-10-16
-updated: 2026-10-16
+updated: 2026-10-16  # decomposer re-pass: 5 tasks rewritten, AC coverage re-checked (AC-02/AC-06 gap closed), Draft -> Ready
 ---
 
 # REQ-SB-95-US-05 — Entity resolution instead of search — one tag-keyed index, synthesis first then evidence
@@ -72,82 +72,129 @@ verb the agent has
 
 ## Acceptance Criteria
 
-<!-- Written as untagged Gherkin (Given/When/Then). Happy path first, then edge
-cases and error states. Do NOT add AC-IDs — the decomposer assigns them at
-/plan-tasks. -->
+<!-- Locked by the decomposer, 2026-10-16. Each scenario carries its AC-ID on
+the line after its closing fence. Scenario 8 is decomposer-authored (see Notes →
+Decomposer pass): it makes `ADR-037`'s registration seam and its single
+`FRAMEWORK_API` bump verifiable rather than implicit. The framework names no
+plugin anywhere below — "the registry" always means whatever namespace a plugin
+registered through `plugin_api.register_tag_namespace`. -->
 
 ### Scenario 1: A named entity resolves to a kind, a tag and a hub
 
 ```gherkin
-Given the Entities registry knows an entity by its name
+Given a plugin has registered a tag namespace whose entries know an entity by
+    its name
 When that name is resolved
-Then the resolution returns the entity's kind, its tag, and its hub note
-  And the resolution is a lookup against the registry, not a search of the vault
+Then the resolution returns that entity's kind, its `<namespace>/<slug>` tag and
+    its hub note
+  And it is answered by asking the registered `entries()` callable at that
+    moment — never by a fuzzy search over note titles, and never from a list
+    captured when the namespace was registered
+  And `kind` is carried through exactly as the plugin supplied it; the framework
+    never enumerates or interprets the value
 ```
+<!-- AC-ID: REQ-SB-95-US-05-AC-01 -->
 
 ### Scenario 2: The updates about an entity are read scoped, synthesis first
 
 ```gherkin
 Given a resolved entity with a hub note and tagged evidence notes in the vault
-When the operator asks an agent for the updates about that entity
-Then the answer is built from that entity's own hub synthesis first, then its
-    tagged evidence — Threads and Meetings — newest first
-  And nothing outside that entity's tag scope is read to answer the question
-  And the agent does not fall back to a whole-vault search
+When the scoped read for that entity is performed
+Then the result is composed from the entity's own hub synthesis FIRST, then its
+    tagged evidence — Threads and Meetings — newest first, by each note kind's
+    own real recency field
+  And every note in the result carries that entity's tag; nothing outside the
+    tag scope is read or returned
+  And no whole-vault search is run as part of answering — the read reaches the
+    vault only through the tag-keyed index, and the search entry point is never
+    called
 ```
+<!-- AC-ID: REQ-SB-95-US-05-AC-02 -->
 
 ### Scenario 3: An alias or a domain resolves to the same entity
 
 ```gherkin
-Given an entity recorded in the registry with aliases and known email domains
-When the operator names it by an alias, or by one of its domains
+Given a registered entry carrying aliases and known email domains
+When it is named by an alias, or by one of its domains, in any letter case
 Then it resolves to the same kind, tag and hub as its primary name
-  And an alias that collides with another entity's name is reported as ambiguous
-    rather than silently resolved to one of them
+  And when two registered entries match the same name, alias or domain, the
+    result is reported as ambiguous, naming both candidates, and is never
+    silently resolved to one of them
 ```
+<!-- AC-ID: REQ-SB-95-US-05-AC-03 -->
 
 ### Scenario 4: One tag-keyed index serves every entity, including a brand-new one
 
 ```gherkin
-Given a new entity exists in the vault and the registry, with notes already
-    carrying its tag
-When the operator asks about it
-Then it is served by the one tag-keyed index with no per-entity provisioning
-    step — no new Index artifact, no new cron job, no hand-made setup
-  And the three existing per-entity Indexes keep working untouched, still
-    available for accounts that deserve a custom scope
+Given a new entity exists in the vault, with notes already carrying its tag
+When the vault index is rebuilt
+Then that entity is served by the one tag-keyed index with no per-entity
+    provisioning step — no new `Index` artifact is created, no new cron job is
+    registered, and no second refresh trigger exists
+  And the tag-keyed index is rebound in the same pass as `_vault_entries`, so it
+    can never be newer or older than the notes it groups
+  And the three existing per-entity Indexes and their hourly jobs are untouched
 ```
+<!-- AC-ID: REQ-SB-95-US-05-AC-04 -->
 
 ### Scenario 5: A name that does not resolve is answered honestly
 
 ```gherkin
-Given the operator names something the Entities registry does not know
-When the agent answers
-Then it states plainly that the name did not resolve to a known entity
-  And if it does anything else instead, it says what it did
-  And it does not present unscoped search results as if they were that entity's
-    updates
+Given a name that no registered namespace knows — including the case where no
+    namespace is registered at all
+When resolution is asked for it
+Then the answer states plainly that the name did not resolve, repeating the name
+    as it was given
+  And no scoped read is performed and no unscoped search result is returned in
+    its place
+  And a registered `entries()` callable that raises is skipped and logged, and
+    still produces "did not resolve" rather than a wrong answer
 ```
+<!-- AC-ID: REQ-SB-95-US-05-AC-05 -->
 
 ### Scenario 6: The agent reaches the scoped read through the catalogue
 
 ```gherkin
-Given the scoped entity read exists on this install
-When an agent is asked about an entity
-Then it reaches the scoped read as a catalogued Action, validated like any other
-    action call
-  And an agent not permitted to run it is refused like any other action
+Given the scoped entity read is published as a catalogued Action with an `http`
+    implementation naming its own route
+When an agent calls it
+Then the call goes through the Action call gate and is validated like any other
+    action call — unknown id, missing required input and unresolved
+    implementation are refused the same way
+  And a caller not in that Action's `allowed_callers` is refused, with the
+    refusal recorded in the Action-call ledger
 ```
+<!-- AC-ID: REQ-SB-95-US-05-AC-06 -->
 
 ### Scenario 7: The one tag-keyed index covers every entity tag in the vault
 
 ```gherkin
-Given the vault holds notes tagged for many different entities
+Given the vault holds notes carrying many different `<namespace>/<slug>` tags
 When the tag-keyed index is built
-Then every entity tag present in the vault is a key in that one index
-  And an entity whose tag exists in the vault but which the registry does not
-    know is reported, rather than silently dropped
+Then every such tag present in the vault is a key in that one index, whether or
+    not its namespace is registered — so this holds on an install with no
+    plugins at all, and no namespace prefix is filtered in or out by a list
+    written into the framework
+  And a tag key with no registered entry is reported as unknown, naming the tag,
+    rather than silently dropped
 ```
+<!-- AC-ID: REQ-SB-95-US-05-AC-07 -->
+
+### Scenario 8: A namespace is registered as a callable, and the contract bumps once
+
+```gherkin
+Given a plugin registers a tag namespace through
+    `plugin_api.register_tag_namespace(namespace, entries)`
+When the plugin is loaded, and later a resolution is asked for
+Then `entries` is stored as a callable and invoked at resolution time, never
+    called at registration time
+  And a second registration of the same namespace prefix is refused, naming both
+    plugins
+  And `FRAMEWORK_API` stays 7 while this capability lands, and becomes 8 exactly
+    once — in whichever of `register_tag_namespace` and `register_action`
+    (`REQ-SB-95-US-02`) lands last, never twice
+```
+<!-- AC-ID: REQ-SB-95-US-05-AC-08 -->
 
 ## Affected Screens
 
@@ -189,16 +236,18 @@ Then every entity tag present in the vault is a key in that one index
 
 ## Implementation Tasks
 
-<!-- Indicative only — the decomposer owns the final split and the real IDs.
-Which repository these land in depends on the flagged ADR-022/ADR-032 boundary
-question. -->
+Final split, decomposer, 2026-10-16. The boundary question is settled
+(`ADR-035` Decision 1): every task below lands in **this** repository as generic
+mechanism, naming no plugin. Dependency order is
+`(T01, T02) → T03 → T04 → T05`.
 
-| ID | Type | Task | Files / Area | Task File |
-|---|---|---|---|---|
-| REQ-SB-95-US-05-T01 | backend | Entity resolver — name/alias/domain → kind, tag, hub, over the Entities registry | `src/backend/app/business/` (or the Entities plugin, pending the boundary decision) | — |
-| REQ-SB-95-US-05-T02 | backend | The one tag-keyed index — build over every `customer/*`/`partner/*` tag, with its own refresh | `src/backend/app/business/core/index/` | — |
-| REQ-SB-95-US-05-T03 | backend | The scoped read — hub synthesis first, then tagged evidence newest first | `src/backend/app/business/logic/` | — |
-| REQ-SB-95-US-05-T04 | backend | Expose the scoped read as a catalogued Action | `src/backend/app/business/core/actions/` | — |
+| ID | Type | Task | ACs | Depends on | Task File |
+|---|---|---|---|---|---|
+| REQ-SB-95-US-05-T01 | backend | The tag-keyed index as a projection, computed and rebound inside `VaultManager.rebuild_index()` | AC-04, AC-07 | — | `../Tasks/REQ-SB-95-US-05-T01-tag-keyed-index-projection.md` |
+| REQ-SB-95-US-05-T02 | backend | `plugin_api.register_tag_namespace(namespace, entries)` — the callable seam, and the one `FRAMEWORK_API` bump | AC-08 | — | `../Tasks/REQ-SB-95-US-05-T02-register-tag-namespace-plugin-api.md` |
+| REQ-SB-95-US-05-T03 | backend | The generic tag resolver — name/alias/domain → `(kind, tag, hub)`, ambiguity and non-resolution reported | AC-01, AC-03, AC-05, AC-07 | T01, T02 | `../Tasks/REQ-SB-95-US-05-T03-generic-tag-resolver.md` |
+| REQ-SB-95-US-05-T04 | backend | The scoped read — hub synthesis first, then tagged evidence newest first, nothing outside the tag | AC-02 | T01, T03 | `../Tasks/REQ-SB-95-US-05-T04-scoped-entity-read.md` |
+| REQ-SB-95-US-05-T05 | backend | The scoped read as a shipped, catalogued Action reached through the call gate | AC-06 | T04, REQ-SB-95-US-02-T02, REQ-SB-95-US-03-T02, REQ-SB-95-US-03-T03 | `../Tasks/REQ-SB-95-US-05-T05-scoped-read-as-catalogued-action.md` |
 
 ## Definition of Done
 
@@ -227,6 +276,39 @@ question. -->
 ## Notes
 
 **Operator decision, 2026-10-16 — flag cleared.** Operator, 2026-10-16: "Resolver is framework, Customer stays the plugin." The framework ships a tag-keyed resolver generic over any `<namespace>/<slug>` tag, naming no plugin; a plugin registers its namespace through the Plugin API, and the entities plugin registers `customer/` and `partner/`. This story builds here as mechanism; the namespace registration is `sb-plugins-entities`' own work. `ADR-022` stands unamended. `ESC-063` is Resolved, resolving artefact `ADR-035`.
+
+**Architecture scope (architect, 2026-10-16) — the sections that bound the coder:**
+
+`Implementation/Architecture/architecture.md` → §An Agent Acts From a Published
+Catalogue (`REQ-SB-95`) → **§Entity Resolution — a Generic Tag Resolver, No
+Plugin Named**, **§The One Tag-Keyed Index — a Projection, Not an Artifact**,
+**§Registering a Tag Namespace** and **§One Contract Bump for All of
+`REQ-SB-95`**. Read-only context: §The Action Call Gate (Scenario 6 reaches the
+scoped read through it). ADRs: `ADR-032`, `ADR-035` (Decision 1), `ADR-022`
+(unamended), **`ADR-037`** (new).
+
+What `ADR-037` settles, so the build does not have to choose:
+
+- **The tag-keyed index is a projection, computed inside
+  `VaultManager.rebuild_index()` and rebound alongside `_vault_entries`** — no
+  new `Index` artifact, no new cron job, no second refresh trigger. `BUG-082` is
+  the reason: a stored projection with its own trigger is how the backend's own
+  index sat at boot-state for three days. `ADR-032`'s "a single artifact" is read
+  as "one index, dict lookup, no per-entity provisioning", not as an `Index` kind
+  instance.
+- **Keys are every `<namespace>/<slug>` tag present in the vault**, registered or
+  not (Scenario 7 holds with zero plugins installed); an unregistered tag key is
+  reported, never dropped.
+- **`plugin_api.register_tag_namespace(namespace, entries)` where `entries` is a
+  CALLABLE**, asked at resolution time — same shape as
+  `register_subject_enricher`/`register_agent_matcher`, plain dicts out, `kind`
+  an opaque pass-through string. Duplicate prefix refused; a raising callable
+  skipped; ambiguity reported, never silently resolved.
+- **The `FRAMEWORK_API` bump is taken once for all of `REQ-SB-95`** —
+  `register_action` (`US-02`) and `register_tag_namespace` (this story) land
+  additively at 7, and the constant moves to 8 exactly once, in whichever of the
+  two lands last. This is a cross-story edge on `plugin_api.py` the decomposer
+  and product-owner must honour.
 
 **Prototype parity:**
 
@@ -272,3 +354,66 @@ question. -->
 8. **Multiple equally-valid options** — a consequence of trigger 7 rather than a
    separate finding: framework-core resolver vs Entities-plugin resolver are both
    defensible readings of the two Accepted ADRs.
+
+**Decomposer RE-pass, 2026-10-16 — 8 ACs locked, 5 tasks, `Draft → Ready`.**
+The previous pass's task files were deleted before they could be used; these
+five are written fresh, not patched.
+
+- **AC-01 … AC-08 are all locked, and coverage was checked AC by AC** — the
+  previous pass marked this story `Ready` while **AC-02 and AC-06 had no
+  verification step in any task**, a hard-rule-4 failure. The map now, each
+  entry a real numbered `[AC-ID]`-tagged step in that task's `## Tests`:
+  AC-01 → `T03` (steps 1–4); **AC-02 → `T04` (steps 1–5, plus its manual
+  step)**; AC-03 → `T03` (5–6); AC-04 → `T01` (1–4); AC-05 → `T03` (7–9);
+  **AC-06 → `T05` (steps 1–5, plus its manual step)**; AC-07 → `T01` (5–6) and
+  `T03` (10); AC-08 → `T02` (1–5). No locked AC is unverified.
+  `depends_on` is acyclic (`T01/T02 → T03 → T04 → T05`). Tasks move to `Ready`
+  with the story.
+- **Two ACs were tightened for verifiability**, wording only, no scope change:
+  AC-02 now names *each note kind's own real recency field* and makes "no
+  whole-vault search" observable (the search entry point is never called),
+  because `capture_freshness.py` already fixes the real fields —
+  `Thread.last_message_at`, `Meeting.start`, `RawMessage.received` — and a
+  decomposer-invented date field would have been a material assumption. AC-07
+  now says explicitly that no namespace prefix may be filtered by a list
+  written into the framework, which is `ADR-022`'s CFO test stated as a
+  checkable property rather than an intention.
+- **Scenario 8 is decomposer-authored.** `ADR-037` calls the single contract
+  bump "a planning constraint, not just a coding one" and tells the decomposer
+  to place it rather than let it be discovered. A planning constraint with no
+  locked AC is a sentence in an ADR; as AC-08 it is a test.
+- **The cross-story `plugin_api.py` edge, stated plainly.** `register_action`
+  (`REQ-SB-95-US-02-T05`) and `register_tag_namespace` (`T02` here) are the only
+  two additions `REQ-SB-95` makes to that file, and the constant moves 7 → 8
+  **once, in whichever lands last**. `T02` is therefore written to *read the real
+  current `plugin_api.py` first*: if `register_action` is already present, this
+  is the later landing and the bump is taken here; if it is not, `FRAMEWORK_API`
+  stays 7 and the bump is owed by `US-02`.
+  **This is the trigger-7 half of the gate:** the already-written
+  `REQ-SB-95-US-02-T05` task file carries no `FRAMEWORK_API` instruction at all
+  (confirmed by direct reading — it was authored by a concurrent decomposer run
+  that this pass may not edit). If `US-02` lands last as things stand, nobody
+  bumps the constant and no plugin can ever depend on either capability.
+  `REVIEW-QUEUE.md` carries the two-line fix.
+- **No cross-story `depends_on` was invented for that edge.** Making `T02`
+  depend on `REQ-SB-95-US-02-T05` would force this story behind the whole spine
+  for a one-line constant, contradicting the story's own "Scenarios 1–5 and 7
+  stand alone". The conditional read above gets the same guarantee without the
+  ordering cost. The genuine cross-story dependency is `T05` only (AC-06), which
+  needs the Action kind and the call gate and says so in `depends_on`.
+- **No `ESCALATIONS.md` entry written by this pass.** `ESC-063` stays Resolved.
+  No oversized task; `T03` and `T04` are the two with real logic and each is one
+  module plus its tests.
+- **`T05` now also depends on `REQ-SB-95-US-03-T02`** (the gate and the
+  ledger), not only on `US-03-T03`'s dispatch: AC-06's second clause requires
+  the refusal to be *recorded in the ledger*, which `T02` of that story builds.
+
+**Architect pass, 2026-10-16 — re-flagged under trigger 3.** The analyst's
+trigger-4/7 flags are cleared (the operator decided it; `ADR-035`, and `ESC-063`
+is Resolved). This pass fires **trigger 3 only**: `ADR-037` was created. No new
+`ESCALATIONS.md` entry. One reading is worth the human's eye and is stated
+openly in `ADR-037`: `ADR-032`'s phrase "a single artifact" is taken to mean one
+index with a dict lookup and no per-entity provisioning, **not** an `Index`
+artifact-kind instance with its own cron job — so this is read as specifying what
+`ADR-032` left open, not as contradicting it. If the operator reads it the other
+way, `ADR-037` is the thing to reject. The decomposer still runs.
