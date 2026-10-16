@@ -110,3 +110,57 @@ a coder reach outside its scope by precedent.
 
 **Resolving artefact:** `REQ-SB-95-US-02-T02` (2026-10-16)
 **Status:** Open
+
+---
+
+## ESC-065: `artifact_import_conflicts.py` knows four kinds, so neither `index` nor `action` can be imported end to end — 2026-10-16
+
+**Category:** out-of-scope
+
+**Trigger:** Building `REQ-SB-95-US-02-T04` (Action as the sixth kind across the
+inventory, resolver, export, import and secret scan). The task's `## Files to
+Modify` names `artifact_import.py` — where `_deploy_action` now lives — but not
+`artifact_import_conflicts.py`, which sits upstream of it and is the gate every
+real import passes through first.
+
+Measured directly on this install, 2026-10-16:
+
+```
+kinds known to detect_conflicts: ['agent', 'pipeline', 'skill', 'template']
+index  -> ValueError: unrecognized artifact kind 'index' -- expected one of
+          ['agent', 'pipeline', 'skill', 'template']
+action -> ValueError: unrecognized artifact kind 'action' -- expected one of
+          ['agent', 'pipeline', 'skill', 'template']
+```
+
+`_MANAGER_BY_KIND` in that module raises for any kind outside its four, and both
+`preview_import()` and `commit_import()` call `detect_conflicts()` on the WHOLE
+manifest before deploying anything. So a bundle containing a single `action`
+entry — or a single `index` entry — fails as a whole, and no other artifact in
+it is imported either.
+
+**This is pre-existing, not introduced here.** `index` joined the kind set on
+2026-09-06 (`ADR-019`) and the same file was never extended then; the
+`tests/test_index_artifact_kind.py` precedent verifies the import side by calling
+`artifact_import._deploy_one` directly, which is exactly the call that bypasses
+this gate, so the gap has never shown up in the suite. `T04` followed that same
+precedent (`Learnings.md` 2026-09-05, "Fixing an out-of-scope bug in the task
+that found it" — finding a bug is not authority to fix it inside someone else's
+scope), so `T04`'s own locked ACs (`AC-04`, `AC-05`) are verified and green and
+nothing was improvised into a file it does not own.
+
+**Consequence if left:** `Action` and `Index` are exportable and deployable but
+not importable through the real `/artifacts/import/{preview,commit}` routes. The
+operator sees a failed import of the whole bundle, not a skipped kind.
+
+**What the fix is:** add `"index": IndexManager` and `"action": ActionManager` to
+`_MANAGER_BY_KIND` in `src/backend/app/business/logic/artifact_import_conflicts.py`
+— two lines plus two imports; both Managers already expose the `get_by_id(id)`
+that module calls, and `ActionManager.get_by_id` already answers `None` for an
+unknown id. It needs a task that owns that file (a small `T04a`, or adding the
+file to `REQ-SB-95-US-04-T04`, which extends these same files for `Workflow`),
+plus an AC-tagged test driving `commit_import` rather than `_deploy_one`.
+
+**Resolution:** pending — needs a human to decide which task owns the file.
+**Resolving artefact:** —
+**Status:** Open
