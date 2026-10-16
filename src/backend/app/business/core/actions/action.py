@@ -6,6 +6,50 @@ from dataclasses import dataclass, field
 # Action carries exactly ONE of them (ActionManager enforces that).
 IMPLEMENTATION_KINDS = ("skill", "http", "ui")
 
+# The two states ActionManager.resolution_report() reports per Action.
+# Deliberately only two, against SkillManager.check_deployment_drift()'s
+# four: a Skill can be current/stale/modified/missing because a deployed
+# copy can DIFFER from the catalog's, whereas an Action only ever points
+# at something -- the thing it points at is there, or it is not.
+RESOLUTION_STATUSES = ("resolves", "broken")
+
+# The in-app features a `ui` implementation may name -- the front end's
+# own route paths, verbatim from src/frontend/src/App.tsx.
+#
+# A feature key IS the route the operator performs the feature on, which
+# is what makes it checkable against a real file instead of an invented
+# naming scheme, and what makes ADR-033's "the response names where the
+# operator does it" answerable with this very string. Declared here
+# because nothing on the backend can read React's route table: the front
+# end is a separate build and may not even be deployed beside the API.
+UI_FEATURE_KEYS = (
+    "/",
+    "/chat",
+    "/crawlers",
+    "/settings",
+    "/settings/system",
+    "/settings/sections",
+    "/settings/vault",
+    "/settings/vault/templates",
+    "/settings/vault/index-filtering",
+    "/settings/vault/index-builder",
+    "/settings/config",
+    "/settings/ui",
+    "/settings/artifacts",
+    "/settings/blueprints",
+    "/settings/marketplace",
+    "/settings/export-data",
+    "/settings/backup",
+    "/system-health",
+    "/agent-activity",
+    "/browse",
+    "/browse/:stem",
+    "/vault",
+    "/meeting-cockpit/:stem",
+    "/inbox-cockpit/:stem",
+    "/setup",
+)
+
 
 @dataclass
 class ActionInput:
