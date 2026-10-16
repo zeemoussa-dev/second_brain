@@ -43,7 +43,17 @@ serves rather than fetching it.
 v7 makes `vault.read_note()` return a body a renderer can show: a captured email's
 body is the original HTML, and every surface was handing that markup to a markdown
 renderer (`BUG-081`). Converting here rather than in each plugin is `ADR-027`'s rule
-again -- one answer, not one per screen. A new capability is added here when a plugin
+again -- one answer, not one per screen.
+
+v8 gives screens CHARTS: the host provides `echarts` and `echarts-for-react`, and
+`import_rules` allows both, including their subpaths, so a screen can import
+`echarts/core` and only the chart types it draws instead of the whole library
+(`ADR-039`). A charting library cannot be shipped inside a plugin -- a plugin
+contributes `.tsx` compiled into the framework's own frontend, and its package.json
+is never installed -- so "the libraries the host provides" is the only way a plugin
+can draw a chart at all. One copy, one version, deduped across every plugin.
+
+A new capability is added here when a plugin
 needs one. The host loads only
 plugins built for its exact `FRAMEWORK_API`, so a plugin that relies on a
 capability is never loaded by a framework that lacks it, and every installed
@@ -67,7 +77,7 @@ from app.data_access import seed_data, vault_writer
 from app.obsidian import sections
 from app.obsidian.notes import long_path
 
-FRAMEWORK_API = 7
+FRAMEWORK_API = 8
 
 _logger = logging.getLogger(__name__)
 

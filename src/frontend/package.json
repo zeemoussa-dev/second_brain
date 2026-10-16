@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "echarts": "^6.1.0",
+    "echarts-for-react": "^3.0.6",
     "github-slugger": "^2.0.0",
     "mermaid": "^11.17.2",
     "react": "^19.2.8",

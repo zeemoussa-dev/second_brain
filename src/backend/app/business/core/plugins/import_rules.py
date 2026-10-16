@@ -98,7 +98,16 @@ def check_core(app_dir: Path) -> list[str]:
 # own files a screen may reach only the host contract in `src/pluginHost/` and the
 # libraries the host provides. Any other framework module -- or a library the
 # framework merely happens to depend on -- is an internal that changes under it.
-_ALLOWED_UI_PACKAGES = {"react", "react/jsx-runtime", "react-router"}
+_ALLOWED_UI_PACKAGES = {"react", "react/jsx-runtime", "react-router",
+                        "echarts", "echarts-for-react"}
+# Packages a screen may also import INTO: `echarts` is only affordable when a
+# screen pulls the pieces it uses (`echarts/core`, `echarts/charts`,
+# `echarts/components`, `echarts/renderers`) instead of the whole library, and
+# the wrapper's tree-shaken entry point is `echarts-for-react/lib/core`. Listing
+# every subpath the way `react/jsx-runtime` is listed would make the allowlist a
+# moving target, so these two are allowed by root -- which is sound because the
+# whole package is already allowed, and a subpath of it is not a wider reach.
+_ALLOWED_UI_PACKAGE_ROOTS = ("echarts", "echarts-for-react")
 _UI_SOURCE_SUFFIXES = {".ts", ".tsx", ".js", ".jsx"}
 _UI_IMPORT_PATTERNS = (
     # import x from '...' / import { a,\n b } from '...' / export { x } from '...'
@@ -108,6 +117,12 @@ _UI_IMPORT_PATTERNS = (
     # import('./lazy')
     re.compile(r"""\bimport\(\s*['"]([^'"]+)['"]\s*\)"""),
 )
+
+
+def _ui_package_allowed(specifier: str) -> bool:
+    if specifier in _ALLOWED_UI_PACKAGES:
+        return True
+    return any(specifier.startswith(f"{root}/") for root in _ALLOWED_UI_PACKAGE_ROOTS)
 
 
 def _ui_import_specifiers(source: str):
@@ -140,9 +155,10 @@ def check_plugin_ui(ui_dir: Path, plugin_id: str) -> list[str]:
                     violations.append(
                         f"{path}:{line}: imports `{specifier}` -- outside the plugin and the host contract (src/pluginHost/)"
                     )
-            elif specifier not in _ALLOWED_UI_PACKAGES:
+            elif not _ui_package_allowed(specifier):
                 violations.append(
                     f"{path}:{line}: imports package `{specifier}` -- screens may use only "
-                    f"{', '.join(sorted(_ALLOWED_UI_PACKAGES))} and src/pluginHost/"
+                    f"{', '.join(sorted(_ALLOWED_UI_PACKAGES))} "
+                    f"(and subpaths of {', '.join(_ALLOWED_UI_PACKAGE_ROOTS)}) and src/pluginHost/"
                 )
     return violations

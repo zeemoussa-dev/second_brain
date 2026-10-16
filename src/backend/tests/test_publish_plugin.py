@@ -279,6 +279,45 @@ def test_a_screen_still_may_not_import_mermaid_itself(tmp_path):
     assert "mermaid" in violation
 
 
+def test_a_screen_may_draw_a_chart_with_the_library_the_host_provides(tmp_path):
+    """ADR-039: a charting library cannot live inside a plugin -- a plugin
+    contributes .tsx compiled into the framework's own frontend and its
+    package.json is never installed -- so the host providing one is the only way
+    a plugin can draw a chart at all."""
+    ui = write_ui(tmp_path, "Spend.tsx", textwrap.dedent('''
+        import ReactECharts from 'echarts-for-react';
+        import * as echarts from 'echarts';
+    '''))
+
+    assert check_plugin_imports.check_plugin_ui(ui, "azure-cost-manager") == []
+
+
+def test_a_screen_may_import_only_the_chart_pieces_it_draws(tmp_path):
+    """The whole point of allowing subpaths: ECharts is affordable only when a
+    screen pulls `echarts/core` plus the few charts it uses. Refusing subpaths
+    would leave every plugin importing the entire library."""
+    ui = write_ui(tmp_path, "Trend.tsx", textwrap.dedent('''
+        import * as echarts from 'echarts/core';
+        import { LineChart } from 'echarts/charts';
+        import { GridComponent, TooltipComponent } from 'echarts/components';
+        import { CanvasRenderer } from 'echarts/renderers';
+        import ReactEChartsCore from 'echarts-for-react/lib/core';
+    '''))
+
+    assert check_plugin_imports.check_plugin_ui(ui, "my-day") == []
+
+
+def test_a_package_that_merely_starts_with_an_allowed_name_is_still_refused(tmp_path):
+    """Allowing a root must not allow its neighbours: `echarts-gl` is a separate
+    package the host does not provide, and `echarts/core` is not what makes it
+    one."""
+    ui = write_ui(tmp_path, "Globe.tsx", "import 'echarts-gl';\n")
+
+    [violation] = check_plugin_imports.check_plugin_ui(ui, "my-day")
+
+    assert "echarts-gl" in violation
+
+
 def test_screens_may_not_escape_into_another_plugin_or_the_framework(tmp_path):
     ui = write_ui(tmp_path, "index.tsx", textwrap.dedent('''
         import { thing } from '../entities/index';
