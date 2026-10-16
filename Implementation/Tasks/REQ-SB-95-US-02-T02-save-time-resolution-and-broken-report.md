@@ -4,9 +4,9 @@ title: Save-time implementation resolution for skill / http / ui, plus the broke
 parent_story: REQ-SB-95-US-02
 requirement_id: REQ-SB-95
 type: backend
-status: Ready
-gate: clear
-gate_reason: ""
+status: Blocked
+gate: flagged
+gate_reason: "ESC-064 -- the new save-time gate makes T01's own AC-01 round-trip test fail (it saves against the catalogued-but-undeployed `vault-search` Skill). The fix is ~5 lines in src/backend/tests/test_action_artifact_kind.py, which is not in this task's Files to Modify. Both locked ACs (AC-02, AC-07) are verified green on 9 new AC-tagged tests."
 phase: P2
 depends_on: [REQ-SB-95-US-02-T01]
 created: 2026-10-16
@@ -144,4 +144,122 @@ action cannot sit in the catalogue waiting to fail in front of the operator").
 
 ## Implementation Log
 
-_(Filled in by the coder.)_
+**Coder, 2026-10-16 — built, both locked ACs verified green, then BLOCKED on an
+out-of-scope file (`ESC-064`).**
+
+### What was built
+
+- `app/business/core/actions/action_manager.py`
+  - `deployed_skill_ids()` — the `skill` source. `{skill.id for skill in
+    SkillManager().get_all() if skill.deployed_to}`: **deployed**, not merely
+    catalogued. `SkillManager` is read, never extended (Constraint).
+  - `app_route_table()` + `_collect_routes()` — the `http` source, read off the
+    **live** `app.routes` (Constraint: not a hand-maintained list).
+    `from app.main import app` is a deliberate in-function import: `app.main`
+    imports the API layer which imports this module, so a module-level import
+    would be a cycle and would invert `ADR-003`'s `api -> business` direction.
+  - `UI_FEATURE_KEYS` (in `action.py`) — the `ui` source.
+  - `_ResolutionSources` — gathers all three ONCE per save or per report, then
+    answers `unresolved_reason(kind, spec)`; `None` means it resolves.
+  - `_require_resolvable_implementation()` — cardinality first, then resolution,
+    raising `ActionImplementationUnresolvedError` **before** any write. Wired
+    into `create()` and `update()` in place of the bare cardinality call.
+  - `resolution_report()` — `list[dict]` of
+    `{action_id, implementation_kind, status, reason}`, status in
+    `("resolves", "broken")`, mirroring `SkillManager.check_deployment_drift()`'s
+    flat-list-of-dicts shape. Recomputed from the live sources on every call.
+- `app/business/core/actions/action.py` — `RESOLUTION_STATUSES`, `UI_FEATURE_KEYS`.
+- `tests/test_action_resolution.py` (new) — 9 AC-tagged tests.
+
+`T01`'s keyed-by-kind `implementation` shape was **inherited unchanged**, as the
+`REVIEW-QUEUE` spot-check asks. `action_file()` was not needed after all —
+nothing here touches a path.
+
+### Locked ACs — verification performed and observed
+
+Run from `src/backend` as `.venv/Scripts/python.exe -m pytest`.
+
+`pytest tests/test_action_resolution.py -q` → **`9 passed in 1.31s`**
+
+| AC | Tagged step | Observed |
+|---|---|---|
+| `REQ-SB-95-US-02-AC-02` | `test_a_skill_that_is_catalogued_but_not_deployed_is_refused` | PASS — refusal names `vault-search` and "not deployed"; `stored_actions == {}` |
+| `REQ-SB-95-US-02-AC-02` | `test_an_http_route_the_app_does_not_expose_is_refused` | PASS — refusal names `/vault-index/refersh`; nothing written |
+| `REQ-SB-95-US-02-AC-02` | `test_the_same_path_under_the_wrong_method_is_refused` | PASS — a route is method AND path; nothing written |
+| `REQ-SB-95-US-02-AC-02` | `test_a_ui_feature_key_that_is_not_registered_is_refused` | PASS — refusal names `/settings/artefacts` and "not registered"; nothing written |
+| `REQ-SB-95-US-02-AC-02` | `test_resaving_the_refused_action_with_a_resolvable_implementation_succeeds` | PASS — same id saves once resolvable; `get_by_id()` returns it |
+| `REQ-SB-95-US-02-AC-02` | `test_an_update_onto_an_unresolvable_implementation_changes_nothing` | PASS — stored definition byte-identical after the refusal (the "editing" half) |
+| `REQ-SB-95-US-02-AC-02` | `test_the_http_route_table_is_read_off_the_live_app` | PASS — unmonkeypatched; `("POST", "/vault-index/refresh")` really is in the live table |
+| `REQ-SB-95-US-02-AC-07` | `test_an_action_that_breaks_after_it_was_saved_is_reported_on_read` | PASS — the undeployed one reports `broken` naming the skill, the other two still `resolves`, no call surface exists, and no status is written into the stored definition |
+| `REQ-SB-95-US-02-AC-07` | `test_the_read_side_status_is_recomputed_every_time` | PASS — the SAME manager instance flips `broken` → `resolves` when the Skill returns, so nothing is cached |
+
+**Manual step `[REQ-SB-95-US-02-AC-07]` (backend running, real data path) — NOT
+performed.** It undeploys a really-deployed Skill from a live Hermes profile on
+the operator's own install to observe the broken status. Seven Skills are really
+deployed here (`email-thread-capture`, `meeting-capture`, `capture-files`,
+`capture-notes`, `research-kb-writer`, `vault-index`,
+`summarize-and-tag-files`); undeploying one mutates live instance state this task
+has no mandate to touch, and `SkillManager.undeploy()` deletes the copy from the
+Hermes profile. The automated `AC-07` pair above exercises the same code path
+against the same `deployed_skill_ids()` seam, and the live source is proven real
+by the unmonkeypatched route-table test. Flagged here rather than silently
+skipped.
+
+### Blocker — `ESC-064`
+
+Full suite: `.venv/Scripts/python.exe -m pytest -q` →
+**`1 failed, 423 passed, 1 warning in 65.37s`** (was `415 passed` before this
+task; +9 new, −1 regression).
+
+The one failure is **not** in this task's scope:
+
+```
+FAILED tests/test_action_artifact_kind.py::test_a_saved_action_round_trips_everything_the_operator_authored
+ActionImplementationUnresolvedError: this Action's skill implementation does not
+resolve on this install: skill 'vault-search' is not deployed on this install
+```
+
+`T01` (`Done`) wrote that test before the save-time gate existed; it saves an
+example Action against `{"skill": {"skill_id": "vault-search"}}`, and
+`SkillManager().get_by_id("vault-search").deployed_to == []` on this install
+(measured). The gate refuses it, correctly — refusing exactly that is `AC-02`.
+`src/backend/tests/test_action_artifact_kind.py` is **not** in this task's
+`## Files to Modify`, so editing it is an out-of-scope event (Pipeline.md hard
+rule 5) and the build stopped instead of improvising. The fix is ~5 lines and
+does not change what `AC-01` asserts — see `ESC-064` for it.
+
+### Assumptions logged for human spot-check (scope-internal, nothing blocked)
+
+1. **A `ui` feature key is a front-end route path**, and `UI_FEATURE_KEYS` in
+   `action.py` is the registry, seeded verbatim from `src/frontend/src/App.tsx`'s
+   25 declared routes. Nothing in this codebase registers front-end features and
+   the backend cannot read React's route table — the front end is a separate
+   build that may not be deployed beside the API — so some declaration was
+   unavoidable. Route paths were chosen over an invented key vocabulary because
+   they are checkable against a real file, and because `ADR-033` says a `ui` call
+   returns "where the operator does it", which is this same string. The cost: the
+   tuple drifts if a screen is added without updating it, and `T06` adds a screen.
+   If you would rather it were a named-feature registry, or a
+   `plugin_api.register_ui_feature()` seam, say so before `T03` builds the API
+   over it.
+2. **`import_action()` was deliberately left un-gated.** The task's End State
+   names `create()`/`update()` only, and import-time resolution belongs with
+   `AC-05`'s bundle machinery (`T04`), which has its own "resolves there too"
+   criterion. Adding it here would have pre-empted `T04`.
+3. **`update()` does not re-resolve an *omitted* implementation.** Editing a
+   description must not be refused because something unrelated broke on the
+   install in the meantime; that is what `resolution_report()` is for. A
+   *supplied* implementation is held to both rules afresh.
+4. **An http implementation with no method is treated as `GET`**, matching the
+   route table's own fallback.
+
+### Framework defect found and worked around (recorded in `MEMORY.md`)
+
+The installed FastAPI does **not** flatten an included router into `app.routes`
+— it stores a lazy `_IncludedRouter` placeholder holding the original router and
+its prefix. A flat read of `app.routes` returns **4 paths** (the `/docs` family)
+and nothing else; `("POST", "/vault-index/refresh")` was absent. Walking into
+`route.original_router.routes`, composing `include_context.prefix` on the way
+down, returns **101** (METHOD, path) pairs and finds it. Any future code that
+reads this app's own route table must recurse, or it will silently see almost
+nothing.

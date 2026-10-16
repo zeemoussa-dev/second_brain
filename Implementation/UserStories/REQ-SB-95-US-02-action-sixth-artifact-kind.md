@@ -9,7 +9,7 @@ gate: flagged
 gate_reason: "trigger-3 (ADR-033 created — it decides the Action fields this story stores: allowed_callers as agent ids, and the confirmation flag's meaning)"
 sprint: SPRINT-087
 created: 2026-10-16
-updated: 2026-10-16  # coder: T01 Done (Action entity + ActionManager + data access); T02-T06 outstanding
+updated: 2026-10-16  # coder: T01 Done; T02 built and both its locked ACs green but BLOCKED on ESC-064 (its gate breaks a T01 test in a file outside T02's scope); T03-T06 outstanding
 ---
 
 # REQ-SB-95-US-02 — Action as the sixth artifact kind — one catalogue of what this app can actually do

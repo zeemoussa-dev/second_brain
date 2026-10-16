@@ -66,3 +66,47 @@ registration belonging to `sb-plugins-entities`. `ADR-022` stands unamended -- c
 a seam, the plugin fills it.
 **Resolving artefact:** `ADR-035`
 **Status:** Resolved
+
+---
+
+## ESC-064: `REQ-SB-95-US-02-T02` needs a file `T01` owns — save-time resolution makes one of `T01`'s own tests fail — 2026-10-16
+
+**Category:** out-of-scope-file
+**Trigger:** `REQ-SB-95-US-02-T02` adds `ADR-032`'s save-time implementation
+resolution to `ActionManager.create()`/`update()`. `T01` (Done, commits
+`4ecd43c`/`8fd50bb`) wrote `src/backend/tests/test_action_artifact_kind.py`
+before that gate existed, and its `AC-01` round-trip test saves an Action
+against `implementation={"skill": {"skill_id": "vault-search"}}`. `vault-search`
+is catalogued in this repo and deployed to **no** Hermes profile
+(`SkillManager().get_by_id("vault-search").deployed_to == []`, measured), so the
+new gate correctly refuses that save and the `T01` test fails:
+
+```
+FAILED tests/test_action_artifact_kind.py::test_a_saved_action_round_trips_everything_the_operator_authored
+ActionImplementationUnresolvedError: this Action's skill implementation does not
+resolve on this install: skill 'vault-search' is not deployed on this install
+```
+
+`T02`'s `## Files to Modify` names only `action_manager.py`, `action.py` and the
+new `tests/test_action_resolution.py`. `test_action_artifact_kind.py` is not in
+it, so fixing the failure is an out-of-scope edit (Pipeline.md hard rule 5), and
+the coder stopped rather than improvising a change to a `Done` task's test.
+
+**The two constraints are jointly unsatisfiable without a human**: "`AC-02`
+refuses a catalogued-but-undeployed Skill" (locked, verified green) and "the
+suite stays green" cannot both hold while that `T01` test stands. This is a
+decomposition gap, not a disagreement about behaviour — nothing in `ADR-032`,
+`ADR-033` or the story is contradicted, and `T02`'s own locked ACs (`AC-02`,
+`AC-07`) pass on nine new AC-tagged tests.
+
+**What the fix is:** `test_a_saved_action_round_trips_everything_the_operator_authored`
+needs the same resolution-source monkeypatch the new `tests/test_action_resolution.py`
+already uses (`deployed_skill_ids` / `app_route_table` / `UI_FEATURE_KEYS` on
+`app.business.core.actions.action_manager`), or its `"vault-search"` swapped for
+a really-deployed slug. Roughly five lines; it asserts nothing about resolution,
+so `AC-01`'s meaning is untouched either way. Whoever authorises it should add
+that file to `T02`'s `## Files to Modify` (or mint a `T02a`) rather than letting
+a coder reach outside its scope by precedent.
+
+**Resolving artefact:** —
+**Status:** Open

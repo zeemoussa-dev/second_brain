@@ -104,6 +104,16 @@ Build order inside the sprint, read from the task files' own `depends_on`:
   read it. See `REVIEW-QUEUE.md`.
 - **`ADR-032` is `Accepted` but has never had a human review entry.** Noted, not
   blocking.
+- **BLOCKED TASK (2026-10-16, coder): `REQ-SB-95-US-02-T02`** — built, both its
+  locked ACs (`AC-02`, `AC-07`) verified green on nine AC-tagged tests, but the
+  new save-time resolution gate makes one pre-existing `T01` test fail
+  (`tests/test_action_artifact_kind.py::test_a_saved_action_round_trips_everything_the_operator_authored`
+  saves against the catalogued-but-undeployed `vault-search` Skill). That file
+  is outside `T02`'s `## Files to Modify`, so the fix needs a human to authorise
+  it — `ESC-064`, `REVIEW-QUEUE.md`. The backend suite is red (`423 passed, 1
+  failed`) until then, and `T03` builds directly on `T02`, so the sprint cannot
+  advance past this. `T04` (`depends_on: [T01]` only) is the one task still
+  reachable without the decision.
 
 ---
 
