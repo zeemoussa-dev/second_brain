@@ -161,6 +161,28 @@ unknown id. It needs a task that owns that file (a small `T04a`, or adding the
 file to `REQ-SB-95-US-04-T04`, which extends these same files for `Workflow`),
 plus an AC-tagged test driving `commit_import` rather than `_deploy_one`.
 
-**Resolution:** pending — needs a human to decide which task owns the file.
-**Resolving artefact:** —
-**Status:** Open
+**Resolution (2026-10-16):** A new task was minted to own the file —
+`REQ-SB-95-US-02-T07`, "The import conflict gate knows every artifact kind, not
+four", in `SPRINT-087`. `_MANAGER_BY_KIND` now maps `index → IndexManager` and
+`action → ActionManager` (both already exposed the `get_by_id` the gate calls),
+and the stale "matching `sbf_archive`/`artifact_export`'s own 4-kind vocabulary"
+comment above the map — the assumption that caused this — was corrected in the
+same change. The guard is unchanged: an unknown kind still raises, still naming
+the accepted kinds. Four AC-tagged tests were added to
+`src/backend/tests/test_action_artifact_kind.py`, all four driving
+`preview_import`/`commit_import` on a real mixed-kind `.sbf` rather than
+`_deploy_one`, as this entry asked. Verified both ways: the four fail against the
+pre-fix map and pass against the fix; backend suite 432 → 436 passing.
+`REQ-SB-95-US-02-T04`'s `gate: flagged`, which existed solely for this entry, is
+cleared (its `status` was and remains `Done`).
+
+**Still true, not fixed here:** `Implementation/Architecture/architecture.md`
+§*Adding a Kind — the Measured Touch Points* still lists five files and folds
+conflict detection into its `artifact_import.py` bullet, so it does not name
+`artifact_import_conflicts.py` as a touch point of its own. `MEMORY.md`
+(2026-10-16, "Adding an artifact kind means six files, not five") carries the
+rule in stronger form, so `REQ-SB-95-US-04`'s `Workflow` author has it; the
+architecture file is outside `T07`'s `## Files to Modify` and was left untouched.
+
+**Resolving artefact:** `REQ-SB-95-US-02-T07`, commit `b2b09fe`
+**Status:** Resolved

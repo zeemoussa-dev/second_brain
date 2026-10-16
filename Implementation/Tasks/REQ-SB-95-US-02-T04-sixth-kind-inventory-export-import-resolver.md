@@ -5,8 +5,8 @@ parent_story: REQ-SB-95-US-02
 requirement_id: REQ-SB-95
 type: backend
 status: Done
-gate: flagged
-gate_reason: "out-of-scope defect found and NOT fixed (ESC-065): artifact_import_conflicts._MANAGER_BY_KIND knows 4 kinds, so the real import route rejects a bundle containing `action` -- or `index`, which has had the same hole since 2026-09-06. T04's own locked ACs are verified green."
+gate: clear
+gate_reason: ""  # was flagged on ESC-065 only; resolved 2026-10-16 by REQ-SB-95-US-02-T07 (commit b2b09fe) -- `index` and `action` are registered in artifact_import_conflicts._MANAGER_BY_KIND and the real import route takes a mixed-kind bundle. Status was and remains Done; T04's own locked ACs were always green.
 phase: P2
 depends_on: [REQ-SB-95-US-02-T01]
 created: 2026-10-16
