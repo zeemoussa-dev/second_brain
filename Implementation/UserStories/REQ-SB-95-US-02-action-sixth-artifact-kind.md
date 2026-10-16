@@ -9,7 +9,7 @@ gate: flagged
 gate_reason: "trigger-3 (ADR-033 created — it decides the Action fields this story stores: allowed_callers as agent ids, and the confirmation flag's meaning)"
 sprint: SPRINT-087
 created: 2026-10-16
-updated: 2026-10-16  # coder: T01, T02 and T04 Done (suite 432 passing). T04 is gate: flagged on ESC-065 — an out-of-scope file (artifact_import_conflicts.py) still rejects both the new `action` kind and the existing `index` kind on the real import route; T04's own locked ACs are verified green. T03, T05, T06 outstanding
+updated: 2026-10-16  # coder: T01, T02, T04 and T07 Done (suite 436 passing). ESC-065 is Resolved by T07 — `index` and `action` are registered in artifact_import_conflicts._MANAGER_BY_KIND, so a mixed-kind bundle previews and commits through the real import route; T04's gate, flagged on ESC-065 alone, is cleared (status unchanged, Done). T03, T05, T06 outstanding
 ---
 
 # REQ-SB-95-US-02 — Action as the sixth artifact kind — one catalogue of what this app can actually do
@@ -219,6 +219,7 @@ Final split, owned by the decomposer (2026-10-16). `depends_on` holds task ids.
 | REQ-SB-95-US-02-T04 | backend | Sixth kind in inventory, dependency resolver, export, import, secret scan | AC-04, AC-05 | T01 | `../Tasks/REQ-SB-95-US-02-T04-sixth-kind-inventory-export-import-resolver.md` |
 | REQ-SB-95-US-02-T05 | backend | Plugin-contributed Actions through the `app.plugin_api` facade, composed at read time | AC-06 | T02 | `../Tasks/REQ-SB-95-US-02-T05-plugin-contributed-actions.md` |
 | REQ-SB-95-US-02-T06 | frontend | Actions catalogue + Action editor page, Settings card, route, sixth Artifacts tab | AC-01, AC-02, AC-03, AC-04, AC-06, AC-07 | T03, T04, T05 | `../Tasks/REQ-SB-95-US-02-T06-actions-catalogue-screen.md` |
+| REQ-SB-95-US-02-T07 | backend | The import conflict gate knows every artifact kind, not four — `index` + `action` in `artifact_import_conflicts._MANAGER_BY_KIND` (added 2026-10-16, resolving `ESC-065`) | AC-05 | T04 | `../Tasks/REQ-SB-95-US-02-T07-import-conflict-gate-knows-every-kind.md` |
 
 ## Definition of Done
 

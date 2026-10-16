@@ -82,10 +82,12 @@ bidirectional link, written at sprint creation. Order by implementation dependen
 
 | Story | Title | Phase | Status |
 |---|---|---|---|
-| [REQ-SB-95-US-02](../UserStories/REQ-SB-95-US-02-action-sixth-artifact-kind.md) | Action as the sixth artifact kind — one catalogue of what this app can actually do | P2 | In Progress (T01, T02, T04 Done; T03, T05, T06 outstanding) |
+| [REQ-SB-95-US-02](../UserStories/REQ-SB-95-US-02-action-sixth-artifact-kind.md) | Action as the sixth artifact kind — one catalogue of what this app can actually do | P2 | In Progress (T01, T02, T04, T07 Done; T03, T05, T06 outstanding) |
 
 Build order inside the sprint, read from the task files' own `depends_on`:
 `T01 → T02 → T03`, `T01 → T04`, `T02 → T05`, `(T03, T04, T05) → T06`.
+`T07` (added 2026-10-16 to resolve `ESC-065`) hangs off `T04`: `T04 → T07`, with
+nothing downstream of it.
 
 ---
 
@@ -129,6 +131,14 @@ Build order inside the sprint, read from the task files' own `depends_on`:
   hole since 2026-09-06. Two-line fix, needs a task that owns the file;
   `ESC-065`, `REVIEW-QUEUE.md`. **Nothing is blocked by it** — `T03`, `T05` and
   `T06` are all reachable.
+
+  **Resolved 2026-10-16** — `REQ-SB-95-US-02-T07` was minted to own that file
+  and is `Done` (commit `b2b09fe`): `index` and `action` are registered in
+  `_MANAGER_BY_KIND`, a mixed-kind `.sbf` previews and commits through the real
+  import route, an unknown kind still raises naming all six accepted kinds, and
+  the four new tests drive `preview_import`/`commit_import` rather than
+  `_deploy_one` — suite `436 passed`. `ESC-065` is closed and `T04`'s gate is
+  `clear` (its `status` was and remains `Done`).
 
 ---
 
