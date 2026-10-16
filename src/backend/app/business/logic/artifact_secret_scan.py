@@ -3,7 +3,11 @@
 (`artifact_dependency_resolver.py`) and "archive written" (`T04`'s own
 `sbf_archive.py`). Scans ONLY genuinely-new Second-Brain-owned text: a
 Skill's own `SKILL.md`/`scripts/**` (`data_access.skills`), a
-Template's own `Template.json` (`data_access.templates`), and an
+Template's own `Template.json` (`data_access.templates`), an
+Action's own `Action.json` (`data_access.actions`, added 2026-10-16 with
+the sixth artifact kind -- `ADR-032`, `REQ-SB-95-US-02-T04`: those bytes
+are written by this app into the App Database Folder, so they are inside
+the owned surface by the same test every other reader here passes), and an
 Agent's own Registry-side `Agent.json`/`soul.md` mirror
 (`data_access.registry.loader`) -- the same lookup
 `agent_visual_registry.py`/`agent_manager.py` already use to find an
@@ -32,6 +36,7 @@ import json
 import logging
 import re
 
+from app.data_access import actions as actions_data
 from app.data_access import skills as skills_data
 from app.data_access import templates as templates_data
 from app.data_access.registry import loader as registry_loader
@@ -87,6 +92,19 @@ def _template_content(template_id: str) -> dict[str, str]:
     return {f"templates/{template_id}/Template.json": json.dumps(raw, indent=2)}
 
 
+def _action_content(action_id: str) -> dict[str, str]:
+    """An Action's own definition. Serialized with the SAME
+    `json.dumps(raw, indent=2)` `artifact_export._text_content_for_scan`
+    uses for the same file -- a finding's own `file_path:line` identity
+    is only meaningful if both sides produce byte-identical text, since
+    the line number is what `apply_decisions` redacts by."""
+    try:
+        raw = actions_data.read_action_json(action_id)
+    except (OSError, ValueError):
+        return {}
+    return {f"actions/{action_id}/Action.json": json.dumps(raw, indent=2)}
+
+
 def _agent_content(agent_id: str) -> dict[str, str]:
     """Registry-side `Agent.json`/`soul.md` mirror ONLY -- reached via
     the same `registry_loader.agent_data_dir()` lookup
@@ -115,6 +133,7 @@ def _agent_content(agent_id: str) -> dict[str, str]:
 _CONTENT_READERS = {
     "skill": _skill_content,
     "template": _template_content,
+    "action": _action_content,
     "agent": _agent_content,
 }
 

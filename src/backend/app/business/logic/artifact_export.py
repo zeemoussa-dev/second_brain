@@ -17,6 +17,7 @@ from pathlib import Path
 from app.business.hermes.client import get_client
 from app.business.logic import artifact_dependency_resolver, artifact_secret_scan, artifact_seed_data, sbf_archive
 from app.config import settings
+from app.data_access import actions as actions_data
 from app.data_access import indexes as indexes_data
 from app.data_access import pipelines as pipelines_data
 from app.data_access import skills as skills_data
@@ -39,11 +40,14 @@ from app.data_access.registry import loader as registry_loader
 # restore" -- apply the same fix here). Duplicated (not imported) from
 # hermes_backup.py, matching this codebase's own established "each module
 # owns its own business interpretation" convention.
-# Payload folder per artifact kind. Only "index" needs stating -- naive
-# pluralisation would emit "indexs/", which the import side would then
-# never find.
+# Payload folder per artifact kind. Every kind is stated outright rather
+# than left to `kind + "s"`: "index" HAS to be, since naive pluralisation
+# would emit "indexs/" and the import side would then never find it, and
+# "action" is stated beside it so no kind's folder name is decided by a
+# fallback nobody reads.
 _PAYLOAD_FOLDER = {
     "skill": "skills", "template": "templates", "agent": "agents", "index": "indexes",
+    "action": "actions",
 }
 
 _PLACEHOLDER_VAULT_PATH = "@@SECOND_BRAIN_VAULT_PATH@@"
@@ -81,8 +85,9 @@ def _substitute_placeholders(text: str) -> str:
 def _text_content_for_scan(closure: list[dict]) -> dict[str, str]:
     """{file_path: text} for every genuinely Second-Brain-owned text file
     the closure names -- a Skill's own `SKILL.md`/`scripts/**`, a
-    Template's own `Template.json`, and an Agent's own Registry-side
-    `Agent.json`/`soul.md` mirror. Deliberately the SAME `file_path`
+    Template's own `Template.json`, an Agent's own Registry-side
+    `Agent.json`/`soul.md` mirror, and (since 2026-10-16, `ADR-032`) an
+    Action's own `Action.json`. Deliberately the SAME `file_path`
     convention `artifact_secret_scan.py`'s own (module-private) content
     readers use, so a finding's own `file_path` (from `scan_closure`)
     always resolves to a real key here -- confirmed by direct reading of
@@ -133,6 +138,12 @@ def _text_content_for_scan(closure: list[dict]) -> dict[str, str]:
             except (FileNotFoundError, ValueError):
                 continue
             content[f"indexes/{artifact_id}/Index.json"] = json.dumps(raw, indent=2)
+        elif kind == "action":
+            try:
+                raw = actions_data.read_action_json(artifact_id)
+            except (OSError, ValueError):
+                continue
+            content[f"actions/{artifact_id}/Action.json"] = json.dumps(raw, indent=2)
         # "pipeline" contributes nothing here -- see docstring.
     return content
 

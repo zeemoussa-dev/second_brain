@@ -48,9 +48,21 @@ via the same "HermesSkill.id is category/slug; ours is the plain slug"
 convention `SkillManager.sync_from_hermes()` already establishes -- taking
 the id's own last `/`-separated segment before treating it as a Skill kind
 id, so an Agent's own dependency on a real Skill actually resolves.
+
+Action joined as the sixth kind on 2026-10-16 (`ADR-032`,
+`REQ-SB-95-US-02-T04`) and brings one genuinely new edge: an Action whose
+single implementation is a `skill` depends on that Skill, which then
+recurses into the Skill's own existing Template coupling above. An `http`
+or `ui` implementation names this app's own route table or its front end
+-- both ship with the app and are not artifacts -- so those two add
+nothing to the closure. An Action's id is already the bare slug
+`SkillManager` keys by (`ADR-033` fixes the field as "the same bare slug
+`SkillManager.deploy()` itself takes"), so no `/`-normalization applies
+here, unlike the Agent branch.
 """
 from __future__ import annotations
 
+from app.business.core.actions.action_manager import ActionManager
 from app.business.core.agents.agent_manager import AgentManager
 from app.business.core.index.index_manager import IndexManager
 from app.business.core.pipelines.pipeline_manager import PipelineManager
@@ -63,6 +75,7 @@ _template_manager = TemplateManager()
 _agent_manager = AgentManager()
 _pipeline_manager = PipelineManager()
 _index_manager = IndexManager()
+_action_manager = ActionManager()
 
 
 def _skill_own_template_matches(skill_id: str, all_template_ids: list[str]) -> list[str]:
@@ -156,7 +169,20 @@ def resolve_closure(selection: list[dict]) -> list[dict]:
             upsert(kind, id_, reason, depends_via)
             # An Index depends on no other artifact: its build engine is
             # backend-owned code that ships with the app, not a Skill.
-        # An unknown `kind` (never produced by the real 5-Manager
+        elif kind == "action":
+            action = _action_manager.get_by_id(id_)
+            if action is None:
+                return
+            upsert(kind, id_, reason, depends_via)
+            implementation = action.implementation
+            if implementation is not None and implementation.kind == "skill" and implementation.skill_id:
+                visit(
+                    "skill", implementation.skill_id, "dependency",
+                    f"action:{id_} (skill implementation)",
+                )
+            # An `http` or `ui` implementation adds nothing -- see the
+            # module docstring.
+        # An unknown `kind` (never produced by the real 6-Manager
         # inventory this selection is sourced from) resolves to nothing,
         # same silent-skip discipline as an unresolvable id.
 

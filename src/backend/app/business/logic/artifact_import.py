@@ -25,6 +25,7 @@ from pathlib import Path
 
 import yaml
 
+from app.business.core.actions.action_manager import ActionManager
 from app.business.core.agents.agent_manager import AgentManager
 from app.business.core.index.index_manager import IndexManager
 from app.business.core.pipelines.pipeline_manager import PipelineManager
@@ -187,6 +188,8 @@ def _deploy_one(
         return _deploy_pipeline(artifact_id, conflicts, decision, payload)
     if kind == "index":
         return _deploy_index(artifact_id, conflicts, decision, payload)
+    if kind == "action":
+        return _deploy_action(artifact_id, conflicts, decision, payload)
     if kind == "agent":
         return _deploy_agent(artifact_id, conflicts, decision, payload, section_decision)
     raise ValueError(f"unrecognized artifact kind {kind!r}")
@@ -332,6 +335,37 @@ def _deploy_index(artifact_id: str, conflicts: bool, decision: str | None, paylo
     # decision == "keep_both"
     alt_id = _next_alternate_id(artifact_id, IndexManager().get_by_id)
     IndexManager().import_index(alt_id, {**data, "id": alt_id})
+    return _deployed(kind, artifact_id, deployed_as=alt_id)
+
+
+def _deploy_action(artifact_id: str, conflicts: bool, decision: str | None, payload: dict[str, bytes]) -> dict:
+    """Same shape as Index above (`ADR-032`'s sixth kind,
+    `REQ-SB-95-US-02-T04`). `ActionManager.import_action` holds the
+    incoming definition to the exactly-one-implementation rule and
+    round-trips it through the read-side parser, so a malformed Action
+    raises here and lands as this artifact's own honest `failed` outcome
+    rather than being written.
+
+    It deliberately does NOT re-resolve the implementation against this
+    machine: a bundle legitimately arrives before the Skill it names is
+    deployed here, and refusing the import would lose the definition
+    entirely. The receiving operator sees it as `broken` in
+    `resolution_report()` instead -- which is exactly the read-side
+    status `AC-07` exists for.
+    """
+    kind = "action"
+    raw = payload.get(f"actions/{artifact_id}/Action.json")
+    data = json.loads(_restore_placeholders(raw.decode("utf-8"), json_escaped=True)) if raw is not None else {}
+
+    if not conflicts or decision == "overwrite":
+        ActionManager().import_action(artifact_id, data)
+        return _deployed(kind, artifact_id)
+    if decision == "skip":
+        return _skipped(kind, artifact_id)
+
+    # decision == "keep_both"
+    alt_id = _next_alternate_id(artifact_id, ActionManager().get_by_id)
+    ActionManager().import_action(alt_id, {**data, "id": alt_id})
     return _deployed(kind, artifact_id, deployed_as=alt_id)
 
 
