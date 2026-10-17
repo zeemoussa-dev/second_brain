@@ -75,7 +75,7 @@ is a thin status mirror of the index table below.
 | BUG-086 | The Agents Map takes seconds to show anything -- listing agents parsed every SKILL.md of every profile and the page asked for the same data four times at once | Logic | Major | Fixed | 2026-10-13 | `dfd5f6e` |
 | BUG-087 | The vault index is written to the pre-move data path, where nothing reads it -- two index folders, the live one staler than the dead one | Logic | Major | Fixed | 2026-10-16 | `88fdcb4` |
 | BUG-088 | A refused plugin still mounts its screens, so a version mismatch reads as a broken page rather than a disabled plugin | UI | Major | Open | 2026-10-17 | — |
-| BUG-089 | The app has no error boundary, so one screen's throw blanks the whole window | UI | Major | Open | 2026-10-17 | — |
+| BUG-089 | The app has no error boundary, so one screen's throw blanks the whole window | UI | Major | Fixed | 2026-10-17 | direct fix, 2026-10-17 |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -1377,10 +1377,11 @@ is a thin status mirror of the index table below.
 
 - **Area:** UI
 - **Severity:** Major
-- **Status:** Open
+- **Status:** Fixed
 - **Found:** 2026-10-17, while diagnosing the Action Center report above.
 - **Root cause:** there is no `componentDidCatch` / `getDerivedStateFromError` anywhere in `src/frontend/src` — confirmed by search, zero matches. React unmounts the whole tree when a render throws and nothing catches it, so any error in any screen takes the sidebar and the rest of the app with it.
 - **Repro:** make any page component throw during render (a plugin screen reading a field of data that failed to load is the live case) and open it: the window goes blank rather than that one page failing.
 - **Expected:** the failure is contained to the page — the shell, sidebar and navigation survive, and the page area shows what went wrong with a way to go back — the same containment the backend already gives a plugin whose `register` raises ("a plugin that fails is isolated", `Building-a-Plugin.md`).
 - **Actual:** one screen's throw blanks everything, and because the sidebar goes too there is no way to navigate away without editing the URL.
 - **Note:** this is what turns `BUG-088` from an annoyance into "the app keeps crashing". The two are worth fixing together but are independent: the boundary is worth having whatever the cause of a throw, and the plugin gate is worth having even with a boundary in place. A boundary belongs around the `<Outlet />` in `AppShell`, so the frame survives, and around each plugin screen, so one plugin cannot take a framework page down.
+- **Fix:** `components/ErrorBoundary.tsx` wraps the `<Outlet />` inside `<main>` in `AppShell`, so a page that throws during render is contained: the sidebar, the back control and the rest of the frame stay, and the page area shows what failed with the error's own message and a retry. The boundary is keyed by `pathname` rather than by the whole location, so navigating away clears a caught error while a filter rewriting its own query string does not remount the page and throw its state away (`ADR-041` writes filters with `replace` for the same reason). Verified live by making a page throw behind a query param: the message rendered, the sidebar survived, clicking another screen cleared it, and the throw was removed again. **Scope worth knowing:** React boundaries catch render errors only -- not event handlers, and not a rejected `fetch`. A screen whose data fails to load still has to say so itself, which is `BUG-088`.
