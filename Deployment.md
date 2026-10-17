@@ -1183,6 +1183,24 @@ install. The same trap applies to anything else the backend shells out
 to, so if a Hermes-dependent feature fails only when launched one
 particular way, check this before suspecting the feature.
 
+**Every route times out and the log sits at "Waiting for connections to
+close".** A `--reload` hung on shutdown. uvicorn's default is to wait
+**forever** for open connections and background tasks, and this app serves
+SSE streams (`text/event-stream`, in `agents_router` and `cockpit_router`)
+that a page holds open for as long as it is open — so one open Cockpit or
+agent-chat page can stall a reload indefinitely. While the old worker waits,
+no worker serves: every route times out, for every plugin, not just the one
+whose page was open. Seen live 2026-10-18, down for over five minutes until
+the stuck child was killed by hand.
+
+The launchers now pass `--timeout-graceful-shutdown 10`, so this cannot
+hang indefinitely any more: the drain is capped and the connections are
+dropped. **It takes effect on the next backend start** — a worker already
+running was launched without it. If you hit the hang on an old worker, kill
+the live `--multiprocessing-fork` child as described below; the reloader
+starts a fresh one. Expect reloads to take up to ten seconds when a
+streaming page is open, which is the cap doing its job rather than a fault.
+
 **Port already in use / backend won't start on 8001.** A previous
 uvicorn `--reload` process can leave an orphaned worker holding the port.
 Find the real live child process rather than trusting `netstat`'s

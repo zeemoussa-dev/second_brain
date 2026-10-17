@@ -16,4 +16,13 @@ rem would make this one fail to bind while /health kept answering (BUG-068). Nam
 rem and stop, rather than start a second one. No pause: a hidden launch would hang on it.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0backend.ps1" preflight
 if errorlevel 1 exit /b 1
-"%~dp0..\src\backend\.venv\Scripts\uvicorn.exe" app.main:app --reload --port 8001
+rem --timeout-graceful-shutdown: uvicorn's default is to wait FOREVER for open
+rem connections and background tasks, and this app serves SSE streams
+rem (text/event-stream, in agents_router and cockpit_router) that a page holds
+rem open for as long as it is open. On 2026-10-18 a --reload after a plugin
+rem install sat at "Waiting for connections to close" for over five minutes with
+rem no worker serving anything: every route timed out, for every plugin, until
+rem someone found and killed the stuck child. Ten seconds drains a normal
+rem reload; past that the connections are dropped, which is always better than
+rem the whole app staying down.
+"%~dp0..\src\backend\.venv\Scripts\uvicorn.exe" app.main:app --reload --port 8001 --timeout-graceful-shutdown 10
