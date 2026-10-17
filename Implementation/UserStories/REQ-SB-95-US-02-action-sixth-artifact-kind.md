@@ -9,7 +9,7 @@ gate: clear
 gate_reason: "RESOLVED operator confirmed ADR-033's catalogue fields, 2026-10-17 — was: trigger-3 (ADR-033 created — it decides the Action fields this story stores: allowed_callers as agent ids, and the confirmation flag's meaning)"
 sprint: SPRINT-087
 created: 2026-10-16
-updated: 2026-10-16  # coder: T01, T02, T04 and T07 Done (suite 436 passing). ESC-065 is Resolved by T07 — `index` and `action` are registered in artifact_import_conflicts._MANAGER_BY_KIND, so a mixed-kind bundle previews and commits through the real import route; T04's gate, flagged on ESC-065 alone, is cleared (status unchanged, Done). T03, T05, T06 outstanding
+updated: 2026-10-17  # coder: T03 Done 2026-10-17 (Actions CRUD API, suite 457 passing) — gate: flagged for a scope-internal spot-check only (409-not-422 for Manager refusals, 200-not-201 on create, TestClient instead of the ASGITransport the task named — no test here uses ASGITransport and twelve use TestClient, POST-onto-an-existing-id overwrites and was left to the Manager). T05 and T06 outstanding; T06 must map `implementation` between its nested write shape and its flat read shape, see that task's Implementation Log. Previously — coder: T01, T02, T04 and T07 Done (suite 436 passing). ESC-065 is Resolved by T07 — `index` and `action` are registered in artifact_import_conflicts._MANAGER_BY_KIND, so a mixed-kind bundle previews and commits through the real import route; T04's gate, flagged on ESC-065 alone, is cleared (status unchanged, Done). T03, T05, T06 outstanding
 ---
 
 # REQ-SB-95-US-02 — Action as the sixth artifact kind — one catalogue of what this app can actually do
