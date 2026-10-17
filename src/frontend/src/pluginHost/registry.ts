@@ -129,7 +129,14 @@ function collectPluginContributions(): Collected {
 // asked of plugin authors: it is a host guarantee, and one a plugin could
 // forget.
 function gated(pluginId: string, component: ComponentType): ComponentType {
-  return () => createElement(PluginGate, { pluginId }, createElement(component));
+  // `children` goes in the PROPS object, not as createElement's third argument:
+  // the two are the same thing at runtime, but the overload checks the props
+  // object alone against the component's props type, so a positional child does
+  // not satisfy a required `children` and the whole frontend stops compiling --
+  // which blocks every plugin publish and install, since both build the screens
+  // (2026-10-17). Left required rather than made optional: a gate with nothing
+  // to gate is a mistake worth a compile error.
+  return () => createElement(PluginGate, { pluginId, children: createElement(component) });
 }
 
 const collected = collectPluginContributions();
