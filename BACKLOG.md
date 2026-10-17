@@ -283,6 +283,7 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 | BUG-087 | The vault index is written to the pre-move data path, where nothing reads it | Logic | Fixed | `88fdcb4` |
 | BUG-088 | A refused plugin still mounts its screens, so a version mismatch reads as a broken page | UI | Fixed | direct fix, 2026-10-17 |
 | BUG-089 | The app has no error boundary, so one screen's throw blanks the whole window | UI | Fixed | direct fix, 2026-10-17 |
+| BUG-090 | My Day showed 0 emails for eight days -- capture had stopped, and one unreadable note could also empty the index -- and nothing on the screen said which | Logic | Fixed | My Day 1.8.0; direct fix, 2026-10-17 |
 
 > **Emptied 2026-09-06** with `BUGS.md`, which this mirrors — 42 rows.
 > History: `git show d64dcb4:BACKLOG.md`. Next id is **`BUG-043`**.

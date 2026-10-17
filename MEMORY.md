@@ -160,6 +160,8 @@ Where a rule does not belong here:
 
 - **[2026-09-11] Test a frontmatter VALUE, never the presence of its key.** Every Thread carries `last_summarized_at: ""` from its template, so counting notes that contain the key reported 2,569 of 2,605 Threads enriched when 179 were -- nearly a wrong answer to the operator about how complete History was.
 
+- **[2026-10-17] A full index rebuild never aborts on one note.** `rebuild_index()` skips and logs a note it cannot read: the old all-or-nothing build let one moved, locked or non-UTF-8 note empty the in-memory index at boot, and every reader -- My Day's email count included -- showed 0 until the next cron refresh (`BUG-090`). Equally, an empty index is "not ready", never "no notes": a reader that reports counts must say so rather than show 0.
+
 ## Capture pipelines
 
 - **[2026-09-10] Strip HTML at READ, never at capture -- 83% of a stored Outlook body is markup.** Measured on 119 real Threads: 6.66 M raw chars reduce to 1.14 M of text, i.e. ~14,000 input tokens per Thread become ~2,400 for identical content. An agent reading captured message notes raw pays for every `<div style="font-family:Aptos,...">` and learns nothing from it. But convert on the way OUT, not on the way in: an email's real body IS the HTML, capture's job is to preserve the evidence faithfully, and if a summary ever looks wrong the original is what you check it against. `summarize-and-tag-threads/scripts/read_thread.py` is the converter.
