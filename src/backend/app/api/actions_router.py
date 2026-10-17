@@ -18,9 +18,23 @@ screen to tell two different `detail` shapes apart before it could show
 the operator anything. 409 is also what sections_router.py and
 blueprints_router.py already return when a Manager refuses a write.
 
-`POST /actions/{action_id}/call` is deliberately absent rather than
-stubbed -- it lands here in REQ-SB-95-US-03-T02 with the invocation
-gate that gives it meaning.
+`POST /actions/{action_id}/call` is the one door an Action is invoked
+through (`ADR-033`, REQ-SB-95-US-03-T02) -- reached by the shipped
+runner Skill over loopback and by the in-app UI, so the agent and the
+screen cannot disagree about what exists. Like the write routes, it
+decides nothing: `business/logic/action_invocation.py` is the gate, and
+this route only turns its verdict into a status code.
+
+**Every gate refusal is one status (409) carrying one body shape**, and
+an unknown action id is a 409 here rather than the 404 `GET
+/actions/{id}` returns for the same id. Two reasons, both about the
+caller being a runner Skill relaying words to an operator: the refusal
+sentence, the reason token and the `call_id` must be readable without
+first branching on which status arrived, and a refused call is not
+"nothing found" -- a real ledger record was created for it, which is
+how a missing capability gets discovered (`ADR-033`). 2xx stays
+reserved for a call that passed the gate, so no client can read a
+refusal as a success.
 
 **Read and write shape the implementation differently, and a client has
 to map between them.** A write sends the kind as a KEY --
@@ -47,6 +61,7 @@ the plugin (REQ-SB-95-US-02-T06, against ESC-069).
 """
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -59,6 +74,7 @@ from app.business.core.actions.action_manager import (
     ActionManager,
     PluginContributedActionIsReadOnlyError,
 )
+from app.business.logic import action_invocation
 
 router = APIRouter(prefix="/actions")
 _action_manager = ActionManager()
@@ -109,6 +125,24 @@ class ActionUpdateBody(BaseModel):
     allowed_callers: list[str] | None = None
     needs_confirmation: bool | None = None
     implementation: ActionImplementationBody | None = None
+
+
+class ActionCallBody(BaseModel):
+    """Exactly the shape the published catalogue block tells an agent to
+    send (REQ-SB-95-US-03-T01 writes `{"caller_agent_id": "...",
+    "inputs": {...}}` into every agent's own SOUL.md) -- the instruction
+    an agent reads and the body this route accepts are the same two
+    fields, or the gate would refuse calls the app itself asked for.
+
+    `inputs` is an open dict and is NOT typed per Action: which inputs
+    exist is catalogue data that changes without a deploy, so validating
+    it here would duplicate the gate's own rule in a place that cannot
+    see the Action. An undeclared input must reach the gate to be
+    refused BY NAME -- a model that silently dropped it would make the
+    refusal AC-04 requires impossible.
+    """
+    caller_agent_id: str
+    inputs: dict[str, Any] = {}
 
 
 def _implementation_payload(body: ActionImplementationBody | None) -> dict[str, Any] | None:
@@ -220,3 +254,25 @@ def delete_action(action_id: str) -> dict:
         return _action_manager.delete(action_id)
     except PluginContributedActionIsReadOnlyError as exc:
         raise _refusal(exc)
+
+
+@router.post("/{action_id}/call")
+def call_action(action_id: str, body: ActionCallBody) -> dict:
+    """The validating door (`ADR-033`). The gate refuses an unknown id,
+    a caller not in `allowed_callers`, a missing required or undeclared
+    input, and an implementation that no longer resolves -- each
+    recorded in the Action-call ledger under the `call_id` this returns.
+
+    No conflict with `GET|PUT|DELETE /actions/{action_id}`: a two-segment
+    path and a three-segment one are different routes, and `call` is
+    reserved as an action id only in the sense that an Action literally
+    named `call` would still be reachable at `/actions/call/call`.
+    """
+    verdict = action_invocation.call_action(action_id, body.caller_agent_id, body.inputs)
+    if not verdict.accepted:
+        # A dict detail, not a sentence: the runner Skill relays the
+        # refusal to the operator AND has to quote the call_id, and
+        # flattening the verdict into a string here would force it to
+        # parse prose back apart.
+        raise HTTPException(status_code=409, detail=asdict(verdict))
+    return asdict(verdict)
