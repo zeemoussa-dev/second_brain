@@ -7,7 +7,7 @@ phase: P2
 status: Ready
 gate: clear
 gate_reason: "RESOLVED operator approved ADR-043, 2026-10-17 — was: trigger-3 (ADR-043 created)"
-sprint: ""
+sprint: "SPRINT-091"
 created: 2026-10-17
 updated: 2026-10-17
 ---
@@ -356,7 +356,17 @@ every frontend task in `Learnings.md`.
 
 **Audit breadcrumb:**
 
-gate: flagged 2026-10-17 (decomposer) — flag **carried forward unchanged** from
+gate: clear 2026-10-17 (product-owner) — grouped alone into `SPRINT-091` (P2,
+`~6 tasks, M`, `depends_on_sprints: []`), advanced `Draft → Ready`. No trigger
+fired: the partition was forced (this was the only story both `Ready` and
+ungrouped, and no sprint was in `Draft` to append to); not oversized at 6 tasks
+against the 8–9 ceiling; not `Blocked`; **no cross-sprint dependency to
+introduce** — all six `depends_on` edges were re-read from the task files
+themselves and every one is internal, in particular none into `REQ-SB-96`, so
+nothing holds this sprint behind another. `ADR-043`'s trigger-3 flag was
+resolved by the operator earlier today and is not re-raised.
+
+Earlier — gate: flagged 2026-10-17 (decomposer) — flag **carried forward unchanged** from
 the architect's trigger 3 (`ADR-043` created), so the human reviews the ADR and
 these six tasks in one pass. No decomposer trigger fired on its own: no material
 assumption (every tightening above is traceable to the architect's
