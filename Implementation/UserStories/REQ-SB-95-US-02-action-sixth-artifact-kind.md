@@ -5,8 +5,8 @@ requirement_ids: [REQ-SB-95]
 requirement_section: "REQ-SB-95: An Agent Can Only Do What the App Can Do — Operator Profile, Actions, Workflows, Entity Resolution"
 phase: P2
 status: In Progress
-gate: flagged
-gate_reason: "trigger-3 (ADR-033 created — it decides the Action fields this story stores: allowed_callers as agent ids, and the confirmation flag's meaning)"
+gate: clear
+gate_reason: "RESOLVED operator confirmed ADR-033's catalogue fields, 2026-10-17 — was: trigger-3 (ADR-033 created — it decides the Action fields this story stores: allowed_callers as agent ids, and the confirmation flag's meaning)"
 sprint: SPRINT-087
 created: 2026-10-16
 updated: 2026-10-16  # coder: T01, T02, T04 and T07 Done (suite 436 passing). ESC-065 is Resolved by T07 — `index` and `action` are registered in artifact_import_conflicts._MANAGER_BY_KIND, so a mixed-kind bundle previews and commits through the real import route; T04's gate, flagged on ESC-065 alone, is cleared (status unchanged, Done). T03, T05, T06 outstanding

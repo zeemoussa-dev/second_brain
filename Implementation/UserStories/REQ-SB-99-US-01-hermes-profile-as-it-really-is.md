@@ -5,8 +5,8 @@ requirement_ids: [REQ-SB-99]
 requirement_section: "REQ-SB-99: See a Hermes Profile As It Really Is — Soul, Skills, Config, Jobs"
 phase: P2
 status: Ready
-gate: flagged
-gate_reason: "trigger-3 (ADR-043 created)"
+gate: clear
+gate_reason: "RESOLVED operator approved ADR-043, 2026-10-17 — was: trigger-3 (ADR-043 created)"
 sprint: ""
 created: 2026-10-17
 updated: 2026-10-17

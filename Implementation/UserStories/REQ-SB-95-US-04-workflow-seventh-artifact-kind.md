@@ -5,8 +5,8 @@ requirement_ids: [REQ-SB-95]
 requirement_section: "REQ-SB-95: An Agent Can Only Do What the App Can Do — Operator Profile, Actions, Workflows, Entity Resolution"
 phase: P2
 status: Ready
-gate: flagged
-gate_reason: "trigger-3 (ADR-034 created — a Workflow is run step-by-step by the framework against a run record, not recited into the agent's context)"
+gate: clear
+gate_reason: "RESOLVED operator confirmed ADR-034, 2026-10-17 — was: trigger-3 (ADR-034 created — a Workflow is run step-by-step by the framework against a run record, not recited into the agent's context)"
 sprint: SPRINT-089
 created: 2026-10-16
 updated: 2026-10-16  # product-owner: grouped into SPRINT-089 (alone — depends_on_sprints: [SPRINT-087, SPRINT-088])

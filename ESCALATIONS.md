@@ -245,7 +245,11 @@ built beside `SkillManager.deploy()` — the duplicated-copies failure mode
 against the premise, and both record this entry.
 
 **Resolving artefact:** —
-**Status:** Open
+**Resolution (2026-10-17):** the premise was corrected in `Documentation/PRD.md` (commit `671b4bd`) -- Finding 4 now states that `SkillManager.deploy/undeploy` and `check_deployment_drift()` already exist and already write into `<HERMES_HOME>`, and names the four real gaps: nothing exposes them, they are Skills-only, they iterate the untrustworthy `deployed_to`, and they never read the install's own `skills/` tree. The operator confirmed the smaller job ("surface and correct what exists") and settled the open default in the same pass: the framework wins for `missing` and `stale`, and a `modified` copy is refused rather than overwritten.
+
+**Resolving artefact:** `REQ-SB-96` PRD correction (`671b4bd`) + operator decision, 2026-10-17
+
+**Status:** Resolved
 
 ---
 
@@ -286,4 +290,8 @@ agent), the grant's scope written down where the read-only decision is recorded,
 a new story (`REQ-SB-97-US-02`); it is not an edit to `REQ-SB-97-US-01`.
 
 **Resolving artefact:** —
-**Status:** Open
+**Resolution (2026-10-17):** granted, scoped to internal recipients. Asked as a direct question rather than taken from the batch approval, because reversing a hard rule inside a blanket "approve all" is not a decision. `MEMORY.md` now carries the exception beside the 2026-09-07 rule it narrows (commit `4a427c9`): the capture pipeline stays read-only and every Graph call in it stays a GET; a single operator-granted Action may send to internal addresses, with the grant visible on its own screen. Builds as `REQ-SB-97-US-02`.
+
+**Resolving artefact:** `MEMORY.md` amendment (`4a427c9`) + operator decision, 2026-10-17
+
+**Status:** Resolved

@@ -5,8 +5,8 @@ requirement_ids: [REQ-SB-95]
 requirement_section: "REQ-SB-95: An Agent Can Only Do What the App Can Do — Operator Profile, Actions, Workflows, Entity Resolution"
 phase: P2
 status: Ready
-gate: flagged
-gate_reason: "trigger-3 (ADR-033 created — the call lands on one loopback route on this app's own API, reached by a shipped runner Skill; confirmation is an app-owned single-use grant)"
+gate: clear
+gate_reason: "RESOLVED operator confirmed ADR-033's call path, 2026-10-17 — was: trigger-3 (ADR-033 created — the call lands on one loopback route on this app's own API, reached by a shipped runner Skill; confirmation is an app-owned single-use grant)"
 sprint: SPRINT-088
 created: 2026-10-16
 updated: 2026-10-16  # product-owner: grouped into SPRINT-088 (alone — depends_on_sprints: [SPRINT-087])
