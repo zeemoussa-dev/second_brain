@@ -34,6 +34,7 @@ interface Outcome {
   pluginId: string;
   message: string;
   restartRequired: boolean;
+  frontendRestartRequired: boolean;
 }
 
 const EMPTY_SOURCE: PluginSourceRequest = { kind: 'git', location: '', ref: '' };
@@ -89,6 +90,7 @@ export function MarketplaceCard() {
           ? `Replaced ${result.replaced} with ${version}.`
           : `Installed ${version}.`,
         restartRequired: Boolean(result.restart_required),
+        frontendRestartRequired: Boolean(result.frontend_restart_required),
       });
       setCheck(null);
       await reload();
@@ -128,6 +130,7 @@ export function MarketplaceCard() {
           ? `Replaced ${result.replaced} with ${result.version} from ${describeSource(result.source!)}.`
           : `Installed ${result.plugin_id} ${result.version} from ${describeSource(result.source!)}.`,
         restartRequired: Boolean(result.restart_required),
+        frontendRestartRequired: Boolean(result.frontend_restart_required),
       });
       setSourceCheck(null);
       setSource(EMPTY_SOURCE);
@@ -148,6 +151,7 @@ export function MarketplaceCard() {
         pluginId,
         message: `Updated to ${result.version} from ${describeSource(result.source!)}.`,
         restartRequired: Boolean(result.restart_required),
+        frontendRestartRequired: Boolean(result.frontend_restart_required),
       });
       await reload();
     } catch (e) {
@@ -170,6 +174,7 @@ export function MarketplaceCard() {
           ? `Uninstalled, but these recorded paths were outside the plugin folders and were NOT deleted: ${refused.join(', ')}`
           : 'Uninstalled.',
         restartRequired: Boolean(result.restart_required),
+        frontendRestartRequired: Boolean(result.frontend_restart_required),
       });
       setOpen(null);
       setCheck(null);
@@ -289,11 +294,17 @@ export function MarketplaceCard() {
               <div className="blueprint-result">
                 <p><strong>{outcome.message}</strong></p>
                 {outcome.restartRequired && (
-                  // A plugin's backend is loaded at startup; its screens are picked
-                  // up by the frontend straight away.
+                  // Both halves are loaded once: the backend imports a plugin at
+                  // startup, and a running frontend goes on serving the screen
+                  // modules it already loaded, so a swapped folder is invisible to
+                  // it until it restarts. Saying only "restart the backend" sent
+                  // the operator back to a page still running the old screens.
                   <p className="error-text">
                     Restart the backend for this to take full effect — use Shut down on{' '}
                     <Link to="/settings/system">Settings → System</Link>, then start it again.
+                    {outcome.frontendRestartRequired
+                      ? ' The frontend needs restarting too: until it does, it keeps serving the screens it already loaded.'
+                      : ''}
                   </p>
                 )}
               </div>

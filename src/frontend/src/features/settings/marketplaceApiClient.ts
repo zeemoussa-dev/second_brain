@@ -60,6 +60,9 @@ export interface MarketplaceInstallResult {
   replaced?: string | null;
   source?: PluginSource | null;
   restart_required?: boolean;
+  /** A running dev server goes on serving the modules it already loaded,
+   *  so a folder swap needs the frontend restarted too, not just the backend. */
+  frontend_restart_required?: boolean;
   problems: string[];
 }
 
@@ -69,6 +72,9 @@ export interface MarketplaceUninstallResult {
   removed?: string[];
   refused_outside_plugin_folders?: string[];
   restart_required?: boolean;
+  /** A running dev server goes on serving the modules it already loaded,
+   *  so a folder swap needs the frontend restarted too, not just the backend. */
+  frontend_restart_required?: boolean;
   reason: string | null;
 }
 

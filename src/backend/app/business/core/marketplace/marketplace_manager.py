@@ -3,9 +3,19 @@ plugins (`ADR-022`, `REQ-SB-91` Phase 4). Decides whether a published package
 may be installed and records what an install owns; raw file I/O lives in
 `data_access/marketplace.py` and `data_access/plugins.py`.
 
-Install and uninstall change files on disk only. A plugin's backend is loaded
-at startup, so both report `restart_required`; its screens appear as soon as
-the frontend picks up `src/plugins/`.
+Install and uninstall change files on disk only, so both report what has to be
+restarted before the change is real:
+
+  `restart_required`           the backend -- a plugin's backend is imported at
+                               startup
+  `frontend_restart_required`  the frontend -- an install SWAPS the plugin's
+                               folder, and a running dev server goes on serving
+                               the modules it already loaded
+
+The frontend half used to be documented here as "its screens appear as soon as
+the frontend picks up `src/plugins/`". That is not true of a swap, and the
+session publishing plugins all day was restarting the dev server by hand after
+every install to get a real page (reported 2026-10-17).
 """
 from __future__ import annotations
 
@@ -294,7 +304,7 @@ class MarketplaceManager:
             # Notes written against these Templates stay in the vault, so the
             # Templates stay too; the operator removes one deliberately.
             "templates_left_in_place": sorted({t for entry in matching for t in entry.get("templates") or []}),
-            "restart_required": True, "reason": None,
+            "restart_required": True, "frontend_restart_required": True, "reason": None,
         }
 
     # -- internals ------------------------------------------------------------------
@@ -349,7 +359,8 @@ class MarketplaceManager:
             "installed": True, "plugin_id": plugin_id, "version": version, "replaced": replaced,
             "owned": {part: (str(targets[part]) if part in placed else None) for part in targets},
             "templates": {"installed": installed_templates, "kept": kept_templates},
-            "source": source, "leftovers": leftovers, "restart_required": True, "problems": template_problems,
+            "source": source, "leftovers": leftovers, "restart_required": True,
+            "frontend_restart_required": True, "problems": template_problems,
         }
 
     def _check_source(self, fetched: dict) -> dict:

@@ -179,6 +179,20 @@ def test_install_places_the_pieces_records_ownership_and_the_host_loads_it(roots
     assert [prefix for prefix, _ in mounts] == ["/plugins/my-day"]
 
 
+def test_install_and_uninstall_say_the_frontend_needs_restarting_too(roots):
+    publish(roots)
+
+    installed = MarketplaceManager().install("my-day", "1.0.0")
+    uninstalled = MarketplaceManager().uninstall("my-day")
+
+    # An install SWAPS the plugin's folder, and a running dev server goes on
+    # serving the modules it already loaded. Reporting only the backend sent the
+    # operator back to a page still running the old screens, and the session
+    # publishing all day restarted the dev server by hand every time.
+    assert installed["frontend_restart_required"] is True
+    assert uninstalled["frontend_restart_required"] is True
+
+
 def test_a_refused_install_writes_nothing(roots):
     publish(roots, framework_api=plugin_api.FRAMEWORK_API + 1)
 
