@@ -18,11 +18,29 @@ The archived sequence ended at 058, so from 060 up the space is clean -- take
 the next free number there, and never reuse one below it even when this file has
 no heading for it.
 
+**Reading a citation to an ADR this file has no heading for** (`ADR-042` through
+`ADR-059`, in the PRD, `BACKLOG.md`, sprints, stories, tasks and a few code
+comments): it belongs to the archived sequence and is left as it stands --
+deliberately, since rewriting several hundred citations would risk more than it
+settles. Resolve one against the archived file, which lives in history rather
+than in the tree (it was removed in `4c64593`):
+
+```
+git show 4c64593^:Documentation-Archive-2026-08-20/Implementation/Architecture/ADR.md
+```
+
+All 60 are there -- `ADR-042` is the vault knowledge model (`REQ-SB-54`),
+`ADR-043` the email capture pipeline (`REQ-SB-55`). The rule of thumb: a
+citation written before 2026-08-20 means the archived sequence, and one written
+after means this file -- which is exactly the ambiguity the 060 floor exists to
+stop creating more of.
+
 **2026-08-20:** Numbering restarts at ADR-001 alongside the backend
 architecture redesign (`Implementation/Plans/2026-08-20-backend-
 architecture-redesign.md`). The prior sequence (ADR-001 through ADR-058)
-is archived, not deleted — see `Documentation-Archive-2026-08-20/
-Implementation/Architecture/ADR.md`. ADR-001 below is the one entry
+is archived, not deleted — in history only: the folder this line used to point
+at (`Documentation-Archive-2026-08-20/`) was itself removed in `4c64593`, so
+read it with the `git show` above. ADR-001 below is the one entry
 carried forward unchanged in substance (originally ADR-059 in the archived
 sequence) — it's the founding decision this whole redesign executes, not
 legacy history.
