@@ -186,3 +186,104 @@ architecture file is outside `T07`'s `## Files to Modify` and was left untouched
 
 **Resolving artefact:** `REQ-SB-95-US-02-T07`, commit `b2b09fe`
 **Status:** Resolved
+
+---
+
+## ESC-066: `REQ-SB-96` is written on a premise the code contradicts — the framework already writes into the Hermes install, and already computes Skill drift — 2026-10-17
+
+**Category:** unclear-requirement
+
+**Trigger:** Specing `REQ-SB-96` (analyst, `/spec`, 2026-10-17). The requirement's
+Finding 4 states "**the framework cannot deploy at all**… The framework's Hermes
+surface (`hermes_router.py`, `hermes_agents_router.py`, `skills_router.py`) is
+**entirely read-only**", and its *Worth knowing before choosing* states "this is
+the **first time** the framework would *write* into the Hermes install; everything
+it does there today is read-only. That boundary is worth crossing deliberately,
+with an ADR."
+
+Read directly from the repository on 2026-10-17, both statements are inaccurate as
+statements of fact:
+
+- `app/hermes/skills.py::HermesSkills.create/update/delete` write and delete under
+  `<HERMES_HOME>/profiles/<profile>/skills/<category>/<slug>/`.
+- `app/hermes/profiles.py::HermesProfiles.write_soul` writes `SOUL.md` into a
+  profile; `business/core/agents/agent_manager.py` calls it on create and update.
+- `app/hermes/cli.py::create_profile` / `create_cron_job` create profiles and cron
+  jobs on the install.
+- `business/core/skills/skill_manager.py::deploy/undeploy/delete` already push and
+  remove a Skill's real content to and from a real profile, refreshing the
+  install's shared managers first (`data_access/skills.py::deploy_shared_managers`
+  writes into `<HERMES_HOME>` too).
+- `SkillManager.check_deployment_drift()` **already computes a drift report** with
+  `missing | stale | modified | current` per skill/profile pair.
+- The opposite direction also exists: `reconcile_deployed_to(dry_run=…)` and
+  `sync_from_hermes()` pull the install's reality back into the framework.
+
+What is genuinely true is narrower, and is what the two stories were written
+against: **none of it is exposed** — nothing under `app/api/` mentions deploy or
+drift, `check_deployment_drift`'s only caller in the repository is
+`tests/test_versioning.py`, and there is no screen. And the drift it does compute
+is Skills-only, iterates the untrustworthy `deployed_to` claim rather than the
+install's real profiles, and never reads the install's own
+`<HERMES_HOME>/skills/<tool>/<slug>/` tree — which is exactly the PRD's own
+Finding 2.
+
+**Why this is escalated rather than quietly corrected:** it changes what the work
+is. "Build the first write path, behind an ADR about crossing the boundary" and
+"surface, widen and correct write paths that already exist" produce different task
+splits, different risk, and a differently-scoped ADR. It also means the write
+boundary this ADR is supposed to guard was crossed some time ago without one, which
+the operator should know independently of this requirement.
+
+**Consequence if left:** the architect at `/plan-tasks` writes an ADR about
+crossing a boundary already crossed, and a second deployment implementation is
+built beside `SkillManager.deploy()` — the duplicated-copies failure mode
+`REQ-SB-96` exists to end.
+
+**Resolution:** Open. The two stories
+(`REQ-SB-96-US-01`, `REQ-SB-96-US-02`) are written against the code as measured, not
+against the premise, and both record this entry.
+
+**Resolving artefact:** —
+**Status:** Open
+
+---
+
+## ESC-067: `REQ-SB-97`'s mail-sending bullet asks for the reversal of a hard `MEMORY.md` constraint — left unspecced rather than specced around — 2026-10-17
+
+**Category:** unclear-requirement
+
+**Trigger:** Specing `REQ-SB-97` (analyst, `/spec`, 2026-10-17). Its fourth
+**What is wanted** bullet asks for "an explicit capability the operator grants,
+scoped to internal recipients", and its Acceptance paragraph requires that "an
+Action the operator has granted mail to can be performed by a named agent against
+an internal address".
+
+`MEMORY.md` (2026-09-07) records the opposite as a framework hard rule: *"The email
+capture pipeline is READ-ONLY, and stays read-only even when the token would permit
+more… capture reads mail and writes only to the vault, never back to the mailbox.
+Concretely, no `sendMail`, no flag/move/delete, no draft creation — every Graph
+call stays a GET… an agent that can send mail as the operator is a different risk
+class from one that files notes, and nothing in this product needs it."* The PRD
+itself acknowledges this, citing the Action Center plugin's README: "every pipeline
+on this install is deliberately read-only against the mailbox. That is an explicit
+operator decision, not a feature to add quietly."
+
+The analyst may not edit `MEMORY.md` and will not write acceptance criteria that
+presume a reversal the operator has not made. The bullet is therefore **not
+specced**: `REQ-SB-97-US-01` covers the requirement's per-agent performability and
+deploy-state bullets, and records the mail grant in its `## Non-Goals` pointing
+here.
+
+**Consequence if left:** `REQ-SB-97` is partially covered. The operator's literal
+example ("Hermes understands it can send an email for internals") remains
+undeliverable until the decision is taken — which is the correct outcome for a
+deliberate read-only posture, but it must be a decision rather than an omission.
+
+**Resolution:** Open — awaiting an explicit operator decision, logged in
+`REVIEW-QUEUE.md`. If granted, it needs `MEMORY.md` amended by its owner (not by an
+agent), the grant's scope written down where the read-only decision is recorded, and
+a new story (`REQ-SB-97-US-02`); it is not an edit to `REQ-SB-97-US-01`.
+
+**Resolving artefact:** —
+**Status:** Open
