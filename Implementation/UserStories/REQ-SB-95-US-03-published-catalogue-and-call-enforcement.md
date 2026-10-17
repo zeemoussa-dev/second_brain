@@ -9,7 +9,7 @@ gate: clear
 gate_reason: "RESOLVED operator confirmed ADR-033's call path, 2026-10-17 — was: trigger-3 (ADR-033 created — the call lands on one loopback route on this app's own API, reached by a shipped runner Skill; confirmation is an app-owned single-use grant)"
 sprint: SPRINT-088
 created: 2026-10-16
-updated: 2026-10-18  # coder: T01 built and Blocked on ESC-072 (AC-01 verified; AC-08's ActionManager-trigger half unwired until the suite sandboxes Hermes writes). T02-T05 unaffected.
+updated: 2026-10-18  # coder: T02 Done -- the gate, the ledger and POST /actions/{id}/call; AC-02/AC-03/AC-04/AC-07 all verified. T01 remains Blocked on ESC-072 (AC-01 verified; AC-08's ActionManager-trigger half unwired until the suite sandboxes Hermes writes). T03/T04 are unblocked.
 ---
 
 # REQ-SB-95-US-03 — The catalogue is published into agent context and enforced at the call — "I cannot do that" becomes a real answer
@@ -226,7 +226,7 @@ cross-story edges point at `REQ-SB-95-US-02` tasks.
 | ID | Type | Task | ACs covered | depends_on | Task File |
 |---|---|---|---|---|---|
 | REQ-SB-95-US-03-T01 | backend | Publish the catalogue as a third auto-generated marker block in SOUL.md, republished by `ActionManager` — **Blocked 2026-10-18 (`ESC-072`)**: the block, the per-agent filtering and the republication pass are built, tested and committed (`4af306a`, `AC-01` verified); the three `ActionManager` call sites are unwired until the backend suite sandboxes Hermes writes, so `AC-08`'s trigger half is unverified | AC-01, AC-08 | US-02-T01 | `../Tasks/REQ-SB-95-US-03-T01-publish-catalogue-block-into-agent-context.md` |
-| REQ-SB-95-US-03-T02 | backend | The validating gate (`action_invocation.py`), `POST /actions/{action_id}/call`, and the Action-call ledger | AC-02, AC-03, AC-04, AC-07 | US-02-T03 | `../Tasks/REQ-SB-95-US-03-T02-action-call-gate-and-ledger.md` |
+| REQ-SB-95-US-03-T02 | backend | The validating gate (`action_invocation.py`), `POST /actions/{action_id}/call`, and the Action-call ledger — **Done 2026-10-18** (`63af8e5`): all four failure classes refuse by name, every outcome is recorded in `<DATA_PATH>/data/ActionCalls/`, validation completes before the dispatch seam is entered once, and `AC-02`/`AC-03`/`AC-04`/`AC-07` are verified by 6 AC-tagged tests plus the live-backend manual refusal. Dispatch stays `T03`'s — the seam reports `not_dispatched` in words rather than claiming an operation ran | AC-02, AC-03, AC-04, AC-07 | US-02-T03 | `../Tasks/REQ-SB-95-US-03-T02-action-call-gate-and-ledger.md` |
 | REQ-SB-95-US-03-T03 | backend | Dispatch by implementation kind — `http` performed, `ui` pointed at, `skill` authorised via single-use grant | AC-02 | T02 | `../Tasks/REQ-SB-95-US-03-T03-dispatch-by-implementation-kind.md` |
 | REQ-SB-95-US-03-T04 | backend | Confirmation — `awaiting_confirmation`, the single-use grant, and the operator confirm/decline surface | AC-06 | T02 | `../Tasks/REQ-SB-95-US-03-T04-confirmation-single-use-grant-and-operator-surface.md` |
 | REQ-SB-95-US-03-T05 | backend | The shipped loopback runner Skill, honest refusal end-to-end, and the recorded unmet request | AC-02, AC-03, AC-04, AC-05 | T01, T03, T04 | `../Tasks/REQ-SB-95-US-03-T05-runner-skill-and-unmet-request-record.md` |
