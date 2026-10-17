@@ -32,12 +32,13 @@ foreign.
 ## A slug lives under exactly one Tool
 
 Skill ids are slugs and are **globally unique** (`data_access/skills.py`
-finds a Skill by slug across every Tool folder, first match wins). So a
-Skill cannot sit under two Tools at once: switching `email-thread-capture`
-between transports **moves** the folder, and git history keeps the other.
-It moved `outlook` → `graph` on 2026-09-09 and back to `outlook` (COM) on
-2026-10-18. The COM copy needs **classic** Outlook running on the host —
-New Outlook has no COM.
+finds a Skill by slug across every Tool folder, first match wins). So two
+providers of the same pipeline ship under **different slugs**: Graph's
+`email-thread-capture` / `meeting-capture`, Outlook COM's
+`outlook-email-thread-capture` / `outlook-meeting-capture`. An install
+deploys the pair matching its mail provider and its cron jobs name those
+slugs (`BUG-091`). The COM pair needs **classic** Outlook running on the
+host -- New Outlook has no COM.
 
 ## Shared libraries are not carried per skill
 
