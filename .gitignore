@@ -33,3 +33,6 @@ Thumbs.db
 src/backend/.scratch/
 src/backend/*.log
 src/backend/_run_full_capture.py
+
+# Runtime lock held while a plugin screen build runs (screen_build.py).
+.screen-build.lock
