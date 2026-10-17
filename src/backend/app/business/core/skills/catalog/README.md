@@ -29,6 +29,16 @@ foreign.
 | `outlook` (2) | the only two importing `outlook_lib` |
 | `pricing` (1) | queries `prices.azure.com`; touches no vault at all |
 
+## A slug lives under exactly one Tool
+
+Skill ids are slugs and are **globally unique** (`data_access/skills.py`
+finds a Skill by slug across every Tool folder, first match wins). So a
+Skill cannot sit under two Tools at once: switching `email-thread-capture`
+between transports **moves** the folder, and git history keeps the other.
+It moved `outlook` → `graph` on 2026-09-09 and back to `outlook` (COM) on
+2026-10-18. The COM copy needs **classic** Outlook running on the host —
+New Outlook has no COM.
+
 ## Shared libraries are not carried per skill
 
 `vault_manager.py` is **not** stored in a Skill's `scripts/`. One canonical copy

@@ -1,7 +1,7 @@
 ---
 name: email-thread-capture
-description: Full-history (one-time) or incremental (recurring) Microsoft 365 mail capture (Graph) into Second Brain's vault via standalone scripts.
-version: 0.7.0
+description: Full-history (one-time) or incremental (recurring) Outlook desktop (COM) mail capture into Second Brain's vault via standalone scripts.
+version: 0.8.0
 author: second-brain
 license: MIT
 platforms: [windows]
@@ -33,7 +33,7 @@ writes:
 
 # Email Thread Capture
 
-Pulls email from a Microsoft 365 mailbox (via Graph) into Second Brain's vault, structuring
+Pulls email from Outlook desktop (classic, via COM) into Second Brain's vault, structuring
 it into Threads -- either the initial **one-time, full-history** rebuild
 (`run_full_capture.py`) or the **recurring, incremental** delta pass
 (`run_delta_capture.py`, 2026-08-22) that keeps the vault current after
@@ -52,37 +52,27 @@ server vs. Hermes-native Skill scripts," for why.
 
 ## Prerequisites
 
-**Transport: Microsoft Graph (2026-09-09).** This Skill moved from Outlook
-desktop COM to Graph and now lives under the **`graph`** Tool. No Outlook,
-no `pywin32`, no mail profile on the host -- which is the point: the agent
-runs as one account and reads a mailbox belonging to another, which COM
-cannot do. (`outlook/meeting-capture` is still the COM path and is
-unaffected.)
+**Transport: Outlook desktop COM (restored 2026-10-18).** This is the
+`outlook` Tool's copy of the Skill; `graph/email-thread-capture` is the same
+Skill over Microsoft Graph. Deploy **one** of the two -- they share the name
+`email-thread-capture`. Everything after the mail read (ingest, linking,
+attachments, the watermark) is identical; only `list_recent_emails.py`'s
+import differs (`outlook_lib` here, `graph_lib` there).
 
-- **A one-time sign-in, then unattended.** Auth is **delegated**, not
-  app-only: this tenant grants Graph permissions as Delegated only, so a
-  client-credentials token comes back carrying zero `roles` and can read no
-  mailbox at all -- a failure that looks like success. Run
-  `terminal(command="python authorize_graph.py")` once per machine; it
-  prints a code to enter at Microsoft's own page and stores a refresh
-  token. `python authorize_graph.py --status` reports what is stored
-  without signing in.
-- **When capture starts failing with `invalid_grant`, the refresh token was
-  revoked** (Conditional Access, a password change, or ~90 days idle) and
-  someone must run `authorize_graph.py` again. This is a real operating
-  mode, not an edge case -- a silent stop here means mail quietly stops
-  reaching the vault.
-- **Environment** (Hermes' own `.env` supplies these to every script):
-  `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `SECOND_BRAIN_SELF_EMAIL` (the
-  mailbox to read), `SECOND_BRAIN_DATA_PATH` (where the refresh token is
-  stored -- **never** inside the repo), and `SECOND_BRAIN_VAULT_PATH`.
-  There is no `GRAPH_CLIENT_SECRET`: a device-code public client has none.
-- **Mailbox access is granted in Exchange, not in the app registration.**
-  The signed-in account needs Full Access (or at minimum Read on the
-  Inbox) to `SECOND_BRAIN_SELF_EMAIL`. Without it Graph answers **404
-  "Default folder Inbox not found"** -- *not* 403 -- because an
-  undelegated folder is invisible rather than forbidden. Do not read that
-  404 as "wrong address".
+- **Classic Outlook must be running on the host, signed in to the mailbox.**
+  New Outlook (`olk.exe`) has no COM: with only it open, every run fails on
+  its first page with `Server execution failed`. Turning the "New Outlook"
+  toggle off and keeping classic Outlook open is what makes capture work.
+- **`pywin32`** in the Python Hermes runs these scripts with.
+- **No credentials, no app registration** -- COM rides Outlook's own
+  signed-in session. It reads the mailbox(es) of the Outlook profile, so it
+  cannot read a mailbox the profile does not hold.
+- **`received` is `str(item.ReceivedTime)`** -- Outlook's local wall-clock
+  time carrying a `+00:00` label. The watermark in `email_capture_state.json`
+  is in that same shape, so never mix it with a Graph-written (true UTC)
+  watermark without converting: a 4-hour offset either skips or re-walks mail.
+- **Environment** (Hermes' own `.env`): `SECOND_BRAIN_VAULT_PATH` and
+  `SECOND_BRAIN_DATA_PATH`.
 - **Never wrap a script call in `-c` or `bash -lc`.** Hermes' `terminal`
   tool categorically requires human approval for any `-c`/`-lc`
   shell-string invocation (confirmed live 2026-08-21: `hermes approvals
@@ -151,11 +141,10 @@ as the outcome of this run — never "capture completed" or "no new mail".** A
 cron run of this Skill is nobody's conversation: the only trace it leaves is
 what you report, and a run that reports success while capturing nothing is
 indistinguishable from a quiet inbox. Email capture once failed for four days
-behind an `ok` status that way (`BUG-085`): the Graph refresh token was gone,
-every run exited 2 on its first page, and the operator found out by counting
-notes. Quote the script's own last line — "no Graph refresh token ... run
-`python authorize_graph.py`" is an instruction the operator can act on, and
-only reaches them if you repeat it.
+behind an `ok` status that way (`BUG-085`): every run exited 2 on its first
+page, and the operator found out by counting notes. Quote the script's own
+last line — "couldn't connect to Outlook — is it running?" is an instruction
+the operator can act on, and only reaches them if you repeat it.
 
 Stops itself after `--max-minutes` (default 50, inside Hermes' 3600s
 script limit). Prints `{"status", "more_to_capture", "pages",

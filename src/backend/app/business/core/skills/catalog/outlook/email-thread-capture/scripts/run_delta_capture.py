@@ -361,11 +361,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="Stop cleanly after this long; the next run continues from the watermark.")
     args = parser.parse_args(argv)
     _require_vault_path()
-    # No pywin32 check (removed 2026-09-11). The delta reads mail through
-    # Graph and never touches COM; the check tried `pip install pywin32` on
-    # every run, which Hermes' uv-managed Python refuses, and its note landed
-    # in the hourly output. list_recent_emails.py imports graph_lib, not
-    # outlook_lib.
+    # No pywin32 check (removed 2026-09-11): it tried `pip install pywin32` on
+    # every run, which Hermes' uv-managed Python refuses. In this COM copy a
+    # missing pywin32 or a closed Outlook surfaces as list_recent_emails'
+    # own failure on page 1, which is reported as "blocked".
 
     deadline = _clock() + args.max_minutes * 60
     watermark_before = watermark = load_watermark()
