@@ -320,6 +320,8 @@ Where a rule does not belong here:
 
 - **A hook advertised as a drop-in for `useState` must accept the updater form.** `setThing((previous) => ...)` is already written across existing screens, and a value-only setter fails to type-check at exactly those call sites -- caught by the publish gate in My Day, not by the framework's own build, because plugin screens only compile during publish.
 
+- **[2026-10-18] A new ADR takes the next number from 060 upwards, never the next unused heading in `ADR.md`.** The numbering restarted at 001 on 2026-08-20 and the old 001-058 sequence was archived, but its citations stayed in the repo: every number from 042 to 059 is cited by between 3 and 53 files while having no heading. Choosing by `grep "^## ADR-"` therefore lands on a number that already means something -- which is how two ADR-043s came to exist on one day (the architect picked it for REQ-SB-99 while PRD.md had cited it since August for a direct-vault-write decision). `ADR-043` and `ADR-038`-`041` are left where they are; the citations below 060 are a separate cleanup nobody owns yet.
+
 ## Windows host and environment
 
 - **On this Windows host every `Path.exists()`/`is_file()`/`is_dir()` silently returns `False` once the full path exceeds about 260 characters.** Two of them on the same long path can therefore contradict the branch logic that decided its type. `iterdir()` still lists such files - never gate on a path predicate alone for deep vault paths.
