@@ -48,6 +48,11 @@ _plugin_agent_matchers: list[plugin_api.AgentMatcher] = []
 _plugin_services: dict[str, object] = {}
 _plugin_people_folders: list[str] = []
 _plugin_seed_data_files: list[str] = []
+# The Actions the loaded plugins contribute to the one catalogue, as the
+# definitions they registered -- never entities: what an Action IS belongs
+# to ActionManager, which composes these on top of the stored ones when the
+# catalogue is read.
+_plugin_actions: list[dict] = []
 
 
 class PluginManager:
@@ -61,7 +66,7 @@ class PluginManager:
         outlook" needs the Marketplace's view of what is installed, which
         arrives with it (`REQ-SB-91` Phase 4)."""
         global _load_report, _plugin_subject_enrichers, _plugin_agent_matchers, _plugin_services
-        global _plugin_people_folders, _plugin_seed_data_files
+        global _plugin_people_folders, _plugin_seed_data_files, _plugin_actions
         report: list[Plugin] = []
         mounts: list[tuple[str, APIRouter]] = []
 
@@ -69,7 +74,7 @@ class PluginManager:
             record = plugins_data.read_installed_record()
         except (OSError, ValueError) as exc:
             _plugin_subject_enrichers, _plugin_agent_matchers, _plugin_services = [], [], {}
-            _plugin_people_folders, _plugin_seed_data_files = [], []
+            _plugin_people_folders, _plugin_seed_data_files, _plugin_actions = [], [], []
             _load_report = [Plugin(
                 id="installed.json", name="Installed plugins record", version="",
                 framework_api=None, status=INVALID,
@@ -90,6 +95,7 @@ class PluginManager:
         _plugin_services = {name: service for api in loaded_apis for name, service in api.services.items()}
         _plugin_people_folders = list(dict.fromkeys(folder for api in loaded_apis for folder in api.people_folders))
         _plugin_seed_data_files = list(dict.fromkeys(path for api in loaded_apis for path in api.seed_data_files))
+        _plugin_actions = [action for api in loaded_apis for action in api.actions]
         return mounts
 
     def get_load_report(self) -> list[Plugin]:
@@ -113,6 +119,14 @@ class PluginManager:
     def get_seed_data_files(self) -> list[str]:
         """Seed data files from every loaded plugin, without duplicates."""
         return list(_plugin_seed_data_files)
+
+    def get_actions(self) -> list[dict]:
+        """The Action definitions every loaded plugin registered, in plugin
+        install order, each stamped with the `plugin_id` that registered it.
+        A plugin that failed contributes none, and an uninstalled one is
+        simply absent from the next load -- which is what makes a plugin's
+        Actions disappear with it, with nothing stored to clean up."""
+        return list(_plugin_actions)
 
     def _load_one(
         self, entry: object, seen: set[str], loaded_apis: list[plugin_api.PluginApi],

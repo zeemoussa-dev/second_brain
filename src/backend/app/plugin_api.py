@@ -283,6 +283,7 @@ class PluginApi:
         self.people_folders: list[str] = []
         self.seed_data_files: list[str] = []
         self.data = DataFilesApi(self.seed_data_files)
+        self.actions: list[dict] = []
 
     def register_router(self, router: APIRouter) -> None:
         """Mounted under `/plugins/<plugin_id>/` once registration succeeds.
@@ -322,6 +323,46 @@ class PluginApi:
         normalized = _relative_path(relative_path, "seed data file")
         if normalized not in self.seed_data_files:
             self.seed_data_files.append(normalized)
+
+    def register_action(
+        self, action_id: str, *, description: str = "",
+        inputs: list[dict] | None = None,
+        allowed_callers: list[str] | None = None,
+        needs_confirmation: bool = False,
+        implementation: dict | None = None,
+    ) -> None:
+        """Contributes one Action to the app's single catalogue, carrying the
+        same fields an operator's own Action carries (`ADR-032`): typed
+        `inputs`, each with a `required` flag; the agent ids in
+        `allowed_callers`, or `["*"]`; a `needs_confirmation` flag; and
+        exactly one `implementation`, keyed by kind -- typically a route
+        this plugin mounts itself, `{"http": {"method": "GET", "path":
+        "/plugins/<this plugin>/report"}}`.
+
+        Composed into the catalogue when it is READ and never written into
+        the install's Actions store, so it exists only while this plugin is
+        loaded: uninstalling removes it with nothing to clean up, and the
+        install's own stored Actions are untouched either way. An id the
+        install already stores wins -- a plugin adds to the catalogue, it
+        never shadows what the operator saved.
+        """
+        normalized_id = str(action_id or "").strip()
+        if not normalized_id:
+            raise ValueError("an Action needs an id")
+        if any(action["id"] == normalized_id for action in self.actions):
+            raise ValueError(f"action {normalized_id!r} is registered twice")
+        self.actions.append({
+            "id": normalized_id,
+            # Stamped here rather than taken from the caller: attribution
+            # has to be the facade's answer, or a plugin could credit
+            # another plugin for what it contributed.
+            "plugin_id": self.plugin_id,
+            "description": description,
+            "inputs": [dict(entry) for entry in inputs or []],
+            "allowed_callers": list(allowed_callers or []),
+            "needs_confirmation": bool(needs_confirmation),
+            "implementation": dict(implementation or {}),
+        })
 
     def provide_service(self, name: str, implementation: object) -> None:
         """Offers a capability to other plugins by name, so a plugin never
