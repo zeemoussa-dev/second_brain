@@ -77,6 +77,7 @@ is a thin status mirror of the index table below.
 | BUG-088 | A refused plugin still mounts its screens, so a version mismatch reads as a broken page rather than a disabled plugin | UI | Major | Fixed | 2026-10-17 | direct fix, 2026-10-17 |
 | BUG-089 | The app has no error boundary, so one screen's throw blanks the whole window | UI | Major | Fixed | 2026-10-17 | direct fix, 2026-10-17 |
 | BUG-090 | My Day showed 0 emails for eight days -- capture had stopped, and one unreadable note could also empty the index -- and nothing on the screen said which | Logic | Major | Fixed | 2026-10-17 | My Day 1.8.0; direct fix, 2026-10-17 |
+| BUG-091 | Deploying the Graph capture Skill deleted the install's Outlook one of the same name -- one machine silently became a Graph install and lost email for eight days | Logic | Critical | Fixed | 2026-10-18 | direct fix, 2026-10-18 |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -1400,3 +1401,15 @@ is a thin status mirror of the index table below.
 - **Expected:** a zero is shown bare only when capture is known to be working; otherwise the screen says capture is stalled, since when, or that the index is not ready.
 - **Actual:** "Nothing captured yet" in every case.
 - **Fix:** framework -- `rebuild_index()` skips and logs a note it cannot read (`OSError`, `UnicodeDecodeError`) instead of aborting, so one bad note can no longer empty the index (`tests/test_vault_index_unreadable_note.py`). My Day 1.8.0 -- `email_capture_status()` reads the newest `RawMessage` from `vault.entries()` (no new Plugin API) with System Health's 48-hour threshold; the summary carries it and `GET /emails/status` serves it; My Day and its Emails screen show "No new email for N days -- capture has brought nothing in since <date>" or "Index not ready" instead of a bare zero. Verified live: right after a reload the status read `index_unavailable`, then `stale` since 2026-10-09 17:11. **Not fixed here:** capture itself -- the operator chose to return email capture to Outlook (COM), separate work.
+
+### BUG-091 — Deploying one Tool's capture Skill deleted another Tool's Skill of the same name
+
+- **Area:** Logic
+- **Severity:** Critical
+- **Status:** Fixed
+- **Found:** 2026-10-18, operator: two machines run My Day -- the CBO Agent machine captures through Graph, this one through Outlook (COM) -- and the root cause of `BUG-090` must not happen again.
+- **Root cause:** a deployed Skill is found by its bare slug, and both Tools shipped `email-thread-capture`. `SkillManager._push_to_profile` treats a deployed copy under a different category as a stale grouping (the 2026-09-06 regroup by Tool) and "moves" it: creates the catalog's copy, deletes the deployed one. When the catalog carried only the Graph copy, a redeploy on 2026-10-09 deleted this install's Outlook capture and put Graph -- never signed in here -- in its place. Nothing failed: the job read `ok` for eight days (`BUG-085`).
+- **Repro:** deploy `outlook/email-thread-capture` to a profile, then deploy `graph/email-thread-capture` to it.
+- **Expected:** a deploy never removes a Skill that belongs to another Tool; which provider an install uses is that install's choice.
+- **Actual:** the Outlook Skill is deleted and the Graph one replaces it silently.
+- **Fix:** the move now applies only when the deployed category is no longer a catalog Tool; a copy under another live Tool raises `SkillPreconditionError` instead (`tests/test_skill_deploy_other_tool.py`). Providers carry distinct slugs: Graph keeps `email-thread-capture` / `meeting-capture` (the Graph install needs no change), and the COM Skills ship as `outlook-email-thread-capture` / `outlook-meeting-capture` under the `outlook` Tool (restore session, separate commits). Each install's capture cron jobs name the Skill of the provider it uses.

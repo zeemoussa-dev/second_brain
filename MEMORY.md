@@ -200,6 +200,8 @@ Where a rule does not belong here:
 
 - **`## Actions` and `## Personal Notes` are human-owned (`section_ownership.py::_HUMAN_OWNED_HEADERS`) - no pipeline or agent writes them automatically.** An agent may read them; writing into them reopens the undecided approval question.
 
+- **[2026-10-18] Two Tools never ship a Skill with the same slug, and the capture provider is an install's choice.** A deploy finds a Skill by bare slug, so a shared name lets deploying one provider delete the other: on 2026-10-09 a Graph redeploy removed an Outlook install's email capture and it captured nothing for eight days (`BUG-091`). Graph keeps `email-thread-capture` / `meeting-capture`; Outlook (COM) is `outlook-email-thread-capture` / `outlook-meeting-capture`. Each install's capture cron jobs name the Skill for its provider; the catalog ships both. `_push_to_profile` refuses to replace a copy that sits under another live Tool.
+
 ## Hermes runtime and provisioning
 
 - **Hermes gives every profile its own home, and env files do not chain.** `env_loader.load_hermes_dotenv` loads exactly `<that home>/.env` with no fallback to the top-level file, so a value must exist in all 41 places to be visible everywhere. That is also why `profile create --clone` copies `.env`.
