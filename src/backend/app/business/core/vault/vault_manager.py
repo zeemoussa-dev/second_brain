@@ -54,6 +54,7 @@ its own to retrofit, a pure logic fold.
 """
 from __future__ import annotations
 
+import logging
 import math
 import re
 from datetime import datetime, timezone
@@ -67,6 +68,8 @@ from app.data_access import vault_index_config as vault_index_config_data
 from app.data_access import vault_writer
 from app.business.core.vault import note_text
 from app.obsidian.notes import long_path
+
+_logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # In-memory note index (folded in from vault_indexing.py) -- module-level
@@ -255,7 +258,17 @@ class VaultManager:
         a single-reference rebind is safe under CPython's GIL, no
         explicit lock needed."""
         global _vault_index, _vault_entries, _last_rebuilt_at
-        new_entries: list[dict] = [_build_entry(path) for path in vault_writer.list_all_note_paths()]
+        new_entries: list[dict] = []
+        for path in vault_writer.list_all_note_paths():
+            # One note that cannot be read -- moved by capture between the walk
+            # and the read, held by OneDrive, not UTF-8 -- used to abort the
+            # whole rebuild. At boot that left the index EMPTY until the next
+            # cron refresh, up to 30 minutes, and every reader showed nothing:
+            # My Day read "0 emails" with every email still on disk (`BUG-090`).
+            try:
+                new_entries.append(_build_entry(path))
+            except (OSError, UnicodeDecodeError) as error:
+                _logger.warning("vault index: skipped unreadable note %s (%s)", path, error)
 
         # Every note is kept in `new_entries`; the by-stem map holds one per name
         # (`BUG-076`). Obsidian allows the same name in different folders, and the
