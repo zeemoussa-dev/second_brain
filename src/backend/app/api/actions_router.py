@@ -37,6 +37,13 @@ dataclass, and the rest of the backend already speaks it.
 Three other fields are read-only and are NOT accepted on a write: `id`
 after creation, `created_at` and `updated_at` (the Manager owns both
 timestamps). An editor must render them as facts, never as inputs.
+
+**A whole Action can be read-only too.** The list carries `plugin_id`
+on an entry a loaded plugin contributed and omits the key entirely on
+one this install stored -- the only thing a client has to tell them
+apart by. Every write path on a contributed one refuses with the same
+409 a Manager refusal gets, carrying the Manager's own sentence naming
+the plugin (REQ-SB-95-US-02-T06, against ESC-069).
 """
 from __future__ import annotations
 
@@ -50,6 +57,7 @@ from app.business.core.actions.action_manager import (
     ActionImplementationCardinalityError,
     ActionImplementationUnresolvedError,
     ActionManager,
+    PluginContributedActionIsReadOnlyError,
 )
 
 router = APIRouter(prefix="/actions")
@@ -130,7 +138,7 @@ def list_actions() -> list[dict]:
     catalogue = []
     for action in _action_manager.get_all():
         status = status_by_action_id.get(action.id)
-        catalogue.append({
+        entry = {
             "id": action.id,
             "description": action.description,
             "implementation_kind": action.implementation.kind if action.implementation else None,
@@ -139,7 +147,16 @@ def list_actions() -> list[dict]:
             # "healthy" is the exact failure ADR-032 exists to prevent.
             "status": status["status"] if status else "broken",
             "reason": status["reason"] if status else "this Action's implementation was not checked",
-        })
+        }
+        # Present only on a contributed entry, absent (not null) on a stored
+        # one -- the wire shape then says exactly what ActionManager says:
+        # a stored Action has no `plugin_id` attribute at all, rather than
+        # an empty one. getattr for the same reason: reading the field
+        # directly would raise on every Action the operator saved.
+        plugin_id = getattr(action, "plugin_id", "")
+        if plugin_id:
+            entry["plugin_id"] = plugin_id
+        catalogue.append(entry)
     return catalogue
 
 
@@ -177,7 +194,11 @@ def update_action(action_id: str, body: ActionUpdateBody) -> Action:
             needs_confirmation=body.needs_confirmation,
             implementation=_implementation_payload(body.implementation),
         )
-    except (ActionImplementationCardinalityError, ActionImplementationUnresolvedError) as exc:
+    except (
+        ActionImplementationCardinalityError,
+        ActionImplementationUnresolvedError,
+        PluginContributedActionIsReadOnlyError,
+    ) as exc:
         raise _refusal(exc)
     if action is None:
         raise HTTPException(status_code=404, detail=f"Unknown action: {action_id!r}")
@@ -190,5 +211,12 @@ def delete_action(action_id: str) -> dict:
     with the Workflow kind itself (REQ-SB-95-US-04-T02), and no Workflow
     can reference an Action today. Deleting an unknown id is
     {"deleted": False}, never a 404 -- ADR-014's result-dict convention,
-    which ActionManager.delete already follows."""
-    return _action_manager.delete(action_id)
+    which ActionManager.delete already follows. A plugin-contributed
+    Action is the one id that refuses rather than reporting a result:
+    there is nothing stored to delete, and both {"deleted": true} and
+    {"deleted": false} would be a lie about a row the operator is
+    looking at."""
+    try:
+        return _action_manager.delete(action_id)
+    except PluginContributedActionIsReadOnlyError as exc:
+        raise _refusal(exc)
