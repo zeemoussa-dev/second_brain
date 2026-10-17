@@ -3826,7 +3826,7 @@ exactly that in My Day.
   a value is a selection or a preference will get it wrong, and the hook cannot decide
   for them.
 
-## ADR-042: Breadcrumbs are a framework component and the host renders the trail on plugin Settings pages
+## ADR-043: Breadcrumbs are a framework component and the host renders the trail on plugin Settings pages
 
 **Status:** Accepted
 **Date:** 2026-10-17
@@ -3886,6 +3886,40 @@ and Have a Standard around that").
   deep pages are the obvious next users.
 - A plugin that wants a crumb for a place the host cannot name must pass
   `fromLabel`; the host will not invent a label from a path.
+
+**The boundary with the shell's back control (operator, 2026-10-18: keep both).**
+A second answer to "a way back" was built in parallel (`97fa12a`:
+`BackControl` + `NavigationTrailProvider`, which mirror the router's own stack
+in memory and put one back arrow in the shell). Both are kept, because they
+answer different halves and are not substitutes:
+
+| | Shell back control | Breadcrumbs (this ADR) |
+|---|---|---|
+| Scope | one step | the whole path |
+| Applies to | every screen, automatically | a screen that renders it |
+| Names the place | from the router's own stack | from labels the page supplies |
+| Survives a refresh | no -- in-memory, so it hides | yes -- the origin is in the URL |
+| Survives a sent link | no | yes |
+
+So: **the back control is free and always there; a trail is deliberate.** A
+screen reached one click from its landing page needs no trail -- the arrow is
+enough. A screen reached from another area (a plugin's Settings page under
+`/settings`, which the sidebar cannot lead back from) needs the trail, because
+"one step" cannot say what it is stepping back to after a refresh.
+
+Neither is allowed to grow into the other: the back control must not take
+page-supplied labels (it would need every screen to remember to pass them, the
+thing it exists to avoid), and breadcrumbs must not read the in-memory stack (a
+trail that empties on refresh is worse than none, since it silently stops
+leading anywhere).
+
+**This ADR is 043, not 042.** It was written as 042, and one commit
+(`6148f17`, `plugin_api.py`) and two comment blocks shipped citing that number
+before the operator's decision. 042 is left unused deliberately: code
+(`data_access/vault_writer.py`, `summarize-and-tag-files`) and
+`Documentation/PRD.md` already cite `ADR-042` for the archived-series
+Customer/Partner concept-file decision (`REQ-SB-54`), so reusing it here would
+have made two different decisions share one number in live references.
 
 ## ADR-043: A profile's debug view is one composed read-only endpoint enumerated from the install's own tree — the skills verdict is shared with `check_deployment_drift()`, cron binding is a directory, and config is two labelled layers
 

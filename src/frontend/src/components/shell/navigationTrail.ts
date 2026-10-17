@@ -1,6 +1,6 @@
 // Where you came from, so every screen can offer a way back (operator,
-// 2026-10-17). See BackControl.tsx on how this relates to ADR-042's
-// breadcrumbs -- same complaint, different mechanism, both currently built.
+// 2026-10-17). See BackControl.tsx on how this relates to ADR-043's
+// breadcrumbs -- same complaint, two mechanisms, both kept (2026-10-18).
 //
 // The app is one router, so a Link from My Day to a note is a history push and
 // the browser's own Back already works. What was missing was anything in the UI

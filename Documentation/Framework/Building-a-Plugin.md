@@ -168,6 +168,47 @@ export default ui;
   and makes a link mean something different for each person who opens it.
   Genuinely throwaway state (an expanded row, a palette that is open) stays in
   `useState`.
+- **Every screen past the landing page shows a trail** (v11, `ADR-043`).
+  `pluginHost/breadcrumbs` exports `Breadcrumbs`, taking
+  `items: { label, to? }[]`; render it directly above the page's `h1`. The first
+  crumb is the plugin's landing page, the last is the page you are on (never a
+  link, even if given a `to`).
+
+  A link into the plugin's own **Settings** page is built with
+  `pluginSettingsLink`, and the host renders that page's trail itself:
+
+  ```tsx
+  import { pluginSettingsLink, usePluginReturn } from '../../pluginHost/breadcrumbs';
+
+  // On a report, opening one customer's editor:
+  <Link to={pluginSettingsLink('azure-cost-manager', {
+    params: { customer: customer.id },
+    from: useLocation(),      // where to lead back to
+    fromLabel: customer.name, // what to call it in the trail
+  })}>Edit enrollments</Link>
+
+  // On the Settings page, Save and Cancel:
+  const back = usePluginReturn('azure-cost-manager');   // { to, label } | null
+  ```
+
+  **Never parse `?back=` yourself.** The host validates it against the same rule
+  that decides which routes the plugin may mount, and that check is the only
+  thing stopping a crafted link from bouncing the operator anywhere in the app —
+  a looser pattern in one plugin is a hole in all of them.
+
+  This replaces hand-rolling a trail per plugin. A Settings page sits under the
+  host's `/settings`, a top-level area the plugin does not own: the operator who
+  opened a customer's editor from a report landed there with nothing leading
+  back, and the sidebar could not help, because Settings is not where they were.
+
+  **The shell already gives every screen a one-step back arrow**, for free and
+  without the plugin doing anything (`BackControl`, commit `97fa12a`; the
+  boundary between the two is the table in `ADR-043`). So do not add a trail to a screen that is one
+  click from your landing page — the arrow is enough. Add one where "back one
+  step" cannot answer "back to what?": a screen reached from another area of the
+  app, or one whose address someone may refresh or send, since the arrow's
+  memory is per-tab and empties on reload while a trail's origin lives in the
+  URL.
 - **Charts are a host library** (v8, `ADR-039`): `echarts` and
   `echarts-for-react`, subpaths included, so import `echarts/core` plus the
   chart types you draw rather than the whole library —
