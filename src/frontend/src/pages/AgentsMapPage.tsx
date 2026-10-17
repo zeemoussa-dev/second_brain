@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useUrlSelection } from '../components/screenState';
 import { AgentsMapCanvas } from '../features/agents-map/AgentsMapCanvas';
 import { AgentDetailPanel } from '../features/agents-map/AgentDetailPanel';
 import { SectionDetailPanel } from '../features/agents-map/SectionDetailPanel';
@@ -55,11 +56,11 @@ export function AgentsMapPage() {
   const [pipelineJobTrees, setPipelineJobTrees] = useState<Map<string, JobTreeEntry[]>>(new Map());
   const [pipelineRefs, setPipelineRefs] = useState<PipelineRef[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [selectedAgentId, setSelectedAgentId] = useUrlSelection('agent');
   // Pipeline title label's own click target — independent of
   // selectedAgentId/selectedSectionId (a Pipeline label is never the
   // same click target as an Agent node or a Section Hub).
-  const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
+  const [selectedPipelineId, setSelectedPipelineId] = useUrlSelection('pipeline');
   // 2026-08-30 (operator: "when I hover in the panel it puts the agent
   // i am hovering on in the focus") -- PipelineDetailPanel's own
   // currently-hovered Step id, relayed down to AgentsMapCanvas ->
@@ -70,7 +71,7 @@ export function AgentsMapPage() {
   // selectedAgentId (a Section Hub and an Agent node are never the same
   // click target, so no id-collision handling is needed the way
   // selectedJob below disambiguates within selectedAgentId).
-  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+  const [selectedSectionId, setSelectedSectionId] = useUrlSelection('section');
   // REQ-SB-46-US-01-T01 — the popup wizard's own open/closed flag; the
   // conditional mount below (`{isWizardOpen && <CreateExpertWizardModal .../>}`)
   // is what makes Scenario 11's "closing discards the draft" true by

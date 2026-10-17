@@ -5,6 +5,7 @@ import {
 } from '../features/system-health/client';
 import { fetchHermesStatus, type HermesServerStatus } from '../features/hermes-ops/client';
 import { pluginUiProblems } from '../pluginHost/registry';
+import { useUrlState } from '../components/screenState';
 
 const PLUGIN_STATUS_BADGE: Record<string, string> = {
   loaded: 'badge-success',
@@ -198,7 +199,7 @@ type Tab = (typeof TABS)[number];
 const TAB_LABELS: Record<Tab, string> = { app: 'App Status', hermes: 'Hermes Status' };
 
 export function SystemHealthPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('app');
+  const [activeTab, setActiveTab] = useUrlState<Tab>('tab', 'app', { valid: TABS });
   const [health, setHealth] = useState<SystemHealthResponse | null>(null);
   const [hermesStatus, setHermesStatus] = useState<HermesServerStatus | null>(null);
 

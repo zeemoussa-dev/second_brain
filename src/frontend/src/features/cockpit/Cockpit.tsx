@@ -6,6 +6,7 @@ import {
   type CockpitChatMessage, type CockpitData, type CockpitDocument,
 } from './cockpitApiClient';
 import { NoteText } from '../../pluginHost/noteText';
+import { useUrlState } from '../../components/screenState';
 import { PersonNotePanel } from './PersonNotePanel';
 import { ChatMessageText } from '../../components/ChatMessageText';
 import { pluginCockpitTabs, withPluginCockpitInfoFields } from '../../pluginHost/registry';
@@ -126,7 +127,8 @@ function ExpertRow({ agent, onClick, title }: { agent: AgentSummary; onClick: ()
 }
 
 export function Cockpit({ subjectKind, subjectNoteStem, infoFields }: CockpitProps) {
-  const [tab, setTab] = useState<CockpitTab>('overview');
+  // No `valid` list: plugins contribute Cockpit tabs, so the set is open.
+  const [tab, setTab] = useUrlState<CockpitTab>('tab', 'overview');
   const [data, setData] = useState<CockpitData | null>(null);
   const [experts, setExperts] = useState<AgentSummary[] | null>(null);
   const [openPersonStem, setOpenPersonStem] = useState<string | null>(null);

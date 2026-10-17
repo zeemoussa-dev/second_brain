@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
+import { useUrlState } from '../components/screenState';
 import {
   fetchArtifacts,
   previewExport,
@@ -55,7 +56,7 @@ function emptySelection(): SelectionState {
 
 export function SettingsArtifactsPage() {
   const [artifacts, setArtifacts] = useState<ArtifactSummary[] | null>(null);
-  const [activeKind, setActiveKind] = useState<ArtifactKind>('template');
+  const [activeKind, setActiveKind] = useUrlState<ArtifactKind>('kind', 'template', { valid: KIND_ORDER });
   const [selection, setSelection] = useState<SelectionState>(emptySelection());
   const [livePreview, setLivePreview] = useState<ExportPreviewResult | null>(null);
   const [exportModalOpen, setExportModalOpen] = useState(false);

@@ -62,6 +62,14 @@ Note the asymmetry this exposes: the screens are governed by an allowlist, while
 backend's third-party import is refused by nothing and simply fails at runtime when
 the package is absent. The version gate is what keeps that from happening.
 
+v10 makes a screen's state survive a REFRESH: `pluginHost/state` exports
+`useUrlState`, `useUrlSelection`, `useUrlFilters` (what you are looking at --
+the query string, so Back works and the address can be sent to someone) and
+`useRememberedState` (how you like to look at it -- localStorage). Before it,
+27 pieces of selection across the app lived in `useState` and exactly one
+survived F5, each screen free to solve it differently or not at all (`ADR-041`).
+The framework's own screens use the same four hooks.
+
 A new capability is added here when a plugin
 needs one. The host loads only
 plugins built for its exact `FRAMEWORK_API`, so a plugin that relies on a
@@ -86,7 +94,7 @@ from app.data_access import seed_data, vault_writer
 from app.obsidian import sections
 from app.obsidian.notes import long_path
 
-FRAMEWORK_API = 9
+FRAMEWORK_API = 10
 
 _logger = logging.getLogger(__name__)
 
