@@ -5354,3 +5354,193 @@ vault; "make Adobe a Strategic Entity" runs the same operation the UI runs; an a
 for something with no matching action says so instead of inventing one, and a call naming
 an action that does not exist is refused by the framework rather than by the prompt; and
 "who is my team" is answerable from the Operator Profile without the operator being asked.
+
+
+### REQ-SB-96: Know What Is Actually Deployed Into the Hermes Install, and Deploy From the Framework
+
+Raised 2026-10-17 by the operator: "I need to know What is Deployed to Hermes and What is
+not". Raised after a day in which three separate stale-copy incidents were found and fixed
+by hand.
+
+**Finding 1 - the framework records deployment as a claim, and never checks it.** Each
+`Skill.json` carries a `deployed_to:` list of profile names. It is written when the catalog
+is edited and verified against nothing. Measured on this install, 2026-10-16: the list for
+`summarize-and-tag-threads` named 41 profiles while every deployed `SKILL.md` was the 7
+September build and the repository's was 0.9.0 -- a rewrite that changed the Skill from one
+script into a nine-script loop. The list was accurate about *where* and silent about *what*.
+
+**Finding 2 - the copy that matters most is not in the list at all.** Besides
+`<HERMES_HOME>/profiles/<profile>/skills/<tool>/<slug>/`, the install keeps its own
+`<HERMES_HOME>/skills/<tool>/<slug>/`, and a cron job that binds no profile resolves the
+Skill from there. A deployment sweep over the 40 profile copies leaves exactly the copy the
+scheduled job runs on the old version. That is what happened: the 2026-10-16 14:30 run of
+`summarize-and-tag-threads` died with `can't open file ...\scripts\apply_thread_review.py`
+and the job still recorded `last_status: ok`.
+
+**Finding 3 - divergence is invisible until something fails.** `create_companies_partners.py`
+existed in three different versions at once -- the repository's, the install's deployed
+copy, and a third frozen copy under `hermes/scripts/` that the cron wrapper actually ran,
+hardcoding a path that had moved. It failed every night for 41 days, reported as an ordinary
+job error nobody was reading.
+
+**Finding 4 - the framework cannot deploy at all.** Every deployment this install has had
+was performed by a human or an agent copying files with a script. There is no endpoint, no
+screen and no record. The framework's Hermes surface
+(`hermes_router.py`, `hermes_agents_router.py`, `skills_router.py`) is **entirely
+read-only**: status, agents, skills, cron jobs, sessions.
+
+**What is wanted.**
+
+- A **drift view**: for every Skill, Agent, Template, Index and (later) Action and Workflow,
+  what the framework holds against what each profile and the install's own tree actually
+  has -- version, content hash, modified time -- with the differences called out rather
+  than listed.
+- **Deploy from the framework**, to one profile or all, doing what the hand-written scripts
+  did: write every target including the install's own `skills/` tree, keep a timestamped
+  backup of what was replaced, and report what changed.
+- **Honest absence**: a Skill the framework has never deployed says so, rather than
+  appearing current because nobody has looked.
+
+**Worth knowing before choosing.** This is the first time the framework would *write* into
+the Hermes install; everything it does there today is read-only. That boundary is worth
+crossing deliberately, with an ADR, not by growing a Deploy button. It also needs a decision
+on which side is the source of truth when they differ -- the framework's catalog, or the
+install -- because "deploy" and "adopt" are both reasonable answers and only one can be the
+default.
+
+**Acceptance.** A screen shows, per artifact, whether the install matches the framework and
+where it does not; deploying from that screen updates every real target including the
+install's own `skills/` tree; a run afterwards reports no drift; and the stale-copy class of
+failure is visible before a job fails rather than after.
+
+
+### REQ-SB-97: Edit an Action, and Have the Agent Actually Able to Perform It
+
+Raised 2026-10-17 by the operator: "I don't know how I can Edit an Action And Make sure its
+Deployed in Hermes Hermes Understand that It can Send an EMail for Internals (Example)".
+
+**Finding 1 - the entity exists and the surfaces do not.** `REQ-SB-95-US-02` built the
+Action entity, its Manager, its data access and save-time implementation resolution
+(`T01`, `T02`, `T04`, `T07`, Done 2026-10-16). The CRUD API (`T03`) and the catalogue and
+editor screen (`T06`) are still outstanding in `SPRINT-087`, so today an Action can only be
+created by writing `Action.json` by hand.
+
+**Finding 2 - a saved Action is not a capability.** An Action whose implementation is a
+Skill means something to a Hermes agent only when that Skill is deployed into that agent's
+own profile. Nothing checks that. An Action can resolve at save time against the
+framework's catalog and still be impossible for the agent asked to perform it -- which is
+`REQ-SB-96` seen from the other end.
+
+**Finding 3 - the example chosen is a policy question, not only plumbing.** "Send an email
+for internals" requires a mail-sending capability this install has deliberately refused:
+the Action Center plugin's own README records that reminders are unbuilt because sending
+needs `Mail.Send` and "every pipeline on this install is deliberately read-only against the
+mailbox. That is an explicit operator decision, not a feature to add quietly." Granting an
+Action that power is the operator reversing that decision knowingly, for a named set of
+recipients.
+
+**What is wanted.**
+
+- Finish the Action surfaces: list, create, edit, delete, and see why a broken Action is
+  broken.
+- On save, say whether the agents that may call it can actually perform it -- the Skill
+  deployed, the tool enabled -- and not merely that the implementation resolves.
+- A **deploy state per Action**, so "is this live for that agent" is answerable on screen.
+- For an Action that sends mail: an explicit capability the operator grants, scoped to
+  internal recipients, recorded where the read-only decision is recorded.
+
+**Acceptance.** An Action can be created and edited from the UI; its screen states which
+agents can perform it and which cannot and why; and an Action the operator has granted mail
+to can be performed by a named agent against an internal address, with the grant visible.
+
+
+### REQ-SB-98: Author a Workflow in the UI, and Deploy It
+
+Raised 2026-10-17 by the operator: "I want a UI to Create workflows and Make Sure a Workflow
+is Deployed".
+
+**Finding 1 - the kind is specified and unbuilt.** `REQ-SB-95-US-04` makes Workflow the
+seventh artifact kind, with `ADR-034`'s decision that the framework runs the workflow.
+`SPRINT-089` is `Ready` and depends on `SPRINT-087` and `SPRINT-088`, neither finished.
+
+**Finding 2 - its deployment question is REQ-SB-96's.** A Workflow is a sequence of
+Actions; "deployed" means the same thing it means for an Action, one level up, and cannot be
+answered before the framework can see the install.
+
+**What is wanted.**
+
+- A Workflow editor: name it, order its steps, pick each step's Action, say what happens
+  when a step fails.
+- The same deploy state and the same honesty about it as an Action.
+- A Workflow whose steps include an Action no agent can perform is shown as broken at
+  authoring time, not at run time.
+
+**Acceptance.** A Workflow can be authored end to end in the UI, its screen says whether it
+is deployed and runnable, and a Workflow referencing an undeployable Action cannot be
+silently saved as ready.
+
+
+### REQ-SB-99: See a Hermes Profile As It Really Is — Soul, Skills, Config, Jobs
+
+Raised 2026-10-17 by the operator: "I need to see the Structure of Hermes Agents and Souls
+and Stuff in the framework So I can Debug".
+
+**Finding 1 - the framework reads souls and shows almost none of it.** `app/hermes/profiles.py`
+reads each profile's `SOUL.md` and exposes a **280-character excerpt**, used as a
+description. No surface shows a profile's real contents: the full soul, which skills it
+carries and at which versions, its `config.yaml`, its model and provider, its cron jobs, its
+toolsets.
+
+**Finding 2 - the Agents Map is a picture, not a debugger.** It is explicitly Second Brain's
+own presentation of Hermes' definitions, shaped for "a UI built for a different, richer,
+now-retired agent model" (`agents_map_adapter.py`). It answers what the agents are and how
+they relate, not what one agent is actually made of right now.
+
+**Finding 3 - this is the information every incident this week needed.** Which profile had
+which Skill version; whether a job bound a profile at all; what a profile's soul says about
+who it acts for. Each was answered by reading files on the machine by hand.
+
+**What is wanted.** A per-profile view: the full soul as written, every skill with its
+deployed version and whether it matches the framework, the config as it really is, the cron
+jobs bound to it, and the toolsets enabled. Read-only.
+
+**Acceptance.** For any agent in the install, its full soul, skills-with-versions, config
+and jobs are readable in the app, and the questions answered by hand this week are
+answerable on screen.
+
+
+### REQ-SB-100: Read a Hermes Session's Transcript, to See Why an Ask Went Wrong
+
+Raised 2026-10-17 by the operator: "We need to Ability to Debug The Hermes CHats So I can Fix
+When an Ask Gets Confused".
+
+**Finding 1 - the transcripts exist and nothing surfaces them.** Hermes writes every run to
+`<HERMES_HOME>/sessions/request_dump_*.json`, holding the system prompt, the model, the
+injected skill text and every turn. On 2026-10-16 that file is how the
+`summarize-and-tag-threads` failure was found: the agent had been told to call
+`...\scripts\apply_thread_review.py`, a path that does not exist in a deployed Skill, and
+the job recorded `ok` regardless.
+
+**Finding 2 - the app lists sessions and shows none of their content.** Agent Activity reads
+`/hermes/sessions` and renders metadata -- when, which agent, how long. Cron run detail is
+exposed for a job's runs (`/hermes/cron/jobs/{id}/runs/{id}/detail`) but not for an
+interactive chat, and neither shows the prompt the agent was actually given.
+
+**Finding 3 - "the ask got confused" is usually a prompt problem, and the prompt is the one
+thing invisible.** A scheduled job's prompt is stored in Hermes' own job record and can
+disagree with the Skill it names: the same 2026-10-16 job prompt still instructed the old
+one-script flow after the Skill had been replaced, so a correct Skill was driven the wrong
+way. Nothing in the app showed that.
+
+**What is wanted.** Open a session from Agent Activity and read it: the system prompt, the
+skill text injected, each turn, each tool call with its arguments and its real output, and
+the final answer. Enough to see where an instruction came from and which step misread it.
+
+**Worth knowing before choosing.** These dumps contain whatever the agent read -- real mail,
+real names. They are already on disk, but putting them on a screen makes them easier to
+export and share by accident, which is worth a deliberate decision rather than a default.
+
+**Acceptance.** A session in Agent Activity opens into its own transcript showing the system
+prompt, every turn and every tool call with its output; and the 2026-10-16
+`apply_thread_review.py` failure would have been diagnosable from that screen without
+reading a file on the machine.
