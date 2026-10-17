@@ -203,12 +203,21 @@ export default ui;
 
   **The shell already gives every screen a one-step back arrow**, for free and
   without the plugin doing anything (`BackControl`, commit `97fa12a`; the
-  boundary between the two is the table in `ADR-043`). So do not add a trail to a screen that is one
-  click from your landing page — the arrow is enough. Add one where "back one
-  step" cannot answer "back to what?": a screen reached from another area of the
-  app, or one whose address someone may refresh or send, since the arrow's
-  memory is per-tab and empties on reload while a trail's origin lives in the
-  URL.
+  boundary between the two is the table in `ADR-043`). So the test for a trail
+  is one question: **can "back one step" name where it goes?** When it can, the
+  arrow is enough and a trail is noise.
+
+  It cannot when the screen carries its own address — anything with a
+  `?report=`/`?customer=` to refresh or send — because the arrow's memory is
+  per-tab and empty on reload, while a trail's origin lives in the URL. Nor when
+  the screen is reachable from more than one place, or from another top-level
+  area (a Settings page under `/settings`). Those get a trail. A screen that is
+  only ever opened one way and holds no addressable state of its own does not
+  need one.
+
+  Click distance is NOT the test, in case the earlier wording of this rule
+  suggested otherwise: a report one click from a plugin's landing page still
+  earns a trail, because its URL names a customer the back arrow cannot.
 - **Charts are a host library** (v8, `ADR-039`): `echarts` and
   `echarts-for-react`, subpaths included, so import `echarts/core` plus the
   chart types you draw rather than the whole library —
