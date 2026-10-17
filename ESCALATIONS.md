@@ -448,3 +448,62 @@ meaning at the call.
 **Status:** Open
 
 ---
+
+## ESC-072: publication rewrites every agent's real SOUL.md, and the backend suite has no Hermes sandbox — the `REQ-SB-95-US-03-T01` trigger is built but not wired — 2026-10-18
+
+**Category:** unanticipated-file
+
+**Trigger:** `REQ-SB-95-US-03-T01` requires `ActionManager.create()/update()/delete()`
+to republish the catalogue into every affected agent's context (`ADR-033`, the
+`SkillManager.publish_section_access_map()` precedent). Publication writes a real
+`SOUL.md` through Hermes for every agent whose block changes — and `["*"]` means
+every agent on the install.
+
+Nothing in `src/backend/tests/` sandboxes Hermes. The four existing Action test
+files isolate the Action *store* and nothing else (`test_actions_api.py`'s own
+docstring: "the Action store, so no test writes into this install's real
+`<DATA_PATH>/data/Actions/`"), while the agent roster they publish to is the live
+one — 41 real profiles on the machine this was built on.
+
+Measured, not estimated. With the three write paths wired and a pytest plugin
+intercepting the writes, `tests/test_actions_api.py`, `test_action_resolution.py`,
+`test_action_artifact_kind.py` and `test_plugin_actions.py` attempted **123 real
+`SOUL.md` writes across all 41 profiles**, plus 40 `Agent.json` writes, and took
+**5m36s instead of ~2s**. Every one of those blocks would have named this install's
+agents after fabricated test Actions (`capture-the-thread`, `refresh-the-index`),
+and nothing would ever have removed them: the fake catalogue is gone when the run
+ends, so no later republication can correct them. `pytest` is run constantly here
+by several concurrent sessions.
+
+**Resolution:** Not improvised, and the damage was never done — the blast radius was
+measured behind an interceptor before the suite was ever run for real. Isolating
+those four test files (or adding a suite-wide `tests/conftest.py` Hermes sandbox) is
+outside this task's `## Files to Modify`, so:
+
+- the publication block, the per-agent `allowed_callers` filtering, the idempotent
+  replace-own-block behaviour and the roster-wide `publish_action_catalogue()` pass
+  are **built, tested and committed** (`4af306a`) — `REQ-SB-95-US-03-AC-01` verified;
+- the three call sites in `ActionManager` are **deliberately left unwired**, with the
+  reason recorded in the function's own docstring, so the suite stays safe for every
+  session sharing this checkout;
+- `REQ-SB-95-US-03-T01` is therefore `Blocked`, not `Done`: `AC-08`'s "republished by
+  `ActionManager` on every catalogue change" half is unverified.
+
+This is also a real design signal for whoever answers it: those 123 writes took 5m36s
+(~2.7s each), because `AgentManager.update()` does a full registry reload per agent.
+Saving one `["*"]` Action in the UI would, as specified, cost ~110s and rewrite 41
+profiles. A cheaper publication write may be worth deciding at the same time.
+
+**What is needed:** a human decides (a) how the backend suite sandboxes Hermes writes
+— a `tests/conftest.py` autouse fixture pointing `hermes_home_path` at `tmp_path`
+would cover every present and future test, versus per-file agent isolation in the four
+Action test files — and (b) whether publication keeps going through
+`AgentManager.update()` or gets a narrower SOUL-only write. Then mint the follow-up
+task that wires the three call sites and adds the trigger test (the spy test is
+written and was removed from the committed file; it asserts one call each on create,
+update and a real delete, and none on a no-op delete).
+
+**Resolving artefact:** — (Open)
+**Status:** Open
+
+---

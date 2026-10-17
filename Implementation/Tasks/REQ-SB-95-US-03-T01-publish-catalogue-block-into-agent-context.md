@@ -4,13 +4,13 @@ title: Publish the Action catalogue as a third auto-generated marker block in SO
 parent_story: REQ-SB-95-US-03
 requirement_id: REQ-SB-95
 type: backend
-status: Ready
-gate: clear
-gate_reason: ""
+status: Blocked
+gate: flagged
+gate_reason: "ESC-072 (2026-10-18) -- AC-01 verified and committed (4af306a); AC-08's \"republished by ActionManager on every catalogue change\" half cannot be wired until the backend suite sandboxes Hermes writes: measured, the four existing Action test files would make 123 real SOUL.md writes across all 41 live profiles. Isolating them is outside this task's Files to Modify."
 phase: P2
 depends_on: [REQ-SB-95-US-02-T01]
 created: 2026-10-16
-updated: 2026-10-16
+updated: 2026-10-18
 ---
 
 # REQ-SB-95-US-03-T01 — Catalogue Publication Into Agent Context
@@ -129,12 +129,15 @@ exercising SOUL text.
 
 ## Acceptance Criteria
 
-- [ ] Third marker-delimited auto-generated block, same shape as the existing two
-- [ ] Per-agent filtering by `allowed_callers`; absent block when nothing is callable
-- [ ] Republished by `ActionManager` on every catalogue change, idempotently
-- [ ] No second JSON file; `section_access.json` untouched
-- [ ] `MEMORY.md` updated if this task produced a new decision / pattern / constraint
-- [ ] `CHANGELOG.md` entry appended
+- [x] Third marker-delimited auto-generated block, same shape as the existing two
+- [x] Per-agent filtering by `allowed_callers`; absent block when nothing is callable
+- [ ] Republished by `ActionManager` on every catalogue change, idempotently —
+      **idempotently: yes; by `ActionManager`: BLOCKED** (`ESC-072`). The trigger
+      seam exists and the roster-wide pass is tested; the three call sites are
+      unwired.
+- [x] No second JSON file; `section_access.json` untouched
+- [x] `MEMORY.md` updated if this task produced a new decision / pattern / constraint
+- [x] `CHANGELOG.md` entry appended
 
 ---
 
@@ -158,4 +161,74 @@ editing.
 
 ## Implementation Log
 
-_(Filled in by the coder.)_
+**Coder, 2026-10-18 — `Blocked`. Commit `4af306a`.**
+
+### Verification
+
+Baseline measured before the first edit: **476 passed** (`pytest -q`,
+`src/backend`), 0 failed. After: **481 passed**, 0 failed — the five new tests in
+`tests/test_action_catalogue_publication.py` and nothing else moved. No frontend
+file was touched, so no `tsc` pass was needed.
+
+| AC-ID | Step | Observed |
+|---|---|---|
+| `REQ-SB-95-US-03-AC-01` | Automated test 1 — three Actions, two permitting agent `A` (one by id, one by `["*"]`) | **Pass.** `customer-expert`'s block lists `refresh-the-index` and `report-unmet-request` with their descriptions, `scope (string, required) -- which folder`, `force (boolean, optional)`, and the one way to call them (`POST /actions/<action_id>/call` naming `caller_agent_id`). `archive-the-mailbox`, permitted only to `note-taker`, appears nowhere in it. |
+| `REQ-SB-95-US-03-AC-01` | Automated test 2 — an agent permitted to call nothing | **Pass.** Neither marker appears, and that agent's SOUL text is byte-identical to the hand-authored original. The agent that *may* call the same Action still gets a block. |
+| `REQ-SB-95-US-03-AC-08` | Automated test 3 — publish, then add / edit / delete and publish again | **Pass.** Exactly one marker pair throughout; the block tracks each change; the text outside the markers (core prompt, the hand-written `## Scope boundary`, `## Guardrails`, `## Scope`) is byte-identical before and after. A pass with nothing to change returns `[]` and writes nothing. |
+| `REQ-SB-95-US-03-AC-08` | Automated test 4 — `ActionManager.create()/update()/delete()` each trigger republication | **BLOCKED — not verified.** See below. The spy test was written and passed against the wired trigger; it is not in the committed file because the behaviour it asserts is deliberately not shipped. |
+| `REQ-SB-95-US-03-AC-08` | Automated test 5 — a deleted Action disappears from every agent that listed it | **Pass.** A `["*"]` Action is in both agents' blocks; after deletion neither names it, and the agent with another Action left keeps a real block rather than an empty shell. |
+| `REQ-SB-95-US-03-AC-01` | Manual step 1 — ask a real agent what it can do | **Not performed.** It requires the trigger (or a hand-run publication) to put a block into a real profile, which is exactly what `ESC-072` withholds. |
+| `REQ-SB-95-US-03-AC-08` | Manual step 2 — edit an Action, start a new conversation, see the change | **Not performed.** Same reason — this step *is* the blocked behaviour. |
+
+### Why this is `Blocked` — `ESC-072`
+
+Publication writes a real `SOUL.md` through Hermes for every agent whose block
+changes, and `allowed_callers: ["*"]` means every agent. The backend suite has no
+Hermes sandbox: the four existing Action test files isolate the Action *store* and
+nothing else, while the roster they publish to is the live install's.
+
+Measured behind a write-intercepting pytest plugin **before the suite was ever run
+with the trigger live**: `test_actions_api.py`, `test_action_resolution.py`,
+`test_action_artifact_kind.py` and `test_plugin_actions.py` attempted **123 real
+`SOUL.md` writes across all 41 profiles**, 40 `Agent.json` writes, in 5m36s instead
+of ~2s. Those blocks would have named real agents after fabricated test Actions and
+nothing would ever have removed them.
+
+Fixing it means editing those test files (or adding `tests/conftest.py`) — neither
+is in this task's `## Files to Modify`. So the three call sites were left unwired,
+with the reason recorded in `publish_action_catalogue()`'s own docstring, and this
+task is `Blocked` rather than `Done`.
+
+### Judgement calls inside scope (for human spot-check)
+
+1. **The block names `POST /actions/<action_id>/call`, not the shipped runner
+   Skill.** The task requires "the one way to call it"; `ADR-033` fixes the route
+   (`T02` builds it) and the runner Skill (`T05` ships it). Naming a Skill that does
+   not exist yet would have been a lie, so the block names the route and the caller
+   field, and leaves the base URL out — a port in prompt text is instance detail.
+2. **No base URL, no confirmation flag, no honest-refusal instruction in the block.**
+   Only what the task names (id, description, inputs + required flags, the one way to
+   call). `REQ-SB-33-US-01`'s global honest-uncertainty instruction stays where it is;
+   the block states the catalogue is complete, which is a fact, not a second guardrail.
+3. **"Every affected agent" is computed by offering every agent the regenerated block
+   and skipping the ones whose text does not move.** An edit to `allowed_callers`
+   affects the agent it was removed from as much as the one it was added to, and
+   `["*"]` affects all — a narrower "affected" set would silently miss removals.
+4. **A per-agent failure is logged and the pass continues**, and the module-level
+   trigger swallows a whole-pass failure. `ADR-033` says the gate reads the live
+   catalogue and never this text, so a stale block can mislead one agent but can
+   never let a call through — whereas failing the catalogue save over it would lose a
+   write the operator already made.
+5. **`is_callable_by()` lives on `ActionManager`, not in `AgentManager`.**
+   `allowed_callers` is Action data; `T02`'s gate asks the same question of one call
+   and can reuse it, so the two cannot drift about what `["*"]` means.
+6. **`import_action()` does not trigger publication.** The task names
+   create/update/delete only; the import provisioning path is left alone rather than
+   widened on my own authority.
+
+### Performance signal for whoever resolves `ESC-072`
+
+The 123 writes took ~2.7s each because publication goes through
+`AgentManager.update()`, which does a full registry reload per agent. As specified,
+saving one `["*"]` Action in the UI would cost ~110s and rewrite 41 profiles. Worth
+deciding alongside the sandbox question.

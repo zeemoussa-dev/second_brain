@@ -83,6 +83,16 @@ Build order inside the sprint, read from the task files' own `depends_on`:
 
 ## Dependencies / External Blockers
 
+- **BLOCKED IN FLIGHT, 2026-10-18 — `T01` (`ESC-072`).** The SOUL.md catalogue
+  block, its per-agent `allowed_callers` filtering and the roster-wide
+  republication pass are built, tested and committed (`4af306a`); `AC-01` is
+  verified. The `ActionManager.create/update/delete` trigger is **unwired**: the
+  backend suite has no Hermes sandbox, and with it wired the four existing Action
+  test files attempted 123 real `SOUL.md` writes across all 41 live profiles
+  (measured behind an interceptor, never run for real). Isolating those files is
+  outside `T01`'s `## Files to Modify`. A human decision is parked in
+  `REVIEW-QUEUE.md`. **The sprint is not stalled:** `T02` is buildable now,
+  `T03`/`T04` follow it, and only `T05` converges on `T01`.
 - **Depends on sprints:** `SPRINT-087` (`REQ-SB-95-US-02` — the Action entity,
   its Manager and its CRUD API). `/implement-sprint` refuses this sprint until
   `SPRINT-087` is `Done` (hard rule 9).
