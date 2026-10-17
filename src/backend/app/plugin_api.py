@@ -70,6 +70,16 @@ the query string, so Back works and the address can be sent to someone) and
 survived F5, each screen free to solve it differently or not at all (`ADR-041`).
 The framework's own screens use the same four hooks.
 
+v11 gives screens a WAY BACK: `pluginHost/breadcrumbs` exports a `Breadcrumbs`
+component, `pluginSettingsLink` (a link into the plugin's own Settings page that
+remembers where it was opened from) and `usePluginReturn` (where Save and Cancel
+should return to, validated to the plugin's own paths). The host renders the
+trail on every plugin Settings page itself. The reason it is the host's job:
+Settings lives under `/settings`, a top-level area the plugin does not own, so
+opening a customer's editor from a report left the operator there with nothing
+leading back -- the sidebar cannot help, because Settings is not where they
+were. One plugin had already hand-rolled all three (`ADR-042`).
+
 A new capability is added here when a plugin
 needs one. The host loads only
 plugins built for its exact `FRAMEWORK_API`, so a plugin that relies on a
@@ -94,7 +104,14 @@ from app.data_access import seed_data, vault_writer
 from app.obsidian import sections
 from app.obsidian.notes import long_path
 
-FRAMEWORK_API = 10
+# Bumping this is LIVE THE MOMENT IT IS SAVED, before any commit: the dev server
+# runs with --reload, picks the working-tree change up, and every installed
+# plugin -- still declaring the old number -- is refused at load. On 2026-10-17
+# that took all four plugins dark mid-session and killed a 64-customer sync job
+# that one of them was running. So bump it only when ready to republish and
+# reinstall every installed plugin in the same sitting, and expect each install
+# to report `restart_required`.
+FRAMEWORK_API = 11
 
 _logger = logging.getLogger(__name__)
 
