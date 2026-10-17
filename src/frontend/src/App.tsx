@@ -26,6 +26,7 @@ import { NoteDetailPage } from './pages/NoteDetailPage';
 import { MeetingCockpitPage } from './pages/MeetingCockpitPage';
 import { InboxCockpitPage } from './pages/InboxCockpitPage';
 import { pluginRoutes, pluginSettingsPages } from './pluginHost/registry';
+import { PluginSettingsTrail } from './pluginHost/breadcrumbs';
 
 function App() {
   return (
@@ -60,8 +61,14 @@ function App() {
           {pluginRoutes.map((route) => (
             <Route key={route.path} path={route.path} element={<route.component />} />
           ))}
+          {/* A plugin's Settings page lives under the host's /settings, an area
+              the plugin does not own, so the host renders its trail (API 11). */}
           {pluginSettingsPages.map((page) => (
-            <Route key={page.path} path={page.path} element={<page.component />} />
+            <Route
+              key={page.path}
+              path={page.path}
+              element={<><PluginSettingsTrail page={page} /><page.component /></>}
+            />
           ))}
         </Route>
         <Route path="/setup" element={<SetupPage />} />
