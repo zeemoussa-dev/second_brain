@@ -109,7 +109,7 @@ that file to `T02`'s `## Files to Modify` (or mint a `T02a`) rather than letting
 a coder reach outside its scope by precedent.
 
 **Resolving artefact:** `REQ-SB-95-US-02-T02` (2026-10-16)
-**Status:** Open
+**Status:** Resolved
 
 ---
 
