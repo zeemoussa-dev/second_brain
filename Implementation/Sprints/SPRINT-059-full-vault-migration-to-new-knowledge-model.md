@@ -1,7 +1,7 @@
 ---
 id: SPRINT-059
 title: Full Vault Migration to the New Knowledge Model
-status: Ready                      # Draft | Ready | In Progress | Blocked | Done
+status: Cancelled
 gate: clear                        # clear | flagged — flagged ⇒ parked in REVIEW-QUEUE.md
 gate_reason: ""                    # the MUST-FLAG trigger that fired, when gate: flagged
 phase: P1                          # single phase only — a sprint never mixes phases
@@ -11,6 +11,9 @@ created: 2026-08-18
 started: ""                        # YYYY-MM-DD when status → In Progress
 completed: ""                      # YYYY-MM-DD when status → Done
 ---
+
+> **Cancelled 2026-10-17 — planned before the Hermes pivot (2026-08-20) and never built. Hermes now owns capture, scheduling and agent execution, and the Hub-routed agent model this assumed was retired. Operator decision: "Anything Before Hermes is Cancelled". Previous status: Ready.**
+
 
 <!-- STATUS LIFECYCLE — see SPRINT-030 for the full comment block. -->
 

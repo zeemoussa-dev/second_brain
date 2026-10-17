@@ -4,13 +4,16 @@ title: My Day's Emails list filtered to Compass-judged important email
 requirement_ids: [REQ-SB-30]
 requirement_section: "REQ-SB-30: Email Importance Filtering via Compass Reasoning"
 phase: P1
-status: Draft
+status: Cancelled
 gate: clear
 gate_reason: "Resolved 2026-08-12 — operator (via orchestrator) decided the retrofit scope: backfill only the ~22 already-captured emails currently inside the 7-day window (not all 181 real Email notes — no reason to classify importance for emails already outside the window's relevance), and fail-open (show, never silently hide) for any note where the Compass importance call errors — consistent with this project's standing honest-not-silent posture (ADR-011 point 3 / ADR-014 point 7's same pattern one layer over). Ready for /plan-tasks."
 sprint: ""
 created: 2026-08-12
 updated: 2026-08-12
 ---
+
+> **Cancelled 2026-10-17 — planned before the Hermes pivot (2026-08-20) and never built. Hermes now owns capture, scheduling and agent execution, and the Hub-routed agent model this assumed was retired. Operator decision: "Anything Before Hermes is Cancelled". Previous status: Draft.**
+
 
 # REQ-SB-30-US-01 — My Day's Emails list filtered to Compass-judged important email
 

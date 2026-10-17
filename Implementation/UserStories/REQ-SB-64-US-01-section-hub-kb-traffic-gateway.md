@@ -4,13 +4,16 @@ title: Section Hub as KB Traffic Gateway — a Section's own Hub mediates its pi
 requirement_ids: [REQ-SB-64]
 requirement_section: "REQ-SB-64: Section Hub as KB Traffic Gateway — Every Pipeline/Agent Write Routes Through Its Section's Manager"
 phase: P1
-status: Draft
+status: Cancelled
 gate: flagged
 gate_reason: "trigger-8 (genuinely unclear / multiple equally-valid scope interpretations) AND trigger-1 (material scope-narrowing assumption made to keep this story buildable) — two real open questions the PRD's own text explicitly leaves for /spec: (1) whether this retrofits REQ-SB-55's already-shipped Consult-Librarian call site or only applies going forward, and (2) the exact mechanical shape of Hub-mediation (a plain synchronous call vs. a decorator/interceptor). This pass proposes a leaning candidate for both, with reasoning, but does not resolve either — no operator confirmation was available during this /spec pass (contrast REQ-SB-63-US-01, where the retrofit question WAS resolved live, in-session, by the operator). This pass also narrows the PRD's own broad 'every agent/pipeline KB read+write' framing down to the one concrete, operator-named write path (Email Capture Pipeline's existing Librarian-consult call) — a real, disclosed scope-narrowing decision, not something the PRD itself stated this precisely. See ## Notes. A REVIEW-QUEUE.md entry has been added."
 sprint: ""
 created: 2026-08-16
 updated: 2026-08-16
 ---
+
+> **Cancelled 2026-10-17 — planned before the Hermes pivot (2026-08-20) and never built. Hermes now owns capture, scheduling and agent execution, and the Hub-routed agent model this assumed was retired. Operator decision: "Anything Before Hermes is Cancelled". Previous status: Draft.**
+
 
 # REQ-SB-64-US-01 — Section Hub as KB Traffic Gateway — a Section's own Hub mediates its pipelines'/agents' KB-bound placement requests before they reach REQ-SB-63's Librarian
 

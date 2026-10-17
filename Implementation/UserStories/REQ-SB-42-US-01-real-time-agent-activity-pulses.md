@@ -4,13 +4,16 @@ title: Real-time per-agent activity pulses and Hub-routed traveling pulses on th
 requirement_ids: [REQ-SB-42]
 requirement_section: "REQ-SB-42: Real-Time Agent Activity Pulses (Agents Map)"
 phase: P1
-status: Ready
+status: Cancelled
 gate: clear
 gate_reason: "operator reviewed and approved ADR-035 as-is 2026-08-14 — trigger-3 resolved. Ready for /plan-sprints."
 sprint: SPRINT-039
 created: 2026-08-13
 updated: 2026-08-14
 ---
+
+> **Cancelled 2026-10-17 — planned before the Hermes pivot (2026-08-20) and never built. Hermes now owns capture, scheduling and agent execution, and the Hub-routed agent model this assumed was retired. Operator decision: "Anything Before Hermes is Cancelled". Previous status: Ready.**
+
 
 # REQ-SB-42-US-01 — Real-time per-agent activity pulses and Hub-routed traveling pulses on the Agents Map overview and Section drill-down, pushed over a real-time channel
 

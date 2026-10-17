@@ -65,7 +65,13 @@ requirement row it covers.
 
 ## Status vs. Gate — Two Distinct Concepts
 
-- **`status:`** = artefact lifecycle: `Draft | Ready | In Progress | Blocked | Done`
+- **`status:`** = artefact lifecycle: `Draft | Ready | In Progress | Blocked | Done | Cancelled`
+  - **`Cancelled`** is terminal and means *decided against*, not *finished*: work that was
+    planned and will not be built. It exists because a command acts on `status:` -- a
+    cancelled sprint left at `Ready` is one `/implement-sprint` away from being built by a
+    command doing exactly what it was told, and a note in the body would not stop it.
+    Never delete the artefact: it keeps its previous status and the reason in its own body
+    (first used 2026-10-17 for the pre-Hermes backlog).
 - **`gate:`** = whether a human must look before the pipeline proceeds: `clear | flagged`
   plus `gate_reason:` naming the trigger.
 

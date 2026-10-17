@@ -4,13 +4,16 @@ title: Full Vault Migration to the New Knowledge Model — wipe Work/Emails/, re
 requirement_ids: [REQ-SB-59]
 requirement_section: "REQ-SB-59: Full Vault Migration to the New Knowledge Model"
 phase: P1
-status: Ready
+status: Cancelled
 gate: clear
 gate_reason: "Human reviewed and approved directly in chat, 2026-08-18 — ADR-047's archive-not-delete design (migration_backup/<run-timestamp>/, built on the existing move_note_and_attachments primitive, never a hard delete), the T01->T02 dependency, T03's independent scope (including its ESC-046 resolution), and the decomposer's 5 locked ACs / 3 tasks were all summarized to the operator, who chose 'Proceed now' over reading the raw ADR or requesting a dry-run count first. Flag cleared; eligible for /plan-sprints. Prior flagged history (trigger-3, ADR-047 created) preserved in git history of this file."
 sprint: "SPRINT-059"
 created: 2026-08-16
 updated: 2026-08-18
 ---
+
+> **Cancelled 2026-10-17 — planned before the Hermes pivot (2026-08-20) and never built. Hermes now owns capture, scheduling and agent execution, and the Hub-routed agent model this assumed was retired. Operator decision: "Anything Before Hermes is Cancelled". Previous status: Ready.**
+
 
 # REQ-SB-59-US-01 — Full Vault Migration to the New Knowledge Model — wipe Work/Emails/, re-run capture over Outlook history through the new pipelines
 

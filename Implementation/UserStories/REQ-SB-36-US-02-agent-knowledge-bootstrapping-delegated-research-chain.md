@@ -4,13 +4,16 @@ title: Agent knowledge bootstrapping via delegated research — end-to-end Hub-r
 requirement_ids: [REQ-SB-36]
 requirement_section: "REQ-SB-36: Agent Knowledge Bootstrapping via Delegated Research"
 phase: P1
-status: In Progress
+status: Cancelled
 gate: flagged
 gate_reason: "Both of this story's own PRE-EXISTING flagged triggers (ADR-023 review; the decomposer's own granular-task-scheduling judgement call) are already Approved/Confirmed per REVIEW-QUEUE.md (2026-08-12 entries) — not reopened here. gate stays flagged solely for NEW coder-level trigger-8 findings from this SPRINT-024 build pass: two scope-internal reconciliations logged in T02/T03's own Implementation Logs (an honest-failure try/except; agents_router.py's dispatch generalized via a new sibling async path). T01/T02/T03 are Done and live-verified; T04 (AC-03) remains Draft/blocked on REQ-SB-29-US-01's own decomposition (ESC-018, still Open) — story stays In Progress, not Done, until T04 can be built."
 sprint: SPRINT-024
 created: 2026-08-12
 updated: 2026-08-13
 ---
+
+> **Cancelled 2026-10-17 — planned before the Hermes pivot (2026-08-20) and never built. Hermes now owns capture, scheduling and agent execution, and the Hub-routed agent model this assumed was retired. Operator decision: "Anything Before Hermes is Cancelled". Previous status: In Progress.**
+
 
 # REQ-SB-36-US-02 — Agent knowledge bootstrapping via delegated research — end-to-end Hub-routed chain (Research Expert to Vault Filing Expert), piloted by the Compass Expert
 

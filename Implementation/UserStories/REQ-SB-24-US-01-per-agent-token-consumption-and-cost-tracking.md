@@ -4,13 +4,16 @@ title: Provider pricing fields, per-agent token consumption recording, and accum
 requirement_ids: [REQ-SB-24]
 requirement_section: "REQ-SB-24: Per-Agent Token Consumption & Cost Tracking"
 phase: P1
-status: Draft
+status: Cancelled
 gate: flagged
 gate_reason: "feasibility risk resolved 2026-08-11 — real live Compass call confirmed a usage field IS present (prompt_tokens/completion_tokens/total_tokens, standard OpenAI shape). Remaining triggers: net-new-design-needed (no pricing fields or cost display anywhere in html-prototype/) and REQ-SB-19 not yet Done — see Notes"
 sprint: ""
 created: 2026-08-11
 updated: 2026-08-11
 ---
+
+> **Cancelled 2026-10-17 — planned before the Hermes pivot (2026-08-20) and never built. Hermes now owns capture, scheduling and agent execution, and the Hub-routed agent model this assumed was retired. Operator decision: "Anything Before Hermes is Cancelled". Previous status: Draft.**
+
 
 # REQ-SB-24-US-01 — Provider pricing fields, per-agent token consumption recording, and accumulated cost display
 

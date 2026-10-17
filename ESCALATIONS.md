@@ -295,3 +295,42 @@ a new story (`REQ-SB-97-US-02`); it is not an edit to `REQ-SB-97-US-01`.
 **Resolving artefact:** `MEMORY.md` amendment (`4a427c9`) + operator decision, 2026-10-17
 
 **Status:** Resolved
+
+## ESC-068: Everything planned before the Hermes pivot is cancelled — 2026-10-17
+
+**Category:** out-of-scope
+
+**Trigger:** Asked whether all sprint tasks were done, the real answer was 46 not
+Done — and two of the open sprints turned out to predate the Hermes pivot by two
+months. The operator's decision: "Anything Before Hermes is Cancelled".
+
+**What was cancelled.** Everything created before 2026-08-20 that never reached
+`Done`: **2 sprints** (`SPRINT-039` real-time agent activity pulses, `SPRINT-059`
+full vault migration), **7 stories** (`REQ-SB-23-US-01`, `REQ-SB-24-US-01`,
+`REQ-SB-30-US-01`, `REQ-SB-36-US-02`, `REQ-SB-42-US-01`, `REQ-SB-59-US-01`,
+`REQ-SB-64-US-01`) and **11 tasks**. Nothing `Done` was touched; each artefact
+keeps its previous status and the reason in its own body.
+
+**Why it is right rather than tidy.** All of it assumed the retired model: Hub-routed
+pipelines, the old agent model's pulses and per-agent token accounting, and capture
+run by the framework. `SPRINT-059`'s two survivors are the clearest case —
+`recapture_outlook_history()` re-runs Email/Meeting capture from
+`app/business/vault_migration.py`, which is Hermes' job now, and
+`regenerate_customer_notes()` targets the old OKF shape rather than today's hub
+notes.
+
+**`Cancelled` is a new terminal status**, added to `Implementation/Pipeline.md` and
+`CLAUDE.md` in the same change. Prose alone would not have held: commands act on
+`status:`, so a cancelled sprint left at `Ready` is one argument-less
+`/implement-sprint` away from being built by a command doing exactly what it was
+told.
+
+**Also found, not cancelled:** `SPRINT-024` is marked `Done` while
+`REQ-SB-36-US-02-T04` sat at `Draft` inside it — the sprint was closed over an
+unfinished task. That task is pre-Hermes and is cancelled here, which settles the
+inconsistency without rewriting a `Done` sprint's history.
+
+**Resolving artefact:** operator decision, 2026-10-17
+**Status:** Resolved
+
+---

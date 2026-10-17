@@ -271,7 +271,11 @@ The delivery hierarchy is: **Requirement → User Story → Sprint → Task**
   story. One regression-test AC per bug; closed when its fix story is `Done`.
 
 **Status vocabulary (unified across stories, tasks, and sprints):**
-`Draft | Ready | In Progress | Blocked | Done`
+`Draft | Ready | In Progress | Blocked | Done | Cancelled`
+
+`Cancelled` is terminal and means decided against rather than finished -- the artefact
+stays, carrying its previous status and the reason. Commands act on `status:`, so this is
+what actually keeps abandoned work from being picked up and built.
 
 **Gate vocabulary (separate from status):**
 `clear | flagged` — set by the agent; `flagged` means the artefact is parked in

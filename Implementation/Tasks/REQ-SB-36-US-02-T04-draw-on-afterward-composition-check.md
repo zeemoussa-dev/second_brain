@@ -4,7 +4,7 @@ title: "⚠️ BLOCKED — Scenario 3 (draw on afterward) composition/regression
 parent_story: REQ-SB-36-US-02
 requirement_id: REQ-SB-36
 type: backend
-status: Draft
+status: Cancelled
 gate: flagged
 gate_reason: "Individually flagged, mirroring ESC-011's own precedent exactly. Blocked on REQ-SB-29-US-01, which has not been decomposed at all (status: Draft, zero task files exist) — no real task id exists anywhere to depend on. Logged as ESCALATIONS.md -> ESC-018 (new). Do not start until REQ-SB-29-US-01 has shipped its own vault-scope-assignment/retrieval mechanism and a follow-up decomposer pass replaces this depends_on: [] with the real task id."
 phase: P1
@@ -12,6 +12,9 @@ depends_on: []
 created: 2026-08-12
 updated: 2026-08-12
 ---
+
+> **Cancelled 2026-10-17 — planned before the Hermes pivot (2026-08-20) and never built. Hermes now owns capture, scheduling and agent execution, and the Hub-routed agent model this assumed was retired. Operator decision: "Anything Before Hermes is Cancelled". Previous status: Draft.**
+
 
 # REQ-SB-36-US-02-T04 — ⚠️ BLOCKED — Scenario 3 composition/regression check
 

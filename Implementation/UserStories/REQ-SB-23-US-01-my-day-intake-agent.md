@@ -4,13 +4,16 @@ title: My Day Intake Agent (Conversational) — a real chat thread that asks fol
 requirement_ids: [REQ-SB-23]
 requirement_section: "REQ-SB-23: My Day Intake Agent (Conversational)"
 phase: P1
-status: Draft
+status: Cancelled
 gate: flagged
 gate_reason: "re-spec (ESC-009) — requirement revised 2026-08-11 from one-shot autonomous filing to a real conversational agent; net-new-design-needed (the already-designed one-shot 'Quick Capture' card does not cover the revised conversational requirement); blocked by REQ-SB-25 (Real Conversational Agent Chat) — REQ-SB-25-US-01 now exists as a Draft, flagged story (specced concurrently), not yet Ready/Done; unclear-requirement — destination note kinds and REQ-SB-21 working-mode interaction remain genuinely open, per the revised breadcrumb"
 sprint: ""
 created: 2026-08-11
 updated: 2026-08-11
 ---
+
+> **Cancelled 2026-10-17 — planned before the Hermes pivot (2026-08-20) and never built. Hermes now owns capture, scheduling and agent execution, and the Hub-routed agent model this assumed was retired. Operator decision: "Anything Before Hermes is Cancelled". Previous status: Draft.**
+
 
 # REQ-SB-23-US-01 — My Day Intake Agent (Conversational) — a real chat thread that asks follow-up questions, accepts mid-conversation refinement and organizational hints, then files a vault Note
 
