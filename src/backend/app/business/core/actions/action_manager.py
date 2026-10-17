@@ -23,6 +23,13 @@ Two rules this file deliberately does and does not own:
   operator, which is the thing ADR-032 exists to prevent. (The call
   gate re-checks as well -- REQ-SB-95-US-03 -- but that is a second
   line, not this one.)
+- **It owns the publication trigger, not the published text.**
+  `publish_action_catalogue()` below is that trigger (REQ-SB-95-US-03-T01,
+  ADR-033); the block itself is AgentManager's, beside the two
+  auto-generated ones it already owns. **It is deliberately NOT called
+  from create/update/delete yet** -- see that function's own docstring
+  for the measured reason and the escalation that has to be answered
+  first.
 - **It does not cache the read side.** resolution_report() recomputes
   every Action's status from those same live sources on every call:
   what an Action points at is undeployed, unmounted or unregistered by
@@ -148,6 +155,47 @@ def app_route_table() -> set[tuple[str, str]]:
     return table
 
 
+def publish_action_catalogue() -> list[str]:
+    """Pushes the catalogue into every agent's own context, and names
+    the agents whose published block really changed.
+
+    The one trigger seam -- the same shape `SkillManager` uses when it
+    calls `publish_section_access_map()` on every deploy and undeploy
+    (`ADR-033`).
+
+    **NOT yet called from create()/update()/delete(), and that is the
+    open half of REQ-SB-95-US-03-T01** (ESCALATIONS.md, 2026-10-18).
+    Publication rewrites the real SOUL.md of every agent the change
+    affects, and this suite has no Hermes sandbox: with the three write
+    paths wired, the four existing Action test files -- which isolate
+    the Action store and nothing else -- made 123 real SOUL.md writes
+    across all 41 profiles of the install they ran on (measured, not
+    estimated). Isolating them is outside this task's files, so the
+    wiring waits on that decision rather than shipping a suite that
+    corrupts the machine running it.
+
+    A publication that cannot run must not fail the save that triggers
+    it: the Action is already written, the gate validates against the
+    live catalogue and never against the published text, so a block
+    left stale here misleads an agent but can never let a call through.
+    Logged loudly rather than swallowed.
+
+    `AgentManager` is imported inside the function on purpose -- it
+    imports this module back to read the catalogue it publishes.
+    """
+    from app.business.core.agents.agent_manager import AgentManager
+
+    try:
+        return AgentManager().publish_action_catalogue()
+    except Exception:
+        _logger.warning(
+            "the Action catalogue changed but could not be republished into agent context; "
+            "every agent's block is now stale until the next catalogue change",
+            exc_info=True,
+        )
+        return []
+
+
 class _ResolutionSources:
     """The live sources, gathered ONCE per save or per report. Reading
     them per Action would re-list every Skill and re-walk the route
@@ -186,6 +234,17 @@ class _ResolutionSources:
 
 
 class ActionManager:
+    @staticmethod
+    def is_callable_by(action: Action, agent_id: str) -> bool:
+        """Whether one agent id may call one Action. Lives here because
+        `allowed_callers` is Action data: publication filters a whole
+        catalogue down to one agent with it, and the call gate asks the
+        same question of one call, so the two can never drift into
+        disagreeing about what `["*"]` means (`ADR-033`: the wildcard is
+        every agent, an empty list is nobody, and the id IS the Hermes
+        profile id)."""
+        return "*" in action.allowed_callers or agent_id in action.allowed_callers
+
     @staticmethod
     def _require_exactly_one_implementation(implementation: Mapping[str, Any] | None) -> str:
         """The stored `implementation` object is keyed BY kind, so "exactly
