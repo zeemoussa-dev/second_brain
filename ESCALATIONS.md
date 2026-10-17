@@ -378,4 +378,73 @@ not started, and already owns the screen that needs it), or mints a `T08` for it
 
 **Status:** Resolved
 
+## ESC-070: widening `ArtifactKind` breaks every exhaustive `Record` over it, and one of them belongs to no task — 2026-10-18
+
+**Category:** unanticipated-file
+
+**Trigger:** Building `REQ-SB-95-US-02-T06`. Its `## Files to Modify` authorises the
+`ArtifactKind` union gaining `'action'` ("the `ArtifactKind` type, if the union lives
+there") and names `SettingsArtifactsPage.tsx` as the other consumer. There is a
+third: `src/frontend/src/features/settings/ArtifactExportModal.tsx` declares its own
+`KIND_LABELS: Record<ArtifactKind, string>`, and a `Record` keyed by a union is
+exhaustive — the moment the union grew, that file failed `TS2741` and `tsc -b` with
+it. A broken `tsc -b` is not a local inconvenience in this repo: it blocks every
+plugin publish and install, which is the same failure a `CHANGELOG` entry already
+records ("the frontend compiles again, which had blocked every plugin publish and
+install").
+
+**Resolution:** The one-line `action: 'Action'` entry was already in the working tree
+when this task reached the commit — authored by a parallel session unblocking its own
+build, not by this task. It is committed together with the union that requires it
+(`b590b1a`), because committing either alone leaves a clean checkout broken in one
+direction or the other. The orchestrator confirmed this placement explicitly. No
+other change was made to that file.
+
+All five `Record<ArtifactKind, …>` / `ArtifactKind[]` sites were then audited rather
+than assumed: the export modal, and `SettingsArtifactsPage.tsx`'s `KIND_LABELS`,
+`KIND_ORDER`, `byKind<T>()` and `SelectionState`. The last three derive from
+`KIND_ORDER`, so adding the kind to `KIND_NAV` alone would have compiled and then
+silently dropped every Action from the page — the same shape as the 2026-09-06 Index
+regression that `byKind()`'s own comment exists to prevent.
+
+**What is needed:** nothing to unblock the build. Worth a human's note only as a
+decomposition lesson: a task that widens a shared union owns every exhaustive map
+over it, and a `## Files to Modify` written from the union's declaration site will
+miss them.
+
+**Resolving artefact:** commit `b590b1a`
+**Status:** Resolved
+
+## ESC-071: the backend's `UI_FEATURE_KEYS` is now one route stale — the Actions screen cannot be named as a `ui` implementation — 2026-10-18
+
+**Category:** out-of-scope
+
+**Trigger:** `REQ-SB-95-US-02-T06` adds a real front-end route, `/settings/actions`.
+A `ui` implementation resolves against `UI_FEATURE_KEYS` in
+`app/business/core/actions/action.py`, a tuple whose own comment states it is "the
+front end's own route paths, **verbatim** from `src/frontend/src/App.tsx`". It no
+longer is: saving an Action whose `ui` implementation names `/settings/actions` is
+refused with "ui feature key '/settings/actions' is not registered in this app's
+front end", for a screen that demonstrably exists.
+
+**Resolution:** Not improvised. `action.py` is in no task's `## Files to Modify`
+(`T01` owns it and is `Done`, and specs are append-only), and no locked AC in this
+story needs that key — `AC-01`/`AC-02` were verified against other, already-listed
+keys. The one-line addition was therefore deliberately not made.
+
+Worth deciding rather than patching: the deeper issue is that a hand-maintained
+mirror of another build's route table drifts by construction, and this is the first
+measured drift. `http` implementations already resolve against the **live** route
+table (`app_route_table()`), including plugin routes — the `ui` kind is the only one
+reading a frozen list.
+
+**What is needed:** a human either (a) mints a one-line task to add
+`"/settings/actions"` to `UI_FEATURE_KEYS`, or (b) folds the wider question — how
+the front end's registered feature keys stay true without a hand-edited tuple —
+into `REQ-SB-95-US-03`, which is the story that gives a `ui` implementation its
+meaning at the call.
+
+**Resolving artefact:** — (Open)
+**Status:** Open
+
 ---

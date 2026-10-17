@@ -1,15 +1,15 @@
 ---
 id: SPRINT-087
 title: Action as the sixth artifact kind — the catalogue, its CRUD API, plugin contributions and its screen
-status: In Progress                      # Draft | Ready | In Progress | Blocked | Done
-gate: clear                        # clear | flagged — flagged ⇒ parked in REVIEW-QUEUE.md
-gate_reason: ""                    # the MUST-FLAG trigger that fired, when gate: flagged
+status: Done                       # Draft | Ready | In Progress | Blocked | Done
+gate: flagged                      # clear | flagged — flagged ⇒ parked in REVIEW-QUEUE.md
+gate_reason: "sprint Done 2026-10-18 — the retrospective below is DRAFTED and awaits the human's harvest into Implementation/Learnings.md (the standing close-out gate). Carried with it: T06's own four judgement calls, and ESC-071 (open) — /settings/actions is not in the backend's UI_FEATURE_KEYS. The story's upstream ADR-033 flag was cleared by the operator on 2026-10-17."
 phase: P2                          # single phase only — a sprint never mixes phases
 depends_on_sprints: []             # SPRINT-NNN IDs that must be Done before this can start
 sizing_estimate: "~6 tasks, L"     # effort estimate (e.g. "~6 tasks, M"); checked vs actual in retro
 created: 2026-10-16
 started: 2026-10-16                        # YYYY-MM-DD when status → In Progress
-completed: ""                      # YYYY-MM-DD when status → Done
+completed: 2026-10-18              # YYYY-MM-DD when status → Done
 ---
 
 <!-- STATUS LIFECYCLE — who drives each transition:
@@ -82,7 +82,7 @@ bidirectional link, written at sprint creation. Order by implementation dependen
 
 | Story | Title | Phase | Status |
 |---|---|---|---|
-| [REQ-SB-95-US-02](../UserStories/REQ-SB-95-US-02-action-sixth-artifact-kind.md) | Action as the sixth artifact kind — one catalogue of what this app can actually do | P2 | In Progress (T01, T02, T04, T07 Done 2026-10-16; T03 Done 2026-10-17; T05 Done 2026-10-18; only T06 outstanding, gated on `ESC-069` — `app/api/actions_router.py` belongs to no task) |
+| [REQ-SB-95-US-02](../UserStories/REQ-SB-95-US-02-action-sixth-artifact-kind.md) | Action as the sixth artifact kind — one catalogue of what this app can actually do | P2 | Done 2026-10-18 (T01, T02, T04, T07 Done 2026-10-16; T03 Done 2026-10-17; T05 and T06 Done 2026-10-18. All seven locked ACs verified; `ESC-069` resolved by widening `T06`'s scope to `app/api/actions_router.py`) |
 
 Build order inside the sprint, read from the task files' own `depends_on`:
 `T01 → T02 → T03`, `T01 → T04`, `T02 → T05`, `(T03, T04, T05) → T06`.
@@ -155,14 +155,14 @@ nothing downstream of it.
 
 ## Definition of Done
 
-- [ ] Every story in scope has status `Done`
-- [ ] All story-level Definitions of Done satisfied
-- [ ] `BACKLOG.md` updated — every affected row reflects current status
-- [ ] `architecture.md` updated if the sprint changed an architectural fact
-- [ ] Any new ADRs recorded in `ADR.md` with status `Accepted`
-- [ ] `MEMORY.md` updated with any new decisions / patterns / constraints
-- [ ] `CHANGELOG.md` entry appended
-- [ ] Retrospective section below filled in
+- [x] Every story in scope has status `Done`
+- [x] All story-level Definitions of Done satisfied
+- [x] `BACKLOG.md` updated — every affected row reflects current status
+- [x] `architecture.md` updated if the sprint changed an architectural fact — no change needed; the sprint built exactly §Action Catalogue / §Adding a Kind / §Plugin-Contributed Actions as written, and `T06`'s screen is the final bullet of the first of those
+- [x] Any new ADRs recorded in `ADR.md` with status `Accepted` — none created by this sprint; `ADR-032`/`ADR-033` pre-date it
+- [x] `MEMORY.md` updated with any new decisions / patterns / constraints
+- [x] `CHANGELOG.md` entry appended
+- [x] Retrospective section below filled in
 - [ ] **Human:** patterns and learnings from the retrospective propagated to `Implementation/Learnings.md` (the coder drafts the retro and gates it; the human harvests it)
 
 ---
@@ -193,28 +193,139 @@ record. The coder does NOT write Learnings.md directly. -->
 
 ### Sizing accuracy
 
-- **Estimated:** _(from `sizing_estimate:`)_ — **Actual:** _(tasks / effort)_ — **Takeaway:** _(over/under, why)_
+- **Estimated:** ~6 tasks, `L` — **Actual:** 7 tasks, `L`, across three days
+  (2026-10-16 → 2026-10-18), backend suite `423 → 476 passed` — **Takeaway:**
+  **accurate, and the `L`-not-`M` call was right for the stated reason.** The
+  seventh task (`T07`) was not underestimation of known work: it was minted
+  mid-sprint to own a file `T04` found broken and correctly refused to touch. The
+  sizing note's own argument — that adding a *kind* is cross-cutting, because
+  `T04` alone reaches inventory, export, import, the secret scan and the resolver,
+  all of which hard-code five kinds — is exactly where the extra task came from.
+  **The reusable number: adding an artifact kind to this codebase costs ~7 tasks
+  and surfaces ~3 files nobody assigned**, and that is the second time it has been
+  measured (the `Index` precedent, 2026-09-06, is the first).
 
 ### What worked
 
-- _(specific behaviour, decision, or technique that paid off)_
+- **The `Index` precedent used as a literal checklist, not an analogy.** `T04`
+  worked through §Adding a Kind — the Measured Touch Points file by file; the
+  architecture section had been written by reading those files rather than
+  estimating them, so no touch point in it turned out to be wrong. Where the plan
+  was incomplete it was incomplete *beyond* what `Index` had ever exercised
+  (`artifact_import_conflicts`, which has been broken for `index` too since
+  2026-09-06 and nobody noticed).
+- **Three escalations, three different resolutions, zero improvisation.**
+  `ESC-064` (a `T01` test fixture that `T02`'s new gate legitimately invalidated)
+  → the human authorised the file. `ESC-065` (`_MANAGER_BY_KIND` knows four kinds)
+  → a new task, `T07`, minted to own the file. `ESC-069` (`actions_router.py`
+  belonged to no remaining task) → `T06`'s scope widened by one file, scoped to
+  two named changes. Each one cost minutes and left a record naming the resolving
+  artefact. The alternative — a coder reaching one file past its boundary "because
+  it is obviously needed" — is how the boundary stops meaning anything.
+- **Refusing at save time, and saying what did not resolve.** `ADR-032`'s central
+  bet paid off visibly at the end: because the Manager's refusal names the skill,
+  route or feature key, the screen needed *no error vocabulary of its own* — it
+  renders the sentence verbatim. Two of `T06`'s six AC checks are satisfied purely
+  by that decision having been taken three tasks earlier.
+- **Verifying a screen against a deliberately isolated copy of the app.** `T06`
+  ran its own backend (8011, scratch vault/data/Hermes paths) and its own Vite
+  (5199) so it could install and uninstall a real plugin and break a real Action.
+  Six other sessions were using this checkout at the time; none was disturbed, and
+  the verification was *more* real than it would have been against the live
+  install, where undeploying something to prove `AC-07` was never an option.
+- **Composing plugin contributions at read time.** `T05`'s "never written to
+  `data/Actions/`" makes "uninstalling a plugin removes its Actions" true by
+  construction. `T06` then observed it for free: the plugin's row vanished at the
+  same restart that broke the stored Action pointing at its route.
 
 ### What didn't work
 
-- _(specific friction, dead end, or mistake — name the root cause if known)_
+- **Three separate `## Files to Modify` lists were each missing exactly one file,
+  and the pattern is the same every time: the file that *joins two layers*.**
+  `T02`'s list missed the `T01` test its new rule invalidated; `T04`'s and `T05`'s
+  missed the API-layer file between a Manager change and a screen; `T06`'s missed
+  the third `Record<ArtifactKind, …>` that widening a union obliges. The
+  decomposer writes each list from the layer the task is *about*; nobody writes it
+  from "what else reads this".
+- **`FRAMEWORK_API` was deliberately left at 11 while `register_action` was added
+  to the facade.** Correct for the sprint (bumping refuses every installed plugin
+  until all are republished — four went dark on 2026-10-17 doing exactly that),
+  but it means the facade and its version number now disagree, and the bump is
+  owed by a task in a later sprint whose instruction is conditional. It works, and
+  it is held together by a note in this file rather than by anything executable.
+- **A screen's route list exists twice and the copies have already drifted** —
+  `UI_FEATURE_KEYS` claims to be "verbatim from `App.tsx`" and, one task later,
+  is not (`ESC-071`). The `http` kind got this right by reading the live route
+  table; the `ui` kind reads a tuple maintained by hand.
 
 ### Patterns to carry forward
 
 <!-- Copy these into Implementation/Learnings.md after human review. -->
 
-- _(pattern — short title — when to apply)_
+- **Adding an artifact kind — budget ~7 tasks and expect ~3 unassigned files**
+  — when a story adds a kind to a set that other modules enumerate, size it a
+  notch above the task count and expect the escalations to be files that *join*
+  layers (API between Manager and screen; a test pinning a shape; an exhaustive
+  map over a widened union). Walking the architecture's touch-point list is
+  necessary and provably not sufficient.
+- **A refusal is UI copy — word it where the rule lives** — when business logic
+  refuses, have it name the concrete thing that failed and have every surface
+  render that sentence verbatim. The screen then needs no error vocabulary, and
+  the message cannot drift from the rule. Measured here: two of six screen ACs
+  needed no screen-side wording at all.
+- **Verify a screen against a disposable install, not the live one** — a second
+  backend on another port with scratch `VAULT_PATH`/`SECOND_BRAIN_DATA_PATH`/
+  `HERMES_HOME_PATH`, plus a second Vite pointed at it, costs ~10 minutes and buys
+  destructive state induction (install/uninstall a plugin, break an
+  implementation) that is simply unavailable against the operator's own data —
+  and it is the only safe option when other sessions share the checkout.
+- **Make an invariant structural before making it enforced** — the exactly-one
+  implementation picker is one radio group, so "a second choice clears the first"
+  is a property of the markup that cannot regress, and the DOM assertion for it
+  is meaningful rather than circular.
+- **When a change would break a test that pins a shape, first ask whether the
+  shape is wrong** — `plugin_id: null` on every row broke a pinned assertion in a
+  file this task did not own; sending the key only where it means something was
+  both more faithful to the Manager and needed no test edit at all. The
+  out-of-scope test edit was the obvious move and the second-best one.
 
 ### Antipatterns to avoid
 
 <!-- Copy these into Implementation/Learnings.md after human review. -->
 
-- _(antipattern — short title — why to avoid)_
+- **Writing `## Files to Modify` from the layer the task is about** — ask "what
+  else reads this shape?" before locking the list: the router that serialises it,
+  the test that pins it, the exhaustive map keyed by it. Three of this sprint's
+  five escalations are that one omission.
+- **Hand-maintaining a mirror of another build's facts** — `UI_FEATURE_KEYS`
+  copies the front end's route table into a Python tuple and drifted within one
+  task of being written. Where the live source is readable (as `app_route_table()`
+  reads FastAPI's own routes), read it.
+- **Writing a JSON file the app reads with PowerShell's
+  `Out-File -Encoding utf8`** — it emits a BOM, `json.loads` rejects it, and
+  `installed.json` then reads as a corrupt ownership record, which the plugin host
+  correctly reports as "no plugin was loaded". Cost ~15 minutes of a verification
+  run and, worse, briefly produced a *right-looking* `AC-07` result for the wrong
+  reason: the Action did break, but because the record was unreadable rather than
+  because the plugin was uninstalled. The AC was re-run after the file was
+  rewritten without a BOM. Now a `MEMORY.md` constraint.
+- **Trusting a state induction that produces the expected observation** — the
+  BOM case above passed its assertion while the mechanism under test was not the
+  mechanism that fired. Check that the *cause* happened (here: that the plugin
+  actually loaded before it was removed), not only that the effect appeared.
 
 ### Open follow-ups
 
-- _(follow-up — filed as what and where?)_
+- **`ESC-071` (open)** — `/settings/actions` is not in `UI_FEATURE_KEYS`, so an
+  Action cannot name this sprint's own new screen as its `ui` implementation.
+  Filed in `ESCALATIONS.md` + `REVIEW-QUEUE.md`; needs either a one-line task or
+  folding into `REQ-SB-95-US-03`.
+- **`FRAMEWORK_API` 11 → 12** — owed by `REQ-SB-95-US-05-T02` (`SPRINT-090`)
+  under this sprint's ordering decision; its instruction is conditional on
+  `register_action` already existing, which it now does. Confirmation, not a
+  decision. `REVIEW-QUEUE.md`, `T05`'s entry, item (2).
+- **`ADR-032` has never had a human review entry** — noted in Dependencies at
+  sprint start, still true at close, still not blocking.
+- **`ESC-070` (resolved)** — no action; recorded because a task that widens a
+  shared union owns every exhaustive map over it, which is a decomposition
+  lesson rather than a defect.

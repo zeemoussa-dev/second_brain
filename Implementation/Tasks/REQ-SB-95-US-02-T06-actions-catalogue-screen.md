@@ -4,13 +4,13 @@ title: Actions catalogue screen + Action editor, Settings card, route, and the s
 parent_story: REQ-SB-95-US-02
 requirement_id: REQ-SB-95
 type: frontend
-status: Ready
-gate: clear
-gate_reason: ""
+status: Done
+gate: flagged
+gate_reason: "trigger 1/7 — four scope-internal judgement calls to spot-check (plugin_id sent as an ABSENT key rather than null for a stored Action; a radio group as the exactly-one picker; allowed_callers as a comma-separated field; the new /settings/actions route deliberately NOT added to the backend's UI_FEATURE_KEYS, whose file is out of scope — logged as ESC-071), plus one out-of-scope file carried into the frontend commit: ArtifactExportModal.tsx's KIND_LABELS needed an `action` entry the moment the ArtifactKind union widened, or tsc -b fails for the whole checkout — logged as ESC-070"
 phase: P2
 depends_on: [REQ-SB-95-US-02-T03, REQ-SB-95-US-02-T04, REQ-SB-95-US-02-T05]
 created: 2026-10-16
-updated: 2026-10-16
+updated: 2026-10-18
 ---
 
 # REQ-SB-95-US-02-T06 — Actions Catalogue Screen + Action Editor
@@ -146,12 +146,12 @@ browser as above.`
 
 ## Acceptance Criteria
 
-- [ ] Actions catalogue page + one-Action editor on existing approved conventions
-- [ ] Settings card and route added; sixth `KIND_NAV` tab on the Artifacts page
-- [ ] Backend refusal messages rendered verbatim
-- [ ] Broken state and plugin attribution visible in the list
-- [ ] `MEMORY.md` updated if this task produced a new decision / pattern / constraint
-- [ ] `CHANGELOG.md` entry appended
+- [x] Actions catalogue page + one-Action editor on existing approved conventions
+- [x] Settings card and route added; sixth `KIND_NAV` tab on the Artifacts page
+- [x] Backend refusal messages rendered verbatim
+- [x] Broken state and plugin attribution visible in the list
+- [x] `MEMORY.md` updated if this task produced a new decision / pattern / constraint
+- [x] `CHANGELOG.md` entry appended
 
 ---
 
@@ -175,4 +175,151 @@ bullet: a new Settings page on the already-approved `.item-list`/`.item-row` +
 
 ## Implementation Log
 
-_(Filled in by the coder.)_
+**Built 2026-10-18.** Backend suite **476 passed** before the first edit (measured
+in this session, not quoted) and **476 passed** after — no test added, none broken.
+Frontend: `npx tsc --noEmit` exit 0 and `npx oxlint src` exit 0, with no warning in
+either new file (the twelve oxlint warnings it reports are all pre-existing, in
+files this task did not touch).
+
+### How this was verified
+
+The frontend declares no test runner, so every AC below is a **real-browser DOM
+read**, not an assertion about source. Verification ran against a deliberately
+**isolated install** — its own uvicorn on `127.0.0.1:8011` with a scratch
+`VAULT_PATH` / `SECOND_BRAIN_DATA_PATH` / `HERMES_HOME_PATH`, and its own Vite on
+`5199` pointed at it with `VITE_API_BASE_URL` — so that installing and uninstalling
+a plugin, and creating and breaking real Actions, could not touch the operator's
+live vault, data path or Hermes install. Six other sessions share this checkout and
+had a backend on `8001` and a dev server on `5173` running throughout; neither was
+touched. Driving was headless Edge over CDP (this project's established technique),
+reading the DOM back ≥500ms after every dispatched state change.
+
+A throwaway plugin (`demo-reporter`) mounted `GET /plugins/demo-reporter/report`
+and registered one Action through `api.register_action` — the real facade, not a
+stub — which is what makes `AC-06` and `AC-07` real rather than simulated.
+
+### Locked ACs — observed outcomes
+
+- **`REQ-SB-95-US-02-AC-01` — PASS.** `/settings` renders 11 cards in
+  `.settings-grid`; the Actions card is present (`bolt`, `href="/settings/actions"`)
+  and clicking it routes to `/settings/actions` (`location.pathname` read back,
+  `<h1>Actions</h1>`). Created `weekly-digest` through the editor with two typed
+  inputs (`week`/string/**required**, `include_drafts`/boolean/optional),
+  `allowed_callers` = `research-hub, inbox-triage`, confirmation **on**, and a `ui`
+  implementation. After save a new `.item-row` rendered carrying its id, its
+  description and its implementation kind ("In-app feature"). Reopening it read back
+  **exactly** what was saved: both inputs in order with `required` true/false
+  respectively, the same callers string, `needs_confirmation` checked, the `ui`
+  radio checked and `/settings/artifacts` in its field, plus `created_at` rendered
+  as a fact.
+- **`REQ-SB-95-US-02-AC-02` — PASS.** Saving `nightly-rollup` against
+  `ui feature_key = /nowhere-at-all` rendered the backend's own sentence verbatim in
+  `[data-testid="action-editor-error"]`: *"this Action's ui implementation does not
+  resolve on this install: ui feature key '/nowhere-at-all' is not registered in
+  this app's front end"*. The row count stayed at 2 and no `nightly-rollup` row
+  appeared; the editor stayed open holding what was typed. Correcting the key to
+  `/browse` and saving again produced the row.
+- **`REQ-SB-95-US-02-AC-03` — PASS.** With no implementation chosen (all three
+  radios read `false`), saving was refused and the screen rendered the backend's own
+  *"an Action has exactly one implementation -- one of skill, http or ui, never zero
+  and never two; this one names none"*; no row appeared. Exclusivity asserted on the
+  DOM: after clicking `skill`, `{skill:true, http:false, ui:false}`; after clicking
+  `http`, `{skill:false, http:true, ui:false}`; after `ui`,
+  `{skill:false, http:false, ui:true}` — and the previous kind's own field is gone
+  from the DOM each time (read back as `null`), so a second choice clears the first
+  structurally rather than by a handler.
+- **`REQ-SB-95-US-02-AC-04` — PASS.** `/settings/artifacts` renders six nav items,
+  `artifacts-tab-action` ("Actions", `bolt`) beside the five existing ones;
+  selecting it lists the real Actions as `.item-row` entries. Each pre-existing tab
+  was then compared **row-for-row against the backend's own `GET /artifacts`**
+  grouped by kind: template 6/6, skill 10/10, agent 1/1 all matched exactly, and
+  pipeline and index (both genuinely empty on this install) rendered their honest
+  `No Pipelines yet.` / `No Indexes yet.` empty states rather than being hidden.
+  *Judgement call, recorded for spot-check:* "lists exactly what it listed before"
+  was proved as DOM-equals-backend rather than by a literal before/after capture —
+  the only changes to that page are additive (one `KIND_NAV` entry, one
+  `KIND_ORDER` member, one label), and the five pre-existing kinds' inventory is
+  `T04`'s already-tested backend code, untouched here.
+- **`REQ-SB-95-US-02-AC-06` — PASS.** With `demo-reporter` installed, its
+  `demo-weekly-report` row renders in the same list as the install's own, shows
+  **"From the demo-reporter plugin"**, and exposes **no** edit and **no** delete
+  control (`hasEdit:false, hasDelete:false`, against `true/true` on every stored
+  row). A `PUT` issued from the page's own origin returns **409** with the Manager's
+  sentence naming the plugin, so the screen has something true to say rather than a
+  500.
+- **`REQ-SB-95-US-02-AC-07` — PASS.** `plugin-backed-report` was saved **through the
+  editor** against `http GET /plugins/demo-reporter/report` — it resolved, which
+  also proves save-time resolution sees a plugin's mounted routes. The plugin was
+  then uninstalled (its entry removed from `plugins/installed.json`) and the backend
+  restarted; reloading the catalogue rendered that row with a **Broken** badge and
+  the reason *"http route GET '/plugins/demo-reporter/report' is not on this app's
+  route table"* — with nothing having called the Action. The plugin's own
+  `demo-weekly-report` row vanished at the same moment, leaving the install's own
+  Actions untouched (`AC-06`'s third clause, observed as a side effect).
+
+`AC-05` is not this task's; it was verified by `T04`/`T07`.
+
+### The two authorised backend changes (`ESC-069`)
+
+Both shipped in commit `a015b95`, and nothing else in `actions_router.py` was
+touched.
+
+1. `GET /actions` carries `plugin_id` on a contributed entry. **Judgement call:** the
+   key is **absent** on a stored Action rather than `null`. Three reasons, in order:
+   the authorisation is worded "carry `plugin_id` **for a plugin-contributed
+   Action**"; `ActionManager` deliberately gives a stored Action *no such attribute
+   at all* ("rather than an empty one"), so an absent key is the wire shape that
+   tells the truth; and it leaves the stored-Action list shape `T03` pinned in
+   `tests/test_actions_api.py` byte-for-byte intact. The first attempt sent
+   `plugin_id: None` on every row and broke that test — `tests/test_actions_api.py`
+   is in no task's `## Files to Modify`, and rather than reach into it, the response
+   was reshaped to the reading that needs no test change at all.
+2. `PluginContributedActionIsReadOnlyError` → **409** with the error's own message,
+   on both `PUT` and `DELETE` (the Manager raises it from both). Verified live:
+   409 + the Manager's sentence, where both were 500 before.
+
+### Judgement calls made inside scope (spot-check these)
+
+1. **The exactly-one picker is a radio group**, not three toggles with a handler
+   clearing the others. The browser enforces the invariant, so "selecting a second
+   clears the first" is a property of the markup rather than of code that could
+   regress — and `AC-03`'s DOM assertion is then meaningful.
+2. **`allowed_callers` is one comma-separated field**, split and trimmed on save,
+   joined with `, ` on read. An empty field saves an empty list, which the entity
+   documents as a real state ("a catalogued Action nothing may call yet") — it is
+   not treated as "unset".
+3. **Save is never disabled.** A draft naming no implementation is sent and refused
+   by the backend, because the Manager's sentence is the only wording that names the
+   actual cause. The screen's only authored text around it is a `Save refused`
+   badge; the message itself is rendered verbatim.
+4. **`/settings/actions` was deliberately NOT added to `UI_FEATURE_KEYS`.** That
+   tuple lives in `business/core/actions/action.py`, which is not in this task's
+   `## Files to Modify`, and its comment claims to be "verbatim from
+   `src/frontend/src/App.tsx`" — it is now one route stale, so an Action whose `ui`
+   implementation names this new screen would be refused as unregistered. No AC
+   needs it. Logged as **`ESC-071`** rather than reached for.
+
+### Out-of-scope file carried into the commit (`ESC-070`)
+
+`src/frontend/src/features/settings/ArtifactExportModal.tsx` holds a second
+`Record<ArtifactKind, string>`. Widening the union to `'action'` — which this task's
+file list explicitly authorises — makes that map fail `TS2741` and breaks `tsc -b`
+for the whole shared checkout. The one-line `action: 'Action'` entry was already in
+the working tree, authored by a parallel session unblocking its own build; it is
+committed here (`b590b1a`) so the union and its maps land together, since either
+alone leaves a clean checkout broken in one direction. All five
+`Record<ArtifactKind, …>` / `ArtifactKind[]` sites were then checked by hand and by
+`tsc`: the export modal, this page's own `KIND_LABELS`, `KIND_ORDER`, `byKind<T>()`
+and `SelectionState` — the last three are built *from* `KIND_ORDER`, which is why
+adding the kind there (not only to `KIND_NAV`) is what keeps `groupedByKind` from
+silently dropping every Action.
+
+### Scope
+
+Only the seven files in `## Files to Modify` plus `ArtifactExportModal.tsx` above,
+and the standing `CHANGELOG.md` / `MEMORY.md` / status propagation. No ADR created
+or deviated from; no new dependency; `app/business/` was not touched.
+
+gate: flagged 2026-10-18 — triggers 1 and 7: the four judgement calls above, and
+the out-of-scope map entry (`ESC-070`, resolved in this commit) plus the stale
+feature-key list (`ESC-071`, open).

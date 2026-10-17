@@ -4,12 +4,12 @@ title: Action as the sixth artifact kind — one catalogue of what this app can 
 requirement_ids: [REQ-SB-95]
 requirement_section: "REQ-SB-95: An Agent Can Only Do What the App Can Do — Operator Profile, Actions, Workflows, Entity Resolution"
 phase: P2
-status: In Progress
+status: Done
 gate: clear
 gate_reason: "RESOLVED operator confirmed ADR-033's catalogue fields, 2026-10-17 — was: trigger-3 (ADR-033 created — it decides the Action fields this story stores: allowed_callers as agent ids, and the confirmation flag's meaning)"
 sprint: SPRINT-087
 created: 2026-10-16
-updated: 2026-10-18  # coder: T05 Done 2026-10-18 (plugin-contributed Actions, suite 475 passing, baseline 465) — gate: flagged. AC-06 is delivered at the facade and the Manager: get_all() composes the loaded plugins' Actions on top of the stored ones, attributed, written nowhere, refused on both write paths. ESC-069 is OPEN and T06 is its owner-in-waiting: `app/api/actions_router.py` is in neither T05's nor T06's Files to Modify, so `GET /actions` does not pass the `plugin_id` on and `PluginContributedActionIsReadOnlyError` has no 409 mapping — T06's manual step 5 cannot pass until that file is assigned (adding it to T06's list is the cheapest fix). Two judgement calls to spot-check in T05's Implementation Log: PluginContributedAction is declared in action_manager.py (action.py is out of scope), and the collision rule "stored ids win, then first plugin wins" was invented there. FRAMEWORK_API deliberately left at 11. Previously — coder: T03 Done 2026-10-17 (Actions CRUD API, suite 457 passing) — gate: flagged for a scope-internal spot-check only (409-not-422 for Manager refusals, 200-not-201 on create, TestClient instead of the ASGITransport the task named — no test here uses ASGITransport and twelve use TestClient, POST-onto-an-existing-id overwrites and was left to the Manager). T05 and T06 outstanding; T06 must map `implementation` between its nested write shape and its flat read shape, see that task's Implementation Log. Previously — coder: T01, T02, T04 and T07 Done (suite 436 passing). ESC-065 is Resolved by T07 — `index` and `action` are registered in artifact_import_conflicts._MANAGER_BY_KIND, so a mixed-kind bundle previews and commits through the real import route; T04's gate, flagged on ESC-065 alone, is cleared (status unchanged, Done). T03, T05, T06 outstanding
+updated: 2026-10-18  # coder: STORY DONE 2026-10-18 — T06 Done (the catalogue screen, editor, Settings card, route and sixth Artifacts tab), so all seven tasks are Done and all seven locked ACs are verified: AC-01/02/03/04/06/07 as real-browser DOM reads against an isolated install on 8011/5199 (T06's Implementation Log has the observed outcome for each), AC-05 by T04/T07's tests. Suite 476 passed, unchanged from the pre-task baseline; tsc --noEmit and oxlint clean. T06 is gate: flagged for four scope-internal judgement calls plus two escalations: ESC-070 (RESOLVED in commit b590b1a — widening ArtifactKind obliged a one-line KIND_LABELS entry in ArtifactExportModal.tsx, a file in no task's list; a parallel session had already written it and it is committed with the union it serves) and ESC-071 (OPEN — the new /settings/actions route is not in the backend's hand-maintained UI_FEATURE_KEYS, whose file action.py is out of scope, so an Action cannot name this screen as its ui implementation; no AC needs it). Previously — coder: T05 Done 2026-10-18 (plugin-contributed Actions, suite 475 passing, baseline 465) — gate: flagged. AC-06 is delivered at the facade and the Manager: get_all() composes the loaded plugins' Actions on top of the stored ones, attributed, written nowhere, refused on both write paths. ESC-069 is OPEN and T06 is its owner-in-waiting: `app/api/actions_router.py` is in neither T05's nor T06's Files to Modify, so `GET /actions` does not pass the `plugin_id` on and `PluginContributedActionIsReadOnlyError` has no 409 mapping — T06's manual step 5 cannot pass until that file is assigned (adding it to T06's list is the cheapest fix). Two judgement calls to spot-check in T05's Implementation Log: PluginContributedAction is declared in action_manager.py (action.py is out of scope), and the collision rule "stored ids win, then first plugin wins" was invented there. FRAMEWORK_API deliberately left at 11. Previously — coder: T03 Done 2026-10-17 (Actions CRUD API, suite 457 passing) — gate: flagged for a scope-internal spot-check only (409-not-422 for Manager refusals, 200-not-201 on create, TestClient instead of the ASGITransport the task named — no test here uses ASGITransport and twelve use TestClient, POST-onto-an-existing-id overwrites and was left to the Manager). T05 and T06 outstanding; T06 must map `implementation` between its nested write shape and its flat read shape, see that task's Implementation Log. Previously — coder: T01, T02, T04 and T07 Done (suite 436 passing). ESC-065 is Resolved by T07 — `index` and `action` are registered in artifact_import_conflicts._MANAGER_BY_KIND, so a mixed-kind bundle previews and commits through the real import route; T04's gate, flagged on ESC-065 alone, is cleared (status unchanged, Done). T03, T05, T06 outstanding
 ---
 
 # REQ-SB-95-US-02 — Action as the sixth artifact kind — one catalogue of what this app can actually do
@@ -223,12 +223,12 @@ Final split, owned by the decomposer (2026-10-16). `depends_on` holds task ids.
 
 ## Definition of Done
 
-- [ ] All acceptance-criteria scenarios pass
-- [ ] Every Implementation Task above is complete (or explicitly dropped with reason)
-- [ ] All Constraints respected
-- [ ] Automated tests added/updated and passing (once test tooling exists)
-- [ ] `MEMORY.md` updated with any new decisions / patterns / constraints
-- [ ] `CHANGELOG.md` entry appended
+- [x] All acceptance-criteria scenarios pass
+- [x] Every Implementation Task above is complete (or explicitly dropped with reason)
+- [x] All Constraints respected
+- [x] Automated tests added/updated and passing (once test tooling exists) — backend ACs are AC-tagged pytest; the frontend declares no test runner, so `T06`'s ACs are real-browser DOM reads recorded in its `## Implementation Log`
+- [x] `MEMORY.md` updated with any new decisions / patterns / constraints
+- [x] `CHANGELOG.md` entry appended
 
 ## Non-Goals / Out of Scope
 
