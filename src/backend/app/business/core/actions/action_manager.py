@@ -29,15 +29,19 @@ Two rules this file deliberately does and does not own:
   events this module never sees, so a cached answer would be the
   silent-staleness failure ADR-032's consequences already name.
 
-`get_all()` returns this install's STORED Actions. Plugin-contributed
-Actions are composed on top at read time (T05, ADR-022) and are never
-written into the store.
+`get_all()` returns this install's STORED Actions with the loaded
+plugins' contributed ones composed on top at read time (T05, ADR-022).
+A plugin's Action is never written into the store, which is also why
+every write path here refuses one: there is nothing of it on disk to
+update or delete.
 
 Raw I/O lives entirely in `data_access/actions.py` -- this file holds
 zero raw file calls, only entity shaping and the cardinality rule.
 """
 from __future__ import annotations
 
+import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
@@ -51,9 +55,33 @@ from app.business.core.actions.action import (
 from app.business.core.skills.skill_manager import SkillManager
 from app.data_access import actions as actions_data
 
+_logger = logging.getLogger(__name__)
+
+
+@dataclass
+class PluginContributedAction(Action):
+    """One Action a loaded plugin registered through `app.plugin_api`
+    (`ADR-022`), carrying the id of the plugin that contributed it.
+
+    It lives here rather than beside `Action` because it is a property of
+    the read-time composition, not of the stored kind: nothing writes one,
+    nothing imports or exports one, and a stored Action must keep reading
+    back exactly as it did before plugins could contribute at all -- which
+    is why a stored one carries no `plugin_id` attribute whatsoever, rather
+    than an empty one.
+    """
+    plugin_id: str = ""
+
 
 class ActionImplementationCardinalityError(Exception):
     """The payload named no implementation, or more than one."""
+    pass
+
+
+class PluginContributedActionIsReadOnlyError(Exception):
+    """A write path named an Action that belongs to a plugin. There is
+    nothing stored to change: it is composed while that plugin is loaded
+    and gone when it is uninstalled."""
     pass
 
 
@@ -285,7 +313,59 @@ class ActionManager:
             for entry in (inputs or [])
         ]
 
+    def _plugin_contributed(self) -> list[PluginContributedAction]:
+        """What the loaded plugins registered, shaped into Actions and
+        attributed to them (T05, ADR-022). Composed on every read and
+        written nowhere, which is what makes "uninstalling a plugin removes
+        its Actions" true by construction rather than by a cleanup step.
+
+        The install's own stored ids win a collision, and the first plugin
+        to register an id wins against a later one: a plugin may add to the
+        catalogue, never replace an entry the operator saved or another
+        plugin already contributed. A dropped one is logged, because two
+        plugins silently disagreeing about an id is exactly the kind of
+        thing nobody would otherwise discover.
+        """
+        # Imported here, not at module scope: the plugin manager imports
+        # `app.plugin_api`, which reaches into business/ -- the same cycle
+        # `plugin_api.get_service` avoids in the other direction.
+        from app.business.core.plugins.plugin_manager import PluginManager
+
+        taken = set(actions_data.list_action_ids())
+        composed: list[PluginContributedAction] = []
+        for definition in PluginManager().get_actions():
+            action_id = str(definition.get("id") or "")
+            plugin_id = str(definition.get("plugin_id") or "")
+            if not action_id or action_id in taken:
+                _logger.warning(
+                    "plugin %r contributes action %r, which this install already has; the plugin's is ignored",
+                    plugin_id, action_id,
+                )
+                continue
+            taken.add(action_id)
+            # Parsed by the very reader a stored definition goes through,
+            # so a plugin's Action can never reach the catalogue in a shape
+            # the catalogue cannot show.
+            as_stored = self._to_action(action_id, definition)
+            composed.append(PluginContributedAction(**vars(as_stored), plugin_id=plugin_id))
+        return composed
+
+    def _refuse_if_plugin_contributed(self, action_id: str) -> None:
+        """Guards every write path. Checked against the composed list and
+        not against the store, so an id the install really has stored is
+        never refused -- a stored id is not a plugin-contributed one."""
+        for action in self._plugin_contributed():
+            if action.id == action_id:
+                raise PluginContributedActionIsReadOnlyError(
+                    f"action {action_id!r} belongs to the {action.plugin_id!r} plugin and cannot be "
+                    "changed here -- it is contributed while that plugin is loaded and nothing about "
+                    "it is stored on this install"
+                )
+
     def get_all(self) -> list[Action]:
+        """This install's stored Actions, plus whatever the loaded plugins
+        contributed -- one catalogue, with each plugin entry carrying the
+        plugin id that registered it (AC-06)."""
         actions = []
         for action_id in actions_data.list_action_ids():
             try:
@@ -293,13 +373,17 @@ class ActionManager:
             except (OSError, ValueError):
                 continue
             actions.append(self._to_action(action_id, data))
+        actions.extend(self._plugin_contributed())
         return actions
 
     def get_by_id(self, action_id: str) -> Action | None:
+        """A stored Action, or a plugin-contributed one -- the catalogue is
+        one catalogue on the read side too. Stored first: the store is the
+        only thing a write path can act on."""
         try:
             data = actions_data.read_action_json(action_id)
         except (OSError, ValueError):
-            return None
+            return next((action for action in self._plugin_contributed() if action.id == action_id), None)
         return self._to_action(action_id, data)
 
     def create(
@@ -339,7 +423,10 @@ class ActionManager:
         an edit to a description must not be refused because something
         else on the install broke in the meantime -- that is what
         resolution_report() is for. A supplied one is held to both rules
-        afresh."""
+        afresh. A plugin's Action is refused outright -- there is no file
+        of its own to edit, and editing the plugin's registration is the
+        plugin's business."""
+        self._refuse_if_plugin_contributed(action_id)
         try:
             data = actions_data.read_action_json(action_id)
         except (OSError, ValueError):
@@ -377,7 +464,10 @@ class ActionManager:
     def delete(self, action_id: str) -> dict:
         """Never raises for an already-deleted/unknown id --
         {"deleted": False} instead (ADR-014's own result-dict
-        convention)."""
+        convention). A plugin's Action is the one case that does raise:
+        reporting it deleted would be a lie the operator acts on, and
+        reporting it absent would deny a row they are looking at."""
+        self._refuse_if_plugin_contributed(action_id)
         if self.get_by_id(action_id) is None:
             return {"deleted": False}
         actions_data.delete_action_definition(action_id)
