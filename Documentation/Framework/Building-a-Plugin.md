@@ -168,7 +168,7 @@ export default ui;
   and makes a link mean something different for each person who opens it.
   Genuinely throwaway state (an expanded row, a palette that is open) stays in
   `useState`.
-- **Every screen past the landing page shows a trail** (v11, `ADR-043`).
+- **Every screen past the landing page shows a trail** (v11, `ADR-060`).
   `pluginHost/breadcrumbs` exports `Breadcrumbs`, taking
   `items: { label, to? }[]`; render it directly above the page's `h1`. The first
   crumb is the plugin's landing page, the last is the page you are on (never a
@@ -203,7 +203,7 @@ export default ui;
 
   **The shell already gives every screen a one-step back arrow**, for free and
   without the plugin doing anything (`BackControl`, commit `97fa12a`; the
-  boundary between the two is the table in `ADR-043`). So the test for a trail
+  boundary between the two is the table in `ADR-060`). So the test for a trail
   is one question: **can "back one step" name where it goes?** When it can, the
   arrow is enough and a trail is noise.
 

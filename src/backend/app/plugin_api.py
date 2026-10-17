@@ -78,7 +78,7 @@ trail on every plugin Settings page itself. The reason it is the host's job:
 Settings lives under `/settings`, a top-level area the plugin does not own, so
 opening a customer's editor from a report left the operator there with nothing
 leading back -- the sidebar cannot help, because Settings is not where they
-were. One plugin had already hand-rolled all three (`ADR-043`).
+were. One plugin had already hand-rolled all three (`ADR-060`).
 
 A new capability is added here when a plugin
 needs one. The host loads only

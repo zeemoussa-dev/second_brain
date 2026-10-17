@@ -1,5 +1,5 @@
 // Where you came from, so every screen can offer a way back (operator,
-// 2026-10-17). See BackControl.tsx on how this relates to ADR-043's
+// 2026-10-17). See BackControl.tsx on how this relates to ADR-060's
 // breadcrumbs -- same complaint, two mechanisms, both kept (2026-10-18).
 //
 // The app is one router, so a Link from My Day to a note is a history push and

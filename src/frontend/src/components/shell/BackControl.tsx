@@ -1,10 +1,10 @@
 // The way back, on every screen (operator, 2026-10-17: clicking an email in
 // My Day landed on the note with no way back).
 //
-// NOT ADR-043: that is the breadcrumbs decision, a different mechanism for
+// NOT ADR-060: that is the breadcrumbs decision, a different mechanism for
 // the same complaint. The operator kept BOTH (2026-10-18): this is the
 // one-step back every screen gets for free; breadcrumbs are the named trail
-// a plugin renders deliberately. ADR-043 holds the boundary.
+// a plugin renders deliberately. ADR-060 holds the boundary.
 //
 // It lives in the shell rather than on each page for two reasons: a page added
 // tomorrow gets it without remembering to, and a plugin's screen gets it

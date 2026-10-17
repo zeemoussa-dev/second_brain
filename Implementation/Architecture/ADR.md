@@ -8,6 +8,16 @@ both ways). Status enum: `Proposed | Accepted | Rejected | Deprecated | Supersed
 
 **Alternatives Considered is mandatory** on every ADR.
 
+**2026-10-18:** Numbering continues from **ADR-060**. The restart below put
+the new sequence on numbers the archived one had already used, and those
+citations never went away: every number from 042 to 059 is still referenced by
+between 3 and 53 files (`ADR-042` for the Customer/Partner concept file,
+`ADR-043` for a direct-vault-write shape, and so on) while having no entry here
+at all. Two new ADRs were written as 043 on the same day before anyone noticed.
+The archived sequence ended at 058, so from 060 up the space is clean -- take
+the next free number there, and never reuse one below it even when this file has
+no heading for it.
+
 **2026-08-20:** Numbering restarts at ADR-001 alongside the backend
 architecture redesign (`Implementation/Plans/2026-08-20-backend-
 architecture-redesign.md`). The prior sequence (ADR-001 through ADR-058)
@@ -3826,7 +3836,7 @@ exactly that in My Day.
   a value is a selection or a preference will get it wrong, and the hook cannot decide
   for them.
 
-## ADR-043: Breadcrumbs are a framework component and the host renders the trail on plugin Settings pages
+## ADR-060: Breadcrumbs are a framework component and the host renders the trail on plugin Settings pages
 
 **Status:** Accepted
 **Date:** 2026-10-17
@@ -3913,13 +3923,14 @@ thing it exists to avoid), and breadcrumbs must not read the in-memory stack (a
 trail that empties on refresh is worse than none, since it silently stops
 leading anywhere).
 
-**This ADR is 043, not 042.** It was written as 042, and one commit
-(`6148f17`, `plugin_api.py`) and two comment blocks shipped citing that number
-before the operator's decision. 042 is left unused deliberately: code
-(`data_access/vault_writer.py`, `summarize-and-tag-files`) and
-`Documentation/PRD.md` already cite `ADR-042` for the archived-series
-Customer/Partner concept-file decision (`REQ-SB-54`), so reusing it here would
-have made two different decisions share one number in live references.
+**This ADR is 060, having been written first as 042 and then as 043.** Both
+of those are already spoken for, which is how it ended up here: 042 is cited by
+42 files for the archived sequence's Customer/Partner concept-file decision
+(`REQ-SB-54`), and 043 by 53 -- including, since 2026-10-17, this sequence's own
+profile-debug ADR, which landed first and is pointed at by a story, a sprint and
+six task files. Every number from 042 to 059 is in the same state. 060 is the
+first number neither sequence has ever used; see the numbering note at the top
+of this file.
 
 ## ADR-043: A profile's debug view is one composed read-only endpoint enumerated from the install's own tree — the skills verdict is shared with `check_deployment_drift()`, cron binding is a directory, and config is two labelled layers
 
