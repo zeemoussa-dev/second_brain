@@ -150,6 +150,24 @@ export default ui;
   for itself — v6); `pluginHost/types` gives the contract. Importing a framework
   feature is refused at publish time — it would break the next time that feature
   changed.
+- **A selection must survive a refresh** (v10, `ADR-041`). `pluginHost/state`
+  gives four drop-in replacements for `useState`. Ask which of two things a
+  value is:
+
+  | Hook | For | Lives in |
+  |---|---|---|
+  | `useUrlState(key, fallback, { valid })` | a tab, a sort order | query string |
+  | `useUrlSelection(key)` | an id that is selected, or nothing | query string |
+  | `useUrlFilters(defaults)` | a whole filter bar | query string |
+  | `useRememberedState(key, fallback)` | a toggle, a default view | localStorage |
+
+  **What you are looking at** goes in the URL — a refresh keeps it, Back undoes
+  it, and the address can be sent to someone. **How you like to look at it**
+  goes in localStorage — still set tomorrow, and not dragged into a shared
+  link. Putting a selection in localStorage makes two tabs fight over one value
+  and makes a link mean something different for each person who opens it.
+  Genuinely throwaway state (an expanded row, a palette that is open) stays in
+  `useState`.
 - **Charts are a host library** (v8, `ADR-039`): `echarts` and
   `echarts-for-react`, subpaths included, so import `echarts/core` plus the
   chart types you draw rather than the whole library —

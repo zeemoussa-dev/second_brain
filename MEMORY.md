@@ -309,6 +309,10 @@ Where a rule does not belong here:
 
 - **The plugin boundary is an allowlist on the frontend and a denylist on the backend.** `_ALLOWED_UI_PACKAGES` refuses any screen import it does not name; `check_plugin` refuses only `app.*` internals and `sb_plugins_*`, so a backend importing `anthropic`, `langgraph` or any other framework dependency passes publishing and couples itself to an internal. Know which half you are reasoning about before claiming an import is checked.
 
+- **Screen state that must survive a refresh goes in the URL; a preference goes in localStorage.** Both through `pluginHost/state` / `src/components/screenState.ts`, never hand-rolled per screen (`ADR-041`). The test is what the value IS: what you are looking at (selection, filter, tab) travels in a link and belongs in the query string; how you like to look at it (a toggle, a default view) must not travel in a link and belongs in localStorage.
+
+- **A hook advertised as a drop-in for `useState` must accept the updater form.** `setThing((previous) => ...)` is already written across existing screens, and a value-only setter fails to type-check at exactly those call sites -- caught by the publish gate in My Day, not by the framework's own build, because plugin screens only compile during publish.
+
 ## Windows host and environment
 
 - **On this Windows host every `Path.exists()`/`is_file()`/`is_dir()` silently returns `False` once the full path exceeds about 260 characters.** Two of them on the same long path can therefore contradict the branch logic that decided its type. `iterdir()` still lists such files - never gate on a path predicate alone for deep vault paths.

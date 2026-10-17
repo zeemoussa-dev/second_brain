@@ -18,6 +18,14 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat(frontend): **a selection survives a refresh** (`ADR-041`; operator, 2026-10-17: "The Framework don't remember Selection when Refresh Happens and Same for all the Plugins"). Measured first: 20 files held 27 pieces of selection-ish state and exactly **one** survived F5, with no `localStorage` use anywhere in the app. `src/components/screenState.ts` adds four drop-in replacements for `useState` -- `useUrlState` (a tab or sort order, with an optional `valid` set), `useUrlSelection` (an id or nothing), `useUrlFilters` (a whole filter bar) and `useRememberedState` (a preference, in localStorage) -- re-exported from `pluginHost/state` so a plugin screen and a framework page remember the same way.
+
+  Three details live in the hooks because they are each a quiet bug when hand-rolled: a write **replaces** the history entry rather than pushing one, so a filter touched five times does not cost five presses of Back; a value equal to its default is **removed** from the URL, so an untouched screen has a clean address; and `valid` makes a hand-edited `?tab=bogus` read as the fallback instead of rendering a state the screen has no case for.
+
+  Converted: System Health and Settings > Artifacts (tabs), the Cockpit (tab), the Agents Map (selected agent, pipeline and section), Action Center's Explorer (grouping and all twelve filters) and My Day (the day being looked at). Genuinely throwaway state -- an expanded row, an open palette, a picked `File` object -- deliberately stays in `useState`.
+
+- **`FRAMEWORK_API` 9 -> 10** (`pluginHost` gained a module), with all four plugins republished: `my-day` 1.7.0, `action-center` 0.19.0, `entities` 1.2.1, `azure-cost-manager` 0.4.1.
+
 - feat(plugins): **the host provides `openpyxl`** (`ADR-040`; operator, 2026-10-16: "openpyxl needed by Plugins as well"). `ADR-039`'s reason one layer down: a plugin's backend is imported into the framework's own process and venv and never installs a `requirements.txt` of its own, so a library the host does not provide is an `ImportError` at registration and the plugin does not load at all. Declared in `requirements.txt`, not merely installed here, with a test pinning that -- a fresh install missing it would refuse every plugin that imports it while the version gate reported a match.
 
 - **`FRAMEWORK_API` 8 -> 9**, and all four plugins republished again. That is the second cascade in one day; adding host libraries one at a time costs a full republish each time, so batch them when more than one is known to be needed.

@@ -3763,3 +3763,65 @@ all pass the boundary check today and simply fail at runtime if the package is a
 - **`xlsxwriter` or `pandas` instead.** `xlsxwriter` writes but cannot read, and reading an
   operator's spreadsheet is half the point. `pandas` is a far larger dependency whose
   spreadsheet support is `openpyxl` underneath anyway.
+
+---
+
+## ADR-041: Selection lives in the URL, preferences in localStorage, and both are host hooks
+
+**Status:** Accepted
+**Date:** 2026-10-17
+
+**Context:** Refreshing any screen threw away what was selected on it (operator,
+2026-10-17: "The Framework don't remember Selection when Refresh Happens and Same for
+all the Plugins"). Measured across the frontend: **20 files hold 27 pieces of
+selection-ish state -- the selected row, the filter, the active tab, the group-by --
+and exactly one survived F5** (`VaultBrowserPage`). There was no `localStorage` or
+`sessionStorage` use anywhere in the app.
+
+The right pattern was already present and applied once: My Day's Emails screen keeps
+its day and open thread in the query string with `useSearchParams`, so a refresh keeps
+both. Two directories away, Action Center's Explorer held `groupBy` and a twelve-field
+filter object in `useState` and lost all of it. So this was never a missing capability
+-- `react-router` is already an allowed plugin import -- it was the same decision made
+differently on every screen.
+
+**Decision:**
+
+- **A selection lives in the query string.** What you are looking at -- active tab,
+  selected id, sort order, filter bar, search text. A refresh keeps it, Back undoes it,
+  and the address can be sent to someone else, which is a real gain and not only a fix.
+- **A preference lives in `localStorage`.** How you like to look at it -- a toggle, a
+  default view. It should still be set tomorrow and should NOT travel in a shared link.
+- **Both are host hooks**, in `src/components/screenState.ts` and re-exported from
+  `pluginHost/state` exactly as `api.ts` re-exports the client, so a plugin screen and
+  a framework page remember a selection the same way: `useUrlState` (one value, with an
+  optional `valid` set), `useUrlSelection` (an id or nothing), `useUrlFilters` (a whole
+  filter bar) and `useRememberedState` (a preference).
+- **`FRAMEWORK_API` moves 9 -> 10**, since `pluginHost` gained a module.
+
+Three details are in the hooks precisely because they would have been got wrong one
+screen at a time: writes **replace** the history entry rather than push one, so a filter
+touched five times does not cost five presses of Back; a value equal to its default is
+**removed** from the URL, so an untouched screen has a clean address; and `valid` makes
+a hand-edited `?tab=bogus` read as the fallback rather than rendering a state the screen
+has no case for. All four accept an updater function, because they replace `useState`
+in screens that already call `setThing((previous) => ...)` -- the publish gate caught
+exactly that in My Day.
+
+**Alternatives considered:**
+
+- **Each screen calls `useSearchParams` itself.** No framework change, no API bump, no
+  plugin cascade -- and plugins can already do it. Rejected by the operator: the pattern
+  would be hand-rolled ~27 times, and the three details above are each a quiet bug when
+  someone omits them.
+- **`localStorage` for selection too.** Simplest to retrofit, and remembers across
+  visits. Rejected: two tabs then fight over one key, a link means something different
+  for each person who opens it, and a filter set weeks ago silently narrows what a
+  screen shows.
+- **Persist per operator in the backend.** Follows the person across machines. Rejected
+  as disproportionate: it needs an API, a write on every click and conflict handling
+  between tabs, for what is a refresh problem.
+- **A single `usePersistentState` that picks storage itself.** One concept to learn.
+  Rejected because the choice is the whole point: an author who does not decide whether
+  a value is a selection or a preference will get it wrong, and the hook cannot decide
+  for them.
