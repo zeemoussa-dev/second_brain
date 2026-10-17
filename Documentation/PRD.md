@@ -5383,11 +5383,36 @@ copy, and a third frozen copy under `hermes/scripts/` that the cron wrapper actu
 hardcoding a path that had moved. It failed every night for 41 days, reported as an ordinary
 job error nobody was reading.
 
-**Finding 4 - the framework cannot deploy at all.** Every deployment this install has had
-was performed by a human or an agent copying files with a script. There is no endpoint, no
-screen and no record. The framework's Hermes surface
-(`hermes_router.py`, `hermes_agents_router.py`, `skills_router.py`) is **entirely
-read-only**: status, agents, skills, cron jobs, sessions.
+**Finding 4 - the framework can already deploy and already measures drift; none of it is
+reachable.** *(Corrected 2026-10-17, `ESC-066`. This finding first claimed the framework
+could not deploy at all, concluded from the API layer alone -- every `app/api/*_router.py`
+Hermes endpoint is read-only. The capability is one layer down, and the original claim
+would have sent the architect to build what exists.)*
+
+`SkillManager.deploy()` and `.undeploy()` write a Skill into a profile.
+`SkillManager.check_deployment_drift()` already returns, per Skill per profile,
+`missing | stale | modified | current` -- including `modified`, the edited-in-place case
+that is worse than stale because the version still claims to be current. Underneath,
+`HermesSkills.create/update/delete`, `HermesProfiles.write_soul/update` and
+`cli.create_profile/create_cron_job` all write into `<HERMES_HOME>` today. The framework
+crossed the write boundary long ago.
+
+What is actually missing is narrower, and all of it matters:
+
+- **Nothing exposes it.** No endpoint and no screen mentions deploy or drift; the only
+  caller of `check_deployment_drift()` outside `tests/test_versioning.py` is a comment in
+  the Action code. An operator cannot reach any of it.
+- **It is Skills-only.** Agents, Templates, Indexes and the coming Actions and Workflows
+  have no equivalent.
+- **It trusts the list this requirement exists because of.** The drift check iterates
+  `skill.deployed_to` -- so it compares only where the claim says to look, and Finding 1
+  measured that claim wrong.
+- **It never reads the install's own `skills/` tree**, which is Finding 2's copy: the one
+  a profile-less cron job actually runs.
+
+Its own docstring records the cost of the question going unasked -- "228 stale copies of
+`vault_manager.py` ran across 41 profiles" -- which is the same failure class as this
+week's, written down before it happened again.
 
 **What is wanted.**
 
@@ -5401,12 +5426,14 @@ read-only**: status, agents, skills, cron jobs, sessions.
 - **Honest absence**: a Skill the framework has never deployed says so, rather than
   appearing current because nobody has looked.
 
-**Worth knowing before choosing.** This is the first time the framework would *write* into
-the Hermes install; everything it does there today is read-only. That boundary is worth
-crossing deliberately, with an ADR, not by growing a Deploy button. It also needs a decision
-on which side is the source of truth when they differ -- the framework's catalog, or the
-install -- because "deploy" and "adopt" are both reasonable answers and only one can be the
-default.
+**Worth knowing before choosing.** *(Corrected 2026-10-17 with Finding 4: this paragraph
+first said the framework had never written into the install, which is false.)* The write
+boundary is already crossed, so the question is not whether to cross it but whether to put
+an operator-facing button on machinery that has only ever run from tests. What still needs
+deciding is which side is the source of truth when the two differ -- the framework's
+catalog, or the install -- because "deploy" and "adopt" are both reasonable answers and only
+one can be the default; and what a `modified` copy should do, since someone edited it in
+place for a reason.
 
 **Acceptance.** A screen shows, per artifact, whether the install matches the framework and
 where it does not; deploying from that screen updates every real target including the
