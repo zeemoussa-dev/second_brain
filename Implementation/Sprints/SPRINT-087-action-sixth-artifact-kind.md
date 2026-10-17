@@ -82,7 +82,7 @@ bidirectional link, written at sprint creation. Order by implementation dependen
 
 | Story | Title | Phase | Status |
 |---|---|---|---|
-| [REQ-SB-95-US-02](../UserStories/REQ-SB-95-US-02-action-sixth-artifact-kind.md) | Action as the sixth artifact kind — one catalogue of what this app can actually do | P2 | In Progress (T01, T02, T04, T07 Done 2026-10-16; T03 Done 2026-10-17; T05, T06 outstanding) |
+| [REQ-SB-95-US-02](../UserStories/REQ-SB-95-US-02-action-sixth-artifact-kind.md) | Action as the sixth artifact kind — one catalogue of what this app can actually do | P2 | In Progress (T01, T02, T04, T07 Done 2026-10-16; T03 Done 2026-10-17; T05 Done 2026-10-18; only T06 outstanding, gated on `ESC-069` — `app/api/actions_router.py` belongs to no task) |
 
 Build order inside the sprint, read from the task files' own `depends_on`:
 `T01 → T02 → T03`, `T01 → T04`, `T02 → T05`, `(T03, T04, T05) → T06`.

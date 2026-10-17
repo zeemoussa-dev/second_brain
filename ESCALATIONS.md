@@ -333,4 +333,45 @@ inconsistency without rewriting a `Done` sprint's history.
 **Resolving artefact:** operator decision, 2026-10-17
 **Status:** Resolved
 
+## ESC-069: `app/api/actions_router.py` carries the Action catalogue onto the screen but belongs to no remaining task — plugin attribution stops at the Manager — 2026-10-18
+
+**Category:** unanticipated-file
+
+**Trigger:** Building `REQ-SB-95-US-02-T05` (plugin-contributed Actions). The task
+delivers `AC-06` at the layer it owns — `ActionManager.get_all()` returns the
+install's stored Actions plus the loaded plugins', each plugin entry carrying its
+`plugin_id`, and both write paths refuse a contributed one. Measured against the
+real HTTP surface afterwards, two things do not reach a client:
+
+- **`GET /actions` drops the attribution.** The list route builds an explicit dict
+  (`id`, `description`, `implementation_kind`, `status`, `reason`) and the detail
+  route's response model is the `Action` entity, so `plugin_id` — carried by the
+  `PluginContributedAction` the Manager composes — is serialised by neither.
+  Observed: the plugin's Action *is* listed, resolves, and disappears on uninstall;
+  it just cannot be told apart from the operator's own.
+- **`PUT`/`DELETE` on a plugin Action raises out of the router.** The new
+  `PluginContributedActionIsReadOnlyError` has no `409` mapping beside the two
+  refusals `T03` already maps, so a refusal the Manager words carefully reaches the
+  client as a 500.
+
+`app/api/actions_router.py` is in **neither `T05`'s nor `T06`'s** `## Files to
+Modify`. `T05`'s Out of Scope explicitly hands "showing the plugin attribution on a
+screen" to `T06`, and `T06`'s own file list is frontend-only — so the one file that
+joins them is unassigned. `T06`'s AC-tagged manual step 5 ("confirm its row renders
+… shows the contributing plugin id, and exposes no edit/delete control") cannot pass
+as written until it is.
+
+**Resolution:** Not improvised. `T05` stopped at its own boundary, shipped `AC-06` at
+the Manager and facade, and recorded the gap here. The fix is small and belongs to
+one owner: add `plugin_id` to the `GET /actions` list payload (absent or `null` for a
+stored Action) and map `PluginContributedActionIsReadOnlyError` to `409` alongside
+the cardinality and resolution refusals.
+
+**What is needed:** a human adds `src/backend/app/api/actions_router.py` to
+`REQ-SB-95-US-02-T06`'s `## Files to Modify` (the cheapest route — `T06` is `Ready`,
+not started, and already owns the screen that needs it), or mints a `T08` for it.
+
+**Resolving artefact:** — (Open)
+**Status:** Open
+
 ---
