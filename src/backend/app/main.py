@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from app.business.core.templates.template_manager import TemplateManager
 from app.business.core.plugins.plugin_manager import PluginManager
 from app.business.core.vault.vault_manager import VaultManager
+from app.api.actions_router import router as actions_router
 from app.api.agents_router import router as agents_router
 from app.api.artifacts_router import router as artifacts_router
 from app.api.backup_router import router as backup_router
@@ -239,3 +240,4 @@ app.include_router(pipelines_router)
 app.include_router(skills_router)
 app.include_router(tools_router)
 app.include_router(index_router)
+app.include_router(actions_router)
