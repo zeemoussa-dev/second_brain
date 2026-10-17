@@ -1,0 +1,397 @@
+/* The Action Center's own layout. The list vocabulary it renders with
+   (.item-list, .item-row, .card, .badge, .empty-state) belongs to the
+   framework. */
+
+.action-center-stats {
+  display: flex;
+  gap: var(--space-4);
+  margin: var(--space-3) 0 var(--space-4);
+  font-size: var(--font-size-sm);
+}
+
+.action-center-stats strong {
+  font-size: var(--font-size-lg);
+  margin-right: var(--space-1);
+}
+
+.action-center-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.action-center-filters input[type='search'] {
+  flex: 1 1 16rem;
+}
+
+.action-center-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+}
+
+/* Pushed to the end of the bar: it changes the shape of the list rather than
+   what is in it, which is a different kind of control from a filter. */
+.action-center-groupby {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+  font-size: var(--font-size-sm);
+}
+
+.action-center-group {
+  margin-bottom: var(--space-3);
+}
+
+.action-center-group-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.action-center-group-head h2 {
+  font-size: var(--font-size-base);
+  margin: 0;
+}
+
+/* Scope is a tab, not another dropdown: it splits the list in two rather than
+   narrowing it, and it is the first choice someone makes on this screen. */
+.action-center-tabs {
+  display: flex;
+  gap: var(--space-1);
+  margin: var(--space-3) 0 var(--space-2);
+}
+
+.action-center-tabs button {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.action-center-tabs button.is-selected {
+  border-bottom-color: currentColor;
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+/* A row is the way into its action. */
+.action-row-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.action-row-link:hover .item-row-title {
+  text-decoration: underline;
+}
+
+/* ── one action, opened ─────────────────────────────────────────────── */
+
+.action-detail-head h1 {
+  margin: var(--space-2) 0;
+}
+
+.action-detail-badges,
+.action-detail-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.action-detail-controls {
+  margin-top: var(--space-3);
+}
+
+/* The operator's own condition: the first thing to read on a held action. */
+.action-hold {
+  border-left: 3px solid currentColor;
+  padding-left: var(--space-2);
+  font-weight: 600;
+}
+
+.action-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: var(--space-2) var(--space-4);
+  margin: var(--space-3) 0 0;
+}
+
+.action-facts dt {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.action-facts dd {
+  margin: 0;
+}
+
+.action-link-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.action-link-label {
+  width: 6rem;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.action-link-target {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.action-link-name {
+  overflow-wrap: anywhere;
+}
+
+.action-evidence {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-2);
+  border-left: 3px solid var(--color-border);
+}
+
+.action-ask {
+  white-space: pre-wrap;
+}
+
+.action-lines {
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-4);
+}
+
+.action-lines li {
+  margin-bottom: var(--space-1);
+}
+
+.action-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.action-form h3 {
+  margin: 0;
+}
+
+.action-form label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+}
+
+.action-form label.action-check {
+  flex-direction: row;
+  align-items: center;
+}
+
+.action-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+}
+
+.action-form-wide {
+  grid-column: 1 / -1;
+}
+
+.action-note-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.action-note-form .input {
+  flex: 1 1 16rem;
+}
+
+/* -- what the agents could not settle -------------------------------- */
+
+.needs-call {
+  margin-bottom: var(--space-3);
+  border-left: 3px solid currentColor;
+}
+
+.needs-call-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.needs-call-head h2 {
+  margin: 0;
+  font-size: var(--font-size-base);
+}
+
+.needs-call section {
+  margin-top: var(--space-3);
+}
+
+.needs-call h3 {
+  margin: 0 0 var(--space-1);
+  font-size: var(--font-size-sm);
+}
+
+.needs-call p {
+  margin: 0 0 var(--space-1);
+  font-size: var(--font-size-sm);
+}
+
+.needs-call-list,
+.needs-call-owners {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+  font-size: var(--font-size-sm);
+}
+
+.needs-call-list li,
+.needs-call-owners li {
+  margin-bottom: var(--space-2);
+}
+
+.needs-call-owner-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+/* The people he wrote to, then a free field: the common case is one click. */
+.needs-call-owner-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  align-items: center;
+  margin-top: var(--space-1);
+}
+
+.needs-call-owner-form .input {
+  flex: 1 1 14rem;
+  min-width: 10rem;
+}
+
+.needs-call-owner-links {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.needs-call-pair {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.needs-call-pair-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.needs-call-undo {
+  margin-left: var(--space-2);
+  padding: 0 var(--space-1);
+}
+
+.action-chase-said {
+  margin-left: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+/* The four screens. Heavier than the scope tabs below them, which divide one
+   screen rather than switching between them. */
+.action-center-screens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.action-center-screens a {
+  padding: var(--space-2) 0;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: var(--font-size-sm);
+}
+
+.action-center-screens a:hover {
+  color: var(--color-text);
+}
+
+.action-center-screens a.is-selected {
+  border-bottom-color: currentColor;
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+/* Bulk chasing sits with the count it applies to, not in a toolbar: the number
+   next to it is what will be sent. */
+.action-center-chase-all {
+  margin-left: var(--space-2);
+}
+
+.action-center-count {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+/* Who a chase goes to. An ask owed by several people is one email to all of
+   them, so the list is on the page before he presses -- everyone ticked, and
+   anyone who has already done their half can be taken off. */
+.action-chase-people {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.action-chase-person {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.action-chase-person.is-unknown {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* The standing rule for chasing, beside the screen it governs. */
+.action-center-rule {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.action-chase-person.is-external {
+  opacity: 0.55;
+}

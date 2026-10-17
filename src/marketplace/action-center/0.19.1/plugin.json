@@ -1,0 +1,8 @@
+{
+  "id": "action-center",
+  "name": "Action Center",
+  "description": "What was asked of whom, and whether it happened. Actions read out of sent mail, tracked to completion from replies and the calendar.",
+  "version": "0.19.1",
+  "framework_api": 11,
+  "requires": []
+}

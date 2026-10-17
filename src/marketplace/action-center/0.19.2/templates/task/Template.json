@@ -1,0 +1,59 @@
+{
+  "id": "task",
+  "schema_version": 2,
+  "version": 7,
+  "identity": {
+    "strategy": "id"
+  },
+  "on_missing": "create",
+  "allow_create_folder": true,
+  "root": {
+    "type": "md",
+    "own_folder": false,
+    "plain_filename": true,
+    "on_existing_title": "always_new",
+    "frontmatter_defaults": {
+      "type": "Task",
+      "status": "Open",
+      "owner": "",
+      "owner_email": "",
+      "asked_by": "",
+      "source": "agent",
+      "scope": "waiting",
+      "due": "",
+      "asked_at": "",
+      "source_thread": "",
+      "customer": "",
+      "priority": "Normal",
+      "completed_at": "",
+      "evidence": "",
+      "evidence_source": "",
+      "keep_open_until": "",
+      "chased_at": "",
+      "chase_to": "",
+      "chase_conversation": "",
+      "chases": 0,
+      "tags": [
+        "kind/tasks"
+      ]
+    },
+    "sections": [
+      {
+        "name": "Ask",
+        "access": "machine_write"
+      },
+      {
+        "name": "Evidence",
+        "access": "machine_write"
+      },
+      {
+        "name": "Chases",
+        "access": "machine_write"
+      },
+      {
+        "name": "Notes",
+        "access": "human_only"
+      }
+    ]
+  }
+}

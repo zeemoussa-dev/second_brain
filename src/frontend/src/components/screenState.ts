@@ -17,7 +17,7 @@
 // drop-in replacements for `useState` and a screen written against it already
 // calls `setThing((previous) => ...)`.
 
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { useSearchParams } from 'react-router';
 
 function resolve<T>(next: SetStateAction<T>, previous: T): T {
@@ -110,13 +110,26 @@ export function useUrlFilters<T extends Record<string, string | boolean | undefi
 ): [T, (field: keyof T & string, value: string | boolean) => void] {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const filters = { ...defaults };
-  for (const field of Object.keys(defaults) as (keyof T & string)[]) {
-    const raw = searchParams.get(field);
-    if (raw === null) continue;
-    (filters as Record<string, string | boolean | undefined>)[field] =
-      typeof defaults[field] === 'boolean' ? raw === 'true' : raw;
-  }
+  // Memoised on the VALUES, not rebuilt per render. A filter object is what a
+  // screen passes to `useEffect`, and a fresh identity every render turns that
+  // effect into an infinite loop -- fetch, setState, re-render, fetch -- which
+  // on the Action Center showed up as the board flashing (2026-10-17).
+  const search = searchParams.toString();
+  const defaultsKey = JSON.stringify(defaults);
+  const filters = useMemo(() => {
+    const resolved = { ...defaults };
+    const params = new URLSearchParams(search);
+    for (const field of Object.keys(defaults) as (keyof T & string)[]) {
+      const raw = params.get(field);
+      if (raw === null) continue;
+      (resolved as Record<string, string | boolean | undefined>)[field] =
+        typeof defaults[field] === 'boolean' ? raw === 'true' : raw;
+    }
+    return resolved;
+    // `defaults` is a literal rebuilt every render, so its VALUES are depended
+    // on through defaultsKey rather than its identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, defaultsKey]);
 
   // `defaults` is a literal rebuilt on every render, so it is compared by
   // value inside the setter rather than depended on by identity here.
