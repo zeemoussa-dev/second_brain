@@ -25,11 +25,9 @@ credential/endpoint data), no per-agent rollup (that concept is retired
 alongside disabled_agents)."""
 from __future__ import annotations
 
-from app.business.core.plugins.plugin_manager import PluginManager
 from app.business.core.provider.provider_manager import ProviderManager
-from app.business.logic import capture_freshness
+from app.business.logic import capture_freshness, plugin_status
 
-_plugin_manager = PluginManager()
 _provider_manager = ProviderManager()
 
 
@@ -43,15 +41,11 @@ def get_system_health() -> dict:
             }
             for p in _provider_manager.get_all()
         ],
-        # ADR-022: what the plugin host did at startup. A refused, invalid or
-        # disabled plugin is otherwise invisible -- its screens just aren't there.
-        "plugins": [
-            {
-                "id": p.id, "name": p.name, "version": p.version, "status": p.status,
-                "reason": p.reason, "routes_prefix": p.routes_prefix,
-            }
-            for p in _plugin_manager.get_load_report()
-        ],
+        # ADR-022: what the plugin host did at startup. The same list the
+        # frontend gates its routes on (`BUG-088`) -- one source, because a
+        # refused plugin's screens are NOT absent: they were compiled into the
+        # app at install time and render whatever the backend decided.
+        "plugins": plugin_status.get_plugin_status(),
         # When each capture last actually brought a note in, read from the vault
         # rather than from any job's own report (`BUG-085`): email capture failed
         # for four days while every job status said `ok`, and nothing on screen

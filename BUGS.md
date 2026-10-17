@@ -74,7 +74,7 @@ is a thin status mirror of the index table below.
 | BUG-085 | Email capture failed for four days while every status said "ok" -- an agent-mediated job swallows the script's non-zero exit, and nothing on screen shows capture freshness | Logic | Critical | Fixed | 2026-10-13 | `08028d2` |
 | BUG-086 | The Agents Map takes seconds to show anything -- listing agents parsed every SKILL.md of every profile and the page asked for the same data four times at once | Logic | Major | Fixed | 2026-10-13 | `dfd5f6e` |
 | BUG-087 | The vault index is written to the pre-move data path, where nothing reads it -- two index folders, the live one staler than the dead one | Logic | Major | Fixed | 2026-10-16 | `88fdcb4` |
-| BUG-088 | A refused plugin still mounts its screens, so a version mismatch reads as a broken page rather than a disabled plugin | UI | Major | Open | 2026-10-17 | — |
+| BUG-088 | A refused plugin still mounts its screens, so a version mismatch reads as a broken page rather than a disabled plugin | UI | Major | Fixed | 2026-10-17 | direct fix, 2026-10-17 |
 | BUG-089 | The app has no error boundary, so one screen's throw blanks the whole window | UI | Major | Fixed | 2026-10-17 | direct fix, 2026-10-17 |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
@@ -1365,13 +1365,15 @@ is a thin status mirror of the index table below.
 
 - **Area:** UI
 - **Severity:** Major
-- **Status:** Open
+- **Status:** Fixed
 - **Found:** 2026-10-17, reported as "The Action Center Keeps on Crashing After the latest Updates" while `FRAMEWORK_API` moved 9 → 10 → 11 in one afternoon.
 - **Root cause:** the two halves of a plugin are gated differently. The backend half is refused at load when `framework_api` does not match exactly (`plugin_manager.py`, status `refused`, reason on System Health). The frontend half is not gated at all: `pluginHost/registry.ts` collects screens with `import.meta.glob('../plugins/*/index.tsx')`, which reads the folder the installer wrote and knows nothing about whether the backend accepted the plugin. So a refused plugin keeps its sidebar entry and its routes, and every screen calls endpoints that are no longer mounted.
 - **Repro:** with a plugin installed, change `FRAMEWORK_API` in `app/plugin_api.py` and restart the backend. `GET /system-health` reports the plugin `refused`; `/plugins/<id>/...` returns 404. Open that plugin's screen: it renders its chrome and then fails, with `Uncaught (in promise) ApiError: {"detail":"Not Found"}` in the console. Observed live today on `/my-day/emails` (stuck on "Loading the emails…") and on the Action Center.
 - **Expected:** a screen whose plugin the backend refused says so — "Action Center is not loaded: built for framework API 10, this framework provides 11" — in the place the screen would have been, matching what System Health already reports.
 - **Actual:** the screen renders and then breaks on data that cannot arrive, so a version mismatch is indistinguishable from the plugin being broken. During an API bump every installed plugin is in this state until each is republished.
 - **Note:** found while the framework's own API was being bumped by a parallel session, which is the normal case rather than an exotic one — `ADR-039`/`ADR-040` make a bump a routine multi-repository step, and the window between bumping the host and republishing a plugin is exactly when a user opens the app. The backend already knows the answer; only the frontend lacks it. Fixing it needs the refused set exposed to the shell (System Health already computes it) and `registry.ts` consulting it before mounting a route.
+
+- **Fix:** the host tells the frontend what it did, and the frontend gates on it. `GET /plugin-host/plugins` (new `plugin_host_router`, over a new `business/logic/plugin_status.py` that System Health now shares, so the two cannot drift) returns each installed plugin's load status and the host's own reason. `pluginHost/registry.ts` wraps **every** plugin route and settings page in `PluginGate` at collection time -- a host guarantee rather than something a plugin author has to remember -- which renders "<Plugin> is not running", the refusal reason, and a link to System Health in place of the screen. Deliberately permissive about silence: an unknown id, or a host that cannot be reached at all, mounts the screen, because being absent from the report is not evidence of refusal. Verified end to end by declaring API 3 in an installed manifest and restarting: `/plugin-host/plugins` reported `refused`, the Action Center page showed the explanation with the sidebar intact, and the manifest was restored. The sibling `BUG-089` boundary covers the other half -- a screen that throws rather than one that was never loaded.
 
 ### BUG-089 — The app has no error boundary, so one screen's throw blanks the whole window
 

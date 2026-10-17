@@ -26,6 +26,7 @@ from app.api.skills_router import router as skills_router
 from app.api.settings_system_router import router as settings_system_router
 from app.api.setup_router import router as setup_router
 from app.api.system_health_router import router as system_health_router
+from app.api.plugin_host_router import router as plugin_host_router
 from app.api.tools_router import router as tools_router
 from app.api.vault_index_router import router as vault_index_router
 from app.api.vault_router import router as vault_router
@@ -225,6 +226,7 @@ app.include_router(marketplace_router)
 app.include_router(boot_router)
 app.include_router(cockpit_router)
 app.include_router(system_health_router)
+app.include_router(plugin_host_router)
 app.include_router(vault_index_router)
 app.include_router(vault_search_router)
 app.include_router(hermes_router)

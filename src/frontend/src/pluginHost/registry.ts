@@ -1,3 +1,6 @@
+import { createElement, type ComponentType } from 'react';
+
+import { PluginGate } from '../components/PluginGate';
 import type {
   MountedCockpitInfoField,
   MountedCockpitTab,
@@ -18,7 +21,11 @@ const pluginModules = import.meta.glob<{ default?: PluginUi }>('../plugins/*/ind
 // looser could let one plugin's screens land on another's paths.
 const VALID_PLUGIN_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
-function belongsToPlugin(pluginId: string, path: string): boolean {
+/** Whether `path` is one of this plugin's own screens. Exported since v11:
+ *  the breadcrumb helpers validate a `back` path with the SAME rule that
+ *  decides which routes a plugin may mount, so a crafted link can never send
+ *  the operator somewhere the plugin does not own. */
+export function belongsToPlugin(pluginId: string, path: string): boolean {
   return path === `/${pluginId}` || path.startsWith(`/${pluginId}/`);
 }
 
@@ -63,7 +70,7 @@ function collectPluginContributions(): Collected {
         collected.problems.push(`${pluginId}: route "${route.path}" is declared twice; only the first was mounted`);
       } else {
         seenPaths.add(route.path);
-        collected.routes.push({ ...route, pluginId });
+        collected.routes.push({ ...route, component: gated(pluginId, route.component), pluginId });
       }
     }
 
@@ -84,7 +91,7 @@ function collectPluginContributions(): Collected {
       const path = relativePath
         ? `/settings/plugins/${pluginId}/${relativePath}`
         : `/settings/plugins/${pluginId}`;
-      collected.settingsPages.push({ ...page, path, pluginId });
+      collected.settingsPages.push({ ...page, path, component: gated(pluginId, page.component), pluginId });
     }
 
     const seenTabIds = new Set<string>();
@@ -114,6 +121,15 @@ function collectPluginContributions(): Collected {
     console.warn(`[plugins] ${problem}`);
   }
   return collected;
+}
+
+// Every plugin screen is wrapped before it is mounted, so a plugin whose
+// backend the host refused says so instead of rendering and then failing on
+// calls to a prefix that was never mounted (BUG-088). Done here rather than
+// asked of plugin authors: it is a host guarantee, and one a plugin could
+// forget.
+function gated(pluginId: string, component: ComponentType): ComponentType {
+  return () => createElement(PluginGate, { pluginId }, createElement(component));
 }
 
 const collected = collectPluginContributions();
