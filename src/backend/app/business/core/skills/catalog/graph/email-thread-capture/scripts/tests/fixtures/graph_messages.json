@@ -1,0 +1,83 @@
+{
+  "_comment": "Recorded-shape Microsoft Graph responses for test_graph_lib.py. Field names and nesting match the real /users/{id}/mailFolders/{f}/messages payload; addresses and ids are synthetic. Keep this in sync with graph_lib._SELECT.",
+
+  "inbox": {
+    "value": [
+      {
+        "id": "AAMkAGI2-msg-0001",
+        "subject": "Q3 renewal - pricing",
+        "conversationId": "AAQkAGI2-conv-0001",
+        "receivedDateTime": "2026-09-04T09:12:33.482Z",
+        "hasAttachments": true,
+        "from": { "emailAddress": { "name": "Alice Baker", "address": "Alice.Baker@Contoso.com" } },
+        "toRecipients": [
+          { "emailAddress": { "name": "Sherif Tawfik", "address": "sherif.tawfik@core42.ai" } }
+        ],
+        "ccRecipients": [
+          { "emailAddress": { "name": "Carol Diaz", "address": "carol.diaz@contoso.com" } }
+        ],
+        "body": {
+          "contentType": "text",
+          "content": "Hi Sherif,\n\nAttaching the revised pricing for Q3.\n\nRegards,\nAlice Baker\nTitle: Account Director\nDepartment: Enterprise Sales\nCompany: Contoso Ltd\n"
+        }
+      },
+      {
+        "id": "AAMkAGI2-msg-0002",
+        "subject": "No signature here",
+        "conversationId": "AAQkAGI2-conv-0002",
+        "receivedDateTime": "2026-09-03T16:45:00Z",
+        "hasAttachments": false,
+        "from": { "emailAddress": { "name": "Dan Evans", "address": "dan@example.org" } },
+        "toRecipients": [
+          { "emailAddress": { "name": "Sherif Tawfik", "address": "sherif.tawfik@core42.ai" } }
+        ],
+        "ccRecipients": [],
+        "body": { "contentType": "text", "content": "Quick question, no signature block at all." }
+      }
+    ]
+  },
+
+  "sentitems": {
+    "value": [
+      {
+        "id": "AAMkAGI2-msg-0003",
+        "subject": "RE: Q3 renewal - pricing",
+        "conversationId": "AAQkAGI2-conv-0001",
+        "receivedDateTime": "2026-09-04T10:40:07.001Z",
+        "hasAttachments": false,
+        "from": { "emailAddress": { "name": "Sherif Tawfik", "address": "sherif.tawfik@core42.ai" } },
+        "toRecipients": [
+          { "emailAddress": { "name": "Alice Baker", "address": "alice.baker@contoso.com" } }
+        ],
+        "ccRecipients": [],
+        "body": { "contentType": "text", "content": "Thanks Alice - reviewing now." }
+      }
+    ]
+  },
+
+  "attachments_for_msg_0001": {
+    "value": [
+      {
+        "id": "ATT-0001",
+        "name": "Q3-pricing.xlsx",
+        "size": 48213,
+        "isInline": false,
+        "contentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      },
+      {
+        "id": "ATT-0002",
+        "name": "signature-logo.png",
+        "size": 4096,
+        "isInline": true,
+        "contentType": "image/png"
+      },
+      {
+        "id": "ATT-0003",
+        "name": "huge-recording.mp4",
+        "size": 41943040,
+        "isInline": false,
+        "contentType": "video/mp4"
+      }
+    ]
+  }
+}

@@ -276,6 +276,17 @@ class SkillManager:
             client.skills.create(profile_id, skill.category, skill.id, skill_md, scripts)
             return "created"
         if existing.category != skill.category:
+            if existing.category in skills_data.list_categories():
+                # The deployed copy belongs to another Tool the catalog still
+                # ships, so it is that Tool's Skill, not a stale grouping. On
+                # 2026-10-09 this branch deleted an install's Outlook capture
+                # to deploy the Graph one of the same name, and email stopped
+                # for eight days (`BUG-091`). Providers carry distinct slugs.
+                raise SkillPreconditionError(
+                    f"{skill.id!r} is already deployed to {profile_id!r} under the {existing.category!r} "
+                    f"Tool; deploying the {skill.category!r} one would delete it. Two Tools must not "
+                    "ship a Skill with the same name."
+                )
             client.skills.create(profile_id, skill.category, skill.id, skill_md, scripts)
             client.skills.delete(profile_id, existing.id)
             return "moved"

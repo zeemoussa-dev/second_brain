@@ -1,0 +1,82 @@
+"""CLI entry point: fetch one bounded page of recent Outlook emails.
+
+Usage:
+    python list_recent_emails.py --limit 50 [--since ISO] [--before ISO] [--oldest-first]
+
+Prints a JSON array of email dicts to stdout, one per email:
+{id, subject, sender_name, sender_email, sender_department,
+ sender_job_title, sender_company_name, received, body,
+ attachments: [{filename, temp_path, size}], conversation_id,
+ recipients: [{name, email, department, job_title, company_name, type}, ...],
+ direction}
+
+The department/job_title/company_name fields (2026-08-21) come from
+Outlook's own GetExchangeUser() GAL lookup -- populated only for
+internal, Exchange-resolved senders/recipients; blank for anyone
+external (no GAL entry to read).
+
+`direction` (2026-09-02, REQ-SB-87-US-02-T06) is "received" for an
+Inbox-sourced email or "sent" for a Sent-Mail-sourced one, stamped by
+outlook_lib.py at the real per-folder read. Each recipient's own `type`
+(2026-09-02) is "to" or "cc", read directly from Outlook's own
+recipient.Type at the COM layer. Both fields pass straight through this
+module unmodified -- no remapping happens here.
+
+`--oldest-first` (2026-09-11) returns the OLDEST `limit` emails after
+`--since` instead of the newest -- how the delta pages forward from its
+watermark.
+
+`attachments[].temp_path` points at a real file on disk holding that
+attachment's raw bytes (None if it was too large to save) -- pass it
+straight through to capture_attachments.py, which reads and deletes it.
+Fetch-only: no vault write, no side effect besides the Outlook read and
+the temp files it saves for real attachments.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+
+# Graph, not Outlook COM (2026-09-09). `graph_lib` is a deliberate drop-in --
+# same public surface, same 13-field record, and it still exports the Outlook
+# name for the exception, so nothing downstream of here changed. COM is not an
+# option on this host: the agent runs as one account and reads a mailbox
+# belonging to another, which Outlook desktop cannot do without a mail profile
+# for it. `outlook_lib.py` is kept beside this file as the COM path for hosts
+# where that IS the right answer.
+from graph_lib import OutlookUnavailable, list_recent_mail
+
+# A real email body/subject can carry a Unicode character (found live,
+# 2026-08-24: U+202F NARROW NO-BREAK SPACE, a real typographic space
+# some senders' own signatures use) that Windows' default console
+# codepage (cp1252, not UTF-8) can't encode -- printing the JSON output
+# without this crashed the WHOLE capture run on that one email, a
+# pre-existing bug this surfaced while verifying the Sent Mail fix
+# below, not caused by it (any Inbox email with the same character
+# would have hit it too).
+sys.stdout.reconfigure(encoding="utf-8")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--limit", type=int, default=10)
+    parser.add_argument("--since", default=None)
+    parser.add_argument("--before", default=None)
+    parser.add_argument("--oldest-first", action="store_true",
+                        help="The oldest `limit` emails after --since, instead of the newest.")
+    args = parser.parse_args()
+
+    try:
+        emails = list_recent_mail(limit=args.limit, since=args.since, before=args.before,
+                                  oldest_first=args.oldest_first)
+    except OutlookUnavailable as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    print(json.dumps(emails, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
