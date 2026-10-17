@@ -72,6 +72,14 @@ card, the route, and the sixth kind tab on the Artifacts page.
 - `src/frontend/src/App.tsx` (one route)
 - `src/frontend/src/pages/SettingsArtifactsPage.tsx` (sixth `KIND_NAV` entry + the `ArtifactKind` union)
 - `src/frontend/src/features/settings/artifactsApiClient.ts` (the `ArtifactKind` type, if the union lives there)
+- `src/backend/app/api/actions_router.py` — **added 2026-10-18, authorised against `ESC-069`.**
+  Two changes only, both needed for this task's own `AC-06` step to pass:
+  (a) the list response must carry `plugin_id` for a plugin-contributed Action — it is
+  dropped today because the list builds an explicit dict while the detail route returns
+  the `Action` model; (b) map `PluginContributedActionIsReadOnlyError` to **409** with the
+  error's own message, matching how `T03` mapped the Manager's other refusals — without it
+  a PUT on a plugin Action returns 500 and the screen cannot say why it is read-only.
+  Nothing else in that file is in scope.
 
 ---
 

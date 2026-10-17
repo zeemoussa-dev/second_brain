@@ -372,6 +372,10 @@ the cardinality and resolution refusals.
 not started, and already owns the screen that needs it), or mints a `T08` for it.
 
 **Resolving artefact:** — (Open)
-**Status:** Open
+**Resolution (2026-10-18):** authorised by the orchestrator rather than re-planned. `src/backend/app/api/actions_router.py` is added to `REQ-SB-95-US-02-T06`'s `## Files to Modify`, scoped to exactly the two changes named in the escalation: carry `plugin_id` on the list response, and map `PluginContributedActionIsReadOnlyError` to 409. T06 is the last task in `SPRINT-087`, so there is no later owner to hand it to, and its own AC-tagged step cannot pass without it. Same shape as `ESC-064` on 2026-10-16 — the task's boundary is widened explicitly instead of a coder reaching past it by precedent.
+
+**Resolving artefact:** `REQ-SB-95-US-02-T06` scope extension, 2026-10-18
+
+**Status:** Resolved
 
 ---
