@@ -1,4 +1,8 @@
-// The way back, on every screen (ADR-042).
+// The way back, on every screen (operator, 2026-10-17: clicking an email in
+// My Day landed on the note with no way back).
+//
+// NOT ADR-042: that is the breadcrumbs decision, a different mechanism built
+// in parallel for the same complaint. Which of the two survives is unsettled.
 //
 // It lives in the shell rather than on each page for two reasons: a page added
 // tomorrow gets it without remembering to, and a plugin's screen gets it
