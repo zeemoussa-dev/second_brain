@@ -29,16 +29,18 @@ import { TemplateEditorModal } from '../features/settings/TemplateEditorModal';
 // confirmation flows are both popups now (ArtifactExportModal/
 // ArtifactImportModal), not inline page cards.
 
-const KIND_ORDER: ArtifactKind[] = ['skill', 'template', 'agent', 'pipeline', 'index'];
+const KIND_ORDER: ArtifactKind[] = ['skill', 'template', 'agent', 'pipeline', 'index', 'action'];
 const KIND_NAV: { kind: ArtifactKind; icon: string; label: string }[] = [
   { kind: 'template', icon: 'description', label: 'Templates' },
   { kind: 'skill', icon: 'auto_awesome', label: 'Skills' },
   { kind: 'agent', icon: 'smart_toy', label: 'Agents' },
   { kind: 'pipeline', icon: 'conveyor_belt', label: 'Pipelines' },
   { kind: 'index', icon: 'database', label: 'Indexes' },
+  { kind: 'action', icon: 'bolt', label: 'Actions' },
 ];
 const KIND_LABELS: Record<ArtifactKind, string> = {
   skill: 'Skills', template: 'Templates', agent: 'Agents', pipeline: 'Pipelines', index: 'Indexes',
+  action: 'Actions',
 };
 
 // One entry per kind, built from KIND_ORDER so a kind can never be half-added:
@@ -163,7 +165,7 @@ export function SettingsArtifactsPage() {
         </div>
       </div>
       <p className="text-muted">
-        Every real Skill, Template, Agent, Pipeline, and Index in this deployment, browsable across
+        Every real Skill, Template, Agent, Pipeline, Index, and Action in this deployment, browsable across
         kinds — mark what you want and it stays marked as you switch tabs, ready to Export.
       </p>
 

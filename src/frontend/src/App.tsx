@@ -5,6 +5,7 @@ import { AgentsMapPage } from './pages/AgentsMapPage';
 import { ChatPage } from './pages/ChatPage';
 import { CrawlersPage } from './pages/CrawlersPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { SettingsActionsPage } from './pages/SettingsActionsPage';
 import { SettingsArtifactsPage } from './pages/SettingsArtifactsPage';
 import { SettingsBlueprintsPage } from './pages/SettingsBlueprintsPage';
 import { SettingsMarketplacePage } from './pages/SettingsMarketplacePage';
@@ -46,6 +47,7 @@ function App() {
           <Route path="/settings/config" element={<SettingsConfigPage />} />
           <Route path="/settings/ui" element={<SettingsUIPage />} />
           <Route path="/settings/artifacts" element={<SettingsArtifactsPage />} />
+          <Route path="/settings/actions" element={<SettingsActionsPage />} />
           <Route path="/settings/blueprints" element={<SettingsBlueprintsPage />} />
           <Route path="/settings/marketplace" element={<SettingsMarketplacePage />} />
           <Route path="/settings/export-data" element={<SettingsExportDataPage />} />
