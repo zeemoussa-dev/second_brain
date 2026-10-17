@@ -1069,7 +1069,156 @@ exact places a sixth/seventh kind lands (read directly, not estimated):
   carry a cross-story edge on `plugin_api.py`, and the decomposer/product-owner
   must place the single bump in the later of the two rather than discover it.
 
-**Last reviewed:** 2026-10-16 (architect re-pass, `REQ-SB-95-US-01` only, on the
+## A Hermes Profile As It Really Is — the Read-Only Debug View (`REQ-SB-99`)
+
+`ADR-043` settles the shape. Every region this view shows already has a reader;
+the decisions are what composes them, which side each fact is enumerated from,
+and where the real cost is allowed to land.
+
+### §What Already Answers This, and What Does Not (`REQ-SB-99-US-01`)
+
+Read directly against the code, 2026-10-17 — this list bounds the build, and
+three entries correct what the story's own pointers assumed:
+
+- `GET /hermes/agents/{id}` (`hermes_agents_router.py`, `ADR-003`'s view-only
+  mirror) already returns the profile's real `model`, `provider`,
+  `reasoning_effort` and **every skill with its version** (`HermesSkill.version`
+  off each `SKILL.md`'s frontmatter). The skills region is a *verdict* on top of
+  data that is already served, not a new read.
+- `GET /agents/{id}` already returns the **enabled toolsets** as `tools`, paying
+  `cli.list_tools`'s subprocess; `get_all()` deliberately does not
+  (`BUG-086`). The toolset fact is not new either — only its honesty is
+  (see §Honest Absence).
+- **The soul is never served as written.** `read_soul()` returns the real bytes
+  but `_to_agent()` passes them through `_split_soul_sections()`:
+  `prompt` is the soul *minus* the `## Guardrails`/`## Scope` sections, and
+  `## Scope` is parsed down to `folders`/`tags`. Text outside those two sections
+  is **not** lost (it is in `prompt`) — what is lost is `## Scope`'s own body and
+  the document's integrity. `_soul_excerpt`'s 280 characters is narrower than
+  the PRD's Finding 1 reads: it is `description` only for `default`, and only
+  when `profile.yaml` has none.
+- **No config inheritance exists anywhere in this codebase.** `_deep_merge` is
+  `update()`'s write-patch merge, not a parent overlay (the story's Architect
+  pointer says otherwise; it is wrong). `_read_agent` reads the profile's own
+  `config.yaml` and nothing else, and an unset key reads as `""`.
+- **`GET /hermes/cron/jobs` has only ever listed the root/`default` profile's
+  jobs.** `HermesCron` has taken a `profile_id` since 2026-08-28;
+  `cron_status.list_cron_jobs()` never passes one. Named profiles' jobs are
+  invisible in the app today.
+- `GET /agents/{id}/jobs` is the **Pipeline** job tree and has nothing to do with
+  Hermes cron — do not extend it, and do not reuse the name.
+
+### §One Composed Read (`REQ-SB-99-US-01`, `ADR-043`)
+
+- **New:** `app/business/hermes/profile_detail.py` (name indicative) — composes
+  `HermesProfiles`, `SkillManager`, `HermesCron` and `HermesCLI` into one
+  response. Same shape as `agents_map_adapter.py`: a composing module inside
+  `business/hermes`, reaching Managers and `get_client()`, never `data_access`.
+- **One new route on the existing `hermes_agents_router.py`** — the view-only
+  mirror of Hermes' own files is exactly this router's stated concern. No new
+  router file, no addition to `agents_router.py`.
+- **Strictly inside `ADR-003`:** display only, no persistence, no cache, no
+  write into `<HERMES_HOME>`, no Registry mutation, no `deployed_to`
+  reconciliation as a side effect of looking (`US-01` Scenario 5 is satisfied by
+  construction — nothing on this path has a write in it).
+- **Cost is paid here and nowhere else.** The subprocess and the per-skill byte
+  comparison belong to this one deliberately-opened route. Nothing is added to
+  `GET /agents`, `GET /hermes/agents`, or the Agents Map's mount-time fetches
+  (`BUG-086` is the measured precedent).
+
+### §Skills With Versions — Install-First Enumeration, One Shared Verdict (`REQ-SB-99-US-01`, `ADR-043`)
+
+- `SkillManager` gains **`compare_profile_skills(profile_id)`**: it walks the
+  profile's own `skills/` tree via `HermesSkills.get_all(profile_id)` and asks
+  the catalog about each one. `check_deployment_drift()` keeps its signature,
+  its direction and its callers.
+- **The four-status rule is extracted once** and called by both:
+  `current` (byte-identical) | `stale` (version differs) | `modified` (same
+  version, different content) | `missing`. The per-profile direction adds
+  **`unknown_to_framework`** — a skill on disk the catalog does not have, which
+  the catalog-first direction structurally cannot produce. That is `US-01`
+  Scenario 2's third clause.
+- **`deployed_to` is not consulted on this path at all**, so the view cannot
+  inherit the untrustworthiness `REQ-SB-96` exists to fix. Reporting the claim
+  beside the disk is `REQ-SB-96`'s, deliberately not done here.
+- The Manager stays the sole gateway onto Skill data; the view never reads skill
+  bytes or `skills_data` itself.
+
+### §Cron Jobs — Binding Is a Directory, Not a Field (`REQ-SB-99-US-01`, `ADR-043`)
+
+- `CronJob` carries no profile attribute. A job is bound to the profile whose
+  `cron/jobs.json` holds it — `<home>/cron/` or `<home>/profiles/<id>/cron/`,
+  the same split `cli._profile_args`' `-p` flag uses.
+- `cron_status.list_cron_jobs()` gains an **optional `profile_id`**, passed to
+  the `HermesCron` parameter that already exists. Additive and default-unchanged:
+  `GET /hermes/cron/jobs` and the Hermes Ops screen behave exactly as today.
+- Root-level jobs belong to `default` (the `default` profile *is*
+  `<HERMES_HOME>`). The view labels them **install-level — the ones that run
+  with no `-p`** — which is how `US-01` Scenario 4's "unbound jobs are not
+  invisible everywhere" is met without inventing a page for them.
+- Schedule and last-run outcome come off `CronJob` as it already stands
+  (`schedule_display`, `last_run_at`, `last_status`, `last_error`). Run history
+  and authoring are out of scope.
+
+### §Config as Two Labelled Layers (`REQ-SB-99-US-01`, `ADR-043`)
+
+- The profile's own `config.yaml` **as written**, plus — for a non-`default`
+  profile — `<HERMES_HOME>/config.yaml` as written.
+- A key set only at the root is labelled **inherited from the install root**; a
+  key set nowhere is labelled **not set**; every shown value names the file it
+  came from.
+- The view **never claims Hermes' own internal precedence.** That resolution is
+  not readable from this repository, and a merged "effective" value that quietly
+  guesses which file won is a fabrication. `US-01` Scenario 3's "inherited, not
+  absent" is met by labelling the source, not by merging.
+
+### §Honest Absence — Three Different Failures (`REQ-SB-99-US-01`, `ADR-043`)
+
+- **`<HERMES_HOME>` absent or not a directory** — the install cannot be read at
+  all; no region renders as if it had been (`US-01` Scenario 7). Note this is a
+  *file* condition, not `HermesUnavailableError`: the gateway being down does not
+  make a profile unreadable, and `business/hermes/status.py`'s
+  `reachable`/`error` envelope is the convention to mirror, not the mechanism.
+- **One file missing or unreadable** — that region only, naming the file; every
+  other region still renders (`US-01` Scenario 6).
+- **The toolsets subprocess failing** — reported as a read failure, never as
+  "nothing enabled". `cli.list_tools` returns `{}` for both today, so `HermesCLI`
+  gains a sibling returning the real success flag alongside the mapping and
+  `list_tools` delegates to it (`ADR-014`'s same-shape-extension precedent); its
+  three existing callers are unaffected.
+- An excerpt is never presented as the full soul, and `_soul_excerpt` /
+  `description` / `short_description` keep behaving exactly as they do today
+  (`US-01` Scenario 1's third clause).
+
+### §Surface — a Page, Not an Eighth Tab (`REQ-SB-99-US-01`, `ADR-043`)
+
+- A **dedicated route and page** (`src/pages/`, the live convention; the API
+  call belongs in `features/agents-map/agentsApiClient.ts`). Read-only,
+  deliberately expensive, and worth a URL that can be pasted into an incident
+  note.
+- `AgentDetailPanel.tsx` gains **only the way in**. It is already seven tabs of
+  editing concerns that fetch on mount; this view must not load with them.
+- `ADR-042`'s breadcrumbs give the way back. Composition uses the live approved
+  `.item-list`/`.item-row`, `badge` and `.empty-state` families — no new visual
+  system (the story's functional-first note).
+- No `MAX_PATH` exposure is added: this story introduces no new tree walk, it
+  reuses `HermesSkills.get_all()`'s existing two-level glob. `app/hermes/` has no
+  `long_path()` and may not import `app.obsidian`'s (the `client.py` boundary) —
+  a third copy is not to be added here.
+
+**Last reviewed:** 2026-10-17 (architect pass, `REQ-SB-99-US-01` — `ADR-043`
+appended: a profile's debug view is one composed read-only endpoint on the
+existing view-only mirror router, its skills are enumerated from the install's
+own tree with the `check_deployment_drift()` verdict rule extracted and shared,
+cron binding is a directory rather than a field, config is shown as two labelled
+layers rather than one merged guess, and the three ways a read can fail are
+reported as three different things. Three of the story's own architect pointers
+were corrected against the code in §What Already Answers This — config
+inheritance does not exist, the soul's loss is `## Scope` rather than everything
+outside the marker blocks, and the app's cron reader has only ever seen the root
+profile.)
+
+Earlier: 2026-10-16 (architect re-pass, `REQ-SB-95-US-01` only, on the
 operator's `ADR-038` decision: `SELF_EMAIL` stays exactly as it is — a
 startup-required setting, in `system_settings._FIELDS`, editable on
 Settings → System, wizard step unchanged — and the Operator Profile **mirrors**

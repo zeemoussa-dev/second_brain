@@ -3825,3 +3825,229 @@ exactly that in My Day.
   Rejected because the choice is the whole point: an author who does not decide whether
   a value is a selection or a preference will get it wrong, and the hook cannot decide
   for them.
+
+## ADR-042: Breadcrumbs are a framework component and the host renders the trail on plugin Settings pages
+
+**Status:** Accepted
+**Date:** 2026-10-17
+
+**Context:** The operator opened a customer's MACC editor from an Azure Cost
+report, landed on `/settings/plugins/azure-cost-manager`, and had no way back.
+Settings is a different top-level area of the app, so the sidebar leads to
+Settings' own sections, not to the report he came from, and the plugin's screen
+had nothing above its `h1` saying where he was.
+
+There was **no breadcrumb anywhere in `src/`**. Azure Cost 0.8.3 solved it
+alone: a hand-rolled `.azure-cost-breadcrumb` nav on its pages, a `settingsLink`
+that appends `?back=<path>`, and a `safeBack` that validates the value against
+its own regex before navigating to it.
+
+That last part is why this cannot stay per-plugin. `safeBack` is a **security
+check** -- it is what stops a crafted link from bouncing the operator out of the
+plugin -- and every plugin reimplementing it means every plugin can get it
+subtly wrong, with no way for the framework to tell. The plugin that got it
+right asked for the standard (operator, 2026-10-17: "Shouldn't it be Breakcrumb
+and Have a Standard around that").
+
+**Decision:**
+
+- **`Breadcrumbs` is a framework component** (`components/Breadcrumbs.tsx`),
+  re-exported from `pluginHost/breadcrumbs` with the rest of the contract, and
+  styled by `.breadcrumbs` in `styles/shell.css` -- page chrome belongs with the
+  shell, not in one screen's stylesheet.
+- **The last crumb is never a link**, even when a `to` is supplied: a link to
+  the page you are already on reads as a way out and goes nowhere.
+- **A trail of one crumb renders nothing.** It would only repeat the `h1`
+  beneath it.
+- **The host renders the trail on plugin Settings pages**, wrapping them where
+  it mounts their routes. The plugin cannot do this honestly: the page sits
+  under `/settings`, a path it does not own and cannot describe. The trail is
+  the plugin's landing page, then wherever the link came from, then the page.
+- **`pluginSettingsLink(pluginId, { page, params, from, fromLabel })`** builds
+  the link, carrying the origin as `?back=` plus a `backLabel` for the crumb.
+  The origin goes in the URL, not in memory, for `ADR-041`'s reason: it survives
+  a refresh and a sent address.
+- **Validation is the host's, and reuses `belongsToPlugin`** -- the same
+  predicate that decides which routes a plugin may mount, now exported from
+  `pluginHost/registry`. One rule, one place. `usePluginReturn(pluginId)`
+  returns the validated `{ to, label }` or null, so a plugin never parses the
+  parameter itself. A protocol-relative path (`//host`) and anything outside
+  `/<plugin-id>` are refused.
+- **`FRAMEWORK_API` moves to 11**, which obliges republishing all four installed
+  plugins. Azure Cost then drops its own `settingsLink`/`safeBack`/
+  `.azure-cost-breadcrumb` for the shared ones.
+
+**Consequences:**
+
+- A plugin screen reached from elsewhere is now expected to show a trail, and
+  `Building-a-Plugin.md` states it as a rule rather than leaving it to taste.
+- The framework's own screens do not yet render breadcrumbs. Nothing regresses
+  -- they had none -- but the component exists for them now, and Settings' own
+  deep pages are the obvious next users.
+- A plugin that wants a crumb for a place the host cannot name must pass
+  `fromLabel`; the host will not invent a label from a path.
+
+## ADR-043: A profile's debug view is one composed read-only endpoint enumerated from the install's own tree — the skills verdict is shared with `check_deployment_drift()`, cron binding is a directory, and config is two labelled layers
+
+**Status:** Accepted
+**Date:** 2026-10-17
+
+**Context:** `REQ-SB-99` asks for one read-only view of what a Hermes profile is
+actually made of — the soul as written, every skill at the version it carries
+and whether it matches the framework, the real config, the cron jobs bound to
+it, the toolsets enabled. The operator answered each of those by opening files
+on the machine during this week's incidents.
+
+Almost every reader already exists, which is why this needs a decision rather
+than a design: the choice is what to compose, from which side, and at what cost.
+Read directly against the code, not taken from the story:
+
+- **The soul.** `HermesProfiles.read_soul()` returns the real full `SOUL.md` and
+  is called by `AgentManager._to_agent()`, but what reaches the API is
+  `_split_soul_sections()`'s decomposition — `prompt` (the soul with the
+  `## Guardrails` and `## Scope` sections cut out), `guardrails`, and `scope`
+  **parsed down to `folders`/`tags` lists**. The `## Scope` section is therefore
+  genuinely lossy, and no surface anywhere serves the soul as one verbatim
+  document. (`_soul_excerpt`'s 280 characters is narrower than the PRD's Finding
+  1 implies — it is the `description` only for the `default` profile, and only
+  when `profile.yaml` carries none; every other profile's `description` comes
+  from `profile.yaml` or is empty.)
+- **The skills.** `SkillManager.check_deployment_drift()` already answers
+  `missing | stale | modified | current` per skill per profile against the real
+  deployed bytes, and is called nowhere outside `tests/test_versioning.py`. It
+  enumerates from `self.get_all()` × `skill.deployed_to` — the Registry's claim,
+  which is the exact list `REQ-SB-96` exists because it is wrong. Driven from
+  that side, a skill physically present in a profile no `deployed_to` names is
+  invisible, and a skill the catalog has never heard of can never appear at all.
+- **The cron jobs.** A job's profile binding is **structural, not a field**:
+  `CronJob` has no profile/agent attribute, and `HermesCron` resolves jobs from
+  `<home>/cron/jobs.json` or `<home>/profiles/<id>/cron/jobs.json`
+  (`cli._profile_args`'s `-p` flag is the same convention). The app's own
+  `business/hermes/cron_status.list_cron_jobs()` passes **no** `profile_id`, so
+  `GET /hermes/cron/jobs` has only ever listed the root/`default` profile's jobs
+  — every named profile's jobs are invisible in the app today, despite the
+  library supporting them since 2026-08-28.
+- **The config.** `_read_agent()` reads the profile's **own** `config.yaml` and
+  nothing else. There is no inheritance model anywhere in this codebase:
+  `_deep_merge` merges a write *patch* in `update()`, it does not overlay a
+  parent. An unset key reads as `""` today, indistinguishable from absent.
+- **The toolsets.** `cli.list_tools(profile_id)` is a real subprocess spawn per
+  profile; `_to_agent()` pays it only on `get_by_id`, never in the bulk listing,
+  and `BUG-086` is the measured precedent for what the bulk path costs when it
+  forgets (4.4 of the Agents Map's 6 seconds, spent parsing every SKILL.md of
+  every profile and discarding the lot). `list_tools` returns `{}` on a real
+  failure, which is the same value as "nothing is enabled".
+
+**Decision:**
+
+- **One composed read, one endpoint, computed on demand.** A new
+  `business/hermes/profile_detail.py` composes `HermesProfiles`, `SkillManager`,
+  `HermesCron` and `HermesCLI` into a single response behind one route on the
+  existing view-only `hermes_agents_router.py`. It is the `agents_map_adapter.py`
+  shape (a composing module inside `business/hermes`, reaching Managers, never
+  `data_access`) and stays inside `ADR-003`'s display-only mirror: no
+  persistence, no cache, no write, no `deployed_to` reconciliation triggered by
+  looking.
+- **The expensive regions are paid once, here, and never on a listing path.**
+  The subprocess and the per-skill byte comparison belong to this one route,
+  which the operator opens deliberately. Nothing is added to `GET /agents`,
+  `GET /hermes/agents` or the Agents Map's mount-time fetches.
+- **Skills are enumerated install-first and verdicted by the shared rule.**
+  `SkillManager` gains a per-profile `compare_profile_skills(profile_id)` that
+  walks **the profile's own `skills/` tree** (`HermesSkills.get_all`) and asks
+  the catalog about each one — the opposite direction to
+  `check_deployment_drift()`, which keeps its signature, its callers and its
+  catalog-first direction unchanged. The four-status rule
+  (`current | stale | modified | missing`) is **extracted once** and both call
+  it; the per-profile direction adds a fifth, `unknown_to_framework`, for a
+  skill present on disk that the catalog does not have — a value the
+  catalog-first direction can never produce. The Manager stays the sole gateway;
+  the view never reads skill bytes itself.
+- **This view does not consult `deployed_to` at all**, and therefore cannot
+  inherit its untrustworthiness. Reconciling the claim is `REQ-SB-96`'s, and
+  reporting the claim beside the disk is deliberately left to it.
+- **"Bound to this profile" means "lives in that profile's `cron/` directory".**
+  `business/hermes/cron_status.list_cron_jobs()` gains an optional
+  `profile_id` pass-through to the `HermesCron` parameter that already exists —
+  additive, default-unchanged, so `GET /hermes/cron/jobs` behaves exactly as
+  today. Root-level jobs belong to `default`, because the `default` profile *is*
+  `<HERMES_HOME>`; the view labels them as install-level (the ones that run with
+  no `-p`), which is how `REQ-SB-96`'s "profile-less job" becomes visible
+  somewhere rather than nowhere.
+- **Config is shown as two labelled layers, never as one merged answer.** The
+  profile's own `config.yaml` as written, and — for a non-`default` profile —
+  `<HERMES_HOME>/config.yaml` as written. A key set only at the root is labelled
+  *inherited from the install root*; a key set nowhere is labelled *not set*.
+  The view states which file each value came from and never claims to reproduce
+  Hermes' own internal precedence, which is not readable from this repository.
+- **Three different failures are reported as three different things**:
+  `<HERMES_HOME>` absent or not a directory (the install cannot be read at all),
+  one file missing or unreadable (that region only, named by file), and the
+  toolsets subprocess failing (a read failure, **not** "nothing enabled"). To
+  make the last one honest, `HermesCLI` gains a sibling that returns the real
+  success flag alongside the mapping, and `list_tools` delegates to it — the
+  same-shape extension precedent of `ADR-014`.
+- **Surface:** a dedicated route and page, not another tab on
+  `AgentDetailPanel.tsx`. The panel is seven tabs of editing concerns and
+  fetches on mount; this is strictly read-only, deliberately expensive, and
+  worth a URL that can be pasted into an incident note. `AgentDetailPanel.tsx`
+  gains only the way in, and `ADR-042`'s breadcrumbs give the way back.
+
+**Alternatives Considered:**
+
+- **Call `check_deployment_drift()` as-is and filter to one profile.** Rejected
+  on both correctness and cost: it would show only what `deployed_to` claims for
+  that profile (missing exactly the drift the operator is hunting), omit skills
+  the catalog does not know, and pay the whole install's comparison to render
+  one profile.
+- **Enumerate from `deployed_to` and fix it here.** Rejected: that is
+  `REQ-SB-96`'s requirement, it is a write, and this story is independent and
+  read-only by construction. Enumerating install-first sidesteps the broken list
+  without touching it.
+- **Duplicate the comparison in the view.** Rejected — two answers to "does the
+  deployed copy match" is the failure this project has already paid for (228
+  stale copies of `vault_manager.py`, `check_deployment_drift()`'s own
+  docstring). One rule, two enumeration directions.
+- **Widen `AgentManager`/`GET /agents/{id}` instead of a new endpoint.** Rejected:
+  that path is the Registry-composed *editing* view, already carries the
+  subprocess for every caller, and would push debug-only cost onto the Agents
+  Map. The view-only mirror router (`ADR-003`) is where install truth belongs.
+- **A tab inside `AgentDetailPanel.tsx`.** Rejected for the mount-cost and the
+  read-only/edit mixing above; it remains a legitimate second placement if the
+  operator prefers it after seeing the page, and nothing in the backend decision
+  depends on which one wins.
+- **Merge the two config layers into one effective value.** Rejected as a
+  fabrication: Hermes' real precedence is not knowable from this repository, and
+  a debugger that quietly guesses which file won is worse than one that shows
+  both and says where each came from.
+- **Re-serve the soul from `Agent.prompt` + `guardrails` + `scope`.** Rejected:
+  `## Scope` is parsed to lists, section order is lost, and a reassembled
+  document is not evidence. `read_soul()` already returns the bytes.
+
+**Consequences:**
+
+- `SkillManager` gains its first operator-reachable use of the drift machinery.
+  The extraction touches `check_deployment_drift()`'s internals while leaving
+  its contract and `tests/test_versioning.py` intact — that test is the
+  regression guard for the refactor.
+- `REQ-SB-96` inherits a decided seam rather than an open question: the verdict
+  rule is already shared and already callable per profile, and the "which side
+  is the source of truth when they differ" question the PRD flags for it is
+  **not** pre-empted here — enumeration direction for a read is not authority
+  for a write.
+- `GET /hermes/cron/jobs` keeps its current default-profile-only behaviour, so
+  the Hermes Ops screen does not change under this story. That it is incomplete
+  is now written down; fixing it install-wide is not this story's.
+- The toolsets region needs a small change in `app/hermes/cli.py`, a file this
+  story would otherwise only read. It is additive and the existing three callers
+  are unaffected.
+- The page's cost is real — one subprocess plus two file reads per skill in the
+  profile. It is bounded by one profile and paid on an explicit navigation. If a
+  profile with a very large skills tree makes it slow, the honest next step is
+  to split the skills region into its own fetch, not to cache install truth.
+- `app/hermes/` has no `long_path()` of its own, and the `client.py` boundary
+  forbids it importing `app.obsidian`. This story adds no new tree walk — it
+  reuses `HermesSkills.get_all()`'s existing two-level glob — so it introduces no
+  new `MAX_PATH` exposure, and a profile path already over 260 characters
+  surfaces through the honest per-region failure above. A third copy of the
+  helper is not to be added here; that is its own decision if it is ever needed.
