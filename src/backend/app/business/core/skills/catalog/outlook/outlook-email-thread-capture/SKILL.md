@@ -1,5 +1,5 @@
 ---
-name: email-thread-capture
+name: outlook-email-thread-capture
 description: Full-history (one-time) or incremental (recurring) Outlook desktop (COM) mail capture into Second Brain's vault via standalone scripts.
 version: 0.8.0
 author: second-brain
@@ -53,11 +53,13 @@ server vs. Hermes-native Skill scripts," for why.
 ## Prerequisites
 
 **Transport: Outlook desktop COM (restored 2026-10-18).** This is the
-`outlook` Tool's copy of the Skill; `graph/email-thread-capture` is the same
-Skill over Microsoft Graph. Deploy **one** of the two -- they share the name
-`email-thread-capture`. Everything after the mail read (ingest, linking,
-attachments, the watermark) is identical; only `list_recent_emails.py`'s
-import differs (`outlook_lib` here, `graph_lib` there).
+`outlook` Tool's Skill; `graph/email-thread-capture` is the same pipeline
+over Microsoft Graph. Each install deploys the one matching its mail
+provider and points its `email-delta-capture` cron job at that slug. The
+slugs differ on purpose: a deploy finds a Skill by slug, so one slug under
+two Tools let deploying one delete the other (2026-10-09). Everything after
+the mail read (ingest, linking, attachments, the watermark) is the same;
+the read is `outlook_lib` here, `graph_lib` there.
 
 - **Classic Outlook must be running on the host, signed in to the mailbox.**
   New Outlook (`olk.exe`) has no COM: with only it open, every run fails on
