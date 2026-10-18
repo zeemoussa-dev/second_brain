@@ -70,7 +70,7 @@ bidirectional link, written at sprint creation. Order by implementation dependen
 
 | Story | Title | Phase | Status |
 |---|---|---|---|
-| [REQ-SB-95-US-04](../UserStories/REQ-SB-95-US-04-workflow-seventh-artifact-kind.md) | Workflow as the seventh artifact kind — the operator documents how a kind of request is handled | P2 | In Progress (T01 Done 2026-10-18 — `AC-01`, `AC-07`; T02 Done 2026-10-18 — `AC-02`/`AC-06`; `ESC-075` Resolved, the authorised one-fixture scope extension landed and also stopped `T01`'s tests reading the operator's real Actions store; suite 627 passed. `T03` unblocked) |
+| [REQ-SB-95-US-04](../UserStories/REQ-SB-95-US-04-workflow-seventh-artifact-kind.md) | Workflow as the seventh artifact kind — the operator documents how a kind of request is handled | P2 | In Progress (T01 Done 2026-10-18 — `AC-01`, `AC-07`; T02 Done 2026-10-18 — `AC-02`/`AC-06`; `ESC-075` Resolved, the authorised one-fixture scope extension landed and also stopped `T01`'s tests reading the operator's real Actions store; suite 627 passed. T03 Done 2026-10-18 — `AC-01`/`AC-02` verified over the new `app/api/workflows_router.py`, registered in `app/main.py`; refusals reach the client as a 409 carrying the Manager's own sentence; suite 628 → 634 passed, 0 failed, plus a real-socket round trip on a disposable install. `T05` and `T07` unblocked; `T04` still open) |
 
 Build order inside the sprint, read from the task files' own `depends_on`:
 `T01 → T02 → T03`, `T01 → T04`, `T03 → T05 → T06`, `(T03, T04) → T07`.
