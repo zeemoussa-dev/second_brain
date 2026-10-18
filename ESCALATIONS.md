@@ -972,6 +972,16 @@ Settings → Artifacts) cannot be verified, so `T07` is `Blocked`. The task's ot
 locked ACs — `AC-01`, `AC-02`, `AC-06` — were built and verified live in a real browser
 before this was raised, and none of them touches either file.
 
-**Resolving artefact:** _(pending)_
+**Resolution (2026-10-18):** authorised. Both files are added to `REQ-SB-95-US-04-T07`'s `## Files to Modify` — `artifactsApiClient.ts` (one union member) and `ArtifactExportModal.tsx` (one `KIND_LABELS` entry) — exactly as the escalation wrote them out, and nothing else in either.
 
-**Status:** Open
+**The coder is right that this is `ESC-070` repeating one kind later, and the reason is worth more than the unblock.** `ESC-070` recorded the rule correctly and in full — *a task that widens a shared union owns every exhaustive map over it, and a `## Files to Modify` written from the union's declaration site will miss them* — and recorded it **only in `ESCALATIONS.md`**. That file is an append-only log of what happened; nobody opens it when writing a file list. The four rules landed in `.claude/agents/decomposer.md` earlier today have all held so far; this one, logged and not landed, recurred verbatim one story later.
+
+So two rules go into the decomposer rather than one: the union rule itself, and the meta-rule — **a rule recorded only in `ESCALATIONS.md` is not recorded.** A lesson lands where the work is done: decomposer rules in `.claude/agents/decomposer.md`, constraints in `MEMORY.md`, sprint heuristics in `Implementation/Learnings.md`.
+
+**A live defect, not only a compile gate.** `GET /artifacts` has returned `workflow` since `REQ-SB-95-US-04-T04`, and Settings → Artifacts drops those rows silently through its `?.` guard — measured against a disposable backend as `skill 11 / template 6 / agent 1 / action 4 / workflow 1`. There is no crash and no tab, so the kind is simply invisible on the operator's install today. `AC-04` closes an existing gap, not a hypothetical one.
+
+**`MEMORY.md` candidates, deliberately not appended** (86 KB against the 40 KB budget its own rule 1 sets, which forbids appending while over): the union rule above, and the two the coder raised — *a `<select>` must carry an unknown stored value as its own labelled option*, and *a refused save is evidence the picker's list is stale, so re-read it*. Held here for the compaction pass; the first two also live in `.claude/agents/decomposer.md`, where they are actually read.
+
+**Resolving artefact:** `REQ-SB-95-US-04-T07` scope extension + two decomposer rules, 2026-10-18
+
+**Status:** Resolved

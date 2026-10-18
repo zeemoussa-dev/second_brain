@@ -131,6 +131,30 @@ than a hand-maintained tuple — a frozen list of "the kinds we accept" has to b
 hand-extended by every future kind's author, which is the same omission this whole
 family of escalations is about.
 
+### Widening a shared type is never a one-file change
+
+**Fifth, and the one that has now fired twice:** *a task that widens a shared union
+owns every exhaustive map over it, and a `## Files to Modify` written from the union's
+**use** site will miss its **declaration** site and every `Record` keyed by it.*
+`ESC-070` (sixth artifact kind) and `ESC-078` (seventh, one story later, verbatim).
+A `Record<SomeUnion, T>` fails `TS2741` the moment the union gains a member it does not
+map, and in this repo a red `tsc` is not local — it blocks every plugin publish and
+install across the checkout.
+
+When a task adds a member to any shared union or enum, grep for the type's name and put
+**every** file that mentions it in the list. The declaration is rarely in the file the
+task is named after.
+
+### A rule recorded only in `ESCALATIONS.md` is not recorded
+
+**Sixth, and it is about this file.** `ESC-070` wrote the union rule down, correctly and
+in full, and it recurred one story later anyway — because `ESCALATIONS.md` is an
+append-only log of what *happened*, and nobody opens it when writing a file list.
+A lesson lands where the work is done: a rule for the decomposer belongs **here**, a
+constraint for everyone belongs in `MEMORY.md`, a sprint heuristic belongs in
+`Implementation/Learnings.md`. Writing it in the escalation entry alone is filing it
+where only historians look.
+
 ### Structural ACs for screen / frontend stories
 
 For any story that builds or changes a screen, the **durable design layer** — which

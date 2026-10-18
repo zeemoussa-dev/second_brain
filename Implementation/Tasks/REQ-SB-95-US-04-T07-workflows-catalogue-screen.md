@@ -240,3 +240,30 @@ in this checkout), `src/marketplace/entities/1.3.0/`, `src/marketplace/my-day/1.
 gate: flagged 2026-10-18 — trigger 4 (`ESC-078` written), trigger 6 (`AC-04`
 unverifiable inside scope), trigger 7 (unanticipated file). No ADR created or
 deviated from; no new dependency; no backend file touched.
+
+---
+
+## Scope extension — 2026-10-18 (unblocks `ESC-078`)
+
+**Added to `## Files to Modify`:**
+
+1. `src/frontend/src/features/settings/artifactsApiClient.ts` — the `ArtifactKind`
+   union gains `'workflow'`, one member, line 8.
+2. `src/frontend/src/features/settings/ArtifactExportModal.tsx` — `KIND_LABELS` gains
+   `workflow: 'Workflow'`, one entry.
+
+Exactly the two changes your escalation wrote out, and nothing else in either file.
+Your in-list `SettingsArtifactsPage.tsx` work then proceeds as you described —
+`KIND_ORDER` first, since `byKind()`, `SelectionState` and the `useUrlState` `valid:`
+list all derive from it, and `ESC-070` recorded that adding only the `KIND_NAV` entry
+compiles and then silently drops every row of the new kind.
+
+You were right that the task's own phrasing — "`SettingsArtifactsPage.tsx` (seventh
+`KIND_NAV` entry + the `ArtifactKind` union)" — names a thing that is not in that file.
+The list was written from where the union is *used*, not where it is *declared*.
+
+**Worth knowing while you finish:** the live consequence you measured is a real
+user-visible defect, not just a compile gate. `GET /artifacts` returns `workflow` today
+and the page drops those rows through its `?.` guard — no crash, no tab, no kind. So
+`AC-04` is closing a gap that currently exists on the operator's install, not only in
+your branch.
