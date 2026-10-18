@@ -1035,11 +1035,18 @@ declaring either capability, and no plugin does yet.
   once, plus a `v12` paragraph in the module docstring naming both capabilities
   (`register_action` and `register_tag_namespace`) as the one contract move, and
   deletion of the owed-bump note now sitting above the constant.
-- In the same sitting, republish and reinstall at `framework_api: 12`:
-  `src/marketplace/action-center/` (latest `0.19.2`),
-  `src/marketplace/entities/` (latest `1.3.0`),
-  `src/marketplace/my-day/` (latest `1.8.0`, with `1.7.1` in flight). Each install
-  reports `restart_required`.
+- In the same sitting, republish and reinstall at `framework_api: 12` — the real
+  set, read off the running install's own `/system-health` on 2026-10-18 rather
+  than off this repository, is **five loaded plugins, not three**:
+  `action-center`, `my-day`, `entities`, **`azure-cost-manager`** and
+  **`core42-insight`**. Only the first three have source here
+  (`src/marketplace/action-center/` latest `0.19.2`, `src/marketplace/entities/`
+  latest `1.3.0`, `src/marketplace/my-day/` latest `1.8.0` with `1.7.1` in
+  flight); **`azure-cost-manager` and `core42-insight` have no `src/marketplace/`
+  folder in this repository at all**, so republishing them means reaching their
+  own source wherever it lives (`ADR-023`). That is the sharpest form of this
+  escalation: a bump taken from inside this repository cannot be repaired from
+  inside this repository. Each install reports `restart_required`.
 - `src/backend/tests/test_tag_namespace_registration.py` already pins the
   invariant and keeps passing across the move: the constant may be the
   pre-`REQ-SB-95` baseline (11) or exactly one more (12), never two more, and while
