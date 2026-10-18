@@ -36,6 +36,7 @@ UI_FEATURE_KEYS = (
     "/settings/config",
     "/settings/ui",
     "/settings/artifacts",
+    "/settings/actions",
     "/settings/blueprints",
     "/settings/marketplace",
     "/settings/export-data",
