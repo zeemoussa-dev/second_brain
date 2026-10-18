@@ -80,7 +80,13 @@ _vault_index: dict[str, dict] = {}
 # Every indexed note, including ones whose name another note also has. The map
 # above can only hold one per name; this is what "all the notes" means.
 _vault_entries: list[dict] = []
+# Every `<namespace>/<slug>` tag the vault holds -> the entries carrying it.
+# A projection of the list above, rebound in the same pass (ADR-037) -- see
+# _build_tag_index for the one tag-shape rule and why this is not an artifact.
+_vault_tag_index: dict[str, list[dict]] = {}
 _last_rebuilt_at: str | None = None
+
+_TAG_NAMESPACE_SEPARATOR = "/"
 
 
 def _frontmatter_wikilink_targets(frontmatter: dict) -> list[str]:
@@ -121,6 +127,45 @@ def _build_entry(path) -> dict:
         ),
         "incoming_wikilinks": [],
     }
+
+
+def _build_tag_index(entries: list[dict]) -> dict[str, list[dict]]:
+    """Every `<namespace>/<slug>` tag in the vault -> the entries carrying it.
+
+    One extra pass over entries already in memory (`ADR-037`): no second disk
+    walk, no note re-read, and no stored `Index` artifact. A stored copy would
+    need a refresh trigger of its own, and the missing one is how the backend
+    served a three-day-stale vault with 250 notes invisible (`BUG-082`). Built
+    from the entries list rather than the by-stem map, which cannot hold the
+    notes it loses to a shared name (`BUG-076`).
+
+    **The one rule for tag shape, stated rather than left to fall out of the
+    code:** a tag is a key when it HAS a namespace -- a separator with text on
+    both sides. The namespace is the text before the FIRST separator, the slug
+    is everything after it, so a deeper tag (`a/b/c`) keeps its own full name
+    as a key instead of being discarded: nothing that carries a namespace is
+    ever dropped. A tag with no separator (`urgent`) has no namespace, is not
+    an entity tag, and so is not a key -- whole-vault tag counts are what
+    `list_tags()` already answers.
+
+    No namespace is matched against any list. A framework that filtered to the
+    prefixes it had heard of would be naming a plugin's vocabulary
+    (`ADR-022`/`ADR-035`), and this index has to hold on an install with no
+    plugins at all. Registration turns a NAME into a tag; it never populates
+    this index.
+    """
+    tag_index: dict[str, list[dict]] = {}
+    for entry in entries:
+        keys_this_note_already_has: set[str] = set()
+        for tag in entry["tags"]:
+            if not isinstance(tag, str) or tag in keys_this_note_already_has:
+                continue
+            namespace, separator, slug = tag.partition(_TAG_NAMESPACE_SEPARATOR)
+            if not separator or not namespace or not slug:
+                continue
+            keys_this_note_already_has.add(tag)
+            tag_index.setdefault(tag, []).append(entry)
+    return tag_index
 
 
 # ---------------------------------------------------------------------------
@@ -256,8 +301,14 @@ class VaultManager:
         target's incoming_wikilinks list. Assembles a brand-new dict end
         to end, then atomically reassigns the module-level reference --
         a single-reference rebind is safe under CPython's GIL, no
-        explicit lock needed."""
-        global _vault_index, _vault_entries, _last_rebuilt_at
+        explicit lock needed.
+
+        The tag-keyed projection is rebound here too, in the same
+        assignment block and from the same `new_entries` (ADR-037), so it
+        can never be newer or older than the notes it groups. That is the
+        whole mechanism: there is no second refresh path to forget to
+        call, no cron job of its own, and no artifact on disk."""
+        global _vault_index, _vault_entries, _vault_tag_index, _last_rebuilt_at
         new_entries: list[dict] = []
         for path in vault_writer.list_all_note_paths():
             # One note that cannot be read -- moved by capture between the walk
@@ -292,8 +343,11 @@ class VaultManager:
                 if entry["stem"] not in backlinks:
                     backlinks.append(entry["stem"])
 
+        new_tag_index = _build_tag_index(new_entries)
+
         _vault_index = new_index
         _vault_entries = new_entries
+        _vault_tag_index = new_tag_index
         _last_rebuilt_at = datetime.now(timezone.utc).isoformat()
         return _vault_index
 
@@ -315,6 +369,23 @@ class VaultManager:
         """Every indexed note, collisions included -- what to iterate over when
         the question is "all the notes" rather than "the note called X"."""
         return _vault_entries
+
+    def get_entries_for_tag(self, tag: str) -> list[dict]:
+        """Every note carrying one `<namespace>/<slug>` tag, in index order.
+
+        The dict lookup `ADR-032` asked for, with no per-entity provisioning
+        behind it: a brand-new entity is served the moment a note carrying its
+        tag is indexed. An empty list for a tag no note carries -- an entity
+        nothing has been written about yet is not an error."""
+        return _vault_tag_index.get(tag, [])
+
+    def get_tag_index_keys(self) -> list[str]:
+        """Every `<namespace>/<slug>` tag the vault actually holds, sorted.
+
+        Registered or not. Registration turns a NAME into a tag; it does not
+        populate this index (`ADR-037`), so a key no namespace claims is kept
+        here and can be named as unknown rather than silently dropped."""
+        return sorted(_vault_tag_index)
 
     def resolve_wikilink_targets(self, targets: list[str]) -> dict[str, str]:
         """The targets that are real notes, as `<target as asked> -> <real stem>`.
