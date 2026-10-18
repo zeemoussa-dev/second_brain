@@ -1,14 +1,14 @@
 ---
 id: SPRINT-089
 title: Workflow as the seventh artifact kind — the operator documents how a kind of request is handled
-status: Ready                      # Draft | Ready | In Progress | Blocked | Done
+status: In Progress                      # Draft | Ready | In Progress | Blocked | Done
 gate: clear                        # clear | flagged — flagged ⇒ parked in REVIEW-QUEUE.md
 gate_reason: ""                    # the MUST-FLAG trigger that fired, when gate: flagged
 phase: P2                          # single phase only — a sprint never mixes phases
 depends_on_sprints: [SPRINT-087, SPRINT-088]   # SPRINT-NNN IDs that must be Done before this can start
 sizing_estimate: "~7 tasks, L"     # effort estimate (e.g. "~6 tasks, M"); checked vs actual in retro
 created: 2026-10-16
-started: ""                        # YYYY-MM-DD when status → In Progress
+started: 2026-10-18                        # YYYY-MM-DD when status → In Progress
 completed: ""                      # YYYY-MM-DD when status → Done
 ---
 
