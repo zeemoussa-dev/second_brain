@@ -183,7 +183,7 @@ Where a rule does not belong here:
 
 - **A skip rule that matters must be mechanical.** `summarize-and-tag-files`' documented `## Summary`-non-empty skip has no code-level enforcement and relies on the cron agent's per-file judgement, which re-processed already-summarised files in practice.
 
-- **A mechanical already-done guard belongs inside the mutating script, not in the calling agent's prompted judgement.** Its freshness check must match what that note kind actually stores - a check borrowed from a sibling note kind silently never fires.
+- **A mechanical guard -- already-done check or single-run lock -- belongs inside the mutating script, not in the calling agent's prompted judgement.** A freshness check must match what that note kind actually stores; a cron agent retries after a terminal timeout whatever the Skill says, so `run_delta_capture.py` holds `email_delta_capture.lock` itself.
 
 - **Every script that prints JSON must call `sys.stdout.reconfigure(encoding="utf-8")` first.** Without it a single emoji in a subject raises `UnicodeEncodeError` on the final print, after the real work has already succeeded - a completed write that looks like a failure to its caller.
 
