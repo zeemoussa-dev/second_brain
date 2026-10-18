@@ -4,16 +4,20 @@ import { Field } from '../features/settings/Field';
 import { extractErrorDetail } from '../features/settings/artifactFlowUtils';
 import {
   ACTION_IMPLEMENTATION_KINDS,
+  confirmActionCall,
   createAction,
+  declineActionCall,
   deleteAction,
   fetchAction,
   fetchActions,
+  fetchPendingActionCalls,
   updateAction,
   type ActionCatalogueEntry,
   type ActionImplementationKind,
   type ActionImplementationWrite,
   type ActionInputField,
   type ActionWriteBody,
+  type PendingActionCall,
 } from '../features/settings/actionsApiClient';
 
 // The Action catalogue and its one-Action editor (REQ-SB-95-US-02-T06,
@@ -35,6 +39,14 @@ import {
 //   editor holds the operator's choice as a kind + that kind's own fields
 //   and builds the write shape at save time, so nothing ever echoes a GET
 //   body back into a PUT.
+//
+// It also carries the pending-confirmations region (REQ-SB-95-US-03-T04,
+// ADR-033): a small surface over the Action-call ledger, on the same
+// .item-list/.item-row + .btn families as the catalogue above it. It is
+// NOT the archived Pending Approvals screen and revives nothing of it --
+// an Action's confirmation flag is a per-operation operator decision and
+// has nothing to do with an agent's working mode. Confirming here
+// performs nothing: it grants the agent's next call permission to, once.
 
 const KIND_LABELS: Record<ActionImplementationKind, string> = {
   skill: 'Deployed Skill',
@@ -89,21 +101,52 @@ function toWriteBody(draft: EditorDraft): ActionWriteBody {
   };
 }
 
+function describeInputs(inputs: Record<string, unknown>): string {
+  const named = Object.entries(inputs).map(([name, value]) => `${name}: ${JSON.stringify(value)}`);
+  return named.length === 0 ? 'No inputs.' : named.join(' · ');
+}
+
 export function SettingsActionsPage() {
   const [catalogue, setCatalogue] = useState<ActionCatalogueEntry[] | null>(null);
+  const [pendingCalls, setPendingCalls] = useState<PendingActionCall[] | null>(null);
   const [draft, setDraft] = useState<EditorDraft | null>(null);
   const [editingExisting, setEditingExisting] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
+  const [pendingError, setPendingError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deciding, setDeciding] = useState<string | null>(null);
 
   function reload() {
     return fetchActions().then(setCatalogue);
   }
 
+  function reloadPendingCalls() {
+    return fetchPendingActionCalls().then(setPendingCalls);
+  }
+
   useEffect(() => {
     reload();
+    reloadPendingCalls();
   }, []);
+
+  async function decideOn(callId: string, decide: (id: string) => Promise<PendingActionCall>) {
+    setPendingError(null);
+    setDeciding(callId);
+    try {
+      await decide(callId);
+      // Always re-read rather than patching the row locally: whether a
+      // decided call is still outstanding is the backend's rule (a
+      // confirmed one stays until the agent spends it), and a screen
+      // that guessed would start telling the operator a different story
+      // than the ledger.
+      await reloadPendingCalls();
+    } catch (error) {
+      setPendingError(extractErrorDetail(error));
+    } finally {
+      setDeciding(null);
+    }
+  }
 
   function patchDraft(patch: Partial<EditorDraft>) {
     setDraft((previous) => (previous === null ? previous : { ...previous, ...patch }));
@@ -192,7 +235,87 @@ export function SettingsActionsPage() {
         </p>
       )}
 
-      <div className="card">
+      <div className="card" data-testid="pending-confirmations">
+        <h2>Pending confirmations</h2>
+        <p className="text-muted">
+          An Action marked “needs confirmation” performs nothing when an agent calls it — it waits
+          here. Confirming does not run it either: it grants that agent permission to run it once,
+          the next time it calls. Declining stops it for good, and the agent is told so.
+        </p>
+
+        {pendingError && (
+          <p className="text-muted" data-testid="pending-calls-error">
+            <span className="badge badge-danger">Refused</span> {pendingError}
+          </p>
+        )}
+
+        {pendingCalls === null && <p className="text-muted">Loading...</p>}
+        {pendingCalls !== null && (
+          <div className="item-list">
+            {pendingCalls.map((pendingCall) => (
+              <div
+                className="item-row"
+                key={pendingCall.call_id}
+                data-testid={`pending-call-row-${pendingCall.call_id}`}
+              >
+                <div className="item-row-main">
+                  <span className="item-row-title">{pendingCall.action_id}</span>
+                  <span className="item-row-meta" data-testid={`pending-call-caller-${pendingCall.call_id}`}>
+                    Called by {pendingCall.caller_agent_id} · {describeInputs(pendingCall.inputs)}
+                  </span>
+                  <span className="item-row-meta">
+                    <span
+                      className={`badge ${pendingCall.outcome === 'confirmed' ? 'badge-success' : ''}`}
+                      data-testid={`pending-call-state-${pendingCall.call_id}`}
+                    >
+                      {pendingCall.outcome === 'confirmed'
+                        ? 'Confirmed — not run yet'
+                        : 'Awaiting your decision'}
+                    </span>{' '}
+                    <span className="badge">{pendingCall.recorded_at}</span>
+                  </span>
+                  <span className="item-row-meta" data-testid={`pending-call-detail-${pendingCall.call_id}`}>
+                    {pendingCall.detail ?? pendingCall.refusal ?? pendingCall.call_id}
+                  </span>
+                </div>
+                {/* A confirmed call has nothing left for the operator to
+                    decide — the agent has to come back and spend it — so
+                    it is shown without controls rather than with ones
+                    that would do nothing. */}
+                {pendingCall.outcome === 'awaiting_confirmation' && (
+                  <div className="item-row-actions">
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      data-testid={`pending-call-confirm-${pendingCall.call_id}`}
+                      disabled={deciding === pendingCall.call_id}
+                      onClick={() => decideOn(pendingCall.call_id, confirmActionCall)}
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      data-testid={`pending-call-decline-${pendingCall.call_id}`}
+                      disabled={deciding === pendingCall.call_id}
+                      onClick={() => decideOn(pendingCall.call_id, declineActionCall)}
+                    >
+                      Decline
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+            {pendingCalls.length === 0 && (
+              <p className="text-muted" data-testid="pending-calls-empty">
+                Nothing is waiting on you.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="card" style={{ marginTop: 'var(--space-4)' }}>
         <h2>Catalogue</h2>
         {catalogue === null && <p className="text-muted">Loading...</p>}
         {catalogue !== null && (

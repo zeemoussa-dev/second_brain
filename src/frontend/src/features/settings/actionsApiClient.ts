@@ -74,6 +74,43 @@ export interface ActionWriteBody {
   implementation: ActionImplementationWrite | null;
 }
 
+/** One Action-call ledger record the operator still has something to do
+ *  about (REQ-SB-95-US-03-T04, ADR-033). Two states reach this list:
+ *  `awaiting_confirmation` — the agent called a confirmation-required
+ *  Action, nothing was performed, and the operator has not decided; and
+ *  `confirmed` — they said yes and the agent has not come back to spend
+ *  the grant yet. The second is listed on purpose: confirming performs
+ *  nothing, so a confirmation nobody acted on must stay visible rather
+ *  than disappear as if the operation had happened. A spent one drops
+ *  off the list; the backend decides that, never this client. */
+export interface PendingActionCall {
+  call_id: string;
+  action_id: string;
+  caller_agent_id: string;
+  inputs: Record<string, unknown>;
+  outcome: 'awaiting_confirmation' | 'confirmed';
+  /** The backend's own sentence about this call — rendered verbatim, the
+   *  same way a refused save is, because it names the call id and says
+   *  plainly that nothing has been performed. */
+  detail: string | null;
+  refusal: string | null;
+  recorded_at: string;
+}
+
+export function fetchPendingActionCalls(): Promise<PendingActionCall[]> {
+  return apiFetch('/actions/calls/pending');
+}
+
+/** Turns the record into a single-use grant. It performs nothing: the
+ *  agent's re-call is what runs the operation, exactly once. */
+export function confirmActionCall(callId: string): Promise<PendingActionCall> {
+  return apiFetch(`/actions/calls/${encodeURIComponent(callId)}/confirm`, { method: 'POST' });
+}
+
+export function declineActionCall(callId: string): Promise<PendingActionCall> {
+  return apiFetch(`/actions/calls/${encodeURIComponent(callId)}/decline`, { method: 'POST' });
+}
+
 export function fetchActions(): Promise<ActionCatalogueEntry[]> {
   return apiFetch('/actions');
 }
