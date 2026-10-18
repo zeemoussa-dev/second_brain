@@ -575,6 +575,10 @@ technique in this codebase and is recorded as a judgement call in the task log.
 
 **Resolving artefact:** — (Open)
 
-**Status:** Open
+**Resolution (2026-10-18):** authorised by the orchestrator. `src/backend/tests/test_action_invocation_gate.py` is added to `REQ-SB-95-US-03-T03`s `## Files to Modify`, scoped to the three changes this escalation names: two stale `not_dispatched` assertions T02 marked transitional and handed to T03, repointing the wildcard test off the real `POST /vault-index/refresh`, and the one line routing http to `_perform_http_implementation()`. The repointing matters beyond the task: with dispatch live that test made every suite run re-read the operator entire vault, 1.09s to 8.60s for one file. Fourth escalation in two sprints from a file joining two tasks and owned by neither (ESC-064, 069, 072, 073).
+
+**Resolving artefact:** `REQ-SB-95-US-03-T03` scope extension, 2026-10-18
+
+**Status:** Resolved
 
 ---

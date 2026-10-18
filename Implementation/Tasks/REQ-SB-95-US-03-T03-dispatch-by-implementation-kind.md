@@ -274,3 +274,28 @@ have run.
   through whichever route `T04` adds.
 - **Nothing under `skills/catalog/` was created, imported or executed** — the
   runner Skill is `T05`'s.
+
+---
+
+## Scope extension — 2026-10-18 (unblocks `ESC-073`)
+
+**Added to `## Files to Modify`:** `src/backend/tests/test_action_invocation_gate.py`.
+
+Three changes only, all named in `ESC-073`:
+
+1. The two assertions expecting `not_dispatched` become `performed` — `T02`'s own
+   Implementation Log calls them transitional and assigns them to this task.
+2. **Repoint the wildcard test's Action away from the real `POST /vault-index/refresh`**
+   to the harmless test-only route `tests/test_action_dispatch.py` already registers.
+   This one is not bookkeeping: with dispatch live, that test re-reads the operator's
+   whole vault on every suite run, measured at 1.09s -> 8.60s for that file alone, on a
+   machine where several sessions run `pytest` continuously.
+3. Route the `http` branch to `_perform_http_implementation()` — the line withheld.
+
+Nothing else in that file is in scope. The twice-written ledger, the single 409 refusal
+shape and the seam's signature are `T02`'s contract and stay exactly as they are.
+
+**Then finish the task's own verification:** `AC-02`'s test 1 end to end through
+`POST /actions/{id}/call`, and manual step 1 against a real loopback `http` Action. If
+the manual step needs a running backend, use a disposable instance on another port as
+`REQ-SB-95-US-02-T06` did — never the operator's :8001.
