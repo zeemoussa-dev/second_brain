@@ -232,3 +232,33 @@ The 123 writes took ~2.7s each because publication goes through
 `AgentManager.update()`, which does a full registry reload per agent. As specified,
 saving one `["*"]` Action in the UI would cost ~110s and rewrite 41 profiles. Worth
 deciding alongside the sandbox question.
+
+---
+
+## Scope extension and operator decision — 2026-10-18 (unblocks `ESC-072`)
+
+**Added to `## Files to Modify`:** `src/backend/tests/conftest.py` (new).
+
+The task shipped `Blocked` because wiring the trigger would have let the existing
+Action tests write real `SOUL.md` files — measured at **123 writes across all 41 live
+profiles**, plus 40 `Agent.json` writes, taking 5m36s instead of ~2s. There is no
+`tests/conftest.py` at all, so nothing sandboxes Hermes for any test in the suite.
+
+Build one: an **autouse fixture, suite-wide**, that points Hermes writes at a temp
+`HERMES_HOME` (or otherwise makes a real profile write impossible) so no test can
+reach the operator's install. Prove it the way `T02` did — intercept writes and show
+that none land outside `tmp_path` and that no Hermes seam is entered — before running
+the suite with the trigger live. Do not edit the four existing Action test files; the
+fixture is what makes them safe, not changes to them.
+
+**Operator decision on publish cost (2026-10-18): publish in the BACKGROUND, return
+immediately.** Saving an Action must not block on republication. Follow the pattern
+the vault index rebuild already uses rather than inventing a second one. The operator
+accepted the consequence: for a few seconds after a save an agent's `SOUL.md` may
+still name the old catalogue, which is acceptable because an agent reads it per
+conversation, not per second. If `AC-08`'s wording requires the republish to have
+*completed* before the call returns, do not quietly reinterpret it — say so and flag
+it, because that is the one place this decision and the locked AC could disagree.
+
+Publication keeps going through `AgentManager` (`ADR-003`'s layering stands); it is the
+*waiting* that moves, not the ownership.

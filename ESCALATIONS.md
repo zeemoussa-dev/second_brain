@@ -504,6 +504,10 @@ written and was removed from the committed file; it asserts one call each on cre
 update and a real delete, and none on a no-op delete).
 
 **Resolving artefact:** — (Open)
-**Status:** Open
+**Resolution (2026-10-18):** both halves settled. (1) The orchestrator authorises `src/backend/tests/conftest.py` (new) into `REQ-SB-95-US-03-T01`'s `## Files to Modify` — a suite-wide autouse sandbox so no test can write a real `SOUL.md`. The four existing Action test files are NOT edited; the fixture is what makes them safe. (2) The operator decided the publish cost: **background publication, returning immediately**, following the vault index rebuild's existing pattern, accepting that an agent's SOUL may name the old catalogue for a few seconds. Publication still goes through `AgentManager` — the waiting moves, not the ownership. The measurement that forced the question (~2.7s per agent, so ~110s for an `allowed_callers: ["*"]` Action across 41 profiles) stands as recorded.
+
+**Resolving artefact:** `REQ-SB-95-US-03-T01` scope extension + operator decision, 2026-10-18
+
+**Status:** Resolved
 
 ---
