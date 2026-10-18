@@ -79,6 +79,7 @@ is a thin status mirror of the index table below.
 | BUG-090 | My Day showed 0 emails for eight days -- capture had stopped, and one unreadable note could also empty the index -- and nothing on the screen said which | Logic | Major | Fixed | 2026-10-17 | My Day 1.8.0; direct fix, 2026-10-17 |
 | BUG-091 | Deploying the Graph capture Skill deleted the install's Outlook one of the same name -- one machine silently became a Graph install and lost email for eight days | Logic | Critical | Fixed | 2026-10-18 | direct fix, 2026-10-18 |
 | BUG-092 | Writing an agent's `SOUL.md` strips its final newline, so every prompt edit silently rewrites the file's last byte | Logic | Minor | Open | 2026-10-18 | — |
+| BUG-093 | Writing an agent's `SOUL.md` replaces `## Scope`'s prose with its parsed tag list, and drops the section entirely when nothing parses | Logic | Major | Open | 2026-10-18 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -1426,3 +1427,16 @@ is a thin status mirror of the index table below.
 - **Expected:** a write that changes nothing about the text leaves the file byte-identical; a write that changes a section leaves the rest, including the final newline, exactly as it was.
 - **Actual:** the last byte is dropped on the first write and stays dropped. Harmless in isolation, and no locked AC turns on it.
 - **Note:** it matters for two reasons rather than tidiness. A vault and its profiles are synced and diffed, so a one-byte change makes a file look edited when nothing about it was; and POSIX tools treat a file without a trailing newline as a different shape, so "no change" is not what a later diff will say. Every UI prompt edit already causes this — the Action catalogue publish only made it visible by being the first thing to compare bytes.
+
+### BUG-093 — Writing an agent's `SOUL.md` re-emits `## Scope` as a parse, destroying its prose
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-10-18 by `REQ-SB-99-US-01-T05`, on its own disposable install: the app's startup Action-catalogue publication rewrote `profiles/adnoc-expert/SOUL.md` and `## Scope` was **gone from the file entirely** — prose and all, with the remaining sections reordered. Confirmed against the operator's real install afterwards.
+- **Root cause:** a soul is not written back as it was read. `## Scope`'s body is parsed into `folders`/`tags`, and `AgentManager.update()` / `_soul_text()` re-emit that parse rather than the original text. Anything in that section which is not a recognised folder or tag has nowhere to go, so it is not written back. When nothing in the section parses, the section itself is not emitted at all. The same write path already drops the file's final newline, which is `BUG-092` — the two are one defect seen at two sizes.
+- **Repro:** give an agent a `## Scope` section containing prose, then cause any publication — save an Action whose `allowed_callers` includes that agent, or let the startup catalogue seed run. Re-read the file.
+- **Expected:** a write that changes one marker block leaves every other section byte-identical, including prose the writer does not understand. `REQ-SB-99-US-01`'s whole premise is that a reassembled soul is not evidence; the write side owes the same honesty as the read side.
+- **Actual, measured on the operator's real install (2026-10-18):** 8 of 40 profiles carry the `BEGIN ACTION CATALOGUE` block, so publication has run on them. `azure-expert`'s `## Scope` body is now exactly `Tags: technology/azure, azure/services` — the parsed form. 7 of the 8 still have a `## Scope` heading; `azure-calculator` has none, but it is a hand-written soul that never had one (its sections are `## Your job`, `## How you calculate a real number`, `## What you don't do`, `## What this app can do`), so it is not a loss. 8 of the 32 unpublished profiles also lack `## Scope`, so absence alone is not evidence of damage.
+- **What is NOT yet known:** whether any of those 7 profiles had prose in `## Scope` before the first publication. `<HERMES_HOME>` is not under version control and no backup of the pre-publication state was taken, so the only way to tell is the operator's own memory of what a given soul said. **Worth checking a profile whose Scope you wrote by hand.**
+- **Note:** this is the lossy-write half of what `REQ-SB-99` documents as a lossy *read*. It is also why `REQ-SB-99-US-01-T05`'s endpoint surfaced it at all — reporting the file faithfully is what made the damage visible. The publication path was wired at boot on 2026-10-18 (`REQ-SB-95-US-03-T01`, `dcfa14b`), so the exposure began then; a no-op pass writes nothing, so the risk is bounded to profiles affected by an actual Action change.
