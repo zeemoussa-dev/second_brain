@@ -4,9 +4,9 @@ title: Workflow as the seventh kind across inventory, dependency resolver, expor
 parent_story: REQ-SB-95-US-04
 requirement_id: REQ-SB-95
 type: backend
-status: Blocked
+status: Done
 gate: flagged
-gate_reason: "ESC-077 (2026-10-18): registering the seventh kind in artifact_import_conflicts._MANAGER_BY_KIND (authorised by ESC-076) makes test_action_artifact_kind.py::test_a_genuinely_unknown_kind_still_fails_the_bundle_by_name fail -- it used `workflow` as its stand-in for an unsupported kind. That file belongs to Done task REQ-SB-95-US-02-T07 and is named out of scope by this task's own scope extension. All three locked ACs (AC-04, AC-05, AC-07) are built, verified and green on 12 AC-tagged tests; code committed 2f91bb4."
+gate_reason: "RESOLVED 2026-10-18 (ESC-077 authorised, fixed in ab68176) — was: the unknown-kind guard test used `workflow` as its stand-in for an unsupported kind. Remains flagged for an optional skim of the scope-internal judgement calls in the Implementation Log, and for two MEMORY.md candidates deliberately not appended (budget rule): a negative test must pick an example nothing plans to build, and a throwaway probe is a test too. Nothing is blocked; T07 is unblocked."
 phase: P2
 depends_on: [REQ-SB-95-US-04-T01, REQ-SB-95-US-02-T04]
 created: 2026-10-16
@@ -135,10 +135,9 @@ run with `pytest tests/test_workflow_artifact_kind.py` from `src/backend`.
       — deliberately **not** updated; two candidates recorded in `ESC-077` and the
       `REVIEW-QUEUE.md` entry instead. See the Implementation Log.
 - [x] `CHANGELOG.md` entry appended
-- [ ] **Blocked:** `ESC-077` — `test_action_artifact_kind.py::test_a_genuinely_unknown_kind_still_fails_the_bundle_by_name`
-      fails because it used `workflow` as its stand-in for an unsupported kind.
-      Out of scope (a `Done` task's test file); the task cannot be `Done` while
-      the suite is red on a failure this change caused.
+- [x] `ESC-077` resolved under the authorised scope extension (`ab68176`) — the
+      unknown-kind guard now picks an example nobody plans to build and derives
+      its accepted-kinds assertion from the live map. Suite green.
 
 ---
 
@@ -161,22 +160,37 @@ by `REQ-SB-95-US-02-T04`.
 
 ## Implementation Log
 
-**2026-10-18 — Blocked on `ESC-077`.** Commit `2f91bb4` (six modules + tests).
-All three locked ACs are built and verified; the block is one stale assertion in
-a `Done` task's test file, not an unverified AC.
+**2026-10-18 — Done.** Commits `2f91bb4` (six modules + 12 tests), `ab68176`
+(the `ESC-077` scoped test fix). All three locked ACs verified; suite green.
+
+Briefly `Blocked` on `ESC-077` between the two commits — see *The two scope
+extensions* below. Nothing about the verification changed; the block was one
+stale assertion in a `Done` task's test file, not an unverified AC.
 
 ### Baseline, and how to read the final numbers
 
 | Point | Suite | Note |
 |---|---|---|
 | Session baseline, tree at `6724db8` | **634 passed, 0 failed, 1 warning** (37.7s) | The one warning is the pre-existing `starlette/testclient.py` `anyio.abc.BlockingPortal` deprecation. **All three known order-dependent tests passed** — `test_health_check.py::test_health_reports_the_commit_the_running_code_was_loaded_from`, `test_marketplace_source.py`, `test_marketplace.py::test_install_repairs_a_plugin_left_with_only_its_bytecode_cache`. |
-| After this task | **654 passed, 1 failed, 1 warning** (36.8s) | |
+| After `2f91bb4` (`ESC-077` open) | **654 passed, 1 failed, 1 warning** (36.8s) | The one failure was `ESC-077`. |
+| **Final, after `ab68176`** | **655 passed, 0 failed, 1 warning** (44.5s) | Same single pre-existing warning; no new ones. |
 
 The arithmetic is 634 + 9 + 12 = 655 collected. The **9** are not mine: the
 concurrent `REQ-SB-95-US-01-T01` landed `tests/test_operator_profile.py`
 (commit `b4a4343`) between the baseline and the final run — verified by
 `git diff --stat 6724db8..HEAD` and by counting that file's test functions. The
-**12** are this task's. The 1 failure is `ESC-077`, below.
+**12** are this task's. `ab68176` changed an existing test rather than adding
+one, so the collected count is unchanged by it.
+
+**One flake observed and run down, not mine.** The first full run after
+`ab68176` reported `test_marketplace.py::test_uninstall_never_deletes_outside_the_plugin_folders`
+failing on a `PermissionError` out of `pathlib.py:1188`. It passes alone (that
+file: 28/28) and the immediately following full run was clean at 655/0, so it is
+the same Windows file-locking/ordering family as the three known flakes the
+sprint already tracks — plausibly aggravated by the concurrent session writing
+into the untracked `src/marketplace/entities/1.3.0/` and `src/marketplace/my-day/1.7.1/`.
+Recorded rather than ignored, since it is a *fourth* member of that family and
+the three known ones are named per-task on the assumption the list is complete.
 
 ### Verification — automated mode, `cd src/backend && .venv/Scripts/python.exe -m pytest tests/test_workflow_artifact_kind.py`
 
@@ -298,15 +312,49 @@ after:   both sets equal, seven kinds
          preview_import -> OK      detect_conflicts(workflow) -> OK      commit_import -> OK
 ```
 
-### Scope extension taken up (`ESC-076`)
+### The two scope extensions, and what the pair of them cost
 
-`artifact_import_conflicts.py` was added to `## Files to Modify` mid-task and the
-change was held to the authorised single entry: `"workflow": WorkflowManager`, its
-import, and the map's own comment date. Nothing else in that module was touched;
-`detect_conflicts()`'s contract is unchanged, and an unknown kind still raises
-naming the accepted kinds. The sixth site was found by reading the
-`business/logic/artifact_*.py` family before writing any code, and reported rather
-than reached for — the authorisation arrived while the work was in flight.
+Both were found by reading before writing, reported rather than reached for, and
+taken up only once authorised. Together they are one story: this task's file list
+was written from `architecture.md` §*Adding a Kind*, which still names five
+modules, and the sixth plus its tripwire were discovered by the work.
+
+**`ESC-076` — `artifact_import_conflicts.py`.** The sixth
+`business/logic/artifact_*.py` module that enumerates kinds; `_MANAGER_BY_KIND`
+**raises** for an unlisted kind and both `preview_import()` and `commit_import()`
+run it over the whole manifest, so omitting it fails the entire bundle rather
+than one entry. Found by enumerating that directory before writing any code — the
+rule `ESC-076` then landed in `.claude/agents/decomposer.md`. The change was held
+to the authorised single entry: `"workflow": WorkflowManager`, its import, and the
+map's comment date. `detect_conflicts()`'s contract is unchanged.
+
+**`ESC-077` — one test in `test_action_artifact_kind.py`.** Taking up `ESC-076`
+turned its first gate test green and its second one red:
+`test_a_genuinely_unknown_kind_still_fails_the_bundle_by_name` needed an example
+of a kind the gate rejects and had picked `workflow` — which `_MANAGER_BY_KIND`'s
+own comment described as "next" at the time it was written. The guard was never
+broken; the example stopped being unknown. `ESC-076`'s authorisation had named
+that file out of scope and said to escalate rather than reach, so the task
+stopped there with the replacement written out, and resumed on authorisation.
+Three changes, scoped to that one test (`ab68176`):
+
+1. the manifest kind and its bundle member path moved to `hologram`, with a
+   precondition asserting it really is absent from `_MANAGER_BY_KIND` — so the
+   example cannot silently go stale again without the test saying so;
+2. the message assertion followed it;
+3. **the accepted-kinds assertion now iterates `_MANAGER_BY_KIND`** instead of a
+   frozen six-kind tuple.
+
+Point 3 is the part worth more than the unblock, and was treated as required
+rather than as polish. A hand-maintained tuple must be extended for every future
+kind, and the eighth kind's author who forgot would see this test fail for a
+reason unrelated to the guard — rediscovering this entire sequence. Derived from
+the live map, it extends itself. The test's meaning is unchanged and its green
+sibling was not touched.
+
+**What the pair cost and bought:** one round trip each, versus two silent edits
+to a `Done` task's frozen artefacts. The second escalation existed only because
+the first was honoured.
 
 ### `MEMORY.md` — deliberately not appended
 
@@ -321,16 +369,17 @@ forbids appending while over budget. Two genuine candidates are recorded in
 2. **A throwaway probe script is a test too** — the no-real-data rule covers
    anything that runs against live settings, and `commit_import` is a write.
 
-### Why this is `Blocked` and not `Done`
+### Done
 
-Every locked AC is verified and green. The block is `ESC-077`: registering the
-seventh kind — which `ESC-076` authorised — makes
-`test_action_artifact_kind.py::test_a_genuinely_unknown_kind_still_fails_the_bundle_by_name`
-fail, because it used `workflow` as its stand-in for a kind the gate rejects. The
-guard is intact; the example went stale. That file belongs to `REQ-SB-95-US-02-T07`
-(`Done`) and is named out of scope by this task's own scope extension, which said
-to stop and escalate rather than touch it. A task cannot be `Done` while the suite
-is red on a failure its own change caused, so this one stops here. `T07` waits.
+Every locked AC — `AC-04`, `AC-05`, `AC-07` — has an AC-tagged automated test and
+a recorded observed outcome above. `ESC-076` and `ESC-077` are both Resolved, and
+the suite is **655 passed, 0 failed**. `T07` (the Workflows screen), which waited
+on this task, is unblocked; `T05` was never affected. `SPRINT-089` stays
+`In Progress` — `T05`, `T06` and `T07` remain.
+
+Left `gate: flagged` deliberately: nothing is blocked, but the two `MEMORY.md`
+candidates above need a human to place them, and the scope-internal judgement
+calls are worth a two-minute skim.
 
 ---
 
