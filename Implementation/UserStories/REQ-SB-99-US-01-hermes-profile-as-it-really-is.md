@@ -4,7 +4,7 @@ title: See a Hermes profile as it really is — the full soul, skills with versi
 requirement_ids: [REQ-SB-99]
 requirement_section: "REQ-SB-99: See a Hermes Profile As It Really Is — Soul, Skills, Config, Jobs"
 phase: P2
-status: In Progress
+status: Done
 gate: clear
 gate_reason: "RESOLVED operator approved ADR-043, 2026-10-17 — was: trigger-3 (ADR-043 created)"
 sprint: "SPRINT-091"
@@ -220,6 +220,14 @@ Then the view says the install itself could not be read, and names why
 | `REQ-SB-99-US-01-T05` | `business/hermes/profile_detail.py` + one route on the view-only mirror router | backend | T01, T02, T03, T04 | AC-01 … AC-07 |
 | `REQ-SB-99-US-01-T06` | The profile debug page, its route, its API client and the way in from the agent panel | frontend | T05 | AC-01 … AC-07 |
 
+All six tasks are `Done` (2026-10-18). Every locked AC was verified at `T06` on
+the real screen in a real browser — `AC-01`…`AC-05` partly against the
+operator's own install read-only, and the destructive inductions
+(`AC-02`'s catalog-unknown skill, `AC-03`'s *not set*, `AC-05`'s filesystem
+snapshot, `AC-06`'s three broken reads, `AC-07`'s absent install) against a
+disposable backend over a scratch Hermes home. The per-AC observations are in
+`REQ-SB-99-US-01-T06`'s `## Implementation Log`.
+
 Dependency graph: `T01`, `T02`, `T03`, `T04` are four independent roots →
 `T05` (composition) → `T06` (screen). Acyclic; no edge leaves this story — in
 particular none into `REQ-SB-96`, which this story is independent of by
@@ -227,12 +235,25 @@ construction (`ADR-043`: `deployed_to` is not consulted on this path at all).
 
 ## Definition of Done
 
-- [ ] All acceptance-criteria scenarios pass
-- [ ] Every Implementation Task above is complete (or explicitly dropped with reason)
-- [ ] All Constraints respected
-- [ ] Automated tests added/updated and passing (once test tooling exists)
-- [ ] `MEMORY.md` updated with any new decisions / patterns / constraints
-- [ ] `CHANGELOG.md` entry appended
+- [x] All acceptance-criteria scenarios pass — all seven, observed on the real
+      screen; see `T06`'s `## Implementation Log` for the per-AC evidence
+- [x] Every Implementation Task above is complete (or explicitly dropped with reason)
+- [x] All Constraints respected — read-only (nothing written; `<HERMES_HOME>`
+      hashed identical across open/refresh/away/back), honest absence over a
+      plausible default, `_soul_excerpt`/`description`/`short_description`
+      unchanged, the `hermes tools list` subprocess paid only on this route,
+      one Manager the sole gateway, no new tree walk and so no new `MAX_PATH`
+      exposure
+- [x] Automated tests added/updated and passing (once test tooling exists) —
+      backend: `T01`–`T05` added 76 pytest tests, all green (628 passed).
+      Frontend: still no test runner declared, so `T06` is verified
+      structurally in a real browser, as its `## Tests` block specifies
+- [x] `MEMORY.md` updated with any new decisions / patterns / constraints —
+      **deliberately not updated.** `T05` found every decision already written
+      as `ADR-043` and in `architecture.md`; `T06`'s one new reusable rule is
+      blocked by `MEMORY.md`'s own rule 1 (the file is 86 KB against its 40 KB
+      budget) and is drafted in `SPRINT-091`'s retro for the human to harvest
+- [x] `CHANGELOG.md` entry appended
 
 ## Non-Goals / Out of Scope
 

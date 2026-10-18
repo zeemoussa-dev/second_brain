@@ -1,15 +1,15 @@
 ---
 id: SPRINT-091
 title: A Hermes profile as it really is — the read-only debug view
-status: In Progress                      # Draft | Ready | In Progress | Blocked | Done
-gate: clear                        # clear | flagged — flagged ⇒ parked in REVIEW-QUEUE.md
-gate_reason: ""                    # the MUST-FLAG trigger that fired, when gate: flagged
+status: Done                       # Draft | Ready | In Progress | Blocked | Done
+gate: flagged                      # clear | flagged — flagged ⇒ parked in REVIEW-QUEUE.md
+gate_reason: "Sprint closed — the human skims the drafted ## Retrospective and harvests Patterns/Antipatterns into Implementation/Learnings.md (the coder drafts, the human harvests). Two follow-ups also need a decision: (1) profile_detail.py labels a config key found in the one READABLE layer with that layer's name even when the other layer could not be read — the page states the limit in its own words rather than relabelling a Done task's answer; (2) MEMORY.md is 86 KB against the 40 KB budget its own rule 1 sets, so this sprint's one new reusable rule could not be appended and sits in the retro instead. Nothing is blocked."
 phase: P2                          # single phase only — a sprint never mixes phases
 depends_on_sprints: []             # SPRINT-NNN IDs that must be Done before this can start
 sizing_estimate: "~6 tasks, M"     # effort estimate (e.g. "~6 tasks, M"); checked vs actual in retro
 created: 2026-10-17
 started: 2026-10-18                        # YYYY-MM-DD when status → In Progress
-completed: ""                      # YYYY-MM-DD when status → Done
+completed: 2026-10-18              # YYYY-MM-DD when status → Done
 ---
 
 <!-- STATUS LIFECYCLE — who drives each transition:
@@ -73,7 +73,7 @@ bidirectional link, written at sprint creation. Order by implementation dependen
 
 | Story | Title | Phase | Status |
 |---|---|---|---|
-| [REQ-SB-99-US-01](../UserStories/REQ-SB-99-US-01-hermes-profile-as-it-really-is.md) | See a Hermes profile as it really is — the full soul, skills with versions, config, jobs and toolsets | P2 | In Progress |
+| [REQ-SB-99-US-01](../UserStories/REQ-SB-99-US-01-hermes-profile-as-it-really-is.md) | See a Hermes profile as it really is — the full soul, skills with versions, config, jobs and toolsets | P2 | Done |
 
 Build order inside the sprint, read from the task files' own `depends_on`:
 `(T01, T02, T03, T04) → T05 → T06`. The four roots carry `depends_on: []` and
@@ -131,14 +131,20 @@ may be built in any order; `T05` needs all four; `T06` needs `T05`.
 
 ## Definition of Done
 
-- [ ] Every story in scope has status `Done`
-- [ ] All story-level Definitions of Done satisfied
-- [ ] `BACKLOG.md` updated — every affected row reflects current status
-- [ ] `architecture.md` updated if the sprint changed an architectural fact
-- [ ] Any new ADRs recorded in `ADR.md` with status `Accepted`
-- [ ] `MEMORY.md` updated with any new decisions / patterns / constraints
-- [ ] `CHANGELOG.md` entry appended
-- [ ] Retrospective section below filled in
+- [x] Every story in scope has status `Done`
+- [x] All story-level Definitions of Done satisfied
+- [x] `BACKLOG.md` updated — every affected row reflects current status
+- [x] `architecture.md` updated if the sprint changed an architectural fact —
+      **no change needed.** The six tasks built exactly what the
+      `## A Hermes Profile As It Really Is` sections and `ADR-043` already
+      describe; nothing architectural was decided differently along the way.
+- [x] Any new ADRs recorded in `ADR.md` with status `Accepted` — `ADR-043`,
+      written by the architect at `/plan-tasks` and approved by the operator
+      on 2026-10-17. None added during the build.
+- [x] `MEMORY.md` updated with any new decisions / patterns / constraints —
+      **deliberately not updated**; see the retro's *Open follow-ups*.
+- [x] `CHANGELOG.md` entry appended
+- [x] Retrospective section below filled in
 - [ ] **Human:** patterns and learnings from the retrospective propagated to `Implementation/Learnings.md` (the coder drafts the retro and gates it; the human harvests it)
 
 ---
@@ -179,28 +185,188 @@ record. The coder does NOT write Learnings.md directly. -->
 
 ### Sizing accuracy
 
-- **Estimated:** _(from `sizing_estimate:`)_ — **Actual:** _(tasks / effort)_ — **Takeaway:** _(over/under, why)_
+- **Estimated:** `~6 tasks, M` — **Actual:** 6 tasks, `M`, one day
+  (2026-10-17 planned, 2026-10-18 built end to end) — **Takeaway:** matched
+  exactly, and for the predicted reason. The decomposer called `T06` the cost
+  centre "by verification effort, not code volume" and that is what happened:
+  the screen's own diff is one new file plus three one-or-two-line edits, while
+  proving its seven locked ACs took two running environments, a scratch Hermes
+  install built to order, a CDP session and roughly a dozen DOM reads. The four
+  backend roots were each genuinely small because every reader they needed
+  already existed — `ADR-043`'s "the work is composition and a screen, not new
+  access" held true all the way through.
 
 ### What worked
 
-- _(specific behaviour, decision, or technique that paid off)_
+- **Writing the honesty contract into the data shape, not into the prose.**
+  Every region crosses the wire with its own `read` flag and a payload that is
+  `null` when unread, so "could not be read" and "read, and empty" are
+  different *values* and not different sentences a screen has to interpret.
+  That one decision is why the screen task could not accidentally flatten the
+  distinction: the frontend types carry `| null` on every payload, and the
+  three failures came out as three different renderings on the first attempt.
+  `BUG-085` and `BUG-088` were both cases of a screen choosing the reassuring
+  reading of an ambiguous value; this sprint removed the ambiguity instead of
+  asking the screen to be careful.
+- **Refusing to produce an answer the codebase cannot know.** Hermes' own
+  precedence between the two `config.yaml` files is not readable from this
+  repository, so the view shows both layers, names both files, and reports a
+  key set in both as set in both. On the operator's real install that is 109 of
+  110 keys — a merged "effective value" would have looked tidier and been a
+  guess 109 times over.
+- **Enumerating from the disk rather than from the Registry's claim**
+  (`ADR-043`). On the real install the page shows **62 skills the framework
+  catalog has never heard of** in one profile. Driven from `deployed_to`, every
+  one of them would have been invisible — and invisible is exactly the failure
+  the operator was debugging by hand.
+- **A disposable backend over a scratch Hermes home, as the default place to
+  break things.** `T05` and `T06` both used it, and `T06` ran a second Vite on
+  `:5174` with `VITE_API_BASE_URL` overridden so a real browser drove the real
+  page against it. Renaming a `SOUL.md`, corrupting a `config.yaml`, adding and
+  removing a skill folder and pointing the home at a non-existent path were all
+  real, observable events, and the operator's own install and `:8001` were
+  never touched. Vite gives shell `VITE_*` variables precedence over
+  `.env.local`, so no file had to be edited to retarget the second dev server.
+- **Reading the DOM back rather than trusting the screenshot, and looking at
+  the screenshot rather than just capturing it.** Both mattered and neither
+  substitutes for the other: the DOM reads caught counts and labels a picture
+  could not (`0` toolset rows beside a failure element, `emptyStates: 0`), and
+  the screenshots caught the opposite — the first attempt at per-region
+  screenshots silently produced five identical images because `scrollIntoView`
+  did nothing inside the app shell's own scroll container. Clipping each region
+  from its real bounding box in a very tall viewport is what fixed it.
+- **Six tasks, zero escalations.** No task in this sprint was `Blocked` and
+  `ESCALATIONS.md` gained nothing — against five switch-on escalations
+  (`ESC-069`, `ESC-071`…`ESC-075`) across the two preceding sprints. Each task
+  here ran the file-list check *before writing code* and found its switch-on
+  site already inside its own `## Files to Modify` (`T05`'s was
+  `include_router` in `main.py`, already mounted; `T06`'s was the `<Route>` in
+  `App.tsx`, which was listed). The rule recorded in `MEMORY.md` on 2026-10-18
+  was paying for itself within a day.
 
 ### What didn't work
 
-- _(specific friction, dead end, or mistake — name the root cause if known)_
+- **The honesty rule was applied one level deep, not two.** `T05` correctly
+  reports a key missing from *every* layer as `unknown` rather than `not_set`
+  when some layer could not be read — but a key found in the one *readable*
+  layer is still labelled with that layer's name, as though the unreadable file
+  were known not to set it. Seen live with a broken profile `config.yaml`: the
+  page said `model.default` was inherited from the install root as
+  `"gpt-5-root"`, while the profile's own unreadable file really did set it to
+  `"gpt-5-profile"`. Root cause: the rule was written against the case the AC
+  named (absent everywhere) rather than against the general shape (any
+  conclusion drawn from an incomplete read). `T06` could not fix it — a `Done`
+  task's file, outside its list — so the page states the limit in its own words
+  instead and the decision is queued for the human.
+- **`MEMORY.md` could not accept this sprint's one new rule.** The file is
+  **86 KB against the 40 KB budget its own rule 1 sets**, and that rule forbids
+  appending while over budget unless the new entry replaces one it supersedes.
+  This one supersedes nothing, so nothing was written. The budget has been
+  silently exceeded for some time; a limit that every author has to step over
+  is not functioning as a limit.
+- **The soul the app reports is already not the soul that was written.** On the
+  disposable install, the app's own startup Action-catalogue publication
+  rewrote the fixture `SOUL.md` before either task could read it — deleting the
+  whole `## Scope` section in `T05`'s run, appending a block in `T06`'s. The
+  view reported the file faithfully both times, which is how it became visible,
+  but it means `REQ-SB-99`'s premise ("the soul is lossy on the way *out*") was
+  only half the story: it is also lossy on the way *in*. Already raised by
+  `T05`; `BUG-093`'s same-day fix addresses the splice path, and this sprint is
+  the evidence that the fix is worth re-checking against the publication path.
+- **Visual consistency was accepted rather than chosen.** The new way-in control
+  is a `<Link className="btn">`, which renders underlined because `.btn` sets no
+  `text-decoration` — true of all five existing instances in the app. Matching
+  the precedent was the right call inside this task's file list, but it means a
+  small, real inconsistency got re-shipped rather than fixed; the fix belongs in
+  `settings.css` and belongs to nobody.
 
 ### Patterns to carry forward
 
 <!-- Copy these into Implementation/Learnings.md after human review. -->
 
-- _(pattern — short title — when to apply)_
+- **Encode "could not be read" in the shape, not in the wording** — when a
+  surface must distinguish *absent* / *unreadable* / *read-and-empty*, give
+  every region its own success flag and make the payload `null` when unread, so
+  a client cannot collapse the cases by being careless. Carry the `| null`
+  through the frontend types too. The alternative — one error string a screen
+  has to read — is how `BUG-085` and `BUG-088` happened.
+- **`.empty-state` means "we read it and it was empty." A failed read may never
+  borrow that look** — give a failure its own element with the backend's
+  verbatim message. This is the rule `MEMORY.md` would have gained if it had
+  room; it is worth putting there (or in whatever replaces the over-budget
+  file) because the convention is currently described two ways in two places:
+  `REQ-SB-99-US-01`'s own Affected Screens calls `.empty-state` the
+  "honest-failure convention", while `T06`'s constraints reserve it for a
+  genuinely-read empty region. The narrower reading is the correct one.
+- **Refuse to compute an answer whose rule lives outside this repository** —
+  show the inputs, name their sources, and say plainly that no single answer is
+  being given. Applied here to two config layers; the same test applies to
+  anything resolved by Hermes, by a plugin, or by a model rather than by code
+  this repo can read.
+- **A disposable backend over a scratch home is the default place to break
+  things, and a second Vite on another port makes it a real screen** —
+  `VITE_API_BASE_URL` as a shell variable outranks `.env.local`, so retargeting
+  a dev server needs no file edit. Everything destructive an AC asks for
+  (renaming a file, corrupting a file, deleting a directory, pointing config at
+  a path that does not exist) belongs there; the operator's own install is for
+  read-only confirmation that the same page works against real data.
+- **Clip each region from its bounding box in a very tall viewport, instead of
+  scrolling to it** — inside an app shell with its own scroll container,
+  `scrollIntoView` + `captureScreenshot` can silently return the same image
+  every time. A full-page strip is unreadable at 20 000 px; per-region clips at
+  1:1 are what you can actually look at.
+- **Snapshot the whole tree, files *and* directories, by hash and mtime, around
+  the read being proved** — and take the "before" snapshot *after* startup has
+  settled, because this app writes into `<HERMES_HOME>` at boot. A residual
+  directory-mtime difference from your own fixture surgery is expected; a single
+  file-hash difference is not.
+- **Prove "this page adds no cost" with a `fetch` spy installed before any app
+  code runs** (`Page.addScriptToEvaluateOnNewDocument`), and assert both halves:
+  one request per load *and* zero requests from the surface that merely links to
+  it. `BUG-086` was a cost nobody measured until it was six seconds.
 
 ### Antipatterns to avoid
 
 <!-- Copy these into Implementation/Learnings.md after human review. -->
 
-- _(antipattern — short title — why to avoid)_
+- **Writing an honesty rule against the case the AC names instead of against the
+  shape of the problem** — `not_set`-vs-`unknown` was handled for "absent from
+  every layer" and missed for "found in the one layer we could read". When a
+  rule exists because a read may be incomplete, apply it to *every* conclusion
+  drawn from that read, not just the one the scenario happened to describe.
+- **Treating a passing build as evidence that a screen is right** — `tsc` and
+  `oxlint` were clean on the first run of a page that had not yet been looked
+  at. They say nothing about whether a region rendered, what a badge says, or
+  whether an unread region drew itself as empty. For any screen task, the DOM
+  read and the reviewed screenshot are the evidence.
+- **Capturing screenshots without opening them** — five identical images were
+  produced and would have been filed as "five regions verified" by anyone who
+  only checked that the files existed.
+- **Appending to a shared file that is over its own stated budget** — the
+  budget is in the file, in rule 1, and ignoring it is how the file got to
+  86 KB. Either replace a superseded rule, route the entry elsewhere, or fix
+  the budget; do not append and promise to trim.
 
 ### Open follow-ups
 
-- _(follow-up — filed as what and where?)_
+- **Decide the partially-read config label** — should `profile_detail.py`
+  report `unknown` for a key found only in the readable layer when the other
+  layer failed, matching the rule it already applies when the key is absent
+  everywhere? Filed in `REVIEW-QUEUE.md` under `REQ-SB-99-US-01-T06 /
+  SPRINT-091`. Not blocking; the page states the limit in its own words today.
+- **`MEMORY.md` is 86 KB against its own 40 KB budget**, so this sprint's one
+  reusable rule could not be filed there. Filed in `REVIEW-QUEUE.md` with the
+  same entry. Needs a human decision on whether to trim, re-budget, or split
+  the file — until then every author faces the same refusal.
+- **The soul-rewriting write path** — `T05` raised it in `REVIEW-QUEUE.md`
+  (whether it becomes a `BUG`); `T06` saw it again in its milder appending form
+  on a fresh disposable install, after `BUG-093` had landed. Worth re-checking
+  the publication path specifically rather than only the splice.
+- **`<Link className="btn">` renders underlined** across all six instances in
+  the app, because `.btn` sets no `text-decoration`. A one-line `settings.css`
+  change, owned by nobody, deliberately not taken inside this task's file list.
+- **`REQ-SB-96-US-01` inherits a decided seam, as `ADR-043` intended** —
+  `T01`'s shared four-status verdict rule exists and is already callable per
+  profile, so that story consumes it rather than writing a second comparison.
+  Nothing is owed by this sprint; recording it so the next planner does not
+  re-open the question.
