@@ -82,6 +82,7 @@ is a thin status mirror of the index table below.
 | BUG-093 | Writing an agent's `SOUL.md` replaces `## Scope`'s prose with its parsed tag list, and drops the section entirely when nothing parses | Logic | Major | Fixed | 2026-10-18 | direct fix, 2026-10-18 (`3913965`, `69cb607`) |
 | BUG-094 | Publishing to an agent whose `section_id` is `None` writes the `SOUL.md` and then reports the write as failed, skipping the Registry mirror | Logic | Major | Open | 2026-10-18 | — |
 | BUG-095 | Settings > System reports "Saved." for four fields it silently discards, `self_email` among them — the router's body model declares 5 of the 9 fields the page renders | Logic | Major | Open | 2026-10-18 | — |
+| BUG-096 | Installing a plugin still blanks every page until Vite is restarted — the install check's temporary folder reaches the browser's module graph, then 404s when deleted (`5ac0e88`'s watcher ignore did not hold) | UI | Major | Open | 2026-10-18 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -1476,3 +1477,17 @@ is a thin status mirror of the index table below.
 - **Known-good path:** `POST /setup/save` (the setup wizard, which this page links to) writes these fields correctly. `REQ-SB-95-US-01-T05` used it to complete its own verification. So the capability exists; only this route's contract is short.
 - **Note:** this is the same shape as `BUG-094` logged the same day — a write path that reports an outcome it did not achieve — but the opposite direction. `BUG-094` writes and reports failure; this reports success and does not write. Both were found by running the system rather than reading it.
 - **Related:** `[[BUG-094]]`.
+
+### BUG-096 — Installing a plugin still blanks every page until Vite is restarted
+
+- **Area:** UI
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-10-18 by the Core42 Insight plugin session, during the `FRAMEWORK_API` 11 → 12 republish of all five installed plugins. Reported unprompted, with the failing request named.
+- **Symptom:** after `POST /marketplace/core42-insight/update`, the running Vite dev server on `:5173` picked up the install check's temporary folder `src/plugins/__install-check-core42-insight/` while it existed. Once the check deleted it, the app requested `/src/plugins/__install-check-core42-insight/format.ts` → **404**, and **every page went blank** — Insight and all the rest. Reloading the page did not recover it; only restarting Vite did.
+- **Why this is not a duplicate:** the same symptom was reported live on **2026-10-17** and fixed by `5ac0e88`, which added `server.watch.ignored: ['**/src/plugins/__*-check-*/**']` to `src/frontend/vite.config.ts`. **That rule is still in place and the symptom returned.** What is newly known is that ignoring the path in the watcher is not sufficient — the module still reached the browser's graph and was still requested after deletion.
+- **Two candidate gaps, neither confirmed** (noted so the fixer does not start from zero, not as a diagnosis): (1) the glob's trailing `/**` matches the folder's *contents*, not the folder itself, so the directory's own add/remove event may still fire; (2) `server.watch.ignored` governs the **watcher**, while the failure is a **request** — the dev server will still serve, and the browser will still ask for, a module already in its graph regardless of what is watched.
+- **Expected:** installing or updating a plugin never disturbs an open page. The 2026-10-17 fix's own comment states the intent: the check must build the screens "exactly where they will run" without the operator's open page noticing.
+- **Impact:** every page, not just the plugin being installed, and unrecoverable by reload — the operator must know to restart Vite, which is not something the UI tells them. During today's five-plugin republish this compounded an outage that was already in progress.
+- **Note:** `screen_build.py` builds the copy inside `src/plugins/` deliberately, so `../../pluginHost/...` resolves at the depth an installed plugin really sits at. Any fix has to preserve that or prove the resolution another way — the reporter's own suggestions were to build outside `src/plugins/` or to exclude `__install-check-*` from the plugin glob as well as the watcher.
+- **Related:** `[[BUG-088]]` (a refused plugin still mounting its screens) — same seam, different failure.
