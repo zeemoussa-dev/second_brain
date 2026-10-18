@@ -51,6 +51,53 @@ _JARVIS_TOOL_ID = "jarvis"
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
 
 
+def _frontmatter_of(skill_md: str | None) -> dict:
+    """A SKILL.md's own frontmatter, {} if absent or malformed."""
+    match = _FRONTMATTER_RE.match(skill_md or "")
+    if not match:
+        return {}
+    try:
+        parsed = yaml.safe_load(match.group(1))
+    except yaml.YAMLError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _deployment_verdict(
+    deployed_md: str | None,
+    deployed_version: str | None,
+    catalog_md: str,
+    catalog_version: str,
+) -> str:
+    """Does the copy running in a profile still match what we ship?
+
+    The ONE answer to that question, deliberately. It is asked from two
+    opposite directions -- catalog-first (check_deployment_drift) and
+    install-first (compare_profile_skills) -- and two implementations of
+    it is the failure this project has already paid for: 228 stale copies
+    of vault_manager.py ran across 41 profiles while a fix sat in a
+    different copy of the same logic (`ADR-043`).
+
+    Statuses, most to least serious:
+      missing   -- the profile does not have it (or its bytes cannot be read)
+      stale     -- deployed version differs from the catalog's
+      modified  -- same version, different content (edited in place --
+                   worse than stale: the version claims it is current)
+      current   -- byte-identical
+
+    `unknown_to_framework` is NOT decided here: it means the catalog has
+    no such skill at all, so there is nothing to compare against, and
+    the catalog-first direction structurally cannot produce it.
+    """
+    if deployed_md is None:
+        return "missing"
+    if deployed_md == catalog_md:
+        return "current"
+    if deployed_version != catalog_version:
+        return "stale"
+    return "modified"
+
+
 class SkillPreconditionError(Exception):
     """A Skill's declared requirements are not satisfied on this install, so
     deploying it would put something in Hermes that fails only when it runs."""
@@ -424,14 +471,7 @@ class SkillManager:
 
     def _frontmatter(self, skill_id: str) -> dict:
         """This Skill's own SKILL.md frontmatter, {} if absent or malformed."""
-        match = _FRONTMATTER_RE.match(skills_data.read_skill_md(skill_id) or "")
-        if not match:
-            return {}
-        try:
-            parsed = yaml.safe_load(match.group(1))
-        except yaml.YAMLError:
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
+        return _frontmatter_of(skills_data.read_skill_md(skill_id))
 
     def check_deployment_drift(self) -> list[dict]:
         """For every Skill, for every profile it claims to be deployed to:
@@ -444,12 +484,12 @@ class SkillManager:
         copy; 228 stale copies of vault_manager.py ran across 41 profiles.
         Each of those is this same question, left unasked.
 
-        Statuses, most to least serious:
-          missing   -- deployed_to claims it, the profile does not have it
-          stale     -- deployed version differs from the catalog's
-          modified  -- same version, different content (edited in place --
-                       worse than stale: the version claims it is current)
-          current   -- byte-identical
+        Enumerated catalog-first, from `deployed_to`'s claim. That makes a
+        skill physically present in a profile no `deployed_to` names
+        invisible here; `compare_profile_skills()` asks the same question
+        from the install's own tree instead. The verdict itself is the
+        shared `_deployment_verdict()` -- `missing | stale | modified |
+        current`, documented there.
         """
         client = get_client()
         # One filesystem listing per PROFILE, not per skill-profile pair:
@@ -477,19 +517,72 @@ class SkillManager:
                 deployed_md = (
                     client.skills.read(profile_id, deployed.id) if deployed is not None else None
                 )
-                if deployed is None or deployed_md is None:
-                    status, deployed_version = "missing", None
-                elif deployed_md == catalog_md:
-                    status, deployed_version = "current", deployed.version
-                elif deployed.version != catalog_version:
-                    status, deployed_version = "stale", deployed.version
-                else:
-                    status, deployed_version = "modified", deployed.version
+                deployed_version = deployed.version if deployed is not None else None
+                status = _deployment_verdict(
+                    deployed_md, deployed_version, catalog_md, catalog_version
+                )
+                if status == "missing":
+                    deployed_version = None
                 report.append({
                     "skill_id": skill.id, "profile_id": profile_id, "status": status,
                     "catalog_version": catalog_version, "deployed_version": deployed_version,
                 })
         return report
+
+    def compare_profile_skills(self, profile_id: str) -> list[dict]:
+        """What this ONE profile actually has on disk, each verdicted
+        against the catalog. Read-only: nothing here writes, deploys or
+        reconciles anything (`ADR-043`).
+
+        Enumerated install-first -- `HermesSkills.get_all()`'s existing
+        two-level glob of the profile's own skills/ tree -- and NOT from
+        `deployed_to`, which is the Registry's claim and is the exact list
+        `REQ-SB-96` exists because it is wrong. Driven from the claim, a
+        skill physically present in a profile nothing names is invisible,
+        and a skill the catalog has never heard of can never appear at
+        all; from this side both show up, the second as the fifth status
+        `unknown_to_framework`.
+
+        Rows carry `skill_id` ("<category>/<slug>" as it sits on disk,
+        which need not match the catalog's own grouping), `slug`,
+        `deployed_version`, `catalog_version` and `status`.
+
+        Cost is pinned on purpose (`BUG-086`): exactly ONE directory
+        listing for the profile, one catalog read per distinct slug, and
+        one deployed-bytes read only for a slug the catalog actually has.
+        """
+        client = get_client()
+        catalog_md_by_slug: dict[str, str | None] = {}
+
+        rows: list[dict] = []
+        for deployed in client.skills.get_all(profile_id):
+            # Match on SLUG, not "<category>/<slug>" -- the catalog was
+            # regrouped by Tool (2026-09-06) and deployed copies still sit
+            # under their old category, so only the slug is stable on both
+            # sides. Catalog slugs are globally unique (data_access.skills).
+            if deployed.slug not in catalog_md_by_slug:
+                catalog_md_by_slug[deployed.slug] = skills_data.read_skill_md(deployed.slug)
+            catalog_md = catalog_md_by_slug[deployed.slug]
+
+            if catalog_md is None:
+                rows.append({
+                    "skill_id": deployed.id, "slug": deployed.slug,
+                    "deployed_version": deployed.version, "catalog_version": None,
+                    "status": "unknown_to_framework",
+                })
+                continue
+
+            catalog_version = str(_frontmatter_of(catalog_md).get("version", ""))
+            deployed_md = client.skills.read(profile_id, deployed.id)
+            status = _deployment_verdict(
+                deployed_md, deployed.version, catalog_md, catalog_version
+            )
+            rows.append({
+                "skill_id": deployed.id, "slug": deployed.slug,
+                "deployed_version": None if status == "missing" else deployed.version,
+                "catalog_version": catalog_version, "status": status,
+            })
+        return rows
 
     def publish_section_access_map(self) -> dict:
         """Rebuilds and persists the derived write map. Called on every
