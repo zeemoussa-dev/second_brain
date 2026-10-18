@@ -910,3 +910,68 @@ now — the one being the test above. `T04` is `Blocked` until this is settled;
 **Resolving artefact:** `REQ-SB-95-US-04-T04` scope extension + decomposer rule, 2026-10-18
 
 **Status:** Resolved
+
+## ESC-078: the seventh Artifacts tab needs the `ArtifactKind` union and the export modal's map, and `REQ-SB-95-US-04-T07`'s scope names neither — 2026-10-18
+
+**Category:** unanticipated-file
+
+**Trigger:** Building `REQ-SB-95-US-04-T07`. Its `## Files to Modify` reads
+`src/frontend/src/pages/SettingsArtifactsPage.tsx (seventh KIND_NAV entry + the
+ArtifactKind union)` — but the union is **not** declared in that file. It lives in
+`src/frontend/src/features/settings/artifactsApiClient.ts:8`, which this task's list
+does not name at all, and `KIND_NAV` is typed `{ kind: ArtifactKind; … }[]`, so the
+seventh tab does not compile until the union grows. Widening it then breaks a
+second, unlisted file: `src/frontend/src/features/settings/ArtifactExportModal.tsx:12`
+declares its own `KIND_LABELS: Record<ArtifactKind, string>`, and a `Record` keyed by
+a union is exhaustive — it fails `TS2741` the moment the union has a member it does
+not map. A red `tsc -b` is not local here: it blocks every plugin publish and install
+across the shared checkout.
+
+This is **`ESC-070` repeating one kind later**, for the reason `ESC-070` itself
+recorded: *"a task that widens a shared union owns every exhaustive map over it, and a
+`## Files to Modify` written from the union's declaration site will miss them."* The
+sixth kind's task (`REQ-SB-95-US-02-T06`) did list `artifactsApiClient.ts`; the
+seventh kind's does not, so the gap is wider this time, not narrower.
+
+**What is needed — the exact changes, neither of them taken:**
+
+1. `src/frontend/src/features/settings/artifactsApiClient.ts`, line 8 — one member:
+
+   ```ts
+   export type ArtifactKind = 'skill' | 'template' | 'agent' | 'pipeline' | 'index' | 'action' | 'workflow';
+   ```
+
+   The comment directly above it already says *"Must list every kind GET /artifacts
+   returns"*, and since `REQ-SB-95-US-04-T04` that endpoint returns `workflow`.
+   Confirmed live against a disposable backend: `GET /artifacts` answered
+   `skill 11 / template 6 / agent 1 / action 4 / workflow 1`. The page drops those
+   workflow rows silently today — `groupedByKind[artifact.kind]?.push(…)` is
+   `?.`-guarded by design, so there is no crash, no tab, and the kind is invisible.
+
+2. `src/frontend/src/features/settings/ArtifactExportModal.tsx`, lines 12-15 — one
+   entry, so the exhaustive map compiles and a selected Workflow is labelled rather
+   than rendered as its raw kind:
+
+   ```ts
+   const KIND_LABELS: Record<ArtifactKind, string> = {
+     skill: 'Skill', template: 'Template', agent: 'Agent', pipeline: 'Pipeline', index: 'Index',
+     action: 'Action', workflow: 'Workflow',
+   };
+   ```
+
+With those two authorised, the in-list change to `SettingsArtifactsPage.tsx` is
+`KIND_ORDER` + `'workflow'`, one `KIND_NAV` entry
+(`{ kind: 'workflow', icon: 'account_tree', label: 'Workflows' }`), one `KIND_LABELS`
+entry, and the intro sentence's list of kinds. `KIND_ORDER` is the load-bearing one:
+`byKind()`, `SelectionState` and the `useUrlState` `valid:` list all derive from it,
+and `ESC-070` already recorded that adding only the `KIND_NAV` entry compiles and then
+silently drops every row of the new kind.
+
+**Impact of leaving it:** `REQ-SB-95-US-04-AC-04` (the seventh kind listed on
+Settings → Artifacts) cannot be verified, so `T07` is `Blocked`. The task's other three
+locked ACs — `AC-01`, `AC-02`, `AC-06` — were built and verified live in a real browser
+before this was raised, and none of them touches either file.
+
+**Resolving artefact:** _(pending)_
+
+**Status:** Open
