@@ -143,8 +143,22 @@ never a full-history redo (that's `run_full_capture.py`'s own, separate,
 one-time job) and never blind trust in "now".
 
 ```
-terminal(command="python \"${HERMES_SKILL_DIR}\run_delta_capture.py\" [--max-minutes 50]")
+terminal(command="python \"${HERMES_SKILL_DIR}\run_delta_capture.py\" --max-minutes 5")
 ```
+
+**From a cron job, always pass `--max-minutes 5`, run it in the foreground
+exactly once, and never retry it.** The `terminal` call times out at 420s;
+5 minutes keeps the script inside that, and a long backlog simply continues on
+the next scheduled run from the saved watermark. If the call times out anyway,
+report the timeout as this run's outcome and stop — **never** re-run the script,
+in the background or otherwise. A timed-out run may still be capturing: on
+2026-10-18 a background retry overlapped it and both runs created a Thread for
+the same conversation. The script now refuses to overlap itself — a second run
+prints `{"status": "already_running", ...}` and exits 0 without capturing.
+Report that as "a previous capture run is still in progress", not as a failure
+and not as "no new mail". The lock (`email_delta_capture.lock` in the App
+Database Folder) is taken over automatically once its run has died or is over
+an hour old; never delete it by hand.
 
 **If the script exits non-zero, or prints a failure instead of its JSON, say so
 as the outcome of this run — never "capture completed" or "no new mail".** A

@@ -136,6 +136,7 @@ def delta(tmp_path, monkeypatch):
     state.write_text(json.dumps({"last_captured_at": T0}), encoding="utf-8")
     monkeypatch.setattr(rdc, "VAULT_PATH", str(tmp_path))
     monkeypatch.setattr(rdc, "_state_path", lambda: state)
+    monkeypatch.setattr(rdc, "_lock_path", lambda: tmp_path / rdc.LOCK_FILE)
     monkeypatch.setattr(rdc, "SUMMARY_PATH", str(tmp_path / "summary.json"))
     monkeypatch.setattr(rdc, "SCRATCH_DIR", str(tmp_path))
 

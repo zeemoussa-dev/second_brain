@@ -147,6 +147,126 @@ def save_watermark(value: str) -> None:
     path.write_text(json.dumps({"last_captured_at": value}, indent=2), encoding="utf-8")
 
 
+# ── one run at a time ────────────────────────────────────────────────────
+#
+# 2026-10-18: the cron agent hit Hermes' 420s terminal timeout and retried
+# this script in the background while the first run was still going. Both
+# runs found the same conversation missing and each created a Thread for it.
+# "Never run two capture jobs concurrently" in SKILL.md was not enough; the
+# script now refuses to overlap itself.
+
+LOCK_FILE = "email_delta_capture.lock"
+# A lock older than this is abandoned even if its PID looks alive -- the PID
+# may since have been reused by an unrelated process.
+STALE_LOCK_MINUTES = 60
+
+
+def _lock_path() -> Path:
+    return vault_manager.data_root(Path(VAULT_PATH)) / LOCK_FILE
+
+
+def _pid_is_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        # Not os.kill(pid, 0): on Windows that calls TerminateProcess and
+        # would kill the run holding the lock.
+        import ctypes
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return False
+        try:
+            exit_code = ctypes.c_ulong()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                return False
+            return exit_code.value == STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _read_lock(path: Path) -> dict:
+    try:
+        holder = json.loads(path.read_text(encoding="utf-8"))
+        return holder if isinstance(holder, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _lock_is_stale(holder: dict, path: Path) -> bool:
+    started_at = holder.get("started_at")
+    if not isinstance(started_at, (int, float)):
+        try:
+            started_at = path.stat().st_mtime
+        except OSError:
+            return True
+    # A run started with a longer --max-minutes is still live past the default.
+    stale_after = max(STALE_LOCK_MINUTES, float(holder.get("max_minutes") or 0) + 10)
+    if time.time() - started_at > stale_after * 60:
+        return True
+    # No readable PID is a lock caught between its creation and its write,
+    # not a dead one: only age may retire it.
+    if not holder.get("pid"):
+        return False
+    return not _pid_is_alive(int(holder["pid"]))
+
+
+def acquire_run_lock(max_minutes: float) -> tuple[Path | None, dict]:
+    """(lock path, {}) when this run now holds the lock; (None, holder) when
+    another live run does. A stale lock -- dead PID, or too old -- is moved
+    aside and taken over."""
+    path = _lock_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mine = {"pid": os.getpid(), "started_at": time.time(), "max_minutes": max_minutes}
+    for _ in range(2):
+        try:
+            fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            holder = _read_lock(path)
+            if not _lock_is_stale(holder, path):
+                return None, holder
+            # Renamed aside rather than deleted, then re-read: if another run
+            # replaced the stale lock with its own fresh one in between, this
+            # run must put it back and stand down, not steal it.
+            aside = path.with_name(f"{path.name}.stale.{os.getpid()}")
+            try:
+                os.replace(path, aside)
+            except OSError:
+                continue
+            if _read_lock(aside) != holder:
+                try:
+                    os.rename(aside, path)
+                except OSError:
+                    pass
+                return None, _read_lock(path) or holder
+            try:
+                os.remove(aside)
+            except OSError:
+                pass
+            continue
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(mine, f)
+        return path, {}
+    return None, _read_lock(path)
+
+
+def release_run_lock(path: Path) -> None:
+    if _read_lock(path).get("pid") == os.getpid():
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
 # ── paging forward ───────────────────────────────────────────────────────
 
 def trim_page(emails: list[dict], limit: int) -> tuple[list[dict], list[dict], bool]:
@@ -361,6 +481,19 @@ def main(argv: list[str] | None = None) -> int:
                         help="Stop cleanly after this long; the next run continues from the watermark.")
     args = parser.parse_args(argv)
     _require_vault_path()
+    lock, holder = acquire_run_lock(args.max_minutes)
+    if lock is None:
+        # Exit 0 and leave SUMMARY_PATH alone: it belongs to the live run.
+        print(json.dumps({"status": "already_running", "holder_pid": holder.get("pid"),
+                          "holder_started_at": holder.get("started_at")}))
+        return 0
+    try:
+        return _capture(args)
+    finally:
+        release_run_lock(lock)
+
+
+def _capture(args: argparse.Namespace) -> int:
     # No pywin32 check (removed 2026-09-11). The delta reads mail through
     # Graph and never touches COM; the check tried `pip install pywin32` on
     # every run, which Hermes' uv-managed Python refuses, and its note landed
