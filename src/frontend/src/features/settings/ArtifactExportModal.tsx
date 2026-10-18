@@ -11,7 +11,7 @@ import { extractErrorDetail, triggerBlobDownload } from './artifactFlowUtils';
 
 const KIND_LABELS: Record<ArtifactKind, string> = {
   skill: 'Skill', template: 'Template', agent: 'Agent', pipeline: 'Pipeline', index: 'Index',
-  action: 'Action',
+  action: 'Action', workflow: 'Workflow',
 };
 
 type SecretDecisionValue = 'redact' | 'keep';
