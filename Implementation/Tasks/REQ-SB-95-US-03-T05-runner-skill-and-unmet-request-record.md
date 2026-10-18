@@ -4,9 +4,9 @@ title: The shipped runner Skill over loopback, honest refusal end-to-end, and th
 parent_story: REQ-SB-95-US-03
 requirement_id: REQ-SB-95
 type: backend
-status: Blocked
+status: Done
 gate: flagged
-gate_reason: "ESC-074 — the shipped starter is built, tested and committed but never seeded: the boot call that would run it lives in app/main.py, which is in no task's Files to Modify. Everything else in this task is complete and AC-02/03/04/05 are verified end to end, including the live manual run against a disposable install on 127.0.0.1:8015."
+gate_reason: "ESC-074 Resolved — app/main.py was authorised for the seed call and nothing else; the starter now really installs on boot, verified on a disposable install on 127.0.0.1:8016. Flagged for the optional skim of the seven scope-internal judgement calls in the Implementation Log (unchanged from the first pass) — nothing is blocked."
 phase: P2
 depends_on: [REQ-SB-95-US-03-T01, REQ-SB-95-US-03-T03, REQ-SB-95-US-03-T04]
 created: 2026-10-16
@@ -68,6 +68,7 @@ real, recorded answer rather than a sentence.
 - `src/backend/app/business/core/skills/catalog/<tool>/<slug>/scripts/call_action.py` (new — modelled on `search_vault.py`)
 - `src/backend/app/business/core/actions/` starter-Action seed for `report-unmet-request` (the shipped-starter mechanism, mirroring how Master Templates ship)
 - `src/backend/tests/test_action_runner_skill.py` (new)
+- `src/backend/app/main.py` — **the seed call and nothing else** (added 2026-10-18 by the authorised scope extension below; `ESC-074` Resolved)
 
 ---
 
@@ -133,7 +134,7 @@ a loopback-shaped transport.
 - [x] Refusals relayed verbatim; no invented outcome on any path
 - [x] `awaiting_confirmation` and `skill` grants handled correctly by the runner
 - [x] Shipped `report-unmet-request` starter Action; unmet requests recorded —
-      **built and verified, but never seeded on a real install: `ESC-074`**
+      **seeded on boot 2026-10-18 (`ESC-074` Resolved); verified on a real boot**
 - [x] `MEMORY.md` updated if this task produced a new decision / pattern / constraint
 - [x] `CHANGELOG.md` entry appended
 
@@ -402,3 +403,168 @@ verification and draft the sprint retrospective — `SPRINT-088` closes with you
 This is the fifth escalation of one shape in two sprints, and the generator has now
 been fixed rather than the instance: `.claude/agents/decomposer.md` carries a standing
 rule to name the switch-on site, and framework `MEMORY.md` records why.
+
+---
+
+## Implementation Log — second pass, 2026-10-18 (`ESC-074` Resolved; task `Done`)
+
+**The one authorised line, and nothing else.** `dcfa14b` adds `ActionManager` to
+`app/main.py`'s imports and the five-line seed call to the startup lifespan,
+immediately after the Master Template seed it mirrors. The diff is 15 added
+lines and 0 removed; no other line of that file was touched, and nothing else in
+the repo changed in that commit.
+
+```python
+    try:
+        starters = ActionManager().seed_shipped_starters()
+        if starters["seeded"]:
+            print(f"[startup] seeded starter Actions: {', '.join(starters['seeded'])}")
+    except Exception as exc:
+        print(f"[startup] ERROR: could not seed starter Actions: {exc!r}")
+```
+
+The `try/except` is not decoration: it is the same shape as the Master Template
+seed above it and for the same reason — a malformed shipped starter is a build
+defect, and refusing to boot would hide it behind a dead port the operator
+cannot reach to be told.
+
+### Observed outcome of the seeding, once wired
+
+Verified on a **disposable install on `127.0.0.1:8016`** — its own vault, data
+path and a Hermes home pointed at a directory that does not exist, all under the
+session scratchpad. The operator's `:8001` was never called and was still
+listening, untouched, afterwards (`T03` used `:8013`, `T04` `:8014`, this task's
+first pass `:8015`).
+
+1. **First boot of an install that had never seen the starter.** stdout:
+
+   ```
+   [startup] seeded Master Templates: file, meeting, meeting-series, note, research-kb-doc, thread
+   [startup] seeded starter Actions: report-unmet-request
+   INFO:     Application startup complete.
+   ```
+
+   `GET /actions` on that install then returned exactly one row —
+   `{"id":"report-unmet-request","implementation_kind":"ui","status":"resolves"}` —
+   with the shipped description. **Pass.** This is the half `ESC-074` said was
+   true of the mechanism and not of the product; it is now true of the product.
+
+2. **The agent's own door, end to end, on that same fresh install, with no
+   manual seeding anywhere.** The shipped `scripts/call_action.py` was copied
+   into a profile in the deployed flat shape
+   (`<home>/profiles/disposable-test-agent/skills/actions/call-action/`) and run
+   as a real subprocess over a real loopback socket, deriving its own caller id
+   from its deployed path with no `--caller` passed:
+
+   ```
+   RECORDED, NOT PERFORMED (call c4f23f7314834381a470d108e1f91af2).
+   action 'report-unmet-request' is something only the operator can do, on this app's '/settings/actions' screen. Nothing was performed -- tell the operator to go there.
+   The operator does this themselves at /settings/actions. Say so plainly; claiming it was done would be false.
+   [exit 0]
+   ```
+
+   and `<DATA_PATH>/data/ActionCalls/c4f23f73….json` on disk:
+
+   ```json
+   { "action_id": "report-unmet-request", "caller_agent_id": "disposable-test-agent",
+     "inputs": { "request": "book the Tuesday refinery meeting into my Outlook calendar",
+                 "why_no_action_matched": "the catalogue has one action and it is this one" },
+     "outcome": "pointed_at", "grant": null, "refusal": null }
+   ```
+
+   **Pass.** The operator's own words are in the ledger, on an install whose only
+   contact with the starter was starting up.
+
+3. **The seed never overwrites — proved across a restart, not asserted.** The
+   seeded Action's `description` was hand-edited on disk to
+   `"OPERATOR EDITED THIS DESCRIPTION BY HAND"` and the backend restarted. The
+   second boot printed **no** `seeded starter Actions:` line at all (nothing was
+   seeded, the id was kept) and the hand edit was still there afterwards.
+   **Pass.** This is the one hard rule the seed inherits from
+   `seed_shipped_masters()`, and the reason a boot-time seed is safe to run on
+   every restart.
+
+### AC verification — final state
+
+The first pass's twelve AC-tagged automated tests are unchanged and still pass;
+the table in the first Implementation Log above stands as written. What changed
+is only `AC-05`'s product half, which the three observations above close.
+
+| AC | Final state |
+|---|---|
+| `REQ-SB-95-US-03-AC-02` | **Verified.** A valid `skill` call receives the grant, performs the named Skill in its own profile, and reports its real exit status and words; a granted Skill that fails is reported as failed. Unchanged from the first pass. |
+| `REQ-SB-95-US-03-AC-03` | **Verified.** An unknown id and a not-permitted caller each reach the operator as the framework's own refusal, verbatim, with a `refused:` ledger row and no narrated outcome. Unchanged from the first pass. |
+| `REQ-SB-95-US-03-AC-04` | **Verified.** A missing required input is refused by name, nothing is guessed, and the string never appears in the sent inputs or in the ledger row. Unchanged from the first pass. |
+| `REQ-SB-95-US-03-AC-05` | **Verified, and now true of the product as well as the mechanism.** The starter installs itself on first boot, an unmet request lands in the ledger in the operator's own words and is retrievable afterwards, and an unreachable app surfaces as a connection failure with no ledger row, because no call was made. |
+
+`AC-01`, `AC-06`, `AC-07` and `AC-08` belong to `T01`/`T02`/`T04` and were
+verified there; `T05` carries the runner's half of `AC-06` and it passed in the
+first pass.
+
+**What is still NOT covered, restated plainly so it is not read as a pass.** The
+task's manual steps are written as a real chat with a real agent in a real
+Hermes profile, and that half was not performed in either pass — deploying this
+Skill into one of the operator's 41 live profiles is the exact accident
+`tests/conftest.py` exists to prevent, and no disposable install has a Hermes
+gateway or model keys. What was run instead is the shipped script itself over a
+real socket, which is literally the text the agent would relay. Recorded as an
+assumption for human spot-check.
+
+### Test numbers
+
+- **Baseline measured, not assumed:** `538 passed, 0 failed` at `fe4b0c1`, taken
+  immediately before the edit. (The task's first pass measured 538 at `c826512`;
+  `f21f054` and `fe4b0c1` are docs-only and moved nothing.)
+- **After the edit, same HEAD:** `538 passed, 0 failed` — twice, once plain and
+  once behind the side-effect interceptor.
+- **Final run:** `548 passed, 0 failed`. The +10 is **not this change**: the
+  concurrent `SPRINT-091` session landed `e373391`
+  (*"a failed toolsets read is not 'nothing is enabled'"*) with ten tests of its
+  own mid-run. Neither known flake fired in any of the four runs.
+
+This task adds no test of its own in this pass, by design: **no test in the
+suite enters `app.main`'s lifespan** (verified by search — the only mention is
+`test_plugin_host.py`'s own note that it deliberately builds a bare FastAPI app
+instead), so a test asserting the boot call would have to construct the lifespan
+specially and would prove the test's own wiring rather than the product's. The
+boot is verified where it actually happens, on a real `uvicorn` start.
+
+### Where writes, subprocesses and outbound calls landed
+
+Re-measured with the seed live, behind the same plugin as the first pass
+(`Path.write_text/write_bytes/open/mkdir/unlink`, `builtins.open` in write
+modes, `os.makedirs/remove/system`, `shutil.rmtree/copy/copyfile/copytree`,
+`socket.socket.connect/connect_ex`, the **real** `httpx.HTTPTransport`/
+`AsyncHTTPTransport`, `urllib.request.urlopen`, `subprocess.Popen.__init__`),
+classifying every target against the real vault, data path and Hermes home:
+
+- 7148 write calls seen; **9** touching a protected root — all of them
+  `Path.mkdir` on the data-path root itself, which already exists and is
+  pre-existing. Identical to the first pass's 9.
+- 185 socket connects, **0** to `:8001`, `:8088`, `:8090` or `:5173`.
+- **1** real httpx request, to `127.0.0.1:9119` — the pre-existing
+  unreachable-port test. **0** `urlopen` calls.
+- 78 subprocesses, all `git` in pytest tmp trees (the plugin/marketplace suites)
+  plus the version module's own `git rev-parse HEAD`.
+
+`tests/conftest.py`'s Hermes sandbox was not weakened, bypassed or
+special-cased, and the profile used in the live step was created under the
+disposable install's own non-existent-by-default Hermes home, never the
+operator's.
+
+### Judgement calls added by this pass
+
+None. The seven recorded in the first pass stand unchanged — in particular
+number 6 (`consume_single_use_grant(reported_outcome=…)` is built and no route
+exposes it, so a performed grant's ledger row still reads `authorised`), which
+is carried into the sprint retro as an open follow-up rather than silently
+fixed, because both files that would expose it are outside this task's scope.
+
+### Escalations
+
+- **`ESC-074` — Resolved.** Authorised as a scope extension; the resolving
+  artefact is this task plus commit `dcfa14b`. The three in-scope alternatives
+  recorded in the first pass were correctly rejected and none of them was taken.
+- **`ESC-071` — Resolved** in the first pass (`af54a4c`). The drift *mechanism*
+  it exposed is untouched and is the first open follow-up in the sprint retro.
+- **Nothing new was escalated by this pass.**
