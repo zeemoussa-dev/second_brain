@@ -15,6 +15,7 @@ Health, from any number of Manager instances.
 """
 from __future__ import annotations
 
+import logging
 import re
 
 from fastapi import APIRouter
@@ -24,6 +25,8 @@ from app.business.core.plugins.plugin import DISABLED, INVALID, LOADED, REFUSED,
 from app.data_access import plugins as plugins_data
 
 PLUGIN_ROUTE_PREFIX = "/plugins"
+
+_logger = logging.getLogger(__name__)
 
 # An id becomes a folder name, a package name and a URL segment. Anything
 # looser would let an ownership record point outside the plugins folder
@@ -53,6 +56,38 @@ _plugin_seed_data_files: list[str] = []
 # to ActionManager, which composes these on top of the stored ones when the
 # catalogue is read.
 _plugin_actions: list[dict] = []
+# The tag namespaces the loaded plugins own, by prefix, each holding the
+# `plugin_id` that registered it and the callable to ask for its current
+# entries -- never the entries themselves (`ADR-037`). Keyed by prefix because
+# one namespace has exactly one owner, and keyed state is what lets the second
+# claim on a prefix be spotted at all.
+_plugin_tag_namespaces: dict[str, dict] = {}
+
+
+def _one_owner_per_tag_namespace(loaded_apis: list[plugin_api.PluginApi]) -> dict[str, dict]:
+    """The registered namespaces, first registration winning its prefix.
+
+    Aggregation is the only place one plugin's registration meets another's,
+    so a cross-plugin collision can be seen nowhere else -- and by the time it
+    is seen, the plugin that caused it has already imported, registered and
+    mounted its routes. Refusing the later claim and logging it naming both
+    plugins is therefore the strongest answer available, and it is the right
+    one anyway: a prefix changing hands because of install order would be
+    worse than a prefix that stays where it was."""
+    owned: dict[str, dict] = {}
+    for api in loaded_apis:
+        for registration in api.tag_namespaces:
+            namespace = registration["namespace"]
+            owner = owned.get(namespace)
+            if owner is not None:
+                _logger.warning(
+                    "plugin %r claims tag namespace %r, which plugin %r already owns: the later "
+                    "registration is refused and %r keeps the namespace",
+                    registration["plugin_id"], namespace, owner["plugin_id"], owner["plugin_id"],
+                )
+                continue
+            owned[namespace] = registration
+    return owned
 
 
 class PluginManager:
@@ -67,6 +102,7 @@ class PluginManager:
         arrives with it (`REQ-SB-91` Phase 4)."""
         global _load_report, _plugin_subject_enrichers, _plugin_agent_matchers, _plugin_services
         global _plugin_people_folders, _plugin_seed_data_files, _plugin_actions
+        global _plugin_tag_namespaces
         report: list[Plugin] = []
         mounts: list[tuple[str, APIRouter]] = []
 
@@ -75,6 +111,7 @@ class PluginManager:
         except (OSError, ValueError) as exc:
             _plugin_subject_enrichers, _plugin_agent_matchers, _plugin_services = [], [], {}
             _plugin_people_folders, _plugin_seed_data_files, _plugin_actions = [], [], []
+            _plugin_tag_namespaces = {}
             _load_report = [Plugin(
                 id="installed.json", name="Installed plugins record", version="",
                 framework_api=None, status=INVALID,
@@ -96,6 +133,7 @@ class PluginManager:
         _plugin_people_folders = list(dict.fromkeys(folder for api in loaded_apis for folder in api.people_folders))
         _plugin_seed_data_files = list(dict.fromkeys(path for api in loaded_apis for path in api.seed_data_files))
         _plugin_actions = [action for api in loaded_apis for action in api.actions]
+        _plugin_tag_namespaces = _one_owner_per_tag_namespace(loaded_apis)
         return mounts
 
     def get_load_report(self) -> list[Plugin]:
@@ -127,6 +165,20 @@ class PluginManager:
         simply absent from the next load -- which is what makes a plugin's
         Actions disappear with it, with nothing stored to clean up."""
         return list(_plugin_actions)
+
+    def get_tag_namespaces(self) -> list[dict]:
+        """Every tag namespace the loaded plugins own, in plugin install
+        order: its `namespace` prefix, the `plugin_id` that registered it, and
+        the `entries` callable to ask for what it currently holds. The
+        callable is handed back unasked -- whoever needs the entries calls it
+        then, which is the entire reason a namespace is registered as a
+        callable rather than as data (`ADR-037`).
+
+        Nothing here gates the tag-keyed index. That index keys every
+        `<namespace>/<slug>` tag the vault holds, registered or not; a
+        namespace appearing in this list only means a name can now be turned
+        into one of those tags."""
+        return [dict(registration) for registration in _plugin_tag_namespaces.values()]
 
     def _load_one(
         self, entry: object, seen: set[str], loaded_apis: list[plugin_api.PluginApi],

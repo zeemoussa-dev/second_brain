@@ -125,6 +125,12 @@ SubjectEnricher = Callable[[str, dict, list[str]], dict]
 # nobody brought in fits (`BUG-063` seam).
 AgentMatcher = Callable[[str, dict], dict]
 
+# `entries() -> [{"slug", "name", "aliases", "domains", "hub", "kind"}, ...]` -- what
+# a registered tag namespace holds RIGHT NOW. Asked when a name has to be resolved,
+# never called at registration, because the registry behind it is edited while the
+# app runs (`ADR-037`).
+TagNamespaceEntries = Callable[[], list[dict]]
+
 
 def _relative_path(path: str, what: str) -> str:
     """`path` with `/` separators, or ValueError when it could point outside
@@ -284,6 +290,7 @@ class PluginApi:
         self.seed_data_files: list[str] = []
         self.data = DataFilesApi(self.seed_data_files)
         self.actions: list[dict] = []
+        self.tag_namespaces: list[dict] = []
 
     def register_router(self, router: APIRouter) -> None:
         """Mounted under `/plugins/<plugin_id>/` once registration succeeds.
@@ -362,6 +369,50 @@ class PluginApi:
             "allowed_callers": list(allowed_callers or []),
             "needs_confirmation": bool(needs_confirmation),
             "implementation": dict(implementation or {}),
+        })
+
+    def register_tag_namespace(self, namespace: str, entries: TagNamespaceEntries) -> None:
+        """Declares that this plugin owns one `<namespace>/` tag prefix, and
+        hands over the one way to ask what that namespace currently holds:
+        `entries()` returning a list of plain dicts, each with `slug`, `name`,
+        `aliases`, `domains`, `hub` and `kind`.
+
+        **Stored as a callable here and asked for only when a name actually
+        has to be resolved** (`ADR-037`), the way an enricher or a matcher is
+        asked when Cockpit needs one. A list taken at registration would be a
+        copy of the plugin's own business data, going stale the first time the
+        operator edits the registry behind it -- and that registry is edited
+        while the app runs.
+
+        `kind` is carried through exactly as given. The framework never
+        enumerates it, validates it against a list or maps it onto a concept
+        of its own: what kinds exist belongs to whoever registered them.
+
+        Registering a namespace neither populates the tag-keyed index nor
+        filters it. Every `<namespace>/<slug>` tag the vault holds is a key in
+        that index whether or not any plugin claimed its prefix; what this adds
+        is the ability to turn a NAME into one of those tags.
+
+        One namespace has one owner. The same prefix twice is refused -- here
+        when one plugin registers it twice, and at load time when a second
+        plugin claims a prefix another already owns.
+        """
+        normalized = str(namespace or "").strip().strip("/")
+        if not normalized or "/" in normalized or "\\" in normalized:
+            raise ValueError(f"tag namespace {namespace!r} must be one prefix, carrying no separator")
+        if not callable(entries):
+            raise TypeError(
+                f"tag namespace {normalized!r} needs a callable returning its entries, "
+                f"not a {type(entries).__name__} captured now"
+            )
+        if any(registered["namespace"] == normalized for registered in self.tag_namespaces):
+            raise ValueError(f"tag namespace {normalized!r} is registered twice")
+        self.tag_namespaces.append({
+            "namespace": normalized,
+            # Stamped by the facade for `register_action`'s reason: attribution
+            # a caller could supply is attribution a plugin could forge.
+            "plugin_id": self.plugin_id,
+            "entries": entries,
         })
 
     def provide_service(self, name: str, implementation: object) -> None:
