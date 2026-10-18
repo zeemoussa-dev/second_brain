@@ -42,6 +42,14 @@ A plugin's Action is never written into the store, which is also why
 every write path here refuses one: there is nothing of it on disk to
 update or delete.
 
+`seed_shipped_starters()` is the third way an Action reaches the
+catalogue and the only one that WRITES without the operator asking
+(REQ-SB-95-US-03-T05, ADR-032's shipped starters). It installs a
+framework-shipped definition this install does not have, never
+overwrites one it does, and from then on the result is an ordinary
+stored Action -- mirroring `TemplateManager.seed_shipped_masters()`
+exactly, including that it is meant to run on every boot.
+
 Raw I/O lives entirely in `data_access/actions.py` -- this file holds
 zero raw file calls, only entity shaping and the cardinality rule.
 """
@@ -53,6 +61,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
+from app.business.core.actions import shipped_starters
 from app.business.core.actions.action import (
     IMPLEMENTATION_KINDS,
     UI_FEATURE_KEYS,
@@ -503,6 +512,55 @@ class ActionManager:
         except (OSError, ValueError):
             return next((action for action in self._plugin_contributed() if action.id == action_id), None)
         return self._to_action(action_id, data)
+
+    def seed_shipped_starters(self) -> dict:
+        """Installs every shipped starter Action this install does not
+        already have (`ADR-032`). Returns {"seeded": [...], "kept": [...]},
+        the same answer `TemplateManager.seed_shipped_masters()` gives.
+
+        **Never overwrites.** An id already in the store is left exactly
+        as it is, whatever it now holds: the operator's own edit to a
+        starter outranks the shipped copy, and a seed that runs on every
+        boot would otherwise silently revert their change on every
+        restart.
+
+        **Seeded, not composed on read.** A starter becomes an ordinary
+        stored Action the operator can edit, export and delete -- which a
+        read-time composition (the shape a plugin's Action uses) could
+        not offer, since there would be no file of its own to change.
+
+        Shape is validated the way `import_action` validates an incoming
+        definition -- cardinality plus a round-trip through the read-side
+        parser -- but resolution deliberately is NOT: a starter must not
+        fail to install because of what this install has deployed today.
+        `resolution_report()` is where a starter that points at something
+        missing shows up, and the call gate refuses it by name.
+
+        Publication is fired only when something really was seeded, and
+        in the background, for the reason create/update/delete already
+        do: a roster-wide republication must not hold up whatever
+        triggered it.
+        """
+        existing = set(actions_data.list_action_ids())
+        seeded: list[str] = []
+        kept: list[str] = []
+        for action_id in shipped_starters.list_shipped_starter_ids():
+            if action_id in existing:
+                kept.append(action_id)
+                continue
+            definition = {
+                **shipped_starters.read_shipped_starter_json(action_id),
+                "id": action_id,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": None,
+            }
+            self._require_exactly_one_implementation(definition.get("implementation"))
+            self._to_action(action_id, definition)
+            actions_data.write_action_json(action_id, definition)
+            seeded.append(action_id)
+        if seeded:
+            publish_action_catalogue_in_background()
+        return {"seeded": seeded, "kept": kept}
 
     def create(
         self, action_id: str, *, description: str = "",

@@ -1,0 +1,24 @@
+{
+  "description": "Report that this app has no action for something the operator asked for. Call this INSTEAD of inventing an action, promising it for later, or describing an outcome that did not happen. It performs nothing: it records the request so a genuinely missing capability is discovered rather than fabricated.",
+  "inputs": [
+    {
+      "name": "request",
+      "type": "string",
+      "required": true,
+      "description": "What the operator asked for, in their own words -- not a paraphrase and not your guess at which action they meant."
+    },
+    {
+      "name": "why_no_action_matched",
+      "type": "string",
+      "required": false,
+      "description": "Optional: which catalogued actions you considered and why none of them does this."
+    }
+  ],
+  "allowed_callers": ["*"],
+  "needs_confirmation": false,
+  "implementation": {
+    "ui": {
+      "feature_key": "/settings/actions"
+    }
+  }
+}
