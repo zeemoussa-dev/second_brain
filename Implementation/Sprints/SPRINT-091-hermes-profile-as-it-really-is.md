@@ -73,7 +73,7 @@ bidirectional link, written at sprint creation. Order by implementation dependen
 
 | Story | Title | Phase | Status |
 |---|---|---|---|
-| [REQ-SB-99-US-01](../UserStories/REQ-SB-99-US-01-hermes-profile-as-it-really-is.md) | See a Hermes profile as it really is — the full soul, skills with versions, config, jobs and toolsets | P2 | Ready |
+| [REQ-SB-99-US-01](../UserStories/REQ-SB-99-US-01-hermes-profile-as-it-really-is.md) | See a Hermes profile as it really is — the full soul, skills with versions, config, jobs and toolsets | P2 | In Progress |
 
 Build order inside the sprint, read from the task files' own `depends_on`:
 `(T01, T02, T03, T04) → T05 → T06`. The four roots carry `depends_on: []` and

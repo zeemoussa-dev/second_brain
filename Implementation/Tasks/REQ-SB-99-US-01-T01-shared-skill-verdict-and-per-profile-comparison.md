@@ -4,13 +4,13 @@ title: Extract the four-status verdict rule once, and add compare_profile_skills
 parent_story: REQ-SB-99-US-01
 requirement_id: REQ-SB-99
 type: backend
-status: Ready
-gate: clear
-gate_reason: ""
+status: Done
+gate: flagged
+gate_reason: "Four scope-internal judgement calls logged for an optional spot-check; nothing is blocked."
 phase: P2
 depends_on: []
 created: 2026-10-17
-updated: 2026-10-17
+updated: 2026-10-18
 ---
 
 # REQ-SB-99-US-01-T01 — One Verdict Rule, Two Enumeration Directions
@@ -140,12 +140,12 @@ side.
 
 ## Acceptance Criteria
 
-- [ ] The four-status rule exists once and both methods call it
-- [ ] `check_deployment_drift()` is contract-identical; `test_versioning.py` passes untouched
-- [ ] `compare_profile_skills()` enumerates install-first and adds `unknown_to_framework`
-- [ ] Nothing on the new path reads `deployed_to` or writes anything
-- [ ] `MEMORY.md` updated if this task produced a new decision / pattern / constraint
-- [ ] `CHANGELOG.md` entry appended
+- [x] The four-status rule exists once and both methods call it
+- [x] `check_deployment_drift()` is contract-identical; `test_versioning.py` passes untouched
+- [x] `compare_profile_skills()` enumerates install-first and adds `unknown_to_framework`
+- [x] Nothing on the new path reads `deployed_to` or writes anything
+- [x] `MEMORY.md` updated if this task produced a new decision / pattern / constraint — none did (see Implementation Log, judgement call 4)
+- [x] `CHANGELOG.md` entry appended
 
 ---
 
@@ -173,3 +173,63 @@ for a write.
 ## Implementation Log
 
 _(Filled in by the coder.)_
+
+**Verification mode:** automated (the backend has a real pytest stack).
+**Baseline measured before any edit, at `4b450d1`:** `511 passed, 0 failed` in
+20.76s — both known flakes (`test_health_check.py::test_health_reports_the_
+commit_the_running_code_was_loaded_from`, `test_marketplace_source.py`) passed.
+**After:** `516 passed, 0 failed` in 22.12s. New tests:
+`tests/test_profile_skill_verdict.py` (5).
+
+### AC-tagged outcomes
+
+| AC-ID / tag | Test | Observed |
+|---|---|---|
+| `REQ-SB-99-US-01-AC-02` | `test_every_skill_on_disk_gets_its_verdict_and_its_real_deployed_version` | **Pass.** A profile holding four skills returns exactly four rows — `current`, `stale`, `modified`, `unknown_to_framework` — each with the version read off the profile's own tree (`1.0.0` / `0.9.0` / `2.0.0` / `0.1.0`), and `skill_id` is the `<category>/<slug>` it really sits at (`outlook/email-capture`), not the catalog's Tool grouping. |
+| `REQ-SB-99-US-01-AC-02` | `test_a_skill_the_catalog_never_heard_of_is_listed_because_it_is_on_disk` | **Pass.** The `unknown_to_framework` row carries `catalog_version: None`; removing that skill from the fake profile tree drops the row (4 → 3), so enumeration is install-first rather than catalog-first. |
+| `REQ-SB-99-US-01-AC-02` | `test_both_directions_return_the_same_status_for_the_same_skill` | **Pass.** With a catalog skill whose `deployed_to` names the profile and whose deployed copy differs in version only, `check_deployment_drift()` and `compare_profile_skills()` both report `stale`, and agree on `catalog_version` and `deployed_version`. `tests/test_versioning.py` passes unchanged (its `test_drift_report_uses_the_documented_statuses` is the named guard on the extraction). |
+| `REQ-SB-99-US-01-AC-05` | `test_nothing_on_this_path_writes_or_consults_deployed_to` | **Pass.** The fake Hermes `skills` object raises on `write`/`deploy`/`undeploy`/`save`/`create`/`update`/`delete` and `skills_data`'s `write_skill_md`/`write_script`/`write_section_access_map`/`delete_skill_dir` raise; `deployed_to` is a sentinel raising on `__iter__`/`__contains__`. `compare_profile_skills("adnoc-expert")` returns four rows normally. |
+| `[constraint: cost]` | `test_one_profile_costs_one_listing_and_one_read_per_skill` | **Pass.** Pinned by equality, not by bound: `skills.get_all` calls `== ["adnoc-expert"]` (one listing, only that profile); catalog reads `== 4`, one per distinct slug; deployed-bytes reads `== 3` — none for the `unknown_to_framework` slug, since there is nothing to compare it against. |
+
+### Where the reads and writes landed
+
+Ran both test files, and then the whole suite, behind a scratchpad pytest plugin
+wrapping `pathlib.Path`'s read primitives (`read_text`, `read_bytes`, `open`,
+`iterdir`, `glob`, `rglob`, `stat`, `exists`, `is_dir`, `is_file`) and its write
+primitives (`write_text`, `write_bytes`, `mkdir`, `unlink`, `rmdir`, `rename`,
+`replace`, `touch`, `chmod`) plus `subprocess.run`/`Popen`, recording anything
+under the **real** `<HERMES_HOME>` captured at import time before `conftest.py`'s
+sandbox applies:
+
+- `tests/test_profile_skill_verdict.py` + `tests/test_versioning.py`:
+  **0 reads, 0 writes, 0 subprocesses** under the real install.
+- Full suite: **0 reads, 0 writes** under the real install (152 subprocess
+  spawns, all pre-existing `git` calls from the plugin/marketplace tests against
+  their own `tmp_path` repos — none from these files).
+
+`conftest.py` was neither weakened, bypassed nor special-cased.
+
+### Judgement calls (scope-internal, logged for spot-check)
+
+1. **`_frontmatter_of(md)` extracted alongside `_deployment_verdict`.**
+   `self._frontmatter(skill_id)` re-reads the catalog's `SKILL.md` to get the
+   version, which on the new path would have been a second disk read per skill
+   on top of the one for the bytes. The parse is now a module-level function
+   over an already-read string and `_frontmatter()` delegates to it — behaviour
+   identical, catalog reads halved. `ADR-043` budgets "two file reads per skill"
+   (deployed bytes + catalog bytes), which this keeps to.
+2. **A `missing` row's `deployed_version` is `None` on both paths.** The
+   install-first direction can still produce `missing` — a `SKILL.md` the glob
+   saw whose bytes then fail to read — and it reports it the same way
+   `check_deployment_drift()` always has, rather than inventing a sixth status.
+3. **No deployed-bytes read for an `unknown_to_framework` skill.** There is no
+   catalog copy to compare it against, so the read would be pure cost. Its
+   `deployed_version` still comes off the tree, from `get_all`'s own frontmatter
+   parse.
+4. **No `MEMORY.md` entry.** The decision this task executes is already written
+   down as `ADR-043` and in `architecture.md` §Skills With Versions; nothing new
+   and framework-wide emerged that is not already there.
+
+Nothing was written to `REVIEW-QUEUE.md` or `ESCALATIONS.md`; no file outside
+`## Files to Modify` was touched (plus `CHANGELOG.md` and the status
+propagation this task's contract allows).

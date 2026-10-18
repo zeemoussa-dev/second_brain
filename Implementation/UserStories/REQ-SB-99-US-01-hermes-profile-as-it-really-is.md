@@ -4,12 +4,12 @@ title: See a Hermes profile as it really is — the full soul, skills with versi
 requirement_ids: [REQ-SB-99]
 requirement_section: "REQ-SB-99: See a Hermes Profile As It Really Is — Soul, Skills, Config, Jobs"
 phase: P2
-status: Ready
+status: In Progress
 gate: clear
 gate_reason: "RESOLVED operator approved ADR-043, 2026-10-17 — was: trigger-3 (ADR-043 created)"
 sprint: "SPRINT-091"
 created: 2026-10-17
-updated: 2026-10-17
+updated: 2026-10-18
 ---
 
 # REQ-SB-99-US-01 — See a Hermes profile as it really is — the full soul, skills with versions, config, jobs and toolsets
