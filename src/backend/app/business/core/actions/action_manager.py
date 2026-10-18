@@ -30,6 +30,13 @@ Two rules this file deliberately does and does not own:
   each fire it IN THE BACKGROUND and return at once (operator,
   2026-10-18) -- see `publish_action_catalogue_in_background()` for why
   a save must not wait on a roster-wide republication.
+- **It owns nothing about Workflows, and asks them one question.**
+  `delete()` refuses an Action a Workflow step names, reporting which
+  Workflows before anything is removed (REQ-SB-95-US-04-T02, ADR-034).
+  The edge is one-directional: no back-reference is stored here, the
+  answer is computed by the Workflow side on every delete, and an
+  Action.json is byte-identical before and after a Workflow starts
+  referencing it.
 - **It does not cache the read side.** resolution_report() recomputes
   every Action's status from those same live sources on every call:
   what an Action points at is undeployed, unmounted or unregistered by
@@ -105,6 +112,32 @@ class PluginContributedActionIsReadOnlyError(Exception):
 class ActionImplementationUnresolvedError(Exception):
     """The one named implementation does not resolve on this install."""
     pass
+
+
+class ActionReferencedByWorkflowError(Exception):
+    """A Workflow step names this Action, so deleting it would leave
+    that step pointing at nothing (`ADR-034`, `REQ-SB-95-US-04`)."""
+    pass
+
+
+def workflow_ids_referencing_action(action_id: str) -> list[str]:
+    """The Workflow side's answer to "who names this Action?", asked
+    only at delete time.
+
+    The import is inside the function on purpose. The edge runs ONE
+    direction -- `WorkflowManager` imports this module at module scope
+    to validate its steps against the catalogue -- so importing it back
+    at module scope here would close a cycle. Deferring it is the same
+    shape `AgentManager._action_catalogue()` already uses against this
+    very module, for the same reason, and it keeps the guard a property
+    of `delete()` rather than of whoever remembered to inject a lookup.
+
+    Nothing is stored on either side: an Action still knows nothing
+    about Workflows between one delete and the next.
+    """
+    from app.business.core.workflows.workflow_manager import WorkflowManager
+
+    return WorkflowManager().workflow_ids_referencing_action(action_id)
 
 
 def deployed_skill_ids() -> set[str]:
@@ -489,6 +522,27 @@ class ActionManager:
                     "it is stored on this install"
                 )
 
+    @staticmethod
+    def _refuse_if_referenced_by_a_workflow(action_id: str) -> None:
+        """Guards deletion only. Creating or editing an Action cannot
+        orphan a step -- a step names an id, so only the id going away
+        breaks one.
+
+        The sentence names every referencing Workflow rather than the
+        first: the operator has to clear all of them to delete the
+        Action, and being told them one refusal at a time is the same
+        drip-feed a half-validated save would be.
+        """
+        referencing = workflow_ids_referencing_action(action_id)
+        if not referencing:
+            return
+        named = ", ".join(repr(workflow_id) for workflow_id in referencing)
+        kind_word = "workflow" if len(referencing) == 1 else "workflows"
+        raise ActionReferencedByWorkflowError(
+            f"action {action_id!r} was not deleted: it is a step of {kind_word} {named}. Remove "
+            "the step from each first, so no documented handling is left pointing at nothing"
+        )
+
     def get_all(self) -> list[Action]:
         """This install's stored Actions, plus whatever the loaded plugins
         contributed -- one catalogue, with each plugin entry carrying the
@@ -648,10 +702,24 @@ class ActionManager:
         {"deleted": False} instead (ADR-014's own result-dict
         convention). A plugin's Action is the one case that does raise:
         reporting it deleted would be a lie the operator acts on, and
-        reporting it absent would deny a row they are looking at."""
+        reporting it absent would deny a row they are looking at.
+
+        A Workflow step naming this Action is the second case that
+        raises (`ADR-034`, `US-04` Scenario 6): the operator is told
+        which Workflows reference it and NOTHING is removed, because the
+        alternative is a documented handling that silently points at a
+        capability this install no longer has. The question is asked of
+        the Workflow side every time and answered from nothing stored
+        here.
+
+        Asked only once the id is known to exist: an id this install
+        never had deletes nothing, so scanning every Workflow for it
+        would be a cost paid to refuse nothing.
+        """
         self._refuse_if_plugin_contributed(action_id)
         if self.get_by_id(action_id) is None:
             return {"deleted": False}
+        self._refuse_if_referenced_by_a_workflow(action_id)
         actions_data.delete_action_definition(action_id)
         # Only on a real deletion: a {"deleted": False} for an id this
         # install never had changed no catalogue, so republishing on it

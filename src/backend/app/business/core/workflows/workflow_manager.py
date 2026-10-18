@@ -17,10 +17,15 @@ What this file owns, and what it deliberately does not:
 - **It owns stable step identity.** A step keeps the id it was given and
   is minted one when it has none, unique within the Workflow and never
   derived from position -- see `_identified_steps`.
-- **It does not own referential integrity.** Whether a step's
-  `action_id` is really in the catalogue is checked at save by
-  `REQ-SB-95-US-04-T02`, which is where the refusal naming the step and
-  the unknown id belongs. This task stores what it is given, in order.
+- **It owns referential integrity with the Action catalogue, at SAVE
+  time** (`ADR-034`, added by `REQ-SB-95-US-04-T02`). `create()` and
+  `update()` hold every step to the live catalogue before anything is
+  written and refuse naming which step and which unknown action id --
+  invalid by construction rather than by review (`ADR-032`). The edge
+  runs ONE direction only: a step names an Action, an Action stores
+  nothing about Workflows, so `workflow_ids_referencing_action()` below
+  is how the Action side asks at delete time (the same one-directional
+  discipline `MEMORY.md` records for Skill-needs-Template, 2026-09-06).
 - **It does not own runs.** Starting a run, handing back one step at a
   time and composing the report from recorded outcomes are `T05`'s, over
   their own `WorkflowRuns/` store (`ADR-034`). A Workflow is the
@@ -47,6 +52,7 @@ from datetime import datetime, timezone
 from typing import Any, Mapping
 from uuid import uuid4
 
+from app.business.core.actions.action_manager import ActionManager
 from app.business.core.workflows.workflow import (
     Workflow,
     WorkflowReport,
@@ -55,6 +61,17 @@ from app.business.core.workflows.workflow import (
 from app.data_access import workflows as workflows_data
 
 _logger = logging.getLogger(__name__)
+
+
+class WorkflowStepActionNotFoundError(Exception):
+    """A step names an action id this install's catalogue does not have.
+
+    One exception for both the unknown id and the missing id: both leave
+    a step pointing at nothing, which is the single thing save-time
+    validation exists to prevent, and giving them separate types would
+    make `T03`'s router map two refusals to the same 409.
+    """
+    pass
 
 
 class WorkflowManager:
@@ -101,6 +118,68 @@ class WorkflowManager:
                 "description": step.get("description", ""),
             })
         return identified
+
+    @staticmethod
+    def _require_catalogued_actions(steps: list[Mapping[str, Any]] | None) -> None:
+        """Every step names a real catalogued Action, or nothing is
+        saved (`ADR-032`'s "invalid by construction rather than by
+        review"; `ADR-034`'s save-time half of the one-directional
+        edge).
+
+        Raises BEFORE the caller writes anything, which is what makes
+        "an existing Workflow updated the same way is left unchanged on
+        disk" a property of this method rather than of each write path.
+
+        The catalogue is read ONCE per save, never once per step -- the
+        same O(n x sources) shape `_ResolutionSources` already exists to
+        avoid on the Action side, and a Workflow is specifically the
+        kind with many steps. It is `ActionManager`'s own `get_all()`
+        rather than a list of action ids off disk, so a
+        plugin-contributed Action counts as catalogued exactly as the
+        operator's screen shows it (`ADR-022`) and this Manager still
+        touches no store but its own.
+
+        The refusal names the step by POSITION, not by step id: the
+        operator is looking at an ordered editor, and a step that has
+        not been saved yet has no id they have ever seen.
+        """
+        if not steps:
+            return
+        catalogued_action_ids = {action.id for action in ActionManager().get_all()}
+        for position, step in enumerate(steps, start=1):
+            action_id = str(step.get("action_id") or "")
+            if not action_id:
+                raise WorkflowStepActionNotFoundError(
+                    f"step {position} of this Workflow names no action id; every step runs one "
+                    "catalogued Action, so nothing was saved"
+                )
+            if action_id not in catalogued_action_ids:
+                raise WorkflowStepActionNotFoundError(
+                    f"step {position} of this Workflow names action {action_id!r}, which is not in "
+                    "this install's Action catalogue; nothing was saved"
+                )
+
+    def workflow_ids_referencing_action(self, action_id: str) -> list[str]:
+        """Which stored Workflows have a step naming this Action -- the
+        delete-time half of the one-directional edge (`ADR-034`,
+        `US-04` Scenario 6).
+
+        Computed from the stored Workflows on every call and never
+        written into an Action: a back-reference list on the Action side
+        would be a second copy of the same fact, wrong from the first
+        Workflow edit that nobody remembered to propagate. Asked by
+        `ActionManager.delete()` through
+        `action_manager.workflow_ids_referencing_action`, so the Action
+        side still imports nothing from this package at module scope.
+
+        In stored id order, so the sentence the operator reads names the
+        referencing Workflows the same way twice.
+        """
+        return [
+            workflow.id
+            for workflow in self.get_all()
+            if any(step.action_id == action_id for step in workflow.steps)
+        ]
 
     @staticmethod
     def _stored_report(report: Mapping[str, Any] | None) -> dict:
@@ -174,6 +253,10 @@ class WorkflowManager:
         steps: list[Mapping[str, Any]] | None = None,
         report: Mapping[str, Any] | None = None,
     ) -> Workflow:
+        """Raises `WorkflowStepActionNotFoundError` BEFORE anything is
+        written, so a refused save leaves no half-written Workflow and
+        no folder under the store."""
+        self._require_catalogued_actions(steps)
         definition = {
             "id": workflow_id,
             "request_kind": request_kind,
@@ -200,11 +283,23 @@ class WorkflowManager:
         step id: merging would have to decide what an absent step meant,
         and "the operator deleted it" and "the caller only sent the ones
         it changed" are indistinguishable from here.
+
+        A supplied `steps` is also held to the catalogue afresh, and
+        raises before any write, so a refused edit leaves the stored
+        Workflow exactly as it was. Omitted steps are NOT re-validated:
+        renaming a Workflow must not be refused because an Action one of
+        its steps names was deleted elsewhere in the meantime -- and
+        since deleting such an Action is itself refused, that can only
+        be an imported or hand-edited definition. Same rule, and the
+        same reason, as `ActionManager.update()`'s omitted
+        implementation.
         """
         try:
             data = workflows_data.read_workflow_json(workflow_id)
         except (OSError, ValueError):
             return None
+        if steps is not None:
+            self._require_catalogued_actions(steps)
 
         if request_kind is not None:
             data["request_kind"] = request_kind
@@ -232,6 +327,15 @@ class WorkflowManager:
         exactly: a bundle that reordered an operator's documented
         handling on the way in would be the same silent corruption as
         reordering it on save.
+
+        Shape is validated; the catalogue deliberately is NOT. A bundle
+        carries a Workflow's Actions alongside it (`T04`'s dependency
+        closure), and nothing fixes which of the two is provisioned
+        first, so holding an import to the live catalogue would refuse
+        bundles that are complete. Exactly the line `import_action`
+        already draws -- cardinality yes, resolution no -- and the
+        operator sees an unresolvable reference the first time they save
+        the imported Workflow.
         """
         definition = {
             **data,

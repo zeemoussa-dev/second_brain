@@ -82,6 +82,7 @@ from app.business.core.actions.action_manager import (
     ActionImplementationCardinalityError,
     ActionImplementationUnresolvedError,
     ActionManager,
+    ActionReferencedByWorkflowError,
     PluginContributedActionIsReadOnlyError,
 )
 from app.business.logic import action_invocation
@@ -260,18 +261,23 @@ def update_action(action_id: str, body: ActionUpdateBody) -> Action:
 
 @router.delete("/{action_id}")
 def delete_action(action_id: str) -> dict:
-    """Unguarded on purpose: the Workflow reverse-lookup guard arrives
-    with the Workflow kind itself (REQ-SB-95-US-04-T02), and no Workflow
-    can reference an Action today. Deleting an unknown id is
-    {"deleted": False}, never a 404 -- ADR-014's result-dict convention,
-    which ActionManager.delete already follows. A plugin-contributed
-    Action is the one id that refuses rather than reporting a result:
-    there is nothing stored to delete, and both {"deleted": true} and
-    {"deleted": false} would be a lie about a row the operator is
-    looking at."""
+    """Guarded by the Workflow reverse lookup since REQ-SB-95-US-04-T02
+    (ADR-034): an Action a Workflow step names is refused with the SAME
+    409 carrying the Manager's own sentence, which is what names the
+    referencing Workflows -- the operator cannot clear them from "409
+    Conflict" alone. Not a second refusal shape to learn: every refusal
+    from this router is one 409 and one sentence, and a 2xx here still
+    means the gate was passed.
+
+    Deleting an unknown id is {"deleted": False}, never a 404 --
+    ADR-014's result-dict convention, which ActionManager.delete already
+    follows. A plugin-contributed Action is the other id that refuses
+    rather than reporting a result: there is nothing stored to delete,
+    and both {"deleted": true} and {"deleted": false} would be a lie
+    about a row the operator is looking at."""
     try:
         return _action_manager.delete(action_id)
-    except PluginContributedActionIsReadOnlyError as exc:
+    except (PluginContributedActionIsReadOnlyError, ActionReferencedByWorkflowError) as exc:
         raise _refusal(exc)
 
 
