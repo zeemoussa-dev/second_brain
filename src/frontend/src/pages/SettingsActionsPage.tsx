@@ -39,16 +39,6 @@ import {
 //   editor holds the operator's choice as a kind + that kind's own fields
 //   and builds the write shape at save time, so nothing ever echoes a GET
 //   body back into a PUT.
-// - **A delete refused because a Workflow step names this Action renders
-//   the backend's own sentence, verbatim** (REQ-SB-95-US-04-T07,
-//   ADR-034). That sentence is what names the referencing Workflows, and
-//   the operator has to clear every one of them before the Action can
-//   go -- "Something went wrong" would leave them with nothing to act on.
-//   It is the same 409-and-one-sentence shape every other refusal from
-//   this router uses, which is why it needs no second error path here:
-//   `handleDelete` renders `extractErrorDetail(error)` as-is and does NOT
-//   reload the catalogue, so the Action's row is still there afterwards --
-//   nothing was deleted, and the screen must not imply otherwise.
 //
 // It also carries the pending-confirmations region (REQ-SB-95-US-03-T04,
 // ADR-033): a small surface over the Action-call ledger, on the same

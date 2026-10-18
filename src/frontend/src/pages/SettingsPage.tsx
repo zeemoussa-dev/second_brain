@@ -20,7 +20,6 @@ const SETTINGS_SECTIONS = [
   { key: 'blueprints', icon: 'dashboard_customize', label: 'Blueprints', desc: 'Pull a ready-made Section — its agents and their skills — onto this install.', href: '/settings/blueprints' },
   { key: 'artifacts', icon: 'inventory_2', label: 'Artifacts', desc: 'Export or import Skills, Templates, Agents, and Pipelines as a portable bundle.', href: '/settings/artifacts' },
   { key: 'actions', icon: 'bolt', label: 'Actions', desc: 'The one catalogue of what this app can do — typed inputs, who may call it, and exactly one implementation.', href: '/settings/actions' },
-  { key: 'workflows', icon: 'account_tree', label: 'Workflows', desc: 'How a kind of request is handled — the ordered steps, which need your confirmation, and what is reported back.', href: '/settings/workflows' },
   { key: 'export-data', icon: 'ios_share', label: 'Export Data', desc: 'Browse your real vault and export a chosen slice of notes/files as a portable archive.', href: '/settings/export-data' },
   { key: 'backup', icon: 'backup', label: 'Backup & Restore', desc: 'Full Hermes structural backup — Agents/Profiles, Cron, Skills — for moving this deployment to a new machine.', href: '/settings/backup' },
 ] as const;
