@@ -1,0 +1,57 @@
+import { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router';
+import { fetchMyDayCalendar, type MyDayCalendarItem } from './client';
+
+export function CalendarPage() {
+  const [items, setItems] = useState<MyDayCalendarItem[] | null>(null);
+  const [searchParams] = useSearchParams();
+  const day = searchParams.get('day') ?? undefined;
+
+  useEffect(() => {
+    setItems(null);
+    fetchMyDayCalendar(day).then(setItems);
+  }, [day]);
+
+  return (
+    <>
+      <p className="text-muted"><Link className="text-muted" to="/my-day">&larr; My Day</Link></p>
+      <h1>Calendar</h1>
+      <p className="text-muted">
+        {day ? `Meetings on ${day}` : "Today's meetings"}, filed by Meeting
+        Capture.
+      </p>
+      <div className="card">
+        {items && items.length > 0 ? (
+          <div className="item-list">
+            {items.map((item) => (
+              <Link
+                className="item-row"
+                to={`/meeting-cockpit/${item.stem}`}
+                state={{ backTo: '/my-day/calendar', backLabel: 'Calendar' }}
+                key={item.stem}
+              >
+                <div className="item-row-main">
+                  <span className="item-row-title">{item.subject}</span>
+                  <span className="item-row-meta">
+                    {item.start} &middot; {item.customer ?? 'No customer'}
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          items && (
+            <div className="empty-state">
+              <div className="empty-state-icon">&#128197;</div>
+              <p><strong>No meetings captured yet.</strong></p>
+              <p className="text-muted">
+                Meeting Capture syncs on the same hourly schedule as email —
+                nothing filed yet.
+              </p>
+            </div>
+          )
+        )}
+      </div>
+    </>
+  );
+}
