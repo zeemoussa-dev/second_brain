@@ -22,6 +22,7 @@ from app.data_access import indexes as indexes_data
 from app.data_access import pipelines as pipelines_data
 from app.data_access import skills as skills_data
 from app.data_access import templates as templates_data
+from app.data_access import workflows as workflows_data
 from app.data_access.registry import loader as registry_loader
 
 # Portability placeholders -- the exact same mechanism `tools/
@@ -43,11 +44,18 @@ from app.data_access.registry import loader as registry_loader
 # Payload folder per artifact kind. Every kind is stated outright rather
 # than left to `kind + "s"`: "index" HAS to be, since naive pluralisation
 # would emit "indexs/" and the import side would then never find it, and
-# "action" is stated beside it so no kind's folder name is decided by a
-# fallback nobody reads.
+# "action"/"workflow" are stated beside it so no kind's folder name is
+# decided by a fallback nobody reads.
+#
+# Nothing maps to `ActionCalls/` or `WorkflowRuns/`, and nothing ever
+# will (`ADR-033`/`ADR-034`): a call record and a run record are what
+# happened once on THIS install, not a capability another install could
+# be given. The exclusion is structural -- those stores have no kind, so
+# no selection can name them and no closure can reach them -- rather than
+# a filter somewhere that a differently-shaped selection could slip past.
 _PAYLOAD_FOLDER = {
     "skill": "skills", "template": "templates", "agent": "agents", "index": "indexes",
-    "action": "actions",
+    "action": "actions", "workflow": "workflows",
 }
 
 _PLACEHOLDER_VAULT_PATH = "@@SECOND_BRAIN_VAULT_PATH@@"
@@ -86,8 +94,9 @@ def _text_content_for_scan(closure: list[dict]) -> dict[str, str]:
     """{file_path: text} for every genuinely Second-Brain-owned text file
     the closure names -- a Skill's own `SKILL.md`/`scripts/**`, a
     Template's own `Template.json`, an Agent's own Registry-side
-    `Agent.json`/`soul.md` mirror, and (since 2026-10-16, `ADR-032`) an
-    Action's own `Action.json`. Deliberately the SAME `file_path`
+    `Agent.json`/`soul.md` mirror, an Action's own `Action.json` (since
+    2026-10-16, `ADR-032`) and a Workflow's own `Workflow.json` (since
+    2026-10-18, `ADR-032`/`ADR-034`). Deliberately the SAME `file_path`
     convention `artifact_secret_scan.py`'s own (module-private) content
     readers use, so a finding's own `file_path` (from `scan_closure`)
     always resolves to a real key here -- confirmed by direct reading of
@@ -144,6 +153,12 @@ def _text_content_for_scan(closure: list[dict]) -> dict[str, str]:
             except (OSError, ValueError):
                 continue
             content[f"actions/{artifact_id}/Action.json"] = json.dumps(raw, indent=2)
+        elif kind == "workflow":
+            try:
+                raw = workflows_data.read_workflow_json(artifact_id)
+            except (OSError, ValueError):
+                continue
+            content[f"workflows/{artifact_id}/Workflow.json"] = json.dumps(raw, indent=2)
         # "pipeline" contributes nothing here -- see docstring.
     return content
 

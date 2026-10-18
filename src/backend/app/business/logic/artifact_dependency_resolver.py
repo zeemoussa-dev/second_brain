@@ -59,6 +59,30 @@ nothing to the closure. An Action's id is already the bare slug
 `SkillManager` keys by (`ADR-033` fixes the field as "the same bare slug
 `SkillManager.deploy()` itself takes"), so no `/`-normalization applies
 here, unlike the Agent branch.
+
+Workflow joined as the seventh kind on 2026-10-18 (`ADR-032`/`ADR-034`,
+`REQ-SB-95-US-04-T04`) and brings the one edge this resolver did not
+already have a shape for: a Workflow depends on EVERY Action its steps
+name. It is not optional disclosure -- `ADR-032` makes a step naming an
+uncatalogued Action invalid by construction, and
+`WorkflowManager._require_catalogued_actions` refuses exactly that save,
+so a bundle that carried the Workflow without its Actions would land on
+the receiving install in the one state this install's own save gate
+exists to prevent. Pulling the Actions in is what makes `US-04`
+Scenario 5's "arrives runnable" true rather than hopeful.
+
+Nothing recurses here beyond that one hop: each Action is handed to the
+existing `action` branch above, which pulls in its own implementation
+Skill, which the `skill` branch then couples to its Templates. So
+Workflow -> Action -> Skill -> Template falls out of three branches that
+already existed, and a change to how an Action finds its Skill is
+inherited rather than duplicated.
+
+Two steps naming the SAME Action resolve it once, with the
+`depends_via` of whichever step reached it first -- `visit()`'s own
+cycle-safety, not a special case. The sentence names one true reason the
+Action is in the bundle, which is what `depends_via` is for; listing
+every step that happens to use it would be a different field.
 """
 from __future__ import annotations
 
@@ -68,6 +92,7 @@ from app.business.core.index.index_manager import IndexManager
 from app.business.core.pipelines.pipeline_manager import PipelineManager
 from app.business.core.skills.skill_manager import SkillManager
 from app.business.core.templates.template_manager import TemplateManager
+from app.business.core.workflows.workflow_manager import WorkflowManager
 from app.data_access import skills as skills_data
 
 _skill_manager = SkillManager()
@@ -76,6 +101,7 @@ _agent_manager = AgentManager()
 _pipeline_manager = PipelineManager()
 _index_manager = IndexManager()
 _action_manager = ActionManager()
+_workflow_manager = WorkflowManager()
 
 
 def _skill_own_template_matches(skill_id: str, all_template_ids: list[str]) -> list[str]:
@@ -182,7 +208,19 @@ def resolve_closure(selection: list[dict]) -> list[dict]:
                 )
             # An `http` or `ui` implementation adds nothing -- see the
             # module docstring.
-        # An unknown `kind` (never produced by the real 6-Manager
+        elif kind == "workflow":
+            workflow = _workflow_manager.get_by_id(id_)
+            if workflow is None:
+                return
+            upsert(kind, id_, reason, depends_via)
+            for step in workflow.steps:
+                if not step.action_id:
+                    # Only reachable for a hand-edited or imported
+                    # definition -- every save path refuses an empty
+                    # action_id -- and there is nothing to resolve.
+                    continue
+                visit("action", step.action_id, "dependency", f"workflow:{id_} (step {step.id})")
+        # An unknown `kind` (never produced by the real 7-Manager
         # inventory this selection is sourced from) resolves to nothing,
         # same silent-skip discipline as an unresolvable id.
 

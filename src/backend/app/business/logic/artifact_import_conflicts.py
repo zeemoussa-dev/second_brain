@@ -16,10 +16,11 @@ from app.business.core.index.index_manager import IndexManager
 from app.business.core.pipelines.pipeline_manager import PipelineManager
 from app.business.core.skills.skill_manager import SkillManager
 from app.business.core.templates.template_manager import TemplateManager
+from app.business.core.workflows.workflow_manager import WorkflowManager
 
 # Real Manager per manifest `kind` -- this map must name EVERY kind
 # `artifact_export` can put in a manifest, which is not a fixed four: `index`
-# joined on 2026-09-06 and `action` on 2026-10-16, and `workflow` is next.
+# joined on 2026-09-06, `action` on 2026-10-16 and `workflow` on 2026-10-18.
 # `preview_import`/`commit_import` both run `detect_conflicts` over the whole
 # manifest before deploying anything, so a kind missing here does not degrade
 # that one artifact -- it fails the entire bundle, and nothing in it is
@@ -33,6 +34,7 @@ _MANAGER_BY_KIND: dict[str, type] = {
     "pipeline": PipelineManager,
     "index": IndexManager,
     "action": ActionManager,
+    "workflow": WorkflowManager,
 }
 
 

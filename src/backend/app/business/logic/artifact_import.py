@@ -32,6 +32,7 @@ from app.business.core.pipelines.pipeline_manager import PipelineManager
 from app.business.core.sections.section_manager import SectionManager
 from app.business.core.skills.skill_manager import SkillManager
 from app.business.core.templates.template_manager import TemplateManager
+from app.business.core.workflows.workflow_manager import WorkflowManager
 from app.business.hermes.client import get_client
 from app.business.logic import artifact_import_compat, artifact_import_conflicts, artifact_seed_data, sbf_archive
 from app.config import settings
@@ -190,6 +191,8 @@ def _deploy_one(
         return _deploy_index(artifact_id, conflicts, decision, payload)
     if kind == "action":
         return _deploy_action(artifact_id, conflicts, decision, payload)
+    if kind == "workflow":
+        return _deploy_workflow(artifact_id, conflicts, decision, payload)
     if kind == "agent":
         return _deploy_agent(artifact_id, conflicts, decision, payload, section_decision)
     raise ValueError(f"unrecognized artifact kind {kind!r}")
@@ -366,6 +369,57 @@ def _deploy_action(artifact_id: str, conflicts: bool, decision: str | None, payl
     # decision == "keep_both"
     alt_id = _next_alternate_id(artifact_id, ActionManager().get_by_id)
     ActionManager().import_action(alt_id, {**data, "id": alt_id})
+    return _deployed(kind, artifact_id, deployed_as=alt_id)
+
+
+def _deploy_workflow(artifact_id: str, conflicts: bool, decision: str | None, payload: dict[str, bytes]) -> dict:
+    """Same shape as Action above (`ADR-032`'s seventh kind,
+    `REQ-SB-95-US-04-T04`). `WorkflowManager.import_workflow` is the ONE
+    write path used here -- this function builds no second opinion about
+    what a valid Workflow is. It round-trips the incoming definition
+    through the read-side parser and re-identifies the steps, so a
+    malformed shape, or a bundle holding two steps with one id, raises
+    here and lands as this artifact's own honest `failed` outcome rather
+    than being written.
+
+    **Why there is no catalogue check here, and why that is not a way
+    around `T02`'s save-time gate.** `T02` refuses a *save* whose step
+    names an uncatalogued Action, naming the step position and the id
+    (`WorkflowManager._require_catalogued_actions`). Re-running that rule
+    at import time would be a second, divergent check, and it would be
+    wrong twice over:
+
+    - It would refuse bundles that are *complete*. The closure
+      (`artifact_dependency_resolver`'s `workflow` branch) puts every
+      Action a Workflow's steps name into the same bundle precisely so
+      the receiving install has them -- but nothing fixes whether the
+      Workflow or its Actions deploy first, and `commit_import` walks the
+      manifest in its own order. A check here would reject a correct
+      bundle on member ordering alone.
+    - It would need its own wording for a refusal that already has one.
+      Two sentences for one rule is how they drift apart, and the
+      operator would then meet a different refusal depending on which
+      door the Workflow came through.
+
+    So the gate is not bypassed, it is deferred to the door it belongs
+    to: the first time the operator saves the imported Workflow, `T02`'s
+    refusal fires verbatim. This is exactly the line `import_action` and
+    `import_workflow` already draw in their own docstrings -- shape yes,
+    resolution no.
+    """
+    kind = "workflow"
+    raw = payload.get(f"workflows/{artifact_id}/Workflow.json")
+    data = json.loads(_restore_placeholders(raw.decode("utf-8"), json_escaped=True)) if raw is not None else {}
+
+    if not conflicts or decision == "overwrite":
+        WorkflowManager().import_workflow(artifact_id, data)
+        return _deployed(kind, artifact_id)
+    if decision == "skip":
+        return _skipped(kind, artifact_id)
+
+    # decision == "keep_both"
+    alt_id = _next_alternate_id(artifact_id, WorkflowManager().get_by_id)
+    WorkflowManager().import_workflow(alt_id, {**data, "id": alt_id})
     return _deployed(kind, artifact_id, deployed_as=alt_id)
 
 

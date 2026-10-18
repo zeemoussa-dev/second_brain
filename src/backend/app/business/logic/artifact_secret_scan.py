@@ -7,7 +7,10 @@ Template's own `Template.json` (`data_access.templates`), an
 Action's own `Action.json` (`data_access.actions`, added 2026-10-16 with
 the sixth artifact kind -- `ADR-032`, `REQ-SB-95-US-02-T04`: those bytes
 are written by this app into the App Database Folder, so they are inside
-the owned surface by the same test every other reader here passes), and an
+the owned surface by the same test every other reader here passes), a
+Workflow's own `Workflow.json` (`data_access.workflows`, added 2026-10-18
+with the seventh kind -- `ADR-032`/`ADR-034`, `REQ-SB-95-US-04-T04`,
+passing that same test), and an
 Agent's own Registry-side `Agent.json`/`soul.md` mirror
 (`data_access.registry.loader`) -- the same lookup
 `agent_visual_registry.py`/`agent_manager.py` already use to find an
@@ -39,6 +42,7 @@ import re
 from app.data_access import actions as actions_data
 from app.data_access import skills as skills_data
 from app.data_access import templates as templates_data
+from app.data_access import workflows as workflows_data
 from app.data_access.registry import loader as registry_loader
 
 logger = logging.getLogger(__name__)
@@ -105,6 +109,31 @@ def _action_content(action_id: str) -> dict[str, str]:
     return {f"actions/{action_id}/Action.json": json.dumps(raw, indent=2)}
 
 
+def _workflow_content(workflow_id: str) -> dict[str, str]:
+    """A Workflow's own definition. Serialized with the SAME
+    `json.dumps(raw, indent=2)` `artifact_export._text_content_for_scan`
+    uses for the same file, for the same reason the Action reader above
+    spells out.
+
+    **The whole file is scanned, not a field allowlist**, and the reason
+    is worth stating because the obvious candidate is only the likeliest
+    one. A step's `inputs` is the field that can genuinely carry a
+    secret: read directly (`business/core/workflows/workflow.py`), it is
+    an unconstrained `dict[str, Any]` holding *either* the literal values
+    an Action is called with *or* a mapping saying where each value comes
+    from -- stored verbatim, interpreted by nobody, validated against the
+    Action's declared inputs only at dispatch (`ADR-033`). A literal
+    value is exactly where a pasted token lands. But `description`,
+    `request_kind` and the report description are operator-authored free
+    text on the same file, so an allowlist would buy nothing and would
+    silently stop covering any field a later task adds."""
+    try:
+        raw = workflows_data.read_workflow_json(workflow_id)
+    except (OSError, ValueError):
+        return {}
+    return {f"workflows/{workflow_id}/Workflow.json": json.dumps(raw, indent=2)}
+
+
 def _agent_content(agent_id: str) -> dict[str, str]:
     """Registry-side `Agent.json`/`soul.md` mirror ONLY -- reached via
     the same `registry_loader.agent_data_dir()` lookup
@@ -134,6 +163,7 @@ _CONTENT_READERS = {
     "skill": _skill_content,
     "template": _template_content,
     "action": _action_content,
+    "workflow": _workflow_content,
     "agent": _agent_content,
 }
 
