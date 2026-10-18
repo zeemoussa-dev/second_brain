@@ -4,9 +4,9 @@ title: Referential integrity with the Action catalogue — save-time step valida
 parent_story: REQ-SB-95-US-04
 requirement_id: REQ-SB-95
 type: backend
-status: Blocked
+status: Done
 gate: flagged
-gate_reason: "ESC-075 — the save-time check correctly refuses T01's own step fixtures, and `tests/test_workflow_artifact_kind.py` is outside this task's `## Files to Modify`. Both locked ACs are built, verified and committed (`d71630f`); six T01 tests stay red until that file is authorised."
+gate_reason: "Optional skim only — nothing is blocked. Seven scope-internal judgement calls are logged for a human spot-check. `ESC-075` is Resolved (scope extension authorised 2026-10-18, `ff563e8`); the authorised fixture landed and the suite is back to its baseline shape."
 phase: P2
 depends_on: [REQ-SB-95-US-04-T01, REQ-SB-95-US-02-T03]
 created: 2026-10-16
@@ -329,3 +329,47 @@ not be able to see the operator's catalogue at all.
 
 Do not weaken the gate to accommodate the fixtures, and do not edit the assertions:
 catalogue the ids the fixtures use, in the test's own store.
+
+---
+
+## Implementation Log — blocker cleared, task `Done` (2026-10-18)
+
+**`ESC-075` Resolved; the authorised fixture landed in `0add57d`.** Nothing in
+`T02`'s own code changed — the gate was not weakened and no assertion in
+`test_workflow_artifact_kind.py` was touched. One autouse fixture was added,
+plus the `SimpleNamespace` import it needs, and nothing else.
+
+**Final suite: 627 passed, 1 failed, 53.93 s.** The single failure is
+`test_marketplace.py::test_install_repairs_a_plugin_left_with_only_its_bytecode_cache`
+— **the same failure this task's own baseline run showed at `78fb600`**
+(617 passed / 1 failed), and it **passes alone**, twice measured: 28 passed in
+3.15 s before the work and 28 passed in 3.42 s after. A third suite-ordering
+flake, distinct from the two known ones (`test_health_check.py`'s commit test
+and `test_marketplace_source.py`), and not this task's. Net against baseline:
+617 → 627 passed, `+10` exactly this task's tests, all six `ESC-075` failures
+cleared.
+
+**What the fixture does.** `the_fixtures_action_ids_are_catalogued` replaces
+the whole `ActionManager` name as `workflow_manager.py` resolves it, with a
+stand-in whose `get_all()` returns the three ids those step fixtures name
+(`list-team-actions`, `send-mail`, `append-capture`). The escalation's sketch
+patched `ActionManager.get_all` instead; replacing the *name* is strictly
+stronger and is what closes the second half of the brief — the real Manager is
+never constructed, so neither `actions_data` nor the plugin composition is
+reached at all, rather than reached and overridden.
+
+**The operator's catalogue is now unreachable from that file — measured, not
+asserted.** Re-ran it with every function in `app/data_access/actions.py`
+(`list_action_ids`, `read_action_json`, `write_action_json`,
+`delete_action_definition`, `action_file`) replaced by one that raises:
+**9 passed, 0 reads of the real store.** The counter-check proves the probe
+means something and that the leak was real: driving
+`WorkflowManager._require_catalogued_actions()` with nothing patching
+`ActionManager` lists the operator's real
+`<DATA_PATH>/data/Actions/` **twice** (`['list', 'list']`) and refuses the
+step. Before this fixture, a test about step order could therefore have
+passed or failed by accident of what this machine has catalogued.
+
+The file-list question stands answered on both halves now: no switch-on site
+was missing, and the one file that *was* missing is the fixture site the
+decomposer rule has since been extended to cover (`ff563e8`).

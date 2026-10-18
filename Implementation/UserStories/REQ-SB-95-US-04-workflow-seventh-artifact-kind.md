@@ -9,7 +9,7 @@ gate: clear
 gate_reason: "RESOLVED operator confirmed ADR-034, 2026-10-17 — was: trigger-3 (ADR-034 created — a Workflow is run step-by-step by the framework against a run record, not recited into the agent's context)"
 sprint: SPRINT-089
 created: 2026-10-16
-updated: 2026-10-18  # coder: T02 Blocked (AC-02, AC-06 built, verified and committed; ESC-075 — T01's own test fixtures are outside T02's scope). T01 Done (AC-01, AC-07). T04 unblocked; T03 waits on T02
+updated: 2026-10-18  # coder: T02 Done (AC-02, AC-06 verified; ESC-075 Resolved). T01 Done (AC-01, AC-07). T03 and T04 unblocked
 ---
 
 # REQ-SB-95-US-04 — Workflow as the seventh artifact kind — the operator documents how a kind of request is handled
