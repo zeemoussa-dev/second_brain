@@ -35,6 +35,44 @@ from app.hermes.skills import HermesSkill, HermesSkills
 _PRIMARY_PROFILE_ID = "default"
 _SENTENCE_END = re.compile(r"^(.*?[.!?])(\s|$)", re.DOTALL)
 
+# The three different answers one file read can give (`ADR-043`'s second
+# failure). A caller that collapses the last two tells the operator a profile
+# holds nothing when the truth is that it could not be read -- BUG-085's class
+# of dishonesty. An EMPTY file is none of the three: it is FILE_WAS_READ with
+# empty content, which is a fourth, equally honest answer.
+FILE_WAS_READ = "read"
+FILE_IS_ABSENT = "absent"
+FILE_IS_UNREADABLE = "unreadable"
+
+# Which config.yaml a layer was read from. Never a merged third value --
+# Hermes' own precedence between the two is not readable from this repository.
+CONFIG_LAYER_PROFILE = "profile"
+CONFIG_LAYER_INSTALL_ROOT = "install_root"
+
+
+@dataclass(frozen=True)
+class SoulDocument:
+    """One profile's SOUL.md as a document rather than as parts: `text` is the
+    file verbatim, or None with `status`/`error` saying which failure happened.
+    `path` is always the file it came from or would have come from."""
+    path: str
+    status: str
+    text: str | None
+    error: str
+
+
+@dataclass(frozen=True)
+class ConfigLayer:
+    """One config.yaml exactly as written -- `scope` names which file it is,
+    `values` is its own parsed mapping (None when there is nothing to parse)
+    and `error` names the file when it could not be read. Two of these are
+    never combined into one."""
+    scope: str
+    path: str
+    status: str
+    values: dict | None
+    error: str
+
 
 @dataclass
 class HermesAgent:
@@ -59,6 +97,34 @@ def _read_yaml_file(path: Path) -> dict:
     except (OSError, yaml.YAMLError):
         return {}
     return parsed if isinstance(parsed, dict) else {}
+
+
+def _file_error_text(failure: Exception, path: Path) -> str:
+    """The OS's own reason, with the file named -- so a caller can report
+    which file it was without holding the path itself."""
+    reason = getattr(failure, "strerror", None) or str(failure)
+    return f"{reason}: {path}"
+
+
+def _read_file_as_written(path: Path) -> tuple[str, str | None, str]:
+    """(status, text, error) for one file read verbatim -- no strip, no
+    normalisation, no truncation.
+
+    Absence is decided by the read itself rather than by a preceding
+    `is_file()`: on this Windows host a path over 260 characters makes
+    `is_file()` answer False (`MEMORY.md`), which would report an unreachable
+    file as a file that does not exist. Here the OS's own error is reported
+    instead, which is the honest per-file failure `ADR-043` asks for.
+
+    A file whose bytes are not UTF-8 is unreadable, not absent, and not a
+    crash -- one such file must not take the whole view down with it.
+    """
+    try:
+        return FILE_WAS_READ, path.read_text(encoding="utf-8"), ""
+    except FileNotFoundError as no_such_file:
+        return FILE_IS_ABSENT, None, _file_error_text(no_such_file, path)
+    except (OSError, UnicodeDecodeError) as unreadable:
+        return FILE_IS_UNREADABLE, None, _file_error_text(unreadable, path)
 
 
 def _first_sentence(text: str, max_len: int = 140) -> str:
@@ -97,6 +163,38 @@ def _deep_merge(base: dict, patch: dict) -> dict:
         else:
             merged[key] = value
     return merged
+
+
+def _read_config_layer(scope: str, path: Path) -> ConfigLayer:
+    """One config.yaml as written. An empty file is a successful read of a
+    file that sets nothing (`{}`), which is a different answer from an absent
+    one (None) -- and YAML that does not parse, or parses to something that is
+    not a mapping, is a read failure naming the file rather than a silent
+    `{}` the way `_read_yaml_file()` has to report it to its own callers."""
+    status, text, error = _read_file_as_written(path)
+    if text is None:
+        return ConfigLayer(scope=scope, path=str(path), status=status, values=None, error=error)
+    try:
+        parsed = yaml.safe_load(text)
+    except yaml.YAMLError as broken_yaml:
+        return ConfigLayer(
+            scope=scope,
+            path=str(path),
+            status=FILE_IS_UNREADABLE,
+            values=None,
+            error=f"{path} is not valid YAML: {broken_yaml}",
+        )
+    if parsed is None:
+        return ConfigLayer(scope=scope, path=str(path), status=FILE_WAS_READ, values={}, error="")
+    if not isinstance(parsed, dict):
+        return ConfigLayer(
+            scope=scope,
+            path=str(path),
+            status=FILE_IS_UNREADABLE,
+            values=None,
+            error=f"{path} does not hold a mapping of settings (it parsed as {type(parsed).__name__})",
+        )
+    return ConfigLayer(scope=scope, path=str(path), status=FILE_WAS_READ, values=parsed, error="")
 
 
 def is_real_profile(path) -> bool:
@@ -194,6 +292,59 @@ class HermesProfiles:
             return soul_path.read_text(encoding="utf-8")
         except OSError:
             return None
+
+    def read_soul_document(self, agent_id: str) -> SoulDocument:
+        """The profile's SOUL.md verbatim -- the text exactly as it is on
+        disk, section order and `## Scope` body intact -- with the path it
+        came from and, when there is no text, which failure happened.
+
+        Distinct from `read_soul()`, which returns the same text but reports
+        both "no such file" and "could not be read" as None, and from
+        everything downstream of it: `_split_soul_sections()` parses
+        `## Scope` down to folders/tags lists and `_soul_excerpt()` cuts the
+        first paragraph to 280 characters, so a soul rebuilt from either is
+        not evidence of what the agent was actually given (`ADR-043`).
+        Nothing here excerpts, splits or reassembles.
+
+        Exactly one file read. Read-only: a missing profile directory is
+        reported, never created.
+        """
+        soul_path = self._profile_dir(agent_id) / "SOUL.md"
+        status, text, error = _read_file_as_written(soul_path)
+        return SoulDocument(path=str(soul_path), status=status, text=text, error=error)
+
+    def read_config_layers(self, agent_id: str) -> list[ConfigLayer]:
+        """The profile's own config.yaml as written and -- for any profile
+        other than `default` -- the install root's config.yaml as written, as
+        two separate layers in that order.
+
+        Never merged, and no "effective" value: there is no inheritance model
+        in this codebase to reproduce (`_deep_merge` is `update()`'s write
+        patch, not a parent overlay) and Hermes' own precedence between the
+        two files is not readable from this repository, so a single merged
+        answer would be a guess at which file won (`ADR-043`). The caller
+        labels a key present only in the root layer as inherited, and a key in
+        neither as not set, from the two layers themselves.
+
+        `default` gets ONE layer because the `default` profile IS
+        <HERMES_HOME> -- its own config.yaml and the install root's are the
+        same file, and listing it twice would invent a second source.
+
+        One file read per layer, and one unreadable layer never hides the
+        other. `_read_agent()` still reads the profile's own config only.
+        """
+        layers = [_read_config_layer(CONFIG_LAYER_PROFILE, self._profile_dir(agent_id) / "config.yaml")]
+        if agent_id != _PRIMARY_PROFILE_ID:
+            layers.append(_read_config_layer(CONFIG_LAYER_INSTALL_ROOT, self._config.home_path / "config.yaml"))
+        return layers
+
+    def install_is_readable(self) -> bool:
+        """Whether <HERMES_HOME> is a directory at all -- `ADR-043`'s first
+        failure, which is a different answer from "this profile has no such
+        file" and must not be rendered as one (`US-01` Scenario 7). Exposed
+        here so the business layer can ask without reaching for a path of its
+        own. One stat, no file read, nothing created."""
+        return self._config.home_path.is_dir()
 
     def write_soul(self, agent_id: str, content: str) -> None:
         """No CLI equivalent exists for this -- SOUL.md is genuinely
