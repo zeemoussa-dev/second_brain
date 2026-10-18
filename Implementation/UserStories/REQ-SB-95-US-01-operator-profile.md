@@ -9,7 +9,7 @@ gate: clear
 gate_reason: "RESOLVED operator accepted the export carrying the team's names, 2026-10-17 — was: trigger-8 (carried forward, decomposer re-pass 2026-10-16, still unresolved) — publication writes colleague names into every agent's SOUL.md and an Agent export copies that file verbatim AND ships Hermes' own profile.tar.gz (opaque bytes, ADR-014), which carries a second copy. Strip-on-export vs accept-the-leak is the operator's privacy call; AC-08 is deliberately `locked: false` and no task implements either answer. The ADR-036 trigger-3 half is CLEARED (operator rejected the SELF_EMAIL retirement; ADR-038 Accepted); the architect re-pass created and changed NO ADR."
 sprint: SPRINT-086
 created: 2026-10-16
-updated: 2026-10-18  # coder: T01 Done — the singleton entity, Manager and data access, with the mirrored own-address read
+updated: 2026-10-18  # coder: T03 Done — GET/PUT /operator/profile, the singleton's two routes (T01 Done earlier the same day)
 ---
 
 # REQ-SB-95-US-01 — Operator Profile — one record of who the agent acts for, published into every agent's context
