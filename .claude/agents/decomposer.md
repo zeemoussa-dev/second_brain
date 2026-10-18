@@ -104,6 +104,14 @@ The symptom to watch for in your own draft: a file list where every entry sits i
 the layer the task is *about*. Real work crosses layers, and the crossing point
 is where the list fails.
 
+**The mirror of the same question, which the five escalations above do not cover:**
+*which existing fixtures does my change invalidate?* A rule enforced at save time
+necessarily breaks every fixture written before it that did not satisfy the rule —
+`ESC-075`, where a Workflow step gate refused `T01`'s own invented Action ids. When a
+task adds validation, the file holding the now-invalid fixtures belongs in its
+`## Files to Modify` exactly as the switch-on site does. The tell is the same: the task
+adds a constraint, and someone else's test data predates it.
+
 ### Structural ACs for screen / frontend stories
 
 For any story that builds or changes a screen, the **durable design layer** — which

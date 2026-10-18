@@ -761,6 +761,12 @@ this is settled; `T03` depends on it.
 
 **Resolving artefact:** — (Open)
 
-**Status:** Open
+**Resolution (2026-10-18):** authorised. `src/backend/tests/test_workflow_artifact_kind.py` is added to `REQ-SB-95-US-04-T02`'s `## Files to Modify`, scoped to the one autouse fixture. `T01`'s step fixtures invented Action ids before a save-time gate existed; the gate refusing them is the locked `AC-02` behaviour, not a regression, and `ESC-064` was the identical case one story earlier.
+
+Two things make this worth more than an unblock. First, the fixture is needed **independently**: without it those tests read the operator's real `<DATA_PATH>/data/Actions/` store, so their result depends on what happens to exist on the machine. Second, this is the **mirror** of the switch-on rule added this morning after five escalations — that rule asks which file makes your code run; this asks which existing fixtures your new rule makes invalid. The decomposer rule and framework `MEMORY.md` now carry both halves.
+
+**Resolving artefact:** `REQ-SB-95-US-04-T02` scope extension + decomposer rule extension, 2026-10-18
+
+**Status:** Resolved
 
 ---

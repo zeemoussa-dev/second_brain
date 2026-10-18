@@ -308,3 +308,24 @@ identical case one kind along and was resolved by authorising the file.
    belongs to the human resolving `ESC-075` — the 2026-10-18 decomposer rule
    about naming the **switch-on** site has a mirror, the **fixture** site, and
    `ESC-064` + `ESC-075` are now two instances of it.
+
+---
+
+## Scope extension — 2026-10-18 (unblocks `ESC-075`)
+
+**Added to `## Files to Modify`:** `src/backend/tests/test_workflow_artifact_kind.py`,
+scoped to **the one autouse fixture** and nothing else.
+
+`T01` wrote those step fixtures (`list-team-actions`, `send-mail`, `append-capture`)
+before a save-time catalogue gate existed, so no install catalogues them. The gate is
+correct and the fixtures are now invalid — refusing them is the locked `AC-02`
+behaviour working, not a regression. `ESC-064` was the identical case one story
+earlier and was resolved the same way.
+
+Independently of this task, that fixture is **needed**: without it those tests consult
+the operator's real `<DATA_PATH>/data/Actions/` store, so their result depends on what
+Actions happen to exist on the machine. Fix that while you are there — a test should
+not be able to see the operator's catalogue at all.
+
+Do not weaken the gate to accommodate the fixtures, and do not edit the assertions:
+catalogue the ids the fixtures use, in the test's own store.
