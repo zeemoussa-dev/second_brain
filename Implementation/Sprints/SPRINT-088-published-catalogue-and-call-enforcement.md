@@ -83,6 +83,16 @@ Build order inside the sprint, read from the task files' own `depends_on`:
 
 ## Dependencies / External Blockers
 
+- **UNBLOCKED AND `Done`, 2026-10-18 — `T01` (`ESC-072` Resolved).** The
+  orchestrator added `src/backend/tests/conftest.py` to `T01`'s files and the
+  operator decided the cost question (publish in the background, return
+  immediately). Both halves shipped: a suite-wide autouse Hermes sandbox
+  (`hermes_home_path` at a non-existent tmp directory + `HermesCLI._hermes_exe`
+  stubbed, proved by interception at **0 Hermes seam entries and 0 writes inside
+  the real install** across the whole suite) and the three wired
+  `ActionManager.create/update/delete` call sites. Backend suite 487 → 490. Both
+  locked ACs verified, including the two manual steps against a real profile. The
+  blocked note below is kept for the record.
 - **BLOCKED IN FLIGHT, 2026-10-18 — `T01` (`ESC-072`).** The SOUL.md catalogue
   block, its per-agent `allowed_callers` filtering and the roster-wide
   republication pass are built, tested and committed (`4af306a`); `AC-01` is

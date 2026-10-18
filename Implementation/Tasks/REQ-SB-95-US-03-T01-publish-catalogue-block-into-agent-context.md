@@ -4,9 +4,9 @@ title: Publish the Action catalogue as a third auto-generated marker block in SO
 parent_story: REQ-SB-95-US-03
 requirement_id: REQ-SB-95
 type: backend
-status: Blocked
+status: Done
 gate: flagged
-gate_reason: "ESC-072 (2026-10-18) -- AC-01 verified and committed (4af306a); AC-08's \"republished by ActionManager on every catalogue change\" half cannot be wired until the backend suite sandboxes Hermes writes: measured, the four existing Action test files would make 123 real SOUL.md writes across all 41 live profiles. Isolating them is outside this task's Files to Modify."
+gate_reason: "ESC-072 Resolved -- both locked ACs verified 2026-10-18, including the two manual steps against a real profile. Flagged only for a spot-check of four scope-internal judgement calls in the Implementation Log (the suite-wide Hermes sandbox's two seams, the trigger-silencing fixture added to the five pre-existing publication tests, the one-byte trailing-newline normalisation AgentManager.update() already applied to any SOUL.md it rewrites, and the read of AC-08's wording against the operator's background-publication decision)."
 phase: P2
 depends_on: [REQ-SB-95-US-02-T01]
 created: 2026-10-16
@@ -66,6 +66,8 @@ by `ActionManager` on every catalogue change, never hand-edited.
 - `src/backend/app/business/core/agents/agent_manager.py`
 - `src/backend/app/business/core/actions/action_manager.py` (the republish trigger)
 - `src/backend/tests/test_action_catalogue_publication.py` (new)
+- `src/backend/tests/conftest.py` (new — added 2026-10-18, see the scope
+  extension at the end of this file)
 
 ---
 
@@ -131,10 +133,9 @@ exercising SOUL text.
 
 - [x] Third marker-delimited auto-generated block, same shape as the existing two
 - [x] Per-agent filtering by `allowed_callers`; absent block when nothing is callable
-- [ ] Republished by `ActionManager` on every catalogue change, idempotently —
-      **idempotently: yes; by `ActionManager`: BLOCKED** (`ESC-072`). The trigger
-      seam exists and the roster-wide pass is tested; the three call sites are
-      unwired.
+- [x] Republished by `ActionManager` on every catalogue change, idempotently —
+      wired 2026-10-18, in the background (operator's decision); `ESC-072`
+      Resolved by the suite-wide Hermes sandbox in `tests/conftest.py`
 - [x] No second JSON file; `section_access.json` untouched
 - [x] `MEMORY.md` updated if this task produced a new decision / pattern / constraint
 - [x] `CHANGELOG.md` entry appended
@@ -262,3 +263,110 @@ it, because that is the one place this decision and the locked AC could disagree
 
 Publication keeps going through `AgentManager` (`ADR-003`'s layering stands); it is the
 *waiting* that moves, not the ownership.
+
+---
+
+## Implementation Log — second pass
+
+**Coder, 2026-10-18 — `Done`.** Finishes the half `ESC-072` withheld: the suite-wide
+Hermes sandbox, the three wired call sites, and both manual steps performed against a
+real profile.
+
+### Verification
+
+Baseline measured before the first edit of this pass: **487 passed**, 0 failed
+(`pytest -q`, `src/backend`, 55.7s). Final: **490 passed**, 0 failed (32.4s) — the
+three new trigger tests and nothing else moved. Neither known flake
+(`test_health_check.py`, `test_marketplace_source.py`) appeared in any run. No
+frontend file touched.
+
+**How the sandbox was proved, before the suite was ever run for real with the
+trigger live.** A write-intercepting pytest plugin captured the three REAL roots at
+import time (the Hermes home, the App Database Folder, the vault), then wrapped every
+write primitive the backend can reach — `open`, `Path.open`/`write_text`/
+`write_bytes`/`mkdir`/`unlink`/`rename`/`replace`/`touch`, `os.remove`/`rename`/
+`replace`/`makedirs`, `shutil.rmtree`/`copyfile`/`copy2`/`move` — refusing outright
+any write inside the real Hermes install, and recording any write under the real data
+path or vault with the test that caused it and whether `publish_action_catalogue` was
+on the stack. It also counted every entry into the Hermes write seams themselves
+(`HermesProfiles.write_soul`, `HermesProfiles.update`, both `HermesCLI` subprocess
+paths).
+
+Three runs, in this order:
+
+1. **Sandbox alone, trigger not yet wired:** 487 passed — the fixture changes no
+   existing outcome. The run also got *faster*, 55.7s → 34.8s, because the real
+   roster reads and CLI subprocesses stop happening.
+2. **Sandbox + trigger live, under the interceptor:** 490 passed, **0 Hermes seam
+   entries** across the whole suite — not one `write_soul`, not one profile config
+   update, not one `hermes.exe` subprocess — against the 123 `SOUL.md` writes and 40
+   `Agent.json` writes the same four files produced when this was measured unwired.
+   **0 writes inside the real Hermes install.** Nine writes touched the real data
+   path, all of them `Path.mkdir(parents=True, exist_ok=True)` on the already-existing
+   config root, all from `vault_writer._agent_visuals_state_path()` reached through
+   `AgentManager.get_all()` in `test_agent_listing_cost.py` and
+   `test_cockpit_documents_long_paths.py` (stack captured) — a pre-existing read path
+   in two files this task never touched, creating nothing and writing no file, and
+   `from_publication=False` on every one.
+3. **Clean run, no interceptor:** 490 passed.
+
+| AC-ID | Step | Observed |
+|---|---|---|
+| `REQ-SB-95-US-03-AC-01` | Automated tests 1 and 2 (unchanged from the first pass, now with the trigger silenced so they test their own publication) | **Pass.** Both still green. |
+| `REQ-SB-95-US-03-AC-08` | Automated tests 3 and 5 (unchanged) | **Pass.** |
+| `REQ-SB-95-US-03-AC-08` | Automated test 4 — `create()`/`update()`/`delete()` each trigger republication, spying on the publish function | **Pass.** `test_create_update_and_delete_each_fire_publication`: one fired publication each, three in total. A refused save (`ActionImplementationCardinalityError`), an `update()` of an unknown id and a `{"deleted": False}` delete fire none — nothing that changed no catalogue republishes. |
+| `REQ-SB-95-US-03-AC-08` | New — the trigger really reaches the agents, end to end through the real background thread | **Pass.** `test_saving_an_action_really_reaches_the_agents_with_no_explicit_publish`: the test's only call is the save; both agents' SOUL text carries the block afterwards and the hand-authored text is still there. Deleting it removes the block and restores the original text exactly. |
+| `REQ-SB-95-US-03-AC-08` | New — the save returns without waiting (the operator's 2026-10-18 decision, made observable) | **Pass.** `test_saving_an_action_returns_without_waiting_for_the_republication`: with publication blocked on an event, `create()` returns while it is provably still in flight. |
+| `REQ-SB-95-US-03-AC-01` | **Manual step 1** — real backend, real Action, ask a real agent what it can do | **Pass.** One real `http` Action, `refresh-the-vault-index`, saved through the real `ActionManager` with `allowed_callers: ["research-agent"]`. `create()` returned in **1.094s**; the roster-wide pass finished 10.1s later. Exactly **one** of the 41 real profiles gained a block (`research-agent`), and the text outside it was byte-identical. Asked over the real Hermes CLI, verbatim: *"List exactly the operations this app can perform for you. Name each one by its id. Name nothing that is not in your catalogue. Be brief."* → **"- refresh-the-vault-index"**. Second question, verbatim: *"What operations can this app perform for you, and what input does each need? Answer only from what you were told."* → **"- refresh-the-vault-index — Input: scope (string, required): which folder to re-read, or 'all'"**. Every operation named is a catalogued Action from its own block; it named nothing else, and invented no input. |
+| `REQ-SB-95-US-03-AC-08` | **Manual step 2** — edit the Action, start a new conversation, see the change with no hand edit | **Pass.** `update()` changed the description and added an optional `since` input; it returned in **0.391s**, the pass finished 8.4s later. Exactly one marker pair; the text outside the block byte-identical; no prompt, guardrails or scope text hand-edited. A **new** conversation with the same agent, same question, replied verbatim: **"- refresh-the-vault-index — Re-read the vault into this app's search index (newest notes first) / - scope (string, required): which folder to re-read, or 'all' / - since (string, optional): only notes changed after this date"** — both halves of the edit reflected. |
+| — | Cleanup | The Action was deleted (`{"deleted": True}`, returned in 0.391s), the block disappeared from the one profile that had it, and `research-agent`'s `SOUL.md` was restored byte-for-byte from the snapshot taken first. Zero profiles across the install carry a block; zero blocks anywhere in the Registry mirror; the empty store folder the test Action left behind was removed. |
+
+### Does the operator's background decision contradict `AC-08`? No — stated explicitly
+
+`AC-08`'s locked Gherkin asks that the block "is regenerated in place between its own
+markers, with no hand edit ..., no duplicate block, and the surrounding hand-authored
+text unchanged", and that a removed Action "is no longer listed in the block and is
+refused by the gate if called". **It says nothing about when, relative to the save's
+return.** Nothing was reinterpreted to fit the decision, and nothing was weakened:
+every clause is verified above, by both the automated tests and the two manual steps.
+The window the operator accepted is real and is recorded in the code — see
+`publish_action_catalogue_in_background()`'s docstring.
+
+### Judgement calls inside scope (for human spot-check)
+
+1. **The sandbox closes two seams, not one.** Pointing `hermes_home_path` at a
+   non-existent directory is what makes a profile write impossible by construction
+   (every path in `profiles.py` derives from it, and `get_all()` documents returning
+   `[]` for a missing home). But `HermesCLI._hermes_exe()` falls back to
+   `shutil.which("hermes")`, so a sandboxed home alone would still let a subprocess
+   act on the REAL install, whose own home comes from the environment. It is stubbed
+   to `None`, which puts every CLI call onto its existing "No real Hermes install
+   found" path. Both are needed; either alone is a hole.
+2. **The sandbox joins in-flight publications at teardown.** Publication runs on a
+   thread nothing waits for, so without the join a pass started late in a test would
+   still be running when the fixture restored the real home — and would then publish
+   into the operator's install. That is the same accident, merely delayed by a race,
+   so `join_background_publications()` exists in `ActionManager` for it. Nothing on
+   the request path calls it.
+3. **The five pre-existing publication tests now silence the trigger.** They drive
+   `publish_action_catalogue()` themselves and assert what *their* pass changed;
+   with the trigger live, a save fires a background pass that would answer for them
+   (one of them failed exactly that way the moment the trigger was wired). The
+   trigger has three tests of its own where it is the subject rather than the
+   weather. No assertion was weakened.
+4. **A plain thread, not `asyncio.create_task(asyncio.to_thread(...))`.** The vault
+   index rebuild's shape — the blocking pass runs on a worker thread, nothing joins
+   it — is followed exactly; only the scheduling call differs, because that one runs
+   inside `main.py`'s async lifespan and this one is reached from synchronous code (a
+   `def` route handler already in Starlette's threadpool has no event loop to
+   schedule onto).
+5. **Observed, not introduced: a SOUL.md loses its trailing newline the first time
+   anything publishes to it.** `AgentManager.update()` recomposes the file through
+   `_soul_text()`, which strips. Measured on the real profile: the restored file was
+   3414 bytes against the snapshot's 3415, the single difference being the final
+   `\n`; the content is otherwise byte-identical. This is pre-existing behaviour of
+   every prompt edit the UI already makes, not of this task, and no locked AC turns
+   on it — so it was recorded rather than fixed inside a task that does not own
+   `_soul_text`. The real profile was restored to the exact snapshot by hand.
+6. **`import_action()` still does not trigger publication** — unchanged from the
+   first pass, and for the same reason: the task names create/update/delete only.
