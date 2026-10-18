@@ -111,6 +111,16 @@ from app.obsidian.notes import long_path
 # that one of them was running. So bump it only when ready to republish and
 # reinstall every installed plugin in the same sitting, and expect each install
 # to report `restart_required`.
+#
+# `REQ-SB-95` owes this constant ONE move, 11 -> 12, covering both capabilities
+# it added additively: `register_action` (`US-02-T05`) and
+# `register_tag_namespace` (`US-05-T02`). `ADR-037` assigns the single bump to
+# whichever of the two lands last; both are now here, so it is due -- and it is
+# deliberately NOT taken. Taking it safely means republishing and reinstalling
+# every installed plugin in the same sitting, which is outside both tasks'
+# scope, and `REVIEW-QUEUE.md` still carries choosing that sitting as an open
+# decision. Until it is taken, no plugin may declare either capability
+# (`ESC-079`). Taking it is this line, moved to 12, once.
 FRAMEWORK_API = 11
 
 _logger = logging.getLogger(__name__)

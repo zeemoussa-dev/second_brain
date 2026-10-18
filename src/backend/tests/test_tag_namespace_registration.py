@@ -358,3 +358,36 @@ def test_registration_cannot_filter_the_tag_keyed_index(data_path):
             imported.update(alias.name for alias in node.names)
 
     assert not [name for name in imported if "plugin" in name]
+
+
+# -- one contract bump for all of REQ-SB-95 --------------------------------------
+
+
+# The number both REQ-SB-95 capabilities landed additively against, and the
+# single bump owed for the pair. ADR-037 and this task say "7 stays, 8 once":
+# both numerals were four versions stale before the work began (ADR-039,
+# ADR-040, ADR-041 and ADR-060 moved the constant 8 -> 11 after ADR-037 was
+# accepted). What ADR-037 actually decides is the RELATION -- exactly one bump
+# for the whole requirement, never two -- and these constants are that
+# relation stated against the real file.
+_FRAMEWORK_API_BEFORE_REQ_SB_95 = 11
+_FRAMEWORK_API_AFTER_THE_ONE_BUMP = 12
+
+
+def test_the_contract_moves_once_for_the_whole_requirement_and_never_twice():
+    """[REQ-SB-95-US-05-AC-08]
+
+    Read off the real file, so it holds whichever of US-02 and US-05 landed
+    first and fails loudly if either bumps a second time. The bump itself is
+    owed and untaken (`ESC-079`): it refuses every installed plugin the moment
+    it is saved, and republishing them is outside this task. While it is owed,
+    the obligation has to survive IN the file -- a bump nobody remembers is
+    how a capability ends up unusable by any plugin forever."""
+    source = Path(plugin_api.__file__).read_text(encoding="utf-8")
+
+    assert "def register_action(" in source and "def register_tag_namespace(" in source
+    assert plugin_api.FRAMEWORK_API in (
+        _FRAMEWORK_API_BEFORE_REQ_SB_95, _FRAMEWORK_API_AFTER_THE_ONE_BUMP,
+    )
+    if plugin_api.FRAMEWORK_API == _FRAMEWORK_API_BEFORE_REQ_SB_95:
+        assert "ESC-079" in source
