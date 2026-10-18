@@ -30,10 +30,12 @@ What this file owns, and what it deliberately does not:
   time and composing the report from recorded outcomes are `T05`'s, over
   their own `WorkflowRuns/` store (`ADR-034`). A Workflow is the
   definition; a run is what happened once.
-- **It does not publish.** Telling agents which Workflows exist is
-  `T06`'s. Unlike `ActionManager`, no write path here fires a
-  republication -- adding one before the published block exists would be
-  a trigger onto nothing.
+- **It owns the publication trigger, not the published text**
+  (`REQ-SB-95-US-04-T06`, `ADR-034`). `create()`, `update()` and
+  `delete()` each fire `publish_workflow_catalogue_in_background()` so
+  no route, script or future caller has to remember a second step;
+  what the block SAYS is `AgentManager`'s, which is also where the same
+  seam for the Action catalogue lives.
 
 **Nothing here is shared with `Pipeline`** (`ADR-032`, `US-04` Scenario
 7). `PipelineManager` is the nearest step-based shape and was read as
@@ -48,6 +50,7 @@ zero raw file calls, only entity shaping and step identity.
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import datetime, timezone
 from typing import Any, Mapping
 from uuid import uuid4
@@ -58,9 +61,113 @@ from app.business.core.workflows.workflow import (
     WorkflowReport,
     WorkflowStep,
 )
+from app.config import settings
 from app.data_access import workflows as workflows_data
 
 _logger = logging.getLogger(__name__)
+
+
+def publish_workflow_catalogue() -> list[str]:
+    """Pushes the Workflow catalogue into every agent's own context,
+    blocking, and names the agents whose published block really changed.
+
+    The one trigger seam, the same shape `ActionManager` uses for the
+    Action catalogue (`ADR-033`, `ADR-034`). A publication that cannot
+    run must not fail the save that triggers it: the Workflow is already
+    written, and the run engine runs it from the stored definition and
+    never from this text, so a block left stale here can leave an agent
+    unaware a Workflow exists but can never change how one runs.
+
+    `AgentManager` is imported inside the function on purpose -- it
+    imports this module back to read the catalogue it publishes.
+    """
+    from app.business.core.agents.agent_manager import AgentManager
+
+    try:
+        return AgentManager().publish_workflow_catalogue()
+    except Exception:
+        _logger.warning(
+            "the Workflow catalogue changed but could not be republished into agent context; "
+            "every agent's block is now stale until the next catalogue change",
+            exc_info=True,
+        )
+        return []
+
+
+_background_publications: list[threading.Thread] = []
+_background_publications_lock = threading.Lock()
+
+
+def _publish_into(install: object) -> list[str]:
+    """One publication pass, run only if this process is still pointed at
+    the Hermes install the pass was started for.
+
+    The guard is not about tests. `hermes_home_path` is reconfigurable at
+    runtime (the setup wizard, `REQ-SB-89`), and a pass still in flight
+    when it changes would finish by writing one install's catalogue into
+    another install's profiles. There is nothing to publish into an
+    install whose operator never saved the Workflow.
+    """
+    if settings.hermes_home_path != install:
+        _logger.warning(
+            "a Workflow-catalogue publication was started for the Hermes install at %r and this "
+            "process is now pointed at %r; it was abandoned rather than published into the "
+            "second one",
+            str(install), str(settings.hermes_home_path),
+        )
+        return []
+    return publish_workflow_catalogue()
+
+
+def publish_workflow_catalogue_in_background() -> threading.Thread:
+    """Starts a republication pass and returns at once, naming the thread
+    it started.
+
+    **Saving a Workflow must not block on republication** -- the same
+    measurement that produced the operator's 2026-10-18 decision for
+    Actions applies here unchanged: publication goes through
+    `AgentManager.update()`, measured at ~2.7s per agent, so one save
+    would otherwise hold the screen for ~110s across a 41-profile
+    install. The accepted consequence is that for a few seconds after a
+    save an agent's SOUL.md may still name the old catalogue; an agent
+    reads it once per conversation, not per second, and the run engine
+    runs a Workflow from its stored definition and never from this text.
+
+    Started threads are remembered so a process that is about to be
+    reconfigured can wait for the passes already in flight
+    (`join_background_publications()`); finished ones are dropped on
+    every call, so the list cannot grow with the catalogue's history.
+    """
+    publication = threading.Thread(
+        target=_publish_into, args=(settings.hermes_home_path,),
+        name="publish-workflow-catalogue",
+        daemon=True,
+    )
+    with _background_publications_lock:
+        _background_publications[:] = [t for t in _background_publications if t.is_alive()]
+        _background_publications.append(publication)
+        # Started while holding the lock so a concurrent joiner can never
+        # see a tracked-but-not-yet-started thread, which it would skip as
+        # "not alive" and then wrongly report as finished.
+        publication.start()
+    return publication
+
+
+def join_background_publications(timeout: float = 30.0) -> bool:
+    """Waits for every publication pass already in flight; True when they
+    all finished inside `timeout`.
+
+    Nothing on the request path calls this -- the whole point of the
+    trigger above is that nothing waits. It is for a caller that needs
+    the roster to have settled before it looks at it: a test asserting
+    what a save really published, rather than what it had published so
+    far.
+    """
+    with _background_publications_lock:
+        in_flight = [t for t in _background_publications if t.is_alive()]
+    for publication in in_flight:
+        publication.join(timeout)
+    return not any(t.is_alive() for t in in_flight)
 
 
 class WorkflowStepActionNotFoundError(Exception):
@@ -267,6 +374,7 @@ class WorkflowManager:
             "updated_at": None,
         }
         workflows_data.write_workflow_json(workflow_id, definition)
+        publish_workflow_catalogue_in_background()
         return self.get_by_id(workflow_id)
 
     def update(
@@ -312,6 +420,7 @@ class WorkflowManager:
 
         data["updated_at"] = datetime.now(timezone.utc).isoformat()
         workflows_data.write_workflow_json(workflow_id, data)
+        publish_workflow_catalogue_in_background()
         return self.get_by_id(workflow_id)
 
     def import_workflow(self, workflow_id: str, data: Mapping[str, Any]) -> Workflow:
@@ -356,4 +465,8 @@ class WorkflowManager:
         if self.get_by_id(workflow_id) is None:
             return {"deleted": False}
         workflows_data.delete_workflow_definition(workflow_id)
+        # Only on a real deletion: a {"deleted": False} for an id this
+        # install never had changed no catalogue, so republishing on it
+        # would rewrite every agent's SOUL.md to say what it already said.
+        publish_workflow_catalogue_in_background()
         return {"deleted": True}
