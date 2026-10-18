@@ -1,14 +1,14 @@
 ---
 id: SPRINT-091
 title: A Hermes profile as it really is — the read-only debug view
-status: Ready                      # Draft | Ready | In Progress | Blocked | Done
+status: In Progress                      # Draft | Ready | In Progress | Blocked | Done
 gate: clear                        # clear | flagged — flagged ⇒ parked in REVIEW-QUEUE.md
 gate_reason: ""                    # the MUST-FLAG trigger that fired, when gate: flagged
 phase: P2                          # single phase only — a sprint never mixes phases
 depends_on_sprints: []             # SPRINT-NNN IDs that must be Done before this can start
 sizing_estimate: "~6 tasks, M"     # effort estimate (e.g. "~6 tasks, M"); checked vs actual in retro
 created: 2026-10-17
-started: ""                        # YYYY-MM-DD when status → In Progress
+started: 2026-10-18                        # YYYY-MM-DD when status → In Progress
 completed: ""                      # YYYY-MM-DD when status → Done
 ---
 
