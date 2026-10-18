@@ -288,6 +288,7 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 | BUG-092 | Writing an agent's `SOUL.md` strips its final newline | Logic | Fixed | direct fix, 2026-10-18 (`3913965`) |
 | BUG-093 | Writing a `SOUL.md` replaces `## Scope`'s prose with its parsed tags, or drops the section | Logic | Fixed | direct fix, 2026-10-18 (`3913965`, `69cb607`) |
 | BUG-094 | Publishing to a `section_id: None` agent writes the soul, then reports failure | Logic | Open | — |
+| BUG-095 | Settings > System reports a save of `self_email` (and three more) that it never performs | Logic | Open | — |
 
 > **Emptied 2026-09-06** with `BUGS.md`, which this mirrors — 42 rows.
 > History: `git show d64dcb4:BACKLOG.md`. Next id is **`BUG-043`**.

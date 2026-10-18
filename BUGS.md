@@ -81,6 +81,7 @@ is a thin status mirror of the index table below.
 | BUG-092 | Writing an agent's `SOUL.md` strips its final newline, so every prompt edit silently rewrites the file's last byte | Logic | Minor | Fixed | 2026-10-18 | direct fix, 2026-10-18 (`3913965`) |
 | BUG-093 | Writing an agent's `SOUL.md` replaces `## Scope`'s prose with its parsed tag list, and drops the section entirely when nothing parses | Logic | Major | Fixed | 2026-10-18 | direct fix, 2026-10-18 (`3913965`, `69cb607`) |
 | BUG-094 | Publishing to an agent whose `section_id` is `None` writes the `SOUL.md` and then reports the write as failed, skipping the Registry mirror | Logic | Major | Open | 2026-10-18 | — |
+| BUG-095 | Settings > System reports "Saved." for four fields it silently discards, `self_email` among them — the router's body model declares 5 of the 9 fields the page renders | Logic | Major | Open | 2026-10-18 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -1459,3 +1460,19 @@ is a thin status mirror of the index table below.
 - **Scope:** not specific to Workflows. The **Action catalogue** publication has taken the same path since `REQ-SB-95-US-03-T01` (2026-10-18), so any install with a `section_id: None` agent has been affected since that landed.
 - **Note:** this is the third defect in this write path in two days (`BUG-092` final newline, `BUG-093` `## Scope` prose, both Fixed). Those two were about *what* gets written; this one is about *what the caller is told*. `REQ-SB-99`'s premise — that a reassembled soul is not evidence — applies to the write side's own report as well.
 - **Related:** `[[BUG-092]]`, `[[BUG-093]]`. Both Fixed; this is a different failure in the same function.
+
+### BUG-095 — Settings → System reports a save it never performs, for four of its nine fields
+
+- **Area:** Logic
+- **Severity:** Major
+- **Status:** Open
+- **Found:** 2026-10-18 by `REQ-SB-95-US-01-T05`, and found honestly: the task needed to change `SELF_EMAIL` to prove the new Operator Profile page mirrors it, went to the surface that page itself points at, and the surface reported success without doing anything. Verified independently afterwards.
+- **Root cause:** `src/backend/app/api/settings_system_router.py`'s `UpdateSystemSettingsBody` declares **five** optional fields (`hermes_base_url`, `hermes_home_path`, `second_brain_data_path`, `vault_path`, `cors_allowed_origins`) while `app/business/system_settings.py`'s `_FIELDS` registry renders **nine**. The route does `body.model_dump(exclude_none=True)`, so any field Pydantic does not know about is gone before the business layer sees it; with nothing left to apply, `update_system_settings` returns early and the route answers `200`.
+- **Fields silently discarded:** `self_email`, `compass_base_url`, `compass_api_key`, `compass_model`.
+- **Repro:** open Settings → System, change *Your Email Address*, save. The page says *"Saved."* Re-read `.env` — unchanged. Measured live: `PUT /settings/system {"self_email": "…"}` → `200`, `.env` untouched (last modified 2026-08-27).
+- **Expected:** either the field is written, or the response says it was not. A `200` and the word "Saved." are the only evidence the operator has.
+- **Actual:** the value is dropped between the HTTP layer and the business layer, and every surface downstream reports success.
+- **Why Major rather than Minor:** there is no symptom at the moment of failure. The operator learns about it later, from behaviour that depends on a setting they believe they changed — and `self_email` is the setting that decides which emails are treated as the operator's own. The three Compass fields fail the same way.
+- **Known-good path:** `POST /setup/save` (the setup wizard, which this page links to) writes these fields correctly. `REQ-SB-95-US-01-T05` used it to complete its own verification. So the capability exists; only this route's contract is short.
+- **Note:** this is the same shape as `BUG-094` logged the same day — a write path that reports an outcome it did not achieve — but the opposite direction. `BUG-094` writes and reports failure; this reports success and does not write. Both were found by running the system rather than reading it.
+- **Related:** `[[BUG-094]]`.
