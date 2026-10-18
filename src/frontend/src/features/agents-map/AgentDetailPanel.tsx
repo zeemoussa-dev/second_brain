@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router';
 import {
   fetchAgent,
   fetchAgentHistory,
@@ -680,6 +681,23 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
                     >
                       Chat with {agent.name}
                     </button>
+                    {/* The ONLY thing this panel gains from REQ-SB-99 (ADR-043):
+                        the way in to the profile debug page. It deliberately
+                        fetches nothing -- that view is one expensive composed
+                        read (a `hermes tools list` subprocess plus a per-skill
+                        byte comparison) and is paid only when the operator
+                        navigates to it, never on this panel's mount (BUG-086).
+                        Shown for a Hermes-backed agent only: a Pipeline has no
+                        profile on the install to read. */}
+                    {agent.provider_id === 'hermes' && (
+                      <Link
+                        className="btn"
+                        to={`/agents/${agentId}/profile`}
+                        data-testid="overview-profile-detail-link"
+                      >
+                        Profile detail (soul, skills, config, jobs)
+                      </Link>
+                    )}
                   </div>
                 </div>
               )}

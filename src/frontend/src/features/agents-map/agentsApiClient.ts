@@ -1,4 +1,8 @@
 import { apiFetch, ApiError } from '../../api/client';
+// The Hermes cron job shape is already declared once, for the Hermes Ops
+// screen, off the same backend dataclass -- the profile debug view extends it
+// rather than declaring a second copy to drift (REQ-SB-99-US-01, ESC-066).
+import type { HermesCronJob } from '../hermes-ops/client';
 
 export interface AgentSummary {
   id: string;
@@ -358,4 +362,137 @@ export function createAgent(body: CreateAgentBody): Promise<AgentDetail> {
     method: 'POST',
     body: JSON.stringify(body),
   });
+}
+
+// ---------------------------------------------------------------------------
+// GET /hermes/agents/{id}/profile-detail (REQ-SB-99-US-01, ADR-043) -- what one
+// Hermes profile really is on disk right now, in one deliberately-expensive
+// read-only call. Only HermesProfileDetailPage asks for it; nothing on a
+// listing path does, and nothing on the agent panel's mount does (BUG-086).
+//
+// Every region below carries its OWN `read` flag and its OWN `error`, and an
+// unread region's payload is `null` -- never `[]`, `{}` or `''`, which are what
+// a region that WAS read and genuinely holds nothing returns. The types keep
+// that distinction (`| null` on every payload) because collapsing it on this
+// side would re-introduce exactly the dishonesty the endpoint was built to end
+// (BUG-085/BUG-088): a region that could not be read must never render as a
+// region holding nothing.
+// ---------------------------------------------------------------------------
+
+/** How one config key relates to the two layers, as `profile_detail.py` reports
+ *  it. `profile`/`install_root` are the layers' own names; the other three are
+ *  the view's. Deliberately NOT narrowed to a closed union: an answer this
+ *  frontend has not heard of must render as itself, never be silently dropped. */
+export type HermesConfigKeySource = string;
+
+export interface HermesProfileSoulRegion {
+  read: boolean;
+  /** The file it came from, or would have come from. */
+  path: string | null;
+  /** `read` | `absent` | `unreadable` | `not_read`. */
+  status: string;
+  /** The SOUL.md verbatim. `null` means no read succeeded; `''` means the file
+   *  really is empty, which is a different, equally honest answer. */
+  text: string | null;
+  error: string;
+}
+
+export interface HermesProfileSkillRow {
+  /** `<category>/<slug>` as it sits in the profile's own skills/ tree. */
+  skill_id: string;
+  slug: string;
+  deployed_version: string | null;
+  /** `null` when the framework catalog has no such skill at all. */
+  catalog_version: string | null;
+  /** `current` | `stale` | `modified` | `missing` | `unknown_to_framework`. */
+  status: string;
+}
+
+export interface HermesProfileSkillsRegion {
+  read: boolean;
+  items: HermesProfileSkillRow[] | null;
+  error: string;
+}
+
+export interface HermesProfileConfigLayer {
+  /** `profile` or `install_root` -- never a merged third value. */
+  source: string;
+  path: string;
+  status: string;
+  /** This one file's own mapping, as written. `null` when it could not be read. */
+  values: Record<string, unknown> | null;
+  error: string;
+}
+
+/** One layer that really sets this key, with the file it was read from. A key
+ *  set in both layers carries two of these and NO single value: Hermes' own
+ *  precedence between the files is not readable from this repository, so there
+ *  is no effective value to show (ADR-043). */
+export interface HermesProfileConfigOccurrence {
+  source: string;
+  path: string;
+  value: unknown;
+}
+
+export interface HermesProfileConfigKey {
+  key: string;
+  /** Only set when exactly one layer sets this key -- `null` otherwise. */
+  value: unknown;
+  source: HermesConfigKeySource;
+  path: string | null;
+  occurrences: HermesProfileConfigOccurrence[];
+}
+
+export interface HermesProfileConfigRegion {
+  read: boolean;
+  layers: HermesProfileConfigLayer[] | null;
+  keys: HermesProfileConfigKey[] | null;
+  error: string;
+}
+
+/** A Hermes cron job as `cron_status.list_cron_jobs()` serves it -- the same
+ *  dataclass the Hermes Ops screen already renders, plus the `scope` label
+ *  saying which directory's jobs.json it came from (a job's profile binding is
+ *  a directory, not a field). Extended rather than re-declared so there is one
+ *  shape for one fact. */
+export interface HermesProfileCronJob extends HermesCronJob {
+  scope: 'install' | 'profile';
+}
+
+export interface HermesProfileCronRegion {
+  read: boolean;
+  /** Exactly the jobs in this profile's own cron/ directory. */
+  items: HermesProfileCronJob[] | null;
+  /** The install-root jobs -- the ones that run with no `-p`. Kept separate so
+   *  a job is never attributed to a profile that does not own it. */
+  install_level: HermesProfileCronJob[] | null;
+  /** True for the primary profile, which IS <HERMES_HOME>: its own cron
+   *  directory and the install's are the same one, so `install_level` is empty
+   *  by construction rather than because the install has no jobs. */
+  install_level_is_this_profile: boolean | null;
+  error: string;
+}
+
+export interface HermesProfileToolsetsRegion {
+  read: boolean;
+  /** `{toolset: enabled}`. `null` on a failed read -- never `{}`, which is the
+   *  real answer "the read worked and nothing is enabled". */
+  items: Record<string, boolean> | null;
+  error: string;
+}
+
+export interface HermesProfileDetail {
+  profile_id: string;
+  /** `readable: false` means <HERMES_HOME> itself is absent or is not a
+   *  directory. Every region is then unread, and none may be rendered. */
+  install: { readable: boolean; path: string; error: string };
+  soul: HermesProfileSoulRegion;
+  skills: HermesProfileSkillsRegion;
+  config: HermesProfileConfigRegion;
+  cron_jobs: HermesProfileCronRegion;
+  toolsets: HermesProfileToolsetsRegion;
+}
+
+export function fetchHermesProfileDetail(agentId: string): Promise<HermesProfileDetail> {
+  return apiFetch<HermesProfileDetail>(`/hermes/agents/${agentId}/profile-detail`);
 }

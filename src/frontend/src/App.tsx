@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router';
 import { AppShell } from './components/shell/AppShell';
 import { SetupPage } from './pages/SetupPage';
 import { AgentsMapPage } from './pages/AgentsMapPage';
+import { HermesProfileDetailPage } from './pages/HermesProfileDetailPage';
 import { ChatPage } from './pages/ChatPage';
 import { CrawlersPage } from './pages/CrawlersPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -35,6 +36,9 @@ function App() {
       <Routes>
         <Route element={<AppShell />}>
           <Route path="/" element={<AgentsMapPage />} />
+          {/* The read-only Hermes profile debug view (ADR-043) -- its own URL
+              so it can be pasted into an incident note, not an eighth panel tab. */}
+          <Route path="/agents/:agentId/profile" element={<HermesProfileDetailPage />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/crawlers" element={<CrawlersPage />} />
           <Route path="/settings" element={<SettingsPage />} />
