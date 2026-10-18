@@ -4,12 +4,12 @@ title: Workflow as the seventh artifact kind — the operator documents how a ki
 requirement_ids: [REQ-SB-95]
 requirement_section: "REQ-SB-95: An Agent Can Only Do What the App Can Do — Operator Profile, Actions, Workflows, Entity Resolution"
 phase: P2
-status: In Progress
+status: Done
 gate: clear
 gate_reason: "RESOLVED operator confirmed ADR-034, 2026-10-17 — was: trigger-3 (ADR-034 created — a Workflow is run step-by-step by the framework against a run record, not recited into the agent's context)"
 sprint: SPRINT-089
 created: 2026-10-16
-updated: 2026-10-18  # coder: T07 Done (AC-01, AC-02, AC-04, AC-06 all verified live in a real browser against a disposable backend) — the Workflows catalogue screen and its ordered-step editor, the Settings card and route, the seventh Artifacts tab, and the backend's refusals rendered verbatim on both screens; ESC-078 Resolved (the ArtifactKind union and the export modal's exhaustive map were outside the task's list and were authorised). Only T06 now remains. T05 Done (AC-03; 11 AC-tagged tests, suite 655 → 666 passed/0 failed, plus the manual loopback run against a disposable install) — a run is a record at <DATA_PATH>/data/WorkflowRuns/<run_id>.json the framework steps through one step at a time, every step through the unchanged ADR-033 gate, per-step confirmation reusing the existing awaiting_confirmation/confirm/decline mechanism, and the report composed from the recorded outcomes rather than stored; task gate: flagged for one judgement call (a step marked for confirmation whose Action is not confirmation-required is refused rather than performed), nothing blocked, no ESCALATIONS entry. T06 unblocked; T06 and T07 remain. T04 Done (AC-04, AC-05, AC-07; 12 AC-tagged tests, suite 655 passed/0 failed) — Workflow is the seventh artifact kind across all six business/logic/artifact_*.py modules, an export carries every Action its steps name recursing into their Skills, and Pipelines are byte-identical; ESC-076 and ESC-077 both Resolved. T07 unblocked. T03 Done (AC-01, AC-02 verified over the HTTP surface). T02 Done (AC-02, AC-06; ESC-075 Resolved). T01 Done (AC-01, AC-07). Remaining: T05, T06, T07
+updated: 2026-10-18  # coder: STORY DONE — all seven tasks complete, all seven locked ACs verified. T06 Done (AC-03; 14 AC-tagged tests, suite 672 → 686 passed/0 failed) — a fourth marker block in each agent's SOUL.md names the Workflows that agent could really run, the kind of request each handles and what it reports, and deliberately NOT their steps (ADR-034: the run engine owns the order); WorkflowManager.create/update/delete republish automatically on a background thread; run_workflow.py joins call_action.py in the shipped runner Skill and drives a real run one step at a time, relaying the app's own composed report. Proved byte-for-byte on a real SOUL.md in a scratch Hermes home (190 → 1680 bytes, the 1488-byte block plus its separator and nothing else; no CRLF, final newline kept, a no-op pass leaves even the mtime alone) and end to end on a disposable install over a real socket, including a confirmation pause at exactly the marked step and --resume finishing the SAME run. Two defects found live and fixed: the Action and Workflow publication passes were losing each other's block (now serialised on one lock, guard fails without it) and a confirmation pause had no way to resume (--resume added). One pre-existing defect reported not fixed: AgentManager.update() writes the SOUL then raises on an agent with no Section. Task gate: flagged for six judgement calls; no ESCALATIONS entry. — T07 Done (AC-01, AC-02, AC-04, AC-06 all verified live in a real browser against a disposable backend) — the Workflows catalogue screen and its ordered-step editor, the Settings card and route, the seventh Artifacts tab, and the backend's refusals rendered verbatim on both screens; ESC-078 Resolved (the ArtifactKind union and the export modal's exhaustive map were outside the task's list and were authorised). Only T06 now remains. T05 Done (AC-03; 11 AC-tagged tests, suite 655 → 666 passed/0 failed, plus the manual loopback run against a disposable install) — a run is a record at <DATA_PATH>/data/WorkflowRuns/<run_id>.json the framework steps through one step at a time, every step through the unchanged ADR-033 gate, per-step confirmation reusing the existing awaiting_confirmation/confirm/decline mechanism, and the report composed from the recorded outcomes rather than stored; task gate: flagged for one judgement call (a step marked for confirmation whose Action is not confirmation-required is refused rather than performed), nothing blocked, no ESCALATIONS entry. T06 unblocked; T06 and T07 remain. T04 Done (AC-04, AC-05, AC-07; 12 AC-tagged tests, suite 655 passed/0 failed) — Workflow is the seventh artifact kind across all six business/logic/artifact_*.py modules, an export carries every Action its steps name recursing into their Skills, and Pipelines are byte-identical; ESC-076 and ESC-077 both Resolved. T07 unblocked. T03 Done (AC-01, AC-02 verified over the HTTP surface). T02 Done (AC-02, AC-06; ESC-075 Resolved). T01 Done (AC-01, AC-07). Remaining: T05, T06, T07
 ---
 
 # REQ-SB-95-US-04 — Workflow as the seventh artifact kind — the operator documents how a kind of request is handled
@@ -209,12 +209,22 @@ cross-story edges point at `REQ-SB-95-US-02` and `US-03` tasks.
 
 ## Definition of Done
 
-- [ ] All acceptance-criteria scenarios pass
-- [ ] Every Implementation Task above is complete (or explicitly dropped with reason)
-- [ ] All Constraints respected
-- [ ] Automated tests added/updated and passing (once test tooling exists)
-- [ ] `MEMORY.md` updated with any new decisions / patterns / constraints
-- [ ] `CHANGELOG.md` entry appended
+- [x] All acceptance-criteria scenarios pass — `AC-01`…`AC-07`, every one
+      verified against the thing itself (the stored file, the run record, the
+      exported bundle, the real screen, the real SOUL.md bytes)
+- [x] Every Implementation Task above is complete — `T01`…`T07` all `Done`,
+      none dropped
+- [x] All Constraints respected — the store is `<DATA_PATH>/data/Workflows/`,
+      integrity is enforced at save and at delete rather than audited after,
+      `Pipeline` is untouched and byte-identical, one Manager is the sole
+      gateway, and nothing infers or suggests a Workflow
+- [x] Automated tests added/updated and passing — the backend suite is
+      **686 passed / 0 failed**
+- [x] `MEMORY.md` updated with any new decisions / patterns / constraints —
+      **not appended**: `MEMORY.md` is 86 KB against the 40 KB budget its own
+      rule 1 sets, which forbids appending while over. The candidates from this
+      story are written out in `REVIEW-QUEUE.md` for the compaction pass.
+- [x] `CHANGELOG.md` entry appended
 
 ## Non-Goals / Out of Scope
 
