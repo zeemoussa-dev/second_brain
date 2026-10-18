@@ -287,6 +287,7 @@ same touch. Status: `Open | In Sprint | Closed | Won't Fix`.
 | BUG-091 | Deploying the Graph capture Skill deleted the install's Outlook one of the same name -- one machine silently became a Graph install and lost email for eight days | Logic | Fixed | direct fix, 2026-10-18 |
 | BUG-092 | Writing an agent's `SOUL.md` strips its final newline | Logic | Fixed | direct fix, 2026-10-18 (`3913965`) |
 | BUG-093 | Writing a `SOUL.md` replaces `## Scope`'s prose with its parsed tags, or drops the section | Logic | Fixed | direct fix, 2026-10-18 (`3913965`, `69cb607`) |
+| BUG-094 | Publishing to a `section_id: None` agent writes the soul, then reports failure | Logic | Open | — |
 
 > **Emptied 2026-09-06** with `BUGS.md`, which this mirrors — 42 rows.
 > History: `git show d64dcb4:BACKLOG.md`. Next id is **`BUG-043`**.
