@@ -1,14 +1,14 @@
 ---
 id: SPRINT-090
 title: Entity resolution instead of search — one tag-keyed index, synthesis first then evidence
-status: Ready                      # Draft | Ready | In Progress | Blocked | Done
+status: In Progress                # Draft | Ready | In Progress | Blocked | Done
 gate: clear                        # clear | flagged — flagged ⇒ parked in REVIEW-QUEUE.md
 gate_reason: ""                    # the MUST-FLAG trigger that fired, when gate: flagged
 phase: P2                          # single phase only — a sprint never mixes phases
 depends_on_sprints: [SPRINT-087, SPRINT-088]   # SPRINT-NNN IDs that must be Done before this can start
 sizing_estimate: "~5 tasks, M"     # effort estimate (e.g. "~6 tasks, M"); checked vs actual in retro
 created: 2026-10-16
-started: ""                        # YYYY-MM-DD when status → In Progress
+started: 2026-10-18                # YYYY-MM-DD when status → In Progress
 completed: ""                      # YYYY-MM-DD when status → Done
 ---
 
@@ -80,7 +80,7 @@ bidirectional link, written at sprint creation. Order by implementation dependen
 
 | Story | Title | Phase | Status |
 |---|---|---|---|
-| [REQ-SB-95-US-05](../UserStories/REQ-SB-95-US-05-entity-resolution-tag-keyed-index.md) | Entity resolution instead of search — one tag-keyed index, synthesis first then evidence | P2 | Ready |
+| [REQ-SB-95-US-05](../UserStories/REQ-SB-95-US-05-entity-resolution-tag-keyed-index.md) | Entity resolution instead of search — one tag-keyed index, synthesis first then evidence | P2 | In Progress (`T01` Done 2026-10-18) |
 
 Build order inside the sprint, read from the task files' own `depends_on`:
 `(T01, T02) → T03 → T04 → T05` (`T05` also needs `US-02-T02`, `US-03-T02`,
@@ -140,6 +140,32 @@ Build order inside the sprint, read from the task files' own `depends_on`:
 ---
 
 ## Notes
+
+**Started 2026-10-18 (`Ready → In Progress`).** Both `depends_on_sprints` edges
+were confirmed `Done` first (`SPRINT-087`, `SPRINT-088`), so hard rule 9 is
+satisfied. **`T01` is Done 2026-10-18** — the one tag-keyed index, as a
+projection: a module-level `_vault_tag_index` in
+`app/business/core/vault/vault_manager.py`, built from the same `new_entries`
+and rebound one statement after `_vault_entries` inside `rebuild_index()`, read
+through `get_entries_for_tag()` and `get_tag_index_keys()`. Keys are every
+`<namespace>/<slug>` tag the vault actually holds, registered or not; the one
+stated tag-shape rule keeps a deeper tag (`a/b/c`) under its own full name and
+excludes a tag with no namespace at all, which `list_tags()` still counts.
+`AC-04` and `AC-07` both verified on 8 AC-tagged tests plus two assertions read
+off the module's own syntax tree — exactly one rebind site, in `rebuild_index`,
+immediately beside `_vault_entries`; and **no string literal containing a
+separator anywhere in the builder**, so no namespace allow-list or deny-list
+exists for it to consult. No `Index` artifact and no cron job: both are spied on
+for every test in the file and neither fired. Windows `MAX_PATH` pinned by
+measurement rather than assumed — a 308-character note on which plain
+`os.path.isfile()` answers **False** with no error is still found by the real
+walk and still grouped under its tag. Backend suite 677 → **687 passed**, the
+same 9 scratch-install failures before and after, run from a scratch CWD with
+scratch `VAULT_PATH`/`SECOND_BRAIN_DATA_PATH` so the operator's vault and store
+were unreachable throughout. Task `gate: flagged` for three judgement calls
+(chiefly that the manual step ran against a synthetic vault over the real HTTP
+surface, not the operator's real vault), nothing blocked, no `ESCALATIONS.md`
+entry. **`T02` is the other independent root and is next; `T03` follows both.**
 
 **gate: clear 2026-10-16 — no product-owner trigger fired.** No assumption (the
 single inbound edge is quoted from `US-05-T05`'s own frontmatter); requirement

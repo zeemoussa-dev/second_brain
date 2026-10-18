@@ -4,12 +4,12 @@ title: Entity resolution instead of search — one tag-keyed index, synthesis fi
 requirement_ids: [REQ-SB-95]
 requirement_section: "REQ-SB-95: An Agent Can Only Do What the App Can Do — Operator Profile, Actions, Workflows, Entity Resolution"
 phase: P2
-status: Ready
+status: In Progress
 gate: clear
 gate_reason: "RESOLVED operator confirmed ADR-037, 2026-10-17 — was: trigger-3 (ADR-037 created) — the tag-keyed index is a projection rebound inside VaultManager.rebuild_index() rather than a new Index artifact with its own cron job, a plugin registers a namespace as a callable, and the FRAMEWORK_API bump is taken once for all of REQ-SB-95; plus trigger-7 (decomposer, 2026-10-16) — the sibling US-02 task files carry no FRAMEWORK_API instruction, so the single bump is owed by whichever story lands last and only this story's T02 currently knows it"
 sprint: SPRINT-090
 created: 2026-10-16
-updated: 2026-10-16  # product-owner: grouped into SPRINT-090 (alone — depends_on_sprints: [SPRINT-087, SPRINT-088]; that ordering also takes the FRAMEWORK_API bump via T02's conditional read)
+updated: 2026-10-18  # coder: Ready -> In Progress, T01 Done (AC-04, AC-07 verified); 2026-10-16 product-owner: grouped into SPRINT-090 (alone — depends_on_sprints: [SPRINT-087, SPRINT-088]; that ordering also takes the FRAMEWORK_API bump via T02's conditional read)
 ---
 
 # REQ-SB-95-US-05 — Entity resolution instead of search — one tag-keyed index, synthesis first then evidence
@@ -243,7 +243,7 @@ mechanism, naming no plugin. Dependency order is
 
 | ID | Type | Task | ACs | Depends on | Task File |
 |---|---|---|---|---|---|
-| REQ-SB-95-US-05-T01 | backend | The tag-keyed index as a projection, computed and rebound inside `VaultManager.rebuild_index()` | AC-04, AC-07 | — | `../Tasks/REQ-SB-95-US-05-T01-tag-keyed-index-projection.md` |
+| REQ-SB-95-US-05-T01 | backend | **Done 2026-10-18** — The tag-keyed index as a projection, computed and rebound inside `VaultManager.rebuild_index()` | AC-04, AC-07 | — | `../Tasks/REQ-SB-95-US-05-T01-tag-keyed-index-projection.md` |
 | REQ-SB-95-US-05-T02 | backend | `plugin_api.register_tag_namespace(namespace, entries)` — the callable seam, and the one `FRAMEWORK_API` bump | AC-08 | — | `../Tasks/REQ-SB-95-US-05-T02-register-tag-namespace-plugin-api.md` |
 | REQ-SB-95-US-05-T03 | backend | The generic tag resolver — name/alias/domain → `(kind, tag, hub)`, ambiguity and non-resolution reported | AC-01, AC-03, AC-05, AC-07 | T01, T02 | `../Tasks/REQ-SB-95-US-05-T03-generic-tag-resolver.md` |
 | REQ-SB-95-US-05-T04 | backend | The scoped read — hub synthesis first, then tagged evidence newest first, nothing outside the tag | AC-02 | T01, T03 | `../Tasks/REQ-SB-95-US-05-T04-scoped-entity-read.md` |
@@ -274,6 +274,24 @@ mechanism, naming no plugin. Dependency order is
   extraction.
 
 ## Notes
+
+**Coder, 2026-10-18 — `Ready → In Progress`, `T01` Done.** The one tag-keyed
+index exists: a module-level projection in `vault_manager.py`, built from the
+same `new_entries` and rebound one statement after `_vault_entries` inside
+`rebuild_index()`, with `get_entries_for_tag()` and `get_tag_index_keys()` as
+its read surface. **`AC-04` and `AC-07` are both verified** — 8 AC-tagged tests
+in `tests/test_tag_keyed_index.py` plus two structural assertions read off the
+module's own syntax tree (exactly one rebind site, in `rebuild_index`,
+immediately beside `_vault_entries`; and no string literal containing a
+separator anywhere in the builder, so no namespace allow-list or deny-list can
+exist for it to consult). No `Index` artifact, no cron job, no second refresh
+trigger — both spied on and both never called. Backend suite 677 → **687
+passed**, with the same 9 scratch-install failures before and after. `T02` is
+independent and remains the other root; `T03` is unblocked once `T02` lands.
+Task `gate: flagged` for three judgement calls, chiefly that the manual step was
+run against a synthetic vault over the real HTTP surface rather than the
+operator's real vault; nothing is blocked and no `ESCALATIONS.md` entry was
+written.
 
 **Operator decision, 2026-10-16 — flag cleared.** Operator, 2026-10-16: "Resolver is framework, Customer stays the plugin." The framework ships a tag-keyed resolver generic over any `<namespace>/<slug>` tag, naming no plugin; a plugin registers its namespace through the Plugin API, and the entities plugin registers `customer/` and `partner/`. This story builds here as mechanism; the namespace registration is `sb-plugins-entities`' own work. `ADR-022` stands unamended. `ESC-063` is Resolved, resolving artefact `ADR-035`.
 
