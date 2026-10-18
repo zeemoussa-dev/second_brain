@@ -349,3 +349,30 @@ the test**, and do not touch anything else in the conflicts module.
 
 `test_action_artifact_kind.py` itself stays out of scope. If it needs a change beyond
 going green on its own, stop and escalate.
+
+---
+
+## Scope extension — 2026-10-18 (unblocks `ESC-077`)
+
+**Added to `## Files to Modify`:** `src/backend/tests/test_action_artifact_kind.py`,
+scoped to **`test_a_genuinely_unknown_kind_still_fails_the_bundle_by_name` alone**
+(lines ~746–767). Nothing else in that file, and no other test in it.
+
+`ESC-076` named this file out of scope and said to escalate rather than touch it if it
+did not go green. It did not, you escalated, and this is the answer: the guard is intact
+and its chosen example stopped being unknown. Make the three changes your escalation
+spells out —
+
+1. the bundle's `kind` and its member path move from `workflow` to a kind nothing plans
+   to build (`hologram` is fine),
+2. the message assertion follows it,
+3. **the accepted-kinds assertion iterates `artifact_import_conflicts._MANAGER_BY_KIND`
+   instead of a frozen tuple.**
+
+Point 3 is the part that matters beyond this task: the hard-coded tuple is what would
+make the eighth kind's author rediscover all of this. Derive it from the live map.
+
+Do not weaken the test, do not change what it means, and do not touch its sibling
+`test_the_gate_accepts_every_kind_the_export_can_emit`, which is green.
+
+Then mark `T04` `Done` with the suite green, and propagate status as normal.

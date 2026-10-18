@@ -897,6 +897,16 @@ concurrent `REQ-SB-95-US-01-T01` landed its 9 tests), **654 passed / 1 failed**
 now — the one being the test above. `T04` is `Blocked` until this is settled;
 `T07` depends on it.
 
-**Resolving artefact:** — (Open)
+**Resolution (2026-10-18):** authorised. `src/backend/tests/test_action_artifact_kind.py` is added to `REQ-SB-95-US-04-T04`'s `## Files to Modify`, scoped to `test_a_genuinely_unknown_kind_still_fails_the_bundle_by_name` alone, with all three changes the escalation specifies — including deriving the accepted-kinds assertion from `artifact_import_conflicts._MANAGER_BY_KIND` rather than a frozen tuple. That third change is the one worth more than the unblock: the tuple is precisely what would make the eighth kind's author rediscover this.
 
-**Status:** Open
+**The coder was right not to fix it itself.** `ESC-076`'s authorisation named that file out of scope and said to escalate rather than reach; it escalated, with the exact replacement written out. That is the behaviour the preceding six escalations were meant to produce, and it cost one round trip instead of a silent edit to a `Done` task's test.
+
+**Fourth variant of one rule in two days**, now all four in `.claude/agents/decomposer.md`: name the switch-on site (`ESC-069`/`071`/`072`/`073`/`074`); name the fixtures your change invalidates (`ESC-075`); enumerate a family of sibling modules from the directory, not from memory (`ESC-076`); and a negative test must pick an example nothing plans to build, or derive it from the live set (this one).
+
+**Separately, and recorded because it nearly went unnoticed:** the coder's throwaway probe of `commit_import` ran against live settings and planted a Workflow in the operator's real `<DATA_PATH>/data/Workflows/`. It caught this itself, confirmed the artefact was its own, removed it through the app's own path, and reported it unprompted. Independently verified by the orchestrator afterwards: the directory exists and holds zero entries. The suite itself never touches the real store — re-run against an empty data path, 21/21 passed with that directory still empty. The second `MEMORY.md` candidate below comes from this.
+
+**Two `MEMORY.md` candidates, deliberately not appended** (86 KB against the 40 KB budget its own rule 1 sets, which forbids appending while over): *a negative test must pick an example nothing plans to build*, and *a throwaway probe is a test too — it needs the same sandbox discipline as the suite*. Both are held here for the compaction pass; the first also lives in `.claude/agents/decomposer.md`, where it is actually read.
+
+**Resolving artefact:** `REQ-SB-95-US-04-T04` scope extension + decomposer rule, 2026-10-18
+
+**Status:** Resolved

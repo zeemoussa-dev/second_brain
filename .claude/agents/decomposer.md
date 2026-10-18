@@ -120,6 +120,17 @@ sixth made an unrelated test fail within the hour. A glob is cheap and memory is
 reliable: when the task's phrasing is "add X everywhere Y is handled", run the search
 that finds every Y and paste the result into the list.
 
+**The fourth variant, and the one that dates itself:** *a negative test must pick an
+example nothing plans to build, or derive it from the live set.* `ESC-077` — a test
+asserting an unsupported artifact kind is refused reached for `workflow` as its
+stand-in, in a file whose own comment already said `workflow` was next. The day the
+seventh kind shipped, the test failed; the guard was never broken, only its example.
+A test that names a thing by its absence is a scheduled failure if the roadmap names
+that thing. Prefer a fictional example, and assert over the live collection rather
+than a hand-maintained tuple — a frozen list of "the kinds we accept" has to be
+hand-extended by every future kind's author, which is the same omission this whole
+family of escalations is about.
+
 ### Structural ACs for screen / frontend stories
 
 For any story that builds or changes a screen, the **durable design layer** — which
