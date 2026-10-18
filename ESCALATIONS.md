@@ -809,3 +809,94 @@ so the compaction pass can pick it up.
 **Resolving artefact:** `REQ-SB-95-US-04-T04` scope extension + decomposer rule, 2026-10-18
 
 **Status:** Resolved
+
+---
+
+## ESC-077: registering the seventh kind makes `test_a_genuinely_unknown_kind_still_fails_the_bundle_by_name` fail — it used `workflow` as its stand-in for a kind that does not exist — 2026-10-18
+
+**Category:** unanticipated-file
+
+**Trigger:** `ESC-076` authorised `REQ-SB-95-US-04-T04` to add
+`"workflow": WorkflowManager` to `artifact_import_conflicts._MANAGER_BY_KIND`,
+scoped to that one entry, with
+`src/backend/tests/test_action_artifact_kind.py` explicitly out of scope and the
+instruction that it "should go green on its own. If it does not, stop and
+escalate rather than touching it."
+
+It did not go green on its own. One of its two gate tests flipped the other way:
+
+```
+FAILED tests/test_action_artifact_kind.py::test_a_genuinely_unknown_kind_still_fails_the_bundle_by_name
+    with pytest.raises(ValueError) as refusal:
+        artifact_import.preview_import(bundle_path)
+E   Failed: DID NOT RAISE ValueError
+```
+
+`test_the_gate_accepts_every_kind_the_export_can_emit` — the test `ESC-076` was
+raised from — **is now green**, as predicted. The failure is its sibling, written
+by `REQ-SB-95-US-02-T07` thirty lines below it (`test_action_artifact_kind.py`
+lines 746–767). It needed a kind the gate would reject, and reached for the kind
+that was coming next:
+
+```python
+            "artifacts": [{"kind": "workflow", "id": "monday-sweep"}],
+...
+    assert "unrecognized artifact kind 'workflow'" in str(refusal.value)
+    for accepted_kind in ("skill", "template", "agent", "pipeline", "index", "action"):
+        assert accepted_kind in str(refusal.value)
+```
+
+**This is not the guard breaking — the guard is intact and still refuses an
+unknown kind.** The test's chosen example simply stopped being unknown. Verified
+directly: `detect_conflicts` now answers `workflow` and raises for anything
+genuinely absent, with the accepted kinds still named in the message.
+
+**Why it was not fixed here.** `test_action_artifact_kind.py` belongs to
+`REQ-SB-95-US-02-T07` (`Done`, `b2b09fe`) and is named out of scope twice over —
+by that task's own Constraints and by `ESC-076`'s authorisation. `Pipeline.md`
+hard rule 1 freezes a `Done` task's artefacts. This is `ESC-073`/`ESC-075` again:
+a new capability makes an existing sibling test's *premise* stale while leaving
+its *meaning* intact.
+
+**What the fix is:** two lines in that one test, nothing else in the file —
+re-point it at a kind that genuinely does not exist, and let the accepted-kinds
+assertion read the map rather than a frozen tuple, so the next kind's author does
+not rediscover this:
+
+```python
+            "artifacts": [{"kind": "hologram", "id": "monday-sweep"}],
+...
+        {"holograms/monday-sweep/Hologram.json": b"{}"},
+...
+    assert "unrecognized artifact kind 'hologram'" in str(refusal.value)
+    for accepted_kind in artifact_import_conflicts._MANAGER_BY_KIND:
+        assert accepted_kind in str(refusal.value)
+```
+
+Reading the map instead of a hard-coded tuple is what stops this recurring: the
+tuple would have to be hand-extended for every future kind, and the bundle member
+path is the other hard-coded half. Whoever authorises it should add the file to
+`T04`'s `## Files to Modify` scoped to this one test (or mint a `T04a`), rather
+than letting a coder reach outside scope by precedent — which is what `ESC-064`,
+`ESC-073` and `ESC-075` each decided for the identical shape.
+
+**A rule worth more than the unblock, and the reason this is the fourth of its
+shape.** `ESC-076` added "enumerate a family of sibling modules from the
+directory, not from memory". Its mirror is now due for *test fixtures that name a
+thing by its absence*: a test asserting "X is not supported" dates itself the day
+X ships, and a roadmap that already names X — `artifact_import_conflicts.py`'s own
+comment said "`workflow` is next" when that test was written — makes it a
+scheduled failure, not a surprise. **A negative test should pick an example
+nothing plans to build, or derive it from the live set.**
+
+**State of the task:** everything `T04` owns is built and committed (`2f91bb4`),
+with 12 AC-tagged tests green covering `AC-04`, `AC-05` and `AC-07`, including the
+real `preview_import`/`commit_import` route now taking a `workflow` bundle.
+Suite: **634 passed / 0 failed** at this session's baseline (`6724db8`, before the
+concurrent `REQ-SB-95-US-01-T01` landed its 9 tests), **654 passed / 1 failed**
+now — the one being the test above. `T04` is `Blocked` until this is settled;
+`T07` depends on it.
+
+**Resolving artefact:** — (Open)
+
+**Status:** Open
