@@ -28,6 +28,7 @@ here -- T02 owns it. T01 stores what it is given, in order.
 """
 import ast
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -49,6 +50,42 @@ def _three_ordered_steps() -> list[dict]:
         {"id": "log", "action_id": "append-capture", "inputs": {"note": "sent"},
          "description": "Leave a trace in the vault"},
     ]
+
+
+# The three ids every step fixture in this file names. They are invented
+# for these tests and exist in no install's catalogue.
+THE_ACTION_IDS_THESE_FIXTURES_NAME = ("list-team-actions", "send-mail", "append-capture")
+
+
+@pytest.fixture(autouse=True)
+def the_fixtures_action_ids_are_catalogued(monkeypatch) -> None:
+    """These tests are about step order, step identity and cost -- never
+    about what this install has catalogued (ESC-075, authorised
+    2026-10-18; ESC-064 is the same case one kind earlier).
+
+    `T02` added `ADR-034`'s save-time referential check, which refuses a
+    step naming an action id the catalogue does not have. That is the
+    locked `AC-02` behaviour working, so the fixtures are what move:
+    the three invented ids above are catalogued here, for this file
+    only, and not one assertion below changes.
+
+    **The real store is put out of reach, not merely satisfied.** The
+    whole `ActionManager` the Manager reaches for is replaced, so no
+    code path from these tests can read the operator's own
+    `<DATA_PATH>/data/Actions/` -- returning the right ids from the real
+    Manager would still leave a test about step order passing or failing
+    by accident of what this machine happens to have catalogued, which
+    is the instance-state dependency `ESC-064`'s resolution called out.
+    """
+    class TheCatalogueTheseTestsAssume:
+        def get_all(self) -> list:
+            return [SimpleNamespace(id=action_id)
+                    for action_id in THE_ACTION_IDS_THESE_FIXTURES_NAME]
+
+    monkeypatch.setattr(
+        "app.business.core.workflows.workflow_manager.ActionManager",
+        TheCatalogueTheseTestsAssume,
+    )
 
 
 @pytest.fixture
