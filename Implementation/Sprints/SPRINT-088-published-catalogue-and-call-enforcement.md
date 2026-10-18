@@ -83,6 +83,24 @@ Build order inside the sprint, read from the task files' own `depends_on`:
 
 ## Dependencies / External Blockers
 
+- **BLOCKED IN FLIGHT, 2026-10-18 — `T03` (`ESC-073`).** Two of the three
+  dispatch paths and the whole single-use grant mechanism are built, tested and
+  committed (`e16013c`, `ab0ed44`; suite 490 → 497, 0 failed): `ui` is pointed
+  at and never performed, `skill` is authorised by a single-use grant, and
+  `consume_single_use_grant()` over the ledger's exclusive-create
+  `claim_call_once()` is the one mechanism `T04` is meant to reuse rather than
+  reinvent. `_perform_http_implementation()` is complete and proved by three
+  tests driving it directly, but **the one line wiring it into the seam is
+  withheld**: it needs two assertions changed in
+  `src/backend/tests/test_action_invocation_gate.py`, outside `T03`'s
+  `## Files to Modify` — one pins `T02`'s transitional `not_dispatched`, and the
+  other points a test Action at the real `POST /vault-index/refresh`, which live
+  dispatch turns into a full re-read of the operator's vault on every suite run
+  (measured 1.09s → 8.60s). A human decision is parked in `REVIEW-QUEUE.md`.
+  **The sprint is not stalled:** `T04` is independent of `T03` and buildable
+  now; only `T05` converges on it. Meanwhile the `http` branch reports
+  `not_dispatched`, which is exactly what `T02` already shipped, so nothing
+  regressed on the live install.
 - **UNBLOCKED AND `Done`, 2026-10-18 — `T01` (`ESC-072` Resolved).** The
   orchestrator added `src/backend/tests/conftest.py` to `T01`'s files and the
   operator decided the cost question (publish in the background, return

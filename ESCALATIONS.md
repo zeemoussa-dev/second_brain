@@ -511,3 +511,70 @@ update and a real delete, and none on a no-op delete).
 **Status:** Resolved
 
 ---
+## ESC-073: wiring `http` dispatch makes two tests in `test_action_invocation_gate.py` stop telling the truth — the file is outside `REQ-SB-95-US-03-T03`'s scope — 2026-10-18
+
+**Category:** unanticipated-file
+
+**Trigger:** `REQ-SB-95-US-03-T03` fills `dispatch_validated_action_call()` with
+dispatch by implementation kind. Two of its three paths perform nothing by
+definition (`ui` is pointed at, `skill` is authorised) and shipped without
+incident. The third, `http`, is the one the app really performs — and the moment
+it is wired, two tests written by `T02` the same day stop being true:
+
+1. `test_a_valid_call_passes_the_gate_records_it_and_enters_dispatch_exactly_once`
+   asserts `outcome == "not_dispatched"` and `"not implemented yet" in detail`.
+   `T02`'s own Implementation Log calls that outcome **transitional** and assigns
+   dispatch to `T03`, so this is the assertion `T03` was always going to replace —
+   measured: it is the single failure, `assert 'performed' == 'not_dispatched'`.
+2. `test_a_caller_outside_allowed_callers_is_refused_and_the_wildcard_admits_it`
+   points its test Action at the **real** `POST /vault-index/refresh`. With
+   dispatch live it still passes, silently, by really re-reading the operator's
+   whole vault on every run of the suite — measured at **1.09s → 8.60s** for that
+   one file. Several sessions run `pytest` here constantly.
+
+`src/backend/tests/test_action_invocation_gate.py` is **not** in `T03`'s
+`## Files to Modify` (written 2026-10-16, before that file existed).
+
+**Resolution:** Not improvised, and nothing was damaged — the breakage was
+measured behind the write/outbound interceptor before the suite was ever run with
+it live, and the `http` branch was then left unwired rather than the out-of-scope
+file being edited. So:
+
+- the `ui` and `skill` paths, the single-use grant, `consume_single_use_grant()`
+  and the ledger's `claim_call_once()` primitive are **built, tested and
+  committed** (`e16013c`, `ab0ed44`) — 7 new AC-tagged tests, suite 490 → 497,
+  0 failed;
+- `_perform_http_implementation()` is **complete and proved by three of those
+  tests driving it directly** — it performs the route in process over
+  `httpx.ASGITransport` (no socket, so it cannot reach a backend on :8001), binds
+  path parameters, treats only 2xx as `performed`, reports an honest failure
+  otherwise, and refuses to dispatch at the call gate's own route rather than
+  recursing endlessly;
+- the seam's `http` branch keeps reporting `not_dispatched` — exactly what `T02`
+  already shipped for every kind, so nothing regresses and nothing claims to have
+  run — with the reason in the function's own docstring;
+- `REQ-SB-95-US-03-T03` is therefore `Blocked`, not `Done`: `AC-02`'s
+  "an http implementation is performed by the app" is proved at the unit the task
+  owns and unproved end to end through `POST /actions/{action_id}/call`.
+
+**What is needed:** authorise `src/backend/tests/test_action_invocation_gate.py`
+into `T03`'s `## Files to Modify`. The change is small and is already specified:
+(a) in the valid-call test, replace the two transitional assertions with
+`performed` and the real result; (b) in the wildcard test, stop pointing a test
+Action at the real `/vault-index/refresh` — `tests/test_action_dispatch.py`
+already registers a harmless test-only target route that can be reused. Then one
+line routes the seam's `http` branch to `_perform_http_implementation()`, and the
+task's remaining two automated steps plus its manual loopback step can be run.
+
+Worth deciding at the same time, because it is the one genuinely new design
+choice here: **`http` is dispatched in process through `httpx.ASGITransport`
+rather than over a loopback socket to `127.0.0.1:8001`.** That is deliberate —
+"performed by the app" then means by THIS app, not by whatever is listening on
+that port, and no test can reach the operator's running backend — but it is a new
+technique in this codebase and is recorded as a judgement call in the task log.
+
+**Resolving artefact:** — (Open)
+
+**Status:** Open
+
+---
