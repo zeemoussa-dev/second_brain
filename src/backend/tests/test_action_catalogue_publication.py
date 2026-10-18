@@ -50,10 +50,16 @@ from app.business.core.agents.agent_manager import (
     _ACTION_CATALOGUE_BEGIN,
     _ACTION_CATALOGUE_END,
     AgentManager,
+    _rewrite_soul,
     _split_soul_sections,
 )
 
 A_REAL_ROUTE = ("POST", "/vault-index/refresh")
+# Deliberately a soul that `_soul_text()` could not reproduce: prose inside
+# `## Scope` beside the two lines this app parses, and a final newline. Until
+# 2026-10-18 this constant was the composed form exactly, so the "byte-
+# identical outside the block" assertion below could not fail however lossy
+# the write path was -- and it was (`BUG-093`).
 HAND_AUTHORED_SOUL = (
     "You are the Customer Expert.\n\n"
     "## Scope boundary\n\n"
@@ -61,8 +67,9 @@ HAND_AUTHORED_SOUL = (
     "## Guardrails\n\n"
     "Never invent a number.\n\n"
     "## Scope\n\n"
+    "Everything ADNOC, and ask before you widen it.\n\n"
     "Folders: Customers\n"
-    "Tags: adnoc"
+    "Tags: adnoc\n"
 )
 
 
@@ -141,9 +148,15 @@ def souls(monkeypatch) -> dict:
 
     Stands in for Hermes at the three seams publication actually uses
     -- read one agent, read the roster, write one agent's SOUL -- and
-    composes/splits through AgentManager's own real `_soul_text` and
-    `_split_soul_sections`, so what a test reads back is what a real
+    reads/writes through AgentManager's own real `_split_soul_sections`
+    and `_rewrite_soul`, so what a test reads back is what a real
     profile would hold.
+
+    The write goes through `_rewrite_soul` rather than `_soul_text`
+    because that is what `update()` really does since 2026-10-18. It
+    used to compose the file out of the three parsed fields, which is
+    the defect itself (`BUG-093`) -- a stand-in built on it could only
+    ever prove the block, never that the file around it survived.
     """
     store = {"customer-expert": HAND_AUTHORED_SOUL, "note-taker": "You are the Note Taker."}
 
@@ -162,14 +175,13 @@ def souls(monkeypatch) -> dict:
         return [read_one(self, agent_id) for agent_id in sorted(store)]
 
     def write_one(self: AgentManager, agent_id: str, **fields: object) -> Agent | None:
-        agent = read_one(self, agent_id)
-        if agent is None:
+        if read_one(self, agent_id) is None:
             return None
-        store[agent_id] = AgentManager._soul_text(
-            self, agent.name,
-            fields.get("prompt", agent.prompt),
-            fields.get("guardrails", agent.guardrails),
-            fields.get("scope", agent.scope),
+        store[agent_id] = _rewrite_soul(
+            store[agent_id],
+            prompt=fields.get("prompt"),
+            guardrails=fields.get("guardrails"),
+            scope=fields.get("scope"),
         )
         return read_one(self, agent_id)
 
