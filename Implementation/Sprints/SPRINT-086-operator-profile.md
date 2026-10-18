@@ -77,7 +77,7 @@ bidirectional link, written at sprint creation. Order by implementation dependen
 
 | Story | Title | Phase | Status |
 |---|---|---|---|
-| [REQ-SB-95-US-01](../UserStories/REQ-SB-95-US-01-operator-profile.md) | Operator Profile — one record of who the agent acts for, published into every agent's context | P2 | In Progress (`T01`, `T03` and `T05` Done 2026-10-18; `T02` and `T04` remain) |
+| [REQ-SB-95-US-01](../UserStories/REQ-SB-95-US-01-operator-profile.md) | Operator Profile — one record of who the agent acts for, published into every agent's context | P2 | In Progress (`T01`, `T02`, `T03` and `T05` Done 2026-10-18; `T04` remains) |
 
 Build order inside the sprint, read from the task files' own `depends_on`:
 `T01 → (T02, T03)`, `T02 → T04`, `T03 → T05`.
