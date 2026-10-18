@@ -407,7 +407,11 @@ class AgentManager:
         `SkillManager` calls `publish_section_access_map()` on every
         deploy/undeploy (`ADR-033`) -- publication is derived and
         triggered by the catalogue, never remembered by a caller and
-        never hand-copied into a prompt.
+        never hand-copied into a prompt. `ActionManager` fires it on a
+        background thread and does not wait (operator, 2026-10-18): a
+        roster-wide pass costs ~2.7s per agent, which a save must not
+        pay. This method itself is plain and blocking; the deciding not
+        to wait belongs to the trigger, not here.
 
         "Every affected agent" is computed rather than guessed: an
         edit to `allowed_callers` affects the agent it was removed from

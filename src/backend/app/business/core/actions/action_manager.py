@@ -26,10 +26,10 @@ Two rules this file deliberately does and does not own:
 - **It owns the publication trigger, not the published text.**
   `publish_action_catalogue()` below is that trigger (REQ-SB-95-US-03-T01,
   ADR-033); the block itself is AgentManager's, beside the two
-  auto-generated ones it already owns. **It is deliberately NOT called
-  from create/update/delete yet** -- see that function's own docstring
-  for the measured reason and the escalation that has to be answered
-  first.
+  auto-generated ones it already owns. create(), update() and delete()
+  each fire it IN THE BACKGROUND and return at once (operator,
+  2026-10-18) -- see `publish_action_catalogue_in_background()` for why
+  a save must not wait on a roster-wide republication.
 - **It does not cache the read side.** resolution_report() recomputes
   every Action's status from those same live sources on every call:
   what an Action points at is undeployed, unmounted or unregistered by
@@ -48,6 +48,7 @@ zero raw file calls, only entity shaping and the cardinality rule.
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Mapping
@@ -161,18 +162,10 @@ def publish_action_catalogue() -> list[str]:
 
     The one trigger seam -- the same shape `SkillManager` uses when it
     calls `publish_section_access_map()` on every deploy and undeploy
-    (`ADR-033`).
-
-    **NOT yet called from create()/update()/delete(), and that is the
-    open half of REQ-SB-95-US-03-T01** (ESCALATIONS.md, 2026-10-18).
-    Publication rewrites the real SOUL.md of every agent the change
-    affects, and this suite has no Hermes sandbox: with the three write
-    paths wired, the four existing Action test files -- which isolate
-    the Action store and nothing else -- made 123 real SOUL.md writes
-    across all 41 profiles of the install they ran on (measured, not
-    estimated). Isolating them is outside this task's files, so the
-    wiring waits on that decision rather than shipping a suite that
-    corrupts the machine running it.
+    (`ADR-033`). Synchronous and blocking: create/update/delete reach
+    it through `publish_action_catalogue_in_background()` below, while
+    a caller that genuinely needs the roster republished before it
+    continues calls this one directly.
 
     A publication that cannot run must not fail the save that triggers
     it: the Action is already written, the gate validates against the
@@ -194,6 +187,72 @@ def publish_action_catalogue() -> list[str]:
             exc_info=True,
         )
         return []
+
+
+_background_publications: list[threading.Thread] = []
+_background_publications_lock = threading.Lock()
+
+
+def publish_action_catalogue_in_background() -> threading.Thread:
+    """Starts a republication pass and returns at once, naming the
+    thread it started.
+
+    **Operator decision, 2026-10-18: saving an Action must not block on
+    republication.** Publication goes through `AgentManager.update()`,
+    which reloads the Registry per agent -- measured at ~2.7s each, so
+    one `allowed_callers: ["*"]` Action would otherwise hold a save open
+    for ~110s across a 41-profile install. The accepted consequence is
+    that for a few seconds after a save an agent's SOUL.md may still
+    name the old catalogue; an agent reads it once per conversation, not
+    per second, and `ADR-033`'s gate reads the live catalogue and never
+    this text, so the window can mislead but can never let a call
+    through.
+
+    Same shape as the vault index rebuild this app already fires and
+    never waits for (`main.py`'s `asyncio.to_thread(rebuild_index)`):
+    the blocking, I/O-heavy pass runs on a worker thread and nothing
+    joins it. A plain thread rather than that call's
+    `asyncio.create_task` wrapper because this is reached from
+    synchronous code -- a `def` route handler already running in
+    Starlette's own threadpool has no event loop of its own to schedule
+    onto.
+
+    Started threads are remembered so a process that is about to be
+    reconfigured can wait for the passes already in flight
+    (`join_background_publications()`); finished ones are dropped on
+    every call, so the list cannot grow with the catalogue's history.
+    """
+    publication = threading.Thread(
+        target=publish_action_catalogue,
+        name="publish-action-catalogue",
+        daemon=True,
+    )
+    with _background_publications_lock:
+        _background_publications[:] = [t for t in _background_publications if t.is_alive()]
+        _background_publications.append(publication)
+        # Started while holding the lock so a concurrent joiner can never
+        # see a tracked-but-not-yet-started thread, which it would skip as
+        # "not alive" and then wrongly report as finished.
+        publication.start()
+    return publication
+
+
+def join_background_publications(timeout: float = 30.0) -> bool:
+    """Waits for every publication pass already in flight; True when
+    they all finished inside `timeout`.
+
+    Nothing on the request path calls this -- the whole point of the
+    decision above is that nothing waits. It exists for the callers for
+    which an in-flight pass is a hazard rather than a nicety: the test
+    suite, whose Hermes sandbox is torn down per test, so a pass
+    outliving it would come back to life pointed at the operator's real
+    install.
+    """
+    with _background_publications_lock:
+        in_flight = [t for t in _background_publications if t.is_alive()]
+    for publication in in_flight:
+        publication.join(timeout)
+    return not any(t.is_alive() for t in in_flight)
 
 
 class _ResolutionSources:
@@ -454,7 +513,11 @@ class ActionManager:
     ) -> Action:
         """Raises ActionImplementationCardinalityError or
         ActionImplementationUnresolvedError BEFORE anything is written,
-        so a refused save leaves no half-catalogued Action."""
+        so a refused save leaves no half-catalogued Action.
+
+        Republication is fired only once the write has really happened,
+        so a refused save never pushes a catalogue the operator does not
+        have into any agent's SOUL.md."""
         self._require_resolvable_implementation(implementation)
         definition = {
             "id": action_id,
@@ -467,6 +530,7 @@ class ActionManager:
             "updated_at": None,
         }
         actions_data.write_action_json(action_id, definition)
+        publish_action_catalogue_in_background()
         return self.get_by_id(action_id)
 
     def update(
@@ -505,6 +569,7 @@ class ActionManager:
 
         data["updated_at"] = datetime.now(timezone.utc).isoformat()
         actions_data.write_action_json(action_id, data)
+        publish_action_catalogue_in_background()
         return self.get_by_id(action_id)
 
     def import_action(self, action_id: str, data: Mapping[str, Any]) -> Action:
@@ -530,4 +595,8 @@ class ActionManager:
         if self.get_by_id(action_id) is None:
             return {"deleted": False}
         actions_data.delete_action_definition(action_id)
+        # Only on a real deletion: a {"deleted": False} for an id this
+        # install never had changed no catalogue, so republishing on it
+        # would rewrite every agent's SOUL.md for nothing.
+        publish_action_catalogue_in_background()
         return {"deleted": True}

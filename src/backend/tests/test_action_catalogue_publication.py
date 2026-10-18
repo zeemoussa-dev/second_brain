@@ -7,12 +7,23 @@ AgentManager already owns, and it is regenerated FROM the catalogue --
 per agent, filtered by `allowed_callers`, idempotently, and removed
 entirely for an agent that may call nothing.
 
-Each test drives `AgentManager.publish_action_catalogue()` explicitly.
-The automatic trigger on `ActionManager.create()`/`update()`/`delete()`
-is the open half of this task and is deliberately not wired yet
-(ESCALATIONS.md, 2026-10-18: publication rewrites every affected
-agent's REAL SOUL.md, and this suite has no Hermes sandbox), so there
-is no test here pretending otherwise.
+The file is in two halves. The first drives
+`AgentManager.publish_action_catalogue()` explicitly and is what proves
+the block itself; those tests silence the automatic trigger
+(`publication_is_explicit_only`), because a catalogue edit now fires a
+background pass of its own and a test asserting "this is what MY
+publication did" must not be racing one it did not start.
+
+The second half is the trigger: that `ActionManager.create()`,
+`update()` and `delete()` each fire publication so no caller has to
+remember to, that the pass really reaches the agents, and that the save
+returns without waiting for it (the operator's 2026-10-18 decision --
+a roster-wide republication costs ~2.7s per agent and a save must not
+pay it).
+
+Nothing here can reach the operator's own Hermes install: `tests/
+conftest.py` points `hermes_home_path` at a directory that does not
+exist and joins every background publication before restoring it.
 
 Hermes is stood in for by an in-memory SOUL.md store rather than
 mocked method-by-method: publication is a round trip (read the real
@@ -25,9 +36,15 @@ The Action store and the three resolution sources are monkeypatched
 exactly as tests/test_action_resolution.py does them, so the catalogue
 under test is this test's, never whatever the machine has saved.
 """
+import threading
+
 import pytest
 
-from app.business.core.actions.action_manager import ActionManager
+from app.business.core.actions import action_manager as action_manager_module
+from app.business.core.actions.action_manager import (
+    ActionImplementationCardinalityError,
+    ActionManager,
+)
 from app.business.core.agents.agent import Agent
 from app.business.core.agents.agent_manager import (
     _ACTION_CATALOGUE_BEGIN,
@@ -64,6 +81,23 @@ def resolvable(monkeypatch):
     )
     monkeypatch.setattr(
         "app.business.core.actions.action_manager.UI_FEATURE_KEYS", (),
+    )
+
+
+@pytest.fixture
+def publication_is_explicit_only(monkeypatch):
+    """The automatic trigger, off -- for the tests that drive
+    publication themselves.
+
+    Not a convenience: `create()`/`update()`/`delete()` each start a
+    background pass, so a test that saves three Actions and then asks
+    "what did my own publication change?" would otherwise be answered
+    by whatever those three passes had already finished doing. The
+    trigger has its own tests below, where it is the subject rather
+    than the weather.
+    """
+    monkeypatch.setattr(
+        action_manager_module, "publish_action_catalogue_in_background", lambda: None,
     )
 
 
@@ -193,7 +227,9 @@ def _publish() -> list[str]:
     return AgentManager().publish_action_catalogue()
 
 
-def test_an_agents_block_lists_exactly_what_that_agent_may_call(stored_actions, souls) -> None:
+def test_an_agents_block_lists_exactly_what_that_agent_may_call(
+    stored_actions, souls, publication_is_explicit_only,
+) -> None:
     """[REQ-SB-95-US-03-AC-01] Three Actions, two of which permit
     `customer-expert` -- one by explicit id, one by `["*"]`. Its block
     names those two with their descriptions, inputs and required flags
@@ -219,7 +255,9 @@ def test_an_agents_block_lists_exactly_what_that_agent_may_call(stored_actions, 
     assert "do not hand-edit" in block
 
 
-def test_an_agent_permitted_to_call_nothing_carries_no_block_at_all(stored_actions, souls) -> None:
+def test_an_agent_permitted_to_call_nothing_carries_no_block_at_all(
+    stored_actions, souls, publication_is_explicit_only,
+) -> None:
     """[REQ-SB-95-US-03-AC-01] No empty shell: neither marker appears.
     A heading announcing a catalogue with nothing under it would read
     to an agent as "this app can do nothing", which is a different
@@ -239,7 +277,7 @@ def test_an_agent_permitted_to_call_nothing_carries_no_block_at_all(stored_actio
 
 
 def test_republishing_replaces_its_own_block_and_leaves_everything_else_untouched(
-    stored_actions, souls,
+    stored_actions, souls, publication_is_explicit_only,
 ) -> None:
     """[REQ-SB-95-US-03-AC-08] Add, edit and delete an Action, each
     followed by a republication. Exactly one marker pair survives, the
@@ -281,7 +319,9 @@ def test_republishing_replaces_its_own_block_and_leaves_everything_else_untouche
     assert "Folders: Customers" in souls["customer-expert"]
 
 
-def test_a_deleted_action_disappears_from_every_agent_that_listed_it(stored_actions, souls) -> None:
+def test_a_deleted_action_disappears_from_every_agent_that_listed_it(
+    stored_actions, souls, publication_is_explicit_only,
+) -> None:
     """[REQ-SB-95-US-03-AC-08] A wildcard Action is in both agents'
     blocks; deleting it has to leave neither of them still offering
     it."""
@@ -302,7 +342,7 @@ def test_a_deleted_action_disappears_from_every_agent_that_listed_it(stored_acti
 
 
 def test_one_agent_failing_to_publish_does_not_stop_the_rest(
-    stored_actions, souls, monkeypatch,
+    stored_actions, souls, monkeypatch, publication_is_explicit_only,
 ) -> None:
     """[REQ-SB-95-US-03-AC-08] A profile Hermes refuses to write leaves
     that one agent's block stale -- which ADR-033 accepts, since the
@@ -321,3 +361,102 @@ def test_one_agent_failing_to_publish_does_not_stop_the_rest(
     assert _publish() == ["note-taker"]
     assert souls["customer-expert"] == HAND_AUTHORED_SOUL
     assert "`archive-the-mailbox`" in _block_of(souls["note-taker"])
+
+
+def test_create_update_and_delete_each_fire_publication(stored_actions, monkeypatch) -> None:
+    """[REQ-SB-95-US-03-AC-08] Every catalogue write triggers a
+    republication, so editing the catalogue IS the whole operation --
+    no route, script or future caller has to remember a second step.
+
+    A refused save and a delete of an id this install never had fire
+    nothing: neither changed the catalogue, so republishing on them
+    would rewrite every agent's SOUL.md to say exactly what it already
+    said."""
+    fired: list[str] = []
+    monkeypatch.setattr(
+        action_manager_module, "publish_action_catalogue_in_background",
+        lambda: fired.append("published"),
+    )
+    manager = ActionManager()
+
+    manager.create(
+        "refresh-the-index",
+        description="Rebuild the vault index now",
+        allowed_callers=["*"],
+        implementation={"http": {"method": "POST", "path": "/vault-index/refresh"}},
+    )
+    assert fired == ["published"], "create() publishes"
+
+    manager.update("refresh-the-index", description="Rebuild it now")
+    assert fired == ["published"] * 2, "update() publishes"
+
+    manager.delete("refresh-the-index")
+    assert fired == ["published"] * 3, "delete() publishes"
+
+    assert manager.delete("never-existed") == {"deleted": False}
+    assert manager.update("never-existed", description="nothing") is None
+    with pytest.raises(ActionImplementationCardinalityError):
+        manager.create("no-implementation", allowed_callers=["*"], implementation={})
+    assert fired == ["published"] * 3, "nothing that changed no catalogue republishes"
+
+
+def test_saving_an_action_really_reaches_the_agents_with_no_explicit_publish(
+    stored_actions, souls,
+) -> None:
+    """[REQ-SB-95-US-03-AC-08] End to end through the real background
+    thread: the only call this test makes is the save, and the agents'
+    own SOUL text carries the change afterwards."""
+    ActionManager().create(
+        "open-the-thread",
+        description="Open an email thread",
+        allowed_callers=["*"],
+        implementation={"http": {"method": "POST", "path": "/vault-index/refresh"}},
+    )
+    assert action_manager_module.join_background_publications(timeout=30.0)
+
+    assert "`open-the-thread`" in _block_of(souls["customer-expert"])
+    assert "`open-the-thread`" in _block_of(souls["note-taker"])
+    assert "## Scope boundary\n\nOnly ADNOC." in souls["customer-expert"], (
+        "the hand-authored text is still there afterwards"
+    )
+
+    ActionManager().delete("open-the-thread")
+    assert action_manager_module.join_background_publications(timeout=30.0)
+
+    assert _ACTION_CATALOGUE_BEGIN not in souls["customer-expert"]
+    assert souls["customer-expert"] == HAND_AUTHORED_SOUL
+
+
+def test_saving_an_action_returns_without_waiting_for_the_republication(
+    stored_actions, monkeypatch,
+) -> None:
+    """[REQ-SB-95-US-03-AC-08] The operator's 2026-10-18 decision, made
+    observable: publication goes through `AgentManager` at ~2.7s per
+    agent, so a wildcard Action would hold a save open ~110s across a
+    41-profile install. `create()` has to come back while the pass is
+    still running, not after it."""
+    publication_started = threading.Event()
+    let_publication_finish = threading.Event()
+    publication_finished = threading.Event()
+
+    def slow_publication() -> list[str]:
+        publication_started.set()
+        let_publication_finish.wait(timeout=30.0)
+        publication_finished.set()
+        return []
+
+    monkeypatch.setattr(action_manager_module, "publish_action_catalogue", slow_publication)
+
+    ActionManager().create(
+        "refresh-the-index",
+        description="Rebuild the vault index now",
+        allowed_callers=["*"],
+        implementation={"http": {"method": "POST", "path": "/vault-index/refresh"}},
+    )
+
+    assert publication_started.wait(timeout=10.0), "the pass really ran"
+    assert not publication_finished.is_set(), "create() returned before it finished"
+
+    let_publication_finish.set()
+    assert action_manager_module.join_background_publications(timeout=30.0)
+    assert publication_finished.is_set()

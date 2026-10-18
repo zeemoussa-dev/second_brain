@@ -36,12 +36,19 @@ sandbox was applied would keep the real home for the rest of the session.
 A test that wants a Hermes install monkeypatches `settings.hermes_home_path`
 to its own `tmp_path` as usual -- that patch is applied after this fixture and
 undone before it, so nothing here gets in its way (several already do).
+
+The teardown join is not housekeeping. Catalogue publication runs on a
+background thread that nothing waits for, so without it a pass started late in
+a test would still be running when this fixture restored the REAL home path --
+and would then publish into the operator's install, which is the exact
+accident the sandbox exists to prevent, merely delayed by a race.
 """
 from __future__ import annotations
 
 import pytest
 
 import app.business.hermes.client as hermes_client_module
+from app.business.core.actions import action_manager
 from app.config import settings
 from app.hermes.cli import HermesCLI
 
@@ -53,3 +60,4 @@ def hermes_install_is_sandboxed(tmp_path_factory, monkeypatch):
     monkeypatch.setattr(HermesCLI, "_hermes_exe", lambda self: None)
     monkeypatch.setattr(hermes_client_module, "_client", None)
     yield
+    action_manager.join_background_publications(timeout=30.0)
