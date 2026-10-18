@@ -296,14 +296,36 @@ class HermesCLI:
         return self._run(args, timeout=60.0)
 
     # -- Tools (per-profile toolset enable/disable) ---------------------
+    def read_tools(self, profile_id: str | None = None) -> tuple[bool, dict[str, bool], str]:
+        """Real `hermes [-p <profile>] tools list`, with the read's own
+        success kept separate from its result: (succeeded, {toolset:
+        enabled}, message). A profile with nothing enabled is
+        (True, {}, "") and a failed read is (False, {}, "<the real
+        reason>") -- `list_tools()` collapses both into {}, which is a
+        screen saying "no toolsets enabled" when the truth is "we could
+        not find out" (ADR-043's third failure; US-01 Scenario 6).
+
+        One `_run` call, exactly as `list_tools` always made: a failure
+        is returned, never retried -- `hermes tools list` is a
+        subprocess spawn per profile and BUG-086 is the measured
+        precedent for what an unwatched read path costs.
+
+        Never raises and never fabricates a toolset: `_run` already
+        reports a missing install or a timeout as an ordinary failure,
+        and the message here is its own captured text."""
+        success, output = self._run(self._profile_args(profile_id) + ["tools", "list"])
+        if not success:
+            return False, {}, output
+        return True, {name: status == "enabled" for status, name in _TOOL_LINE_RE.findall(output)}, ""
+
     def list_tools(self, profile_id: str | None = None) -> dict[str, bool]:
         """Real `hermes [-p <profile>] tools list` -- {toolset_name:
         enabled}. Empty dict on a real failure (missing install, profile
-        not found), never fabricated."""
-        success, output = self._run(self._profile_args(profile_id) + ["tools", "list"])
-        if not success:
-            return {}
-        return {name: status == "enabled" for status, name in _TOOL_LINE_RE.findall(output)}
+        not found), never fabricated. Callers that must tell that
+        failure apart from "nothing is enabled" want `read_tools()`;
+        this keeps its exact shape for the three that do not (ADR-014's
+        same-shape extension)."""
+        return self.read_tools(profile_id)[1]
 
     def enable_tools(self, names: list[str], profile_id: str | None = None) -> tuple[bool, str]:
         if not names:
