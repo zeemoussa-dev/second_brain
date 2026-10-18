@@ -770,3 +770,42 @@ Two things make this worth more than an unblock. First, the fixture is needed **
 **Status:** Resolved
 
 ---
+
+## ESC-076: adding the seventh artifact kind needs a sixth `artifact_*.py` module that `REQ-SB-95-US-04-T04`'s scope does not name — 2026-10-18
+
+**Raised by:** the orchestrator, from a failure another session's task reported mid-flight.
+
+**What happened:** `REQ-SB-95-US-04-T04` adds `workflow` to the five
+`business/logic/artifact_*.py` modules its `## Files to Modify` names. A sixth module in
+the same family, `artifact_import_conflicts.py`, carries `_MANAGER_BY_KIND` and is not in
+the list. With `workflow` in the export's `_PAYLOAD_FOLDER` and absent from that map,
+`test_action_artifact_kind.py::test_the_gate_accepts_every_kind_the_export_can_emit` fails
+— the test that exists to catch precisely this drift. `REQ-SB-95-US-01-T01`, running
+concurrently in the shared checkout, hit the failure in its own suite run, correctly
+identified it as not its own, and left it alone.
+
+**Resolution (2026-10-18):** authorised. `src/backend/app/business/logic/artifact_import_conflicts.py`
+is added to `REQ-SB-95-US-04-T04`'s `## Files to Modify`, scoped to the one
+`_MANAGER_BY_KIND` entry. `test_action_artifact_kind.py` stays out of scope and is not to
+be edited — it should go green on its own, and if it does not, that is a new escalation.
+
+**This is the third variant of one rule in two days.** `ESC-069`/`071`/`072`/`073`/`074`
+gave "name the switch-on site"; `ESC-075` gave its mirror, "name the fixtures your change
+invalidates"; this one gives the cheapest of the three — *enumerate a family of sibling
+modules from the directory, not from memory.* Five of six were listed, and a one-line glob
+would have found the sixth. `.claude/agents/decomposer.md` now carries all three.
+
+**Two things worth recording beyond the unblock.** The drift was caught by an existing
+test within the hour rather than at review, which is the `test_*_artifact_kind.py` guard
+family working as designed. And it surfaced through a *concurrent* task's suite run, which
+is the first time the shared checkout's multi-session traffic has produced useful
+cross-checking rather than interference.
+
+**MEMORY.md candidate, deliberately not appended:** `MEMORY.md` is 86 KB against the 40 KB
+budget its own rule 1 sets, and that rule forbids appending while over budget. The rule
+lives in `.claude/agents/decomposer.md`, which is where it is actually read. Recorded here
+so the compaction pass can pick it up.
+
+**Resolving artefact:** `REQ-SB-95-US-04-T04` scope extension + decomposer rule, 2026-10-18
+
+**Status:** Resolved

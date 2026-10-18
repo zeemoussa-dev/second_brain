@@ -112,6 +112,14 @@ task adds validation, the file holding the now-invalid fixtures belongs in its
 `## Files to Modify` exactly as the switch-on site does. The tell is the same: the task
 adds a constraint, and someone else's test data predates it.
 
+**The third variant, and the one a directory listing would have caught:** *when a task
+adds a case to a FAMILY of sibling modules, enumerate the family from the directory
+rather than from memory.* `ESC-076` — a task adding the seventh artifact kind listed
+five of the six `business/logic/artifact_*.py` modules that enumerate kinds, and the
+sixth made an unrelated test fail within the hour. A glob is cheap and memory is not
+reliable: when the task's phrasing is "add X everywhere Y is handled", run the search
+that finds every Y and paste the result into the list.
+
 ### Structural ACs for screen / frontend stories
 
 For any story that builds or changes a screen, the **durable design layer** — which

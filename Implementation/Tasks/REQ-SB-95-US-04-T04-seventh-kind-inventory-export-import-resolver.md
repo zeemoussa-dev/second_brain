@@ -156,3 +156,21 @@ by `REQ-SB-95-US-02-T04`.
 ## Implementation Log
 
 _(Filled in by the coder.)_
+
+---
+
+## Scope extension — 2026-10-18 (unblocks `ESC-076`)
+
+**Added to `## Files to Modify`:** `src/backend/app/business/logic/artifact_import_conflicts.py`
+— the `_MANAGER_BY_KIND` entry only.
+
+That module is the **sixth** `business/logic/artifact_*.py` file that enumerates
+artifact kinds; this task's list named the other five. Adding `workflow` to the
+export side without it makes
+`test_action_artifact_kind.py::test_the_gate_accepts_every_kind_the_export_can_emit`
+fail — that test exists to catch exactly this drift, and it is doing its job. Add
+`"workflow": WorkflowManager` to the map and that test goes green again; **do not edit
+the test**, and do not touch anything else in the conflicts module.
+
+`test_action_artifact_kind.py` itself stays out of scope. If it needs a change beyond
+going green on its own, stop and escalate.
