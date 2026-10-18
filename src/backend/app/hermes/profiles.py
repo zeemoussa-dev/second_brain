@@ -127,6 +127,23 @@ def _read_file_as_written(path: Path) -> tuple[str, str | None, str]:
         return FILE_IS_UNREADABLE, None, _file_error_text(unreadable, path)
 
 
+def _existing_newline(path: Path) -> str | None:
+    """The line ending this file already uses, as `open(newline=...)` wants
+    it -- or None (translate to the platform's own) for a file that does not
+    exist yet or has no line ending to go on. A file of mixed endings is
+    written in whichever it has more of; there is no third answer that keeps
+    a mixed file byte-identical anyway."""
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return None
+    carriage_returns = raw.count(b"\r\n")
+    bare_newlines = raw.count(b"\n") - carriage_returns
+    if carriage_returns == bare_newlines == 0:
+        return None
+    return "\r\n" if carriage_returns > bare_newlines else "\n"
+
+
 def _first_sentence(text: str, max_len: int = 140) -> str:
     """The real first sentence of `text` -- never fabricated, just a
     genuine excerpt. Falls back to a length-capped prefix if no
@@ -350,10 +367,24 @@ class HermesProfiles:
         """No CLI equivalent exists for this -- SOUL.md is genuinely
         just a file Hermes reads at session-creation time (MEMORY.md's
         own documented "injected once, never re-read mid-conversation"
-        constraint)."""
+        constraint).
+
+        Written back in the line endings the file already had. `read_soul()`
+        reads in universal-newline mode, so everything upstream works in
+        `\\n` whatever the file holds; writing in the default mode then
+        turns every one of those back into `\\r\\n` on Windows, which
+        rewrites every line of a file that was LF -- silently, and for a
+        caller that only meant to change one section (`BUG-093`'s invariant:
+        a write that changes only the prompt leaves every other byte of the
+        file identical). Measured on the reporting install, 2026-10-18: 21 of
+        its 40 profiles are LF, and all 8 this app has published into are
+        CRLF -- so the conversion is not hypothetical, it is just invisible
+        once it has happened.
+        """
         profile_dir = self._profile_dir(agent_id)
         profile_dir.mkdir(parents=True, exist_ok=True)
-        (profile_dir / "SOUL.md").write_text(content, encoding="utf-8")
+        soul_path = profile_dir / "SOUL.md"
+        soul_path.write_text(content, encoding="utf-8", newline=_existing_newline(soul_path))
 
     def update(self, agent_id: str, config_patch: dict) -> HermesAgent | None:
         """Deep-merges `config_patch` into the profile's own config.yaml
