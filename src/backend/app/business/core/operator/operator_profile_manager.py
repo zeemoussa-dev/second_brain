@@ -32,15 +32,22 @@ Three rules this file owns, and one it refuses to own:
   `setup_wizard.sync_settings_to_hermes(...)`. Changing the setting on
   Settings > System changes what the next `get()` returns, with no save
   in between.
-- **It does not own the publication.** Pushing these facts into every
-  agent's SOUL.md is `REQ-SB-95-US-01-T02`'s, beside the marker blocks
-  AgentManager already owns, and the routes are `T03`'s.
+- **It owns the publication TRIGGER, not the published text**
+  (`REQ-SB-95-US-01-T02`, `ADR-036`). `save()` fires
+  `publish_operator_profile_in_background()`, the same shape
+  `ActionManager`/`WorkflowManager` use for their own catalogues, so no
+  route, script or future caller has to remember a second step --
+  editing the Profile IS the whole operation. What the block SAYS, and
+  the one-pass/one-reload walk that writes it, are `AgentManager`'s,
+  beside the marker blocks it already owns. The routes are `T03`'s.
 
 Raw I/O lives entirely in `data_access/operator_profile.py` -- this file
 holds zero path building and zero JSON calls, only entity shaping.
 """
 from __future__ import annotations
 
+import logging
+import threading
 from typing import Any, Mapping
 
 from app.business.core.operator.operator_profile import (
@@ -50,6 +57,113 @@ from app.business.core.operator.operator_profile import (
 )
 from app.config import settings
 from app.data_access import operator_profile as operator_profile_data
+
+_logger = logging.getLogger(__name__)
+
+
+def publish_operator_profile() -> list[str]:
+    """Pushes the operator's facts into every agent's own context,
+    blocking, and names the agents whose SOUL.md really changed.
+
+    The one trigger seam, the same shape `ActionManager` and
+    `WorkflowManager` use for their catalogues (`ADR-036`). A
+    publication that cannot run must not fail the save that triggered
+    it: the Profile is already written, nothing is enforced against this
+    text, and the next save republishes it -- so the honest failure mode
+    is one install's agents describing the operator as they were
+    described before, said loudly in the log.
+
+    `AgentManager` is imported inside the function on purpose -- it
+    imports this module back to read the Profile it publishes.
+    """
+    from app.business.core.agents.agent_manager import AgentManager
+
+    try:
+        return AgentManager().publish_operator_profile()
+    except Exception:
+        _logger.warning(
+            "the Operator Profile was saved but could not be republished into agent context; "
+            "every agent's block is now stale until the next save",
+            exc_info=True,
+        )
+        return []
+
+
+_background_publications: list[threading.Thread] = []
+_background_publications_lock = threading.Lock()
+
+
+def _publish_into(install: object) -> list[str]:
+    """One publication pass, run only if this process is still pointed at
+    the install the pass was started for.
+
+    Both halves of "the install" are checked, because this pass spans
+    both: it reads the Profile from `second_brain_data_path` and writes
+    it into the profiles under `hermes_home_path`. Either can be
+    reconfigured while the app runs (`REQ-SB-89`'s setup wizard) and
+    nothing waits for a publication pass, so a pass in flight across a
+    reconfiguration would otherwise write one operator's name and team
+    into another install's agents.
+    """
+    if (settings.hermes_home_path, settings.second_brain_data_path) != install:
+        _logger.warning(
+            "an Operator Profile publication was started for the install at %r and this process "
+            "is now pointed at %r; it was abandoned rather than published into the second one",
+            tuple(str(part) for part in install),
+            (str(settings.hermes_home_path), str(settings.second_brain_data_path)),
+        )
+        return []
+    return publish_operator_profile()
+
+
+def publish_operator_profile_in_background() -> threading.Thread:
+    """Starts a republication pass and returns at once, naming the thread
+    it started.
+
+    **Saving the Profile must not block on republication** -- the same
+    measurement that produced the operator's 2026-10-18 decision for the
+    Action catalogue applies unchanged: a roster-wide pass rewrites
+    every agent's SOUL.md, which one `PUT /operator/profile` must not
+    hold a screen open for. The accepted consequence is that for a few
+    seconds after a save an agent's block may still name the old team;
+    an agent reads its SOUL.md once per session, not per second.
+
+    Started threads are remembered so a caller that needs the roster to
+    have settled can wait (`join_background_publications()`); finished
+    ones are dropped on every call, so the list cannot grow with the
+    Profile's edit history.
+    """
+    publication = threading.Thread(
+        target=_publish_into,
+        args=((settings.hermes_home_path, settings.second_brain_data_path),),
+        name="publish-operator-profile",
+        daemon=True,
+    )
+    with _background_publications_lock:
+        _background_publications[:] = [t for t in _background_publications if t.is_alive()]
+        _background_publications.append(publication)
+        # Started while holding the lock so a concurrent joiner can never
+        # see a tracked-but-not-yet-started thread, which it would skip as
+        # "not alive" and then wrongly report as finished.
+        publication.start()
+    return publication
+
+
+def join_background_publications(timeout: float = 30.0) -> bool:
+    """Waits for every publication pass already in flight; True when they
+    all finished inside `timeout`.
+
+    Nothing on the request path calls this -- the whole point of the
+    trigger above is that nothing waits. It is for a caller that needs
+    the roster to have settled before looking at it: a test asserting
+    what a save really published, rather than what it had published so
+    far.
+    """
+    with _background_publications_lock:
+        in_flight = [t for t in _background_publications if t.is_alive()]
+    for publication in in_flight:
+        publication.join(timeout)
+    return not any(t.is_alive() for t in in_flight)
 
 
 class OperatorProfileManager:
@@ -79,8 +193,15 @@ class OperatorProfileManager:
         stored. Refusing those instead would make the Profile's own
         guarantee depend on every caller being validated separately;
         dropping them makes it true of the file.
+
+        Publication into every agent's context is fired here and nowhere
+        else (`REQ-SB-95-US-01-T02`): editing the Profile is the only
+        action a human takes, and no route or script has a second step
+        to remember. It is fired AFTER the write, so the pass reads the
+        record that was just saved, and it is not waited for.
         """
         operator_profile_data.write_profile_json(self._owned_record(payload or {}))
+        publish_operator_profile_in_background()
         return self.get()
 
     @staticmethod
