@@ -19,6 +19,15 @@ the set of check folders is not known when that file is written.
 Holding the lock also makes it safe to sweep check folders left behind by a run
 that was killed: with one build at a time, any that exist are nobody's.
 
+**The build is bounded and uses this checkout's own npm.** Serialising builds
+means a single hung build stops every publish and install, so the two ways one
+can hang are closed off. It gets a hard timeout and its whole process tree is
+killed, because npm is a `cmd.exe` shim whose Node child survives being
+orphaned. And npm is resolved from `tools/node/` before PATH: the first npm on
+the operator's PATH is Hermes' bundled Node, which on 2026-10-18 started and
+never ran the build, holding the lock while the backend answered nothing --
+twice, until a worker was killed by hand each time.
+
 Deliberately **stdlib only, and importing nothing from `app`**: the publish
 script loads it by file path without booting the application, and the
 Marketplace calls it while installing from a repository.
@@ -28,6 +37,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -42,6 +52,42 @@ _LOCK_WAIT_SECONDS = 900
 _LOCK_STALE_SECONDS = 1800
 _CHECK_DIR_PREFIX = "__"
 _CHECK_DIR_MARKER = "-check-"
+# A build is tens of seconds. This is not a performance budget, it is the bound
+# on how long a HUNG npm can hold the lock: on 2026-10-18 npm started and never
+# ran the build (a `cmd.exe /c npm.CMD run build` with no Node child under it),
+# and with no timeout here it held the lock while the backend answered nothing
+# for thirteen minutes -- the worker had to be killed by hand, twice.
+_BUILD_TIMEOUT_SECONDS = 600
+
+
+def _npm_executable(frontend_root: Path) -> str | None:
+    """This checkout's own npm first, PATH second.
+
+    PATH is not trustworthy for this: on the operator's machine the first npm on
+    it is Hermes' bundled Node (`AppData/Local/hermes/node/npm.CMD`), which is
+    what hung on 2026-10-18. The repo ships its own Node in `tools/node/` and
+    every launcher puts that first (`tools/use-node.ps1`); this had been the one
+    place that asked PATH instead.
+    """
+    repo_root = Path(frontend_root).resolve().parents[1]
+    for candidate in (repo_root / "tools" / "node" / "npm.cmd", repo_root / "tools" / "node" / "npm"):
+        if candidate.is_file():
+            return str(candidate)
+    return shutil.which("npm") or shutil.which("npm.cmd")
+
+
+def _kill_process_tree(process: subprocess.Popen) -> None:
+    """`process.kill()` is not enough on Windows: npm is a `cmd.exe` shim and
+    the real work is a Node CHILD of it, so killing the shim alone orphans the
+    build -- which is exactly what was found holding the lock (pid 42708, no
+    Node child, still running after its parent was gone)."""
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+            capture_output=True, check=False,
+        )
+    else:
+        process.kill()
 
 
 def check_dir_for(frontend_root: Path, plugin_id: str, purpose: str) -> Path:
@@ -83,11 +129,23 @@ def _holder_is_alive(pid: int) -> bool:
     return True
 
 
-def _holder_pid(lock_path: Path) -> int:
+def _holder(lock_path: Path) -> tuple[int, int]:
+    """`(pid, thread id)` of whoever holds the lock, or `(0, 0)`.
+
+    The thread matters because the backend serves requests from a THREADPOOL:
+    two installs at once share a pid, and refusing the second because "this
+    process already holds it" would turn ordinary concurrency into a failure.
+    Only the same pid AND the same thread is a nested build.
+    """
     try:
-        return int(lock_path.read_text(encoding="ascii").strip() or 0)
-    except (OSError, ValueError):
-        return 0
+        written = lock_path.read_text(encoding="ascii").strip()
+    except OSError:
+        return 0, 0
+    pid, _, thread = written.partition(":")
+    try:
+        return int(pid or 0), int(thread or 0)
+    except ValueError:
+        return 0, 0
 
 
 @contextmanager
@@ -115,12 +173,22 @@ def screen_build_lock(
                 held_for = time.time() - lock_path.stat().st_mtime
             except OSError:
                 continue  # released between the failed create and the stat
+            holder_pid, holder_thread = _holder(lock_path)
+            # Held by this very THREAD: nobody will release it while we wait,
+            # because we are the waiter. Waiting out the window would wedge the
+            # request for fifteen minutes rather than fail. Another thread of
+            # this same process is ordinary concurrency and waits normally.
+            if (holder_pid, holder_thread) == (os.getpid(), threading.get_ident()):
+                raise TimeoutError(
+                    f"{lock_path.name} is already held by this thread (pid {holder_pid}) -- "
+                    "a screen build cannot nest inside another"
+                )
             # A killed build never reaches its `finally`. Two ways to tell: its
             # process is gone (immediate, and this really happens -- a lock from
             # a dead pid was found holding this checkout on 2026-10-18), or the
             # lock is simply too old to believe, which covers a pid the OS has
             # since reused for something unrelated.
-            if not _holder_is_alive(_holder_pid(lock_path)) or held_for > stale_seconds:
+            if not _holder_is_alive(holder_pid) or held_for > stale_seconds:
                 try:
                     lock_path.unlink()
                 except OSError:
@@ -133,7 +201,7 @@ def screen_build_lock(
                 )
             time.sleep(0.25)
             continue
-        os.write(descriptor, str(os.getpid()).encode("ascii"))
+        os.write(descriptor, f"{os.getpid()}:{threading.get_ident()}".encode("ascii"))
         os.close(descriptor)
         break
 
@@ -154,9 +222,9 @@ def build_screens(frontend_root: Path, plugin_id: str, ui_dir: Path, *, purpose:
     frontend_root, ui_dir = Path(frontend_root), Path(ui_dir)
     if not ui_dir.is_dir():
         return None
-    npm = shutil.which("npm") or shutil.which("npm.cmd")
+    npm = _npm_executable(frontend_root)
     if npm is None:
-        return "npm was not found on PATH, so the screens could not be built"
+        return "npm was not found in tools/node or on PATH, so the screens could not be built"
 
     check_dir = check_dir_for(frontend_root, plugin_id, purpose)
     try:
@@ -166,16 +234,46 @@ def build_screens(frontend_root: Path, plugin_id: str, ui_dir: Path, *, purpose:
                     shutil.rmtree(leftover, ignore_errors=True)
             shutil.copytree(ui_dir, check_dir, ignore=shutil.ignore_patterns("node_modules"))
             try:
-                completed = subprocess.run(
-                    [npm, "run", "build"], cwd=frontend_root,
-                    capture_output=True, text=True, encoding="utf-8", errors="replace",
-                )
+                output, timed_out = _run_build(npm, frontend_root)
             finally:
                 shutil.rmtree(check_dir, ignore_errors=True)
     except TimeoutError as waited_too_long:
         return f"the screens could not be built: {waited_too_long}"
 
-    if completed.returncode == 0:
+    if timed_out:
+        return (
+            f"the screens could not be built: npm did not finish within "
+            f"{_BUILD_TIMEOUT_SECONDS}s and was stopped. The build may have hung before "
+            f"starting -- check which npm ran ({npm})."
+        )
+    if output is None:
         return None
-    tail = "\n".join((completed.stdout + completed.stderr).strip().splitlines()[-25:])
+    tail = "\n".join(output.strip().splitlines()[-25:])
     return f"the screens do not build inside this framework:\n{tail}"
+
+
+def _run_build(npm: str, frontend_root: Path) -> tuple[str | None, bool]:
+    """`(None, False)` when the build succeeds, `(output, False)` when it fails,
+    `(None, True)` when it had to be stopped.
+
+    `Popen` rather than `subprocess.run(timeout=...)` so the whole process TREE
+    can be killed: run()'s own timeout kills the direct child, which for npm is
+    a `cmd.exe` shim, and would leave the Node build running and the lock held.
+    """
+    process = subprocess.Popen(
+        [npm, "run", "build"], cwd=str(frontend_root),
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, encoding="utf-8", errors="replace",
+    )
+    try:
+        output, _ = process.communicate(timeout=_BUILD_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        _kill_process_tree(process)
+        try:
+            # Drain what it wrote, briefly: the pipes are closed by the kill, but
+            # a wait with no bound here would reintroduce the hang this prevents.
+            process.communicate(timeout=30)
+        except subprocess.TimeoutExpired:
+            pass
+        return None, True
+    return (None, False) if process.returncode == 0 else (output, False)

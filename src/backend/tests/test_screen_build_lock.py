@@ -10,12 +10,14 @@ out to npm: these pin the ordering, the takeover of a dead holder, and the
 sweep, without a real build.
 """
 import os
+import subprocess
 import threading
 import time
 from pathlib import Path
 
 import pytest
 
+from app.business.core.plugins import screen_build
 from app.business.core.plugins.screen_build import (
     check_dir_for,
     screen_build_lock,
@@ -104,6 +106,84 @@ def test_a_dead_holders_lock_is_taken_over(tmp_path: Path):
     # would block every publish and install from then on.
     with screen_build_lock(tmp_path, wait_seconds=5, stale_seconds=1800):
         assert lock_path.is_file()
+
+
+def test_a_build_cannot_nest_inside_another_on_the_same_thread(tmp_path: Path):
+    # Nobody will release it while we wait, because we are the waiter. Waiting
+    # out the window would wedge the request instead of failing.
+    with screen_build_lock(tmp_path):
+        with pytest.raises(TimeoutError, match="already held by this thread"):
+            with screen_build_lock(tmp_path, wait_seconds=30):
+                pass
+
+
+def test_another_thread_of_the_same_process_waits_rather_than_failing(tmp_path: Path):
+    # The backend serves requests from a THREADPOOL, so two installs at once
+    # share a pid. Keying this check on the pid alone (the first version of it)
+    # turned ordinary concurrency into a failure -- caught by the serialisation
+    # test above, which is exactly that shape.
+    outcome: list[str] = []
+
+    def second():
+        try:
+            with screen_build_lock(tmp_path, wait_seconds=5):
+                outcome.append("acquired")
+        except TimeoutError:
+            outcome.append("refused")
+
+    with screen_build_lock(tmp_path):
+        waiter = threading.Thread(target=second)
+        waiter.start()
+        time.sleep(0.4)
+        assert outcome == []          # still waiting, not refused
+    waiter.join(timeout=10)
+
+    assert outcome == ["acquired"]
+
+
+def test_npm_comes_from_this_checkout_before_PATH(tmp_path: Path):
+    frontend_root = tmp_path / "src" / "frontend"
+    frontend_root.mkdir(parents=True)
+    bundled = tmp_path / "tools" / "node"
+    bundled.mkdir(parents=True)
+    (bundled / "npm.cmd").write_text("@echo off", encoding="utf-8")
+
+    # PATH's first npm on the operator's machine is Hermes' bundled Node, which
+    # hung before starting the build; the repo ships its own in tools/node and
+    # every launcher puts that first.
+    assert screen_build._npm_executable(frontend_root) == str(bundled / "npm.cmd")
+
+
+def test_without_a_bundled_npm_it_falls_back_to_PATH(tmp_path: Path, monkeypatch):
+    frontend_root = tmp_path / "src" / "frontend"
+    frontend_root.mkdir(parents=True)
+    monkeypatch.setattr(screen_build.shutil, "which", lambda name: f"C:/somewhere/{name}")
+
+    assert screen_build._npm_executable(frontend_root) == "C:/somewhere/npm"
+
+
+def test_a_hung_build_is_killed_as_a_tree_and_reported(tmp_path: Path, monkeypatch):
+    killed: list[int] = []
+
+    class HungProcess:
+        pid = 4242
+        returncode = None
+
+        def communicate(self, timeout=None):
+            if not killed:
+                raise subprocess.TimeoutExpired(cmd="npm run build", timeout=timeout)
+            return ("", "")
+
+    monkeypatch.setattr(screen_build.subprocess, "Popen", lambda *a, **k: HungProcess())
+    monkeypatch.setattr(screen_build, "_kill_process_tree", lambda process: killed.append(process.pid))
+
+    output, timed_out = screen_build._run_build("npm", tmp_path)
+
+    # The whole tree, not just the shim: npm is a cmd.exe wrapper and its Node
+    # child outlives being orphaned -- pid 42708 was found still running.
+    assert timed_out is True
+    assert output is None
+    assert killed == [4242]
 
 
 def test_check_dir_sits_at_an_installed_plugins_depth(tmp_path: Path):
