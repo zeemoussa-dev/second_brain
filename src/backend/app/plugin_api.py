@@ -112,16 +112,25 @@ from app.obsidian.notes import long_path
 # reinstall every installed plugin in the same sitting, and expect each install
 # to report `restart_required`.
 #
-# `REQ-SB-95` owes this constant ONE move, 11 -> 12, covering both capabilities
+# `REQ-SB-95` owed this constant ONE move, 11 -> 12, covering both capabilities
 # it added additively: `register_action` (`US-02-T05`) and
 # `register_tag_namespace` (`US-05-T02`). `ADR-037` assigns the single bump to
-# whichever of the two lands last; both are now here, so it is due -- and it is
-# deliberately NOT taken. Taking it safely means republishing and reinstalling
-# every installed plugin in the same sitting, which is outside both tasks'
-# scope, and `REVIEW-QUEUE.md` still carries choosing that sitting as an open
-# decision. Until it is taken, no plugin may declare either capability
-# (`ESC-079`). Taking it is this line, moved to 12, once.
-FRAMEWORK_API = 11
+# whichever of the two lands last. Both landed, and the operator chose this
+# sitting on 2026-10-18 (`ESC-079`, Resolved), so the move is TAKEN here.
+#
+# Five plugins were installed at 11 when it moved and each needs republishing at
+# 12: `action-center`, `azure-cost-manager`, `core42-insight`, `entities`,
+# `my-day`. NONE of them is repaired from this repository. Each has its own
+# `sb-plugins-*` repository, and `src/marketplace/` is a publish target that is
+# never hand-edited -- `scripts/publish_plugin.py <plugin-repo>` is the only
+# sanctioned path (`ADR-022`, `ADR-023`, and that folder's own README). A
+# version folder visible here is the OUTPUT of a republish, never its input,
+# which is why this bump is the operator's call and not a task's.
+#
+# REQ-SB-95 has now spent its one move. A further capability needs its own
+# decision and its own republish sitting -- not a second bump folded into
+# whatever task happens to add it.
+FRAMEWORK_API = 12
 
 _logger = logging.getLogger(__name__)
 

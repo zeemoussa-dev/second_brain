@@ -1060,4 +1060,18 @@ the task that earns the bump. A task that "takes the bump" delivers the capabili
 and the owed note, and the operator takes the constant.* Held here for the
 compaction pass.
 
-**Status:** Open
+**Resolution (2026-10-18):** the operator chose this sitting and instructed the bump together with a republish request to every plugin. `FRAMEWORK_API` is now **12** in `src/backend/app/plugin_api.py`, and the comment above it records that `REQ-SB-95` has spent its one move -- a further capability needs its own decision and its own sitting, not a second bump folded into whatever task adds it.
+
+**The coder was right to refuse, and right on every fact.** The planning documents were four versions stale (task, architecture section and `ADR-037` all said 7 -> 8; the constant was already 11 via `ADR-039`/`040`/`041`/`060`), the `REVIEW-QUEUE.md` item contradicted itself, and the window was genuinely bad. It delivered the capability, wrote the owed-bump note, and pinned an invariant test -- 11 or 12, never 13, and the file must carry this escalation id while it is still 11. That test passes unchanged at 12 (18/18 green), which is what a well-aimed invariant looks like.
+
+**One fact the escalation could not see, which changes the shape of the repair.** It reported that `azure-cost-manager` and `core42-insight` "have no folder in this repository at all, so a bump saved from inside this repo could not be repaired from inside it", and treated the other three as repairable here. In fact **all five have their own repository** -- `sb-plugins-action-center`, `sb-plugins-azure-cost-manager`, `sb-plugins-core42-insight`, `sb-plugins-entities`, `sb-plugins-my-day` -- and `src/marketplace/` is a **publish target, never hand-edited**: its own README says so, and `src/backend/scripts/publish_plugin.py <plugin-repo>` is the only sanctioned path, running six validations before it writes. So none of the five is repaired from this repository. The asymmetry was never between "has source here" and "does not"; it was between plugins whose *published versions* happen to be visible here and plugins whose are not. `ADR-023` already says this -- plugin source lives in its own repository -- and the orchestrator briefly got it wrong too, hand-copying a version folder before reading the README and removing it unused.
+
+**Requests sent (2026-10-18), one per plugin, each to the session holding its repository:** `azure-cost-manager`, `core42-insight`, `entities` and `my-day`. `entities` and `my-day` additionally have an in-flight uncommitted version (`1.3.0`, `1.7.1`) still declaring 11, so both were asked to take 12 in what they are about to publish rather than ship at 11 and immediately need another version. `action-center` has a repository but no session holding it, so one was started for it.
+
+**Known consequence, accepted by the operator:** the gate is exact-match at load time and live on save, so all five installed plugins are refused until each is republished at 12. Each install will report `restart_required`.
+
+**`MEMORY.md` candidate, still not appended** (86 KB against the 40 KB budget its own rule 1 sets): the coder's constraint above, plus one this resolution adds -- *a plugin is never repaired by editing `src/marketplace/`; it is republished from its own repository through `publish_plugin.py`.* Both held for the compaction pass.
+
+**Resolving artefact:** `FRAMEWORK_API` 11 -> 12 + five republish requests, 2026-10-18
+
+**Status:** Resolved

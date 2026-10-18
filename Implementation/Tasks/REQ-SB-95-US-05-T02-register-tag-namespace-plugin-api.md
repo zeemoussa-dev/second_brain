@@ -4,7 +4,7 @@ title: plugin_api.register_tag_namespace(namespace, entries) — the callable se
 parent_story: REQ-SB-95-US-05
 requirement_id: REQ-SB-95
 type: backend
-status: Blocked
+status: Done
 gate: flagged
 gate_reason: "AC-08's third clause is unmet and is not a coder's to take alone (`ESC-079`): `register_action` is present, so `ADR-037` assigns `REQ-SB-95`'s single `FRAMEWORK_API` bump here — but it is 11 -> 12, not 7 -> 8; `REVIEW-QUEUE.md` still carries choosing the sitting as the operator's open decision; the backend is running, so the bump refuses every installed plugin on save; and the repair (republishing `src/marketplace/*`) is outside this task's scope. The capability itself is built, tested and committed, and the first two clauses of AC-08 are verified."
 phase: P2
@@ -324,3 +324,23 @@ in `ESC-079` and `REVIEW-QUEUE.md` instead.
 
 Commits: `c88e016` (the capability + tests), `89f470b` (the owed-bump note + its
 invariant test).
+
+---
+
+## Unblocked — 2026-10-18 (`ESC-079` Resolved)
+
+The operator chose the republish sitting and took the bump: `FRAMEWORK_API` is **12**.
+`AC-08`'s third clause is satisfied by that move, and this task's invariant test passes
+unchanged against it (18/18) — the test was written to accept 11 or 12 and to require the
+escalation id only while the constant was still 11, which is why taking the bump needed no
+edit to this task's own tests.
+
+**You were right to refuse it**, and right about the stale numerals and the self-contradicting
+queue item. One correction for the record, not against the task: the escalation treated
+`entities`, `my-day` and `action-center` as repairable from this repository because their
+published versions sit in `src/marketplace/`. They are not. All five plugins have their own
+`sb-plugins-*` repository, and `src/marketplace/` is a publish target that is never
+hand-edited (`publish_plugin.py`, and the folder's own README). Every one of the five is
+republished from its own repository; none from here.
+
+Status: `Blocked → Done`.
