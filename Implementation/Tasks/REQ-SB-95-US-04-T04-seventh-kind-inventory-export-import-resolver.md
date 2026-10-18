@@ -261,8 +261,10 @@ scratch-probe note below for what happened the one time this session touched it.
   ids that tuple already catalogues (`list-team-actions`, `send-mail`,
   `append-capture`), so no new invented id exists to catalogue and the operator's
   real `<DATA_PATH>/data/Actions/` stays out of reach. Proven rather than asserted,
-  per `T03`'s method: `SECOND_BRAIN_DATA_PATH` pointed at an empty directory, the
-  file re-run, **21 passed**.
+  per `T03`'s method: `SECOND_BRAIN_DATA_PATH` pointed at a freshly-created empty
+  directory, the file re-run, **21 passed** — and that directory was then counted
+  recursively and held **0 items**, so the run neither read nor wrote the
+  configured data path at all, which is the stronger claim.
 - **One extra test beyond the decomposer's seven steps per kind of risk** (the
   empty-install inventory case, the secret scan, the four conflict branches, and the
   import-then-save refusal). The last of these exists because the task text asked
