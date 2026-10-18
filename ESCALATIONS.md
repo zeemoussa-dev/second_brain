@@ -676,3 +676,91 @@ same property `seed_shipped_masters()` has had since 2026-09-06.
 **Status:** Resolved
 
 ---
+
+## ESC-075: save-time step validation makes six tests in `test_workflow_artifact_kind.py` fail — the file is outside `REQ-SB-95-US-04-T02`'s scope — 2026-10-18
+
+**Category:** unanticipated-file
+
+**Trigger:** `REQ-SB-95-US-04-T02` adds `ADR-034`'s save-time referential check to
+`WorkflowManager.create()`/`update()`: a step naming an action id the catalogue
+does not have is refused, naming the step and the id, before anything is written.
+`T01` (Done, `4393124`) wrote `src/backend/tests/test_workflow_artifact_kind.py`
+before that check existed, and every one of its step fixtures names an invented
+action id — `list-team-actions`, `send-mail`, `append-capture` — which this
+install has never catalogued. Six of its nine tests now fail, all on one cause:
+
+```
+FAILED tests/test_workflow_artifact_kind.py::test_a_saved_workflow_round_trips_its_ordered_steps_and_report
+WorkflowStepActionNotFoundError: step 1 of this Workflow names action
+'list-team-actions', which is not in this install's Action catalogue; nothing was saved
+```
+
+`T02`'s `## Files to Modify` names `workflow_manager.py`, `action_manager.py`,
+`actions_router.py` and the new `tests/test_workflow_action_integrity.py`.
+`test_workflow_artifact_kind.py` is not in it, so fixing it is an out-of-scope
+edit (`Pipeline.md` hard rule 5), and the coder committed the correct code
+(`d71630f`) and stopped rather than editing a `Done` task's test file.
+
+**This is `ESC-064` again, one story later and one kind along.** There, `T02`'s
+new save-time *resolution* gate refused `T01`'s own Action fixture; here `T02`'s
+new save-time *referential* check refuses `T01`'s own Workflow fixtures. Same
+cause, same shape, same five-line fix — the generator rule added on 2026-10-18
+covers the missing **switch-on** site, and this is its mirror image: the
+**fixture** site, the place a `Done` sibling test stops being true the moment a
+new save-time gate lands. The file-list check for a missing switch-on site was
+performed before any code was written here and correctly found none
+(`actions_router.py` was already named; `ActionManager.delete()` has exactly one
+caller and it is that router).
+
+**There is no in-scope alternative, and the constraints are jointly
+unsatisfiable without a human.** `AC-02` is locked as a refusal at save, in the
+Manager, with nothing written — the decomposer's own test step asserts
+`write_workflow_json` was never called — so the check cannot move to the router
+or to a later audit without weakening it. The six failing tests assert order,
+minting and cost; none of them asserts anything about the catalogue, so their
+meaning is untouched by the fix.
+
+**A second reason the fix is needed even if those ids existed:** that file
+monkeypatches the *Workflow* store only, so with this gate live its saves now
+consult the operator's **real** `<DATA_PATH>/data/Actions/` store. A test about
+step order would pass or fail by accident of what the machine running the suite
+has catalogued — the exact instance-state dependency `ESC-064`'s resolution
+called out, and the reason that file's Action equivalent has carried an autouse
+`_implementations_resolve` fixture since 2026-10-16.
+
+**What the fix is:** one autouse fixture in
+`src/backend/tests/test_workflow_artifact_kind.py`, mirroring the one
+`tests/test_action_artifact_kind.py` already has, so the three invented ids are
+catalogued for that file and for no other — roughly six lines, nothing else in
+the file touched:
+
+```python
+@pytest.fixture(autouse=True)
+def the_fixtures_action_ids_are_catalogued(monkeypatch) -> None:
+    """T02's save-time referential check (ADR-034) refuses a step naming an
+    uncatalogued Action. These tests are about order, step identity and cost,
+    not about what this install has catalogued -- and without this they would
+    consult the operator's real Actions store."""
+    monkeypatch.setattr(
+        "app.business.core.workflows.workflow_manager.ActionManager.get_all",
+        lambda self: [SimpleNamespace(id=action_id) for action_id in
+                      ("list-team-actions", "send-mail", "append-capture")],
+    )
+```
+
+Whoever authorises it should add that file to `T02`'s `## Files to Modify` (or
+mint a `T02a`) rather than letting a coder reach outside its scope by precedent,
+which is what `ESC-064` decided for the identical case.
+
+**State of the task:** everything `T02` owns is built, committed and green — 10
+AC-tagged tests in `tests/test_workflow_action_integrity.py` covering both locked
+ACs. Suite: 617 passed / 1 failed at baseline (`78fb600`, the
+`test_marketplace.py` ordering flake, which passes alone), **622 passed / 6
+failed** after, the six being exactly the ones above. `T02` is `Blocked` until
+this is settled; `T03` depends on it.
+
+**Resolving artefact:** — (Open)
+
+**Status:** Open
+
+---
