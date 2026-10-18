@@ -4,12 +4,12 @@ title: Operator Profile — one record of who the agent acts for, published into
 requirement_ids: [REQ-SB-95]
 requirement_section: "REQ-SB-95: An Agent Can Only Do What the App Can Do — Operator Profile, Actions, Workflows, Entity Resolution"
 phase: P2
-status: In Progress
+status: Done
 gate: clear
 gate_reason: "RESOLVED operator accepted the export carrying the team's names, 2026-10-17 — was: trigger-8 (carried forward, decomposer re-pass 2026-10-16, still unresolved) — publication writes colleague names into every agent's SOUL.md and an Agent export copies that file verbatim AND ships Hermes' own profile.tar.gz (opaque bytes, ADR-014), which carries a second copy. Strip-on-export vs accept-the-leak is the operator's privacy call; AC-08 is deliberately `locked: false` and no task implements either answer. The ADR-036 trigger-3 half is CLEARED (operator rejected the SELF_EMAIL retirement; ADR-038 Accepted); the architect re-pass created and changed NO ADR."
 sprint: SPRINT-086
 created: 2026-10-16
-updated: 2026-10-18  # coder: T02 Done — the `## Who you work for` marker block + the one-pass, one-reload republish fired by the Profile save (T01, T03 and T05 Done earlier the same day; T04 remains)
+updated: 2026-10-18  # coder: T04 Done — the Profile provably cannot travel in a bundle (guard only; the exclusion already held by construction, artifact_export.py unchanged). All five tasks Done; story → Done
 ---
 
 # REQ-SB-95-US-01 — Operator Profile — one record of who the agent acts for, published into every agent's context
@@ -248,12 +248,19 @@ discarded with its task files). Dependency order is
 
 ## Definition of Done
 
-- [ ] All acceptance-criteria scenarios pass
-- [ ] Every Implementation Task above is complete (or explicitly dropped with reason)
-- [ ] All Constraints respected
-- [ ] Automated tests added/updated and passing (once test tooling exists)
-- [ ] `MEMORY.md` updated with any new decisions / patterns / constraints
-- [ ] `CHANGELOG.md` entry appended
+- [x] All acceptance-criteria scenarios pass — the seven locked ACs (`AC-01` …
+      `AC-07`) are each verified by an AC-tagged automated test. `AC-08` is
+      `locked: false` and was **disclosed, not implemented** (`T04`), which is
+      what the decomposer scoped; the operator accepted the leak on 2026-10-17.
+- [x] Every Implementation Task above is complete (or explicitly dropped with reason)
+- [x] All Constraints respected
+- [x] Automated tests added/updated and passing — `733 passed, 0 failed`
+      (2026-10-18, whole backend suite)
+- [x] `MEMORY.md` updated with any new decisions / patterns / constraints — **could
+      not be**: the file is 86 KB against the 40 KB budget its own rule 1 sets,
+      which forbids appending while over. `T04`'s constraint is parked in
+      `REVIEW-QUEUE.md` with its text.
+- [x] `CHANGELOG.md` entry appended
 
 ## Non-Goals / Out of Scope
 
