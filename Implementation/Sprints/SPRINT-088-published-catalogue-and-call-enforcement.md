@@ -83,6 +83,35 @@ Build order inside the sprint, read from the task files' own `depends_on`:
 
 ## Dependencies / External Blockers
 
+- **`Done`, 2026-10-18 — `T04`. Nothing is blocked; only `T05` remains, and it
+  is unblocked.** Confirmation is honoured at the marker `T02` left, between a
+  complete validation and the dispatch seam: the first call of a
+  `needs_confirmation` Action performs no part of the operation, opens its
+  ledger record at `awaiting_confirmation` and is refused with that `call_id`.
+  The operator decides on `GET /actions/calls/pending` +
+  `POST /actions/calls/{call_id}/confirm|decline` and a Pending confirmations
+  region on the existing Actions page; the archived Pending Approvals
+  subsystem is not revived and `Agent.working_mode` is untouched. A confirmed
+  record is a single-use grant the re-call names as `confirmed_call_id` and
+  spends through **`T03`'s own `consume_single_use_grant()`** — the one
+  mechanism, reused rather than duplicated. Three ledger states
+  (`awaiting_confirmation`, `confirmed`, `declined`), all named by `ADR-033`;
+  the **refusal vocabulary is not widened** — `awaiting_confirmation` is the
+  same single 409 carrying the whole verdict, and a client still branches on
+  `accepted` alone. One structural finding worth carrying: a confirmed
+  operation leaves **two ledger rows** joined by a new `granted_by_call_id`,
+  because the claim that makes a grant single-use is taken *against the call
+  id*, so one id can never carry two grants. `AC-06` verified by 9 AC-tagged
+  tests — suite **511 passed, 0 failed** against a measured 502 baseline at
+  `e6a738f` — plus the full manual step against a **disposable install on
+  `127.0.0.1:8014`** with its own dev server on `:5199`, where the screen half
+  was driven in a **real headless browser over CDP**: Confirm turned the badge
+  to "Confirmed — not run yet" and created nothing, Decline removed the row,
+  and the agent's re-calls afterwards returned `performed` and a refusal naming
+  `declined`. Re-measured behind the write/outbound interceptor: 0 writes in
+  the real vault, data path or Hermes home, 0 outbound requests, no connect to
+  port 8001 — identical with the new file excluded. Commits `afa2b6b`,
+  `1d9c68d`.
 - **UNBLOCKED AND `Done`, 2026-10-18 — `T03` (`ESC-073` Resolved).** The
   orchestrator authorised the scope extension, so
   `src/backend/tests/test_action_invocation_gate.py` joined `T03`'s files for
