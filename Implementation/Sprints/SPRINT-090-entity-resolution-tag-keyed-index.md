@@ -80,7 +80,7 @@ bidirectional link, written at sprint creation. Order by implementation dependen
 
 | Story | Title | Phase | Status |
 |---|---|---|---|
-| [REQ-SB-95-US-05](../UserStories/REQ-SB-95-US-05-entity-resolution-tag-keyed-index.md) | Entity resolution instead of search — one tag-keyed index, synthesis first then evidence | P2 | In Progress (`T01` Done 2026-10-18) |
+| [REQ-SB-95-US-05](../UserStories/REQ-SB-95-US-05-entity-resolution-tag-keyed-index.md) | Entity resolution instead of search — one tag-keyed index, synthesis first then evidence | P2 | In Progress (`T01`, `T03` Done 2026-10-18; `T02` Blocked on `ESC-079`) |
 
 Build order inside the sprint, read from the task files' own `depends_on`:
 `(T01, T02) → T03 → T04 → T05` (`T05` also needs `US-02-T02`, `US-03-T02`,
@@ -188,6 +188,19 @@ republish of every installed plugin lives in `src/marketplace/`, outside any
 task's scope and mid-flight in another session. It is owed, noted at the
 constant, and pinned by a test that fails if anyone bumps twice. **`T03` is
 unblocked in code and is next**; `T04` and `T05` follow.
+
+**Coder, 2026-10-18 — `T03` Done; the sprint stays `In Progress`.** The generic
+resolver (`app/business/logic/tag_resolution.py`) turns a name, an alias or an
+email domain into `(kind, tag, hub)` by asking `T02`'s registered namespaces at
+the moment of the question, and reports ambiguity and non-resolution rather
+than guessing. `AC-01`, `AC-03`, `AC-05` and `AC-07` are verified by 18
+AC-tagged tests; the suite moved 724 → 742 passed with the same 9 pre-existing
+scratch-install failures. The CFO test was observed live against a real backend
+on a scratch install: the server returns four search hits for a name the vault
+really holds, and the resolver — no plugin installed — still answers "did not
+resolve". `T02`'s `ESC-079` did **not** block it: the `FRAMEWORK_API` gate
+governs only whether a *plugin* may declare the capability, and no file outside
+`T03`'s own two was touched. **`T04` (the scoped read) is next**, then `T05`.
 
 **gate: clear 2026-10-16 — no product-owner trigger fired.** No assumption (the
 single inbound edge is quoted from `US-05-T05`'s own frontmatter); requirement
