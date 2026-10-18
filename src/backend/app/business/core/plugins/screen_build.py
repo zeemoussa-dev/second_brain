@@ -76,6 +76,46 @@ def _npm_executable(frontend_root: Path) -> str | None:
     return shutil.which("npm") or shutil.which("npm.cmd")
 
 
+def _build_environment(npm: str) -> dict[str, str]:
+    """The child's environment: this checkout's Node FIRST on PATH, and npm told
+    it is not talking to a person.
+
+    PATH matters even though `npm` is passed by full path -- the batch file then
+    looks up `node` itself, and the first Node on the operator's PATH belongs to
+    Hermes. `CI`/the notifier flags stop npm pausing on an update check or any
+    other prompt it would print to a console the worker does not have.
+    """
+    environment = dict(os.environ)
+    npm_directory = str(Path(npm).parent)
+    environment["PATH"] = npm_directory + os.pathsep + environment.get("PATH", "")
+    environment["CI"] = "true"
+    environment["NO_UPDATE_NOTIFIER"] = "1"
+    environment["npm_config_update_notifier"] = "false"
+    environment["npm_config_fund"] = "false"
+    environment["npm_config_audit"] = "false"
+    return environment
+
+
+def _spawn_flags() -> dict:
+    """On Windows, its own process group and no console window.
+
+    The group is the point: uvicorn's reloader stops a worker with a console
+    CTRL event, which travels to every process in the group -- including the
+    build's `cmd.exe`, which then blocks on "Terminate batch job (Y/N)?".
+    In its own group the build is simply not told, and it either finishes or is
+    killed by the timeout below. This is why a build run from an interactive
+    shell never stalled while the backend's did.
+    """
+    if os.name != "nt":
+        return {"start_new_session": True}
+    return {
+        "creationflags": (
+            subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+            | subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
+        )
+    }
+
+
 def _kill_process_tree(process: subprocess.Popen) -> None:
     """`process.kill()` is not enough on Windows: npm is a `cmd.exe` shim and
     the real work is a Node CHILD of it, so killing the shim alone orphans the
@@ -269,7 +309,17 @@ def _run_build(npm: str, frontend_root: Path) -> tuple[str | None, bool]:
     process = subprocess.Popen(
         [npm, "run", "build"], cwd=str(frontend_root),
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        # Never inherit the worker's stdin. npm is a BATCH file, and a batch file
+        # that receives a console CTRL event asks "Terminate batch job (Y/N)?" on
+        # its console and waits for an answer. A uvicorn --reload worker has no
+        # console, so that read never returns: the result is a `cmd.exe` sitting
+        # there with no Node child under it, holding the build lock, which is
+        # what wedged the backend repeatedly on 2026-10-18. DEVNULL makes the
+        # read EOF immediately instead.
+        stdin=subprocess.DEVNULL,
+        env=_build_environment(npm),
         text=True, encoding="utf-8", errors="replace",
+        **_spawn_flags(),
     )
     try:
         output, _ = process.communicate(timeout=_BUILD_TIMEOUT_SECONDS)

@@ -186,6 +186,48 @@ def test_a_hung_build_is_killed_as_a_tree_and_reported(tmp_path: Path, monkeypat
     assert killed == [4242]
 
 
+def test_the_build_is_spawned_without_the_workers_stdin_or_console(tmp_path, monkeypatch):
+    captured: dict = {}
+
+    class DoneProcess:
+        pid = 1
+        returncode = 0
+
+        def communicate(self, timeout=None):
+            return ("", "")
+
+    def fake_popen(command, **kwargs):
+        captured["command"] = command
+        captured.update(kwargs)
+        return DoneProcess()
+
+    monkeypatch.setattr(screen_build.subprocess, "Popen", fake_popen)
+
+    screen_build._run_build(str(tmp_path / "tools" / "node" / "npm.cmd"), tmp_path)
+
+    # npm is a BATCH file: given a console CTRL event it asks "Terminate batch
+    # job (Y/N)?" and waits. A uvicorn --reload worker has no console, so that
+    # read never returns -- the hang that wedged the backend on 2026-10-18.
+    assert captured["stdin"] is screen_build.subprocess.DEVNULL
+    if os.name == "nt":
+        flags = captured["creationflags"]
+        # Its own process group, so the reloader's CTRL event does not reach it.
+        assert flags & screen_build.subprocess.CREATE_NEW_PROCESS_GROUP
+        assert flags & screen_build.subprocess.CREATE_NO_WINDOW
+
+
+def test_the_build_env_puts_this_nodes_directory_first_and_silences_npm(tmp_path):
+    npm = tmp_path / "tools" / "node" / "npm.cmd"
+
+    environment = screen_build._build_environment(str(npm))
+
+    # npm looks `node` up itself, and the first Node on the operator's PATH
+    # belongs to Hermes.
+    assert environment["PATH"].split(os.pathsep)[0] == str(npm.parent)
+    assert environment["CI"] == "true"
+    assert environment["npm_config_update_notifier"] == "false"
+
+
 def test_check_dir_sits_at_an_installed_plugins_depth(tmp_path: Path):
     check_dir = check_dir_for(tmp_path, "azure-cost-manager", "publish")
 
