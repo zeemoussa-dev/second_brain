@@ -48,6 +48,18 @@ dispatch is entered, then whatever dispatch really reported. A call
 that crashes mid-dispatch therefore leaves a record saying only that it
 was allowed to proceed, never one claiming an operation happened.
 
+**An Action marked `needs_confirmation` stops between those two
+things** (`ADR-033`, REQ-SB-95-US-03-T04). Validation completes in full;
+then, instead of dispatch, the call opens its ledger record at
+`awaiting_confirmation` and is refused with that `call_id`. The operator
+confirms or declines it (`confirm_action_call` / `decline_action_call`,
+reached from this app's own Actions screen); a confirmed record carries
+a single-use grant, and the agent's re-call -- naming that id as
+`confirmed_call_id` -- spends it through the SAME
+`consume_single_use_grant()` a `skill` dispatch's grant is spent
+through. One mechanism, so a grant cannot be single-use in one place
+and not in another.
+
 **No silent fallback.** A missing required input is named, never
 defaulted, inferred or substituted -- including by this module's own
 record of the call, so the ledger shows exactly what the caller sent.
@@ -79,6 +91,7 @@ REFUSED_CALLER_NOT_PERMITTED = "caller_not_permitted"
 REFUSED_MISSING_REQUIRED_INPUT = "missing_required_input"
 REFUSED_UNKNOWN_INPUT = "unknown_input"
 REFUSED_IMPLEMENTATION_DOES_NOT_RESOLVE = "implementation_does_not_resolve"
+REFUSED_CONFIRMATION_NOT_GRANTED = "confirmation_not_granted"
 
 # Written the moment validation passes and BEFORE the dispatch seam is
 # entered. A call that crashes or never returns therefore leaves a
@@ -111,6 +124,32 @@ OUTCOME_AUTHORISED = "authorised"
 # never left looking like a call still in flight -- and never, under any
 # circumstance, like `performed`.
 OUTCOME_FAILED = "failed"
+
+# The three states a confirmation-required call passes through
+# (`ADR-033`, architecture.md's §Confirmation and the Action-Call
+# Ledger, REQ-SB-95-US-03-T04). They are THREE rather than one reused
+# word because the operator and the agent have to tell apart three
+# genuinely different situations, and overloading any existing outcome
+# would make at least one of them unreadable:
+#
+# - `awaiting_confirmation` -- validated, nothing performed, and the
+#   operator has not decided yet. NOT `refused:*`: a refusal is final
+#   and this one is still answerable;
+# - `confirmed`             -- the operator said yes and the record now
+#   carries a single-use grant. It is deliberately a state of its own so
+#   a confirmed-but-never-re-called Action stays VISIBLE as outstanding
+#   rather than reading as done (nothing has run at this point);
+# - `declined`              -- the operator said no. Terminal, and the
+#   record keeps saying so to every later re-call.
+OUTCOME_AWAITING_CONFIRMATION = "awaiting_confirmation"
+OUTCOME_CONFIRMED = "confirmed"
+OUTCOME_DECLINED = "declined"
+
+# The two states `pending_confirmations()` answers with. `confirmed` is
+# in the list on purpose -- a confirmation nobody ever spent must not
+# vanish from the surface as though the operation had happened -- but
+# only until it IS spent: see `_is_outstanding()`.
+_OUTSTANDING_CONFIRMATION_OUTCOMES = (OUTCOME_AWAITING_CONFIRMATION, OUTCOME_CONFIRMED)
 
 # Methods whose validated inputs travel as a JSON body; every other
 # method sends them as query parameters. A convention, declared in one
@@ -169,6 +208,12 @@ class ActionCallVerdict:
     # full rather than left inside the sentence so a screen can link to
     # it without parsing prose.
     where_the_operator_does_it: str | None = None
+    # The confirmation this call spent to be allowed to run at all, on a
+    # re-call of a confirmation-required Action. None everywhere else.
+    # It makes the two ledger rows a confirmed operation leaves -- the
+    # operator's decision, and the call that acted on it -- readable as
+    # one story from either end (REQ-SB-95-US-03-T04).
+    granted_by_call_id: str | None = None
 
 
 def _bind_path_parameters(path: str, inputs: Mapping[str, Any]) -> tuple[str, dict[str, Any]]:
@@ -409,12 +454,22 @@ def _record_call(
     call_id: str, action_id: str, caller_agent_id: str,
     inputs: Mapping[str, Any], outcome: str, refusal: str | None,
     detail: str | None = None, result: Any | None = None,
-    grant: Mapping[str, Any] | None = None,
+    grant: Mapping[str, Any] | None = None, granted_by_call_id: str | None = None,
 ) -> None:
     """One ledger file per call, rewritten in place as the call
-    progresses -- there is exactly one record per `call_id`, so
-    confirmation (T04) turns a record into a grant rather than opening
-    a second row about the same call.
+    progresses -- there is exactly one record per `call_id`, and
+    confirmation turns a record into a grant rather than opening a
+    second row about the same call.
+
+    **A confirmed operation is two calls and therefore two rows**, which
+    is the one place that reads as an exception and is not one
+    (REQ-SB-95-US-03-T04). The confirmation row is the operator's
+    decision; the re-call that spends it is a different call, with its
+    own id, its own outcome and -- if the Action's implementation is a
+    `skill` -- its own grant. They could not share an id: the claim that
+    makes a grant single-use is taken against the call id, so a second
+    grant minted onto an already-claimed id could never be spent. The
+    two rows are joined by `granted_by_call_id`.
 
     `detail`, `result` and `grant` are what dispatch reported
     (REQ-SB-95-US-03-T03). The grant is written here, into the record
@@ -439,6 +494,7 @@ def _record_call(
             "detail": detail,
             "result": result,
             "grant": dict(grant) if grant is not None else None,
+            "granted_by_call_id": granted_by_call_id,
             "recorded_at": _now(),
         })
     except OSError:
@@ -530,6 +586,175 @@ def consume_single_use_grant(
     return GrantConsumption(call_id=call_id, consumed=True, grant=dict(grant))
 
 
+class ActionCallNotConfirmableError(Exception):
+    """The operator asked to confirm or decline something that is not
+    theirs to decide right now -- an id with no record, or a record that
+    was already decided. Carries the sentence the operator reads, the
+    same way `ActionManager`'s own refusals do, so `actions_router.py`
+    turns it into a 409 without rewording it."""
+
+
+def _confirmation_record(call_id: str) -> dict:
+    try:
+        record = action_calls_data.read_call_json(call_id)
+    except FileNotFoundError:
+        raise ActionCallNotConfirmableError(
+            f"there is no action call {call_id!r} in this install's ledger"
+        )
+    except (OSError, ValueError) as exc:
+        raise ActionCallNotConfirmableError(
+            f"the ledger record for action call {call_id!r} could not be read: {exc}"
+        )
+    outcome = record.get("outcome")
+    if outcome != OUTCOME_AWAITING_CONFIRMATION:
+        raise ActionCallNotConfirmableError(
+            f"action call {call_id!r} is not awaiting confirmation -- it is {outcome!r}, and a "
+            "decision already taken is not retaken here"
+        )
+    return record
+
+
+def confirm_action_call(call_id: str) -> dict:
+    """The operator says yes, and the record becomes a single-use grant.
+
+    **Confirming performs nothing.** It authorises the agent's re-call
+    to perform it, exactly once; until that re-call arrives the record
+    sits at `confirmed` and stays on the operator's pending list, so a
+    confirmation nobody acted on never reads as an operation that
+    happened.
+    """
+    record = _confirmation_record(call_id)
+    record["outcome"] = OUTCOME_CONFIRMED
+    record["refusal"] = None
+    record["detail"] = (
+        f"the operator confirmed action call {call_id!r}. Nothing has been performed yet: call "
+        f"action {record.get('action_id')!r} again with the same inputs and "
+        f"confirmed_call_id={call_id!r} to spend this confirmation, once."
+    )
+    # The same shape a `skill` dispatch's grant has, down to `call_id`
+    # and `single_use`, because it is spent by the same function. The
+    # inputs are the ones the operator confirmed -- that is what makes
+    # a re-call asking for something else refusable.
+    record["grant"] = {
+        "action_id": record.get("action_id"),
+        "caller_agent_id": record.get("caller_agent_id"),
+        "inputs": record.get("inputs") or {},
+        "call_id": call_id,
+        "single_use": True,
+        "confirmed_at": _now(),
+    }
+    record["recorded_at"] = _now()
+    action_calls_data.write_call_json(call_id, record)
+    return record
+
+
+def decline_action_call(call_id: str) -> dict:
+    """The operator says no. Terminal, grantless, and kept -- every
+    later re-call naming this id reads the same `declined` back, so the
+    agent can tell the operator the truth rather than retrying."""
+    record = _confirmation_record(call_id)
+    record["outcome"] = OUTCOME_DECLINED
+    record["grant"] = None
+    record["refusal"] = (
+        f"the operator declined action call {call_id!r}, so action {record.get('action_id')!r} "
+        "was not run and nothing was performed"
+    )
+    record["detail"] = record["refusal"]
+    record["recorded_at"] = _now()
+    action_calls_data.write_call_json(call_id, record)
+    return record
+
+
+def _is_outstanding(record: Mapping[str, Any]) -> bool:
+    """Whether the operator still has something to look at here.
+
+    A `confirmed` record drops off the moment its grant is SPENT, not
+    when it is granted: between those two moments the operator is owed
+    the fact that they said yes and nothing has run yet. Keyed off the
+    grant's own `consumed_at` rather than off a fourth outcome word,
+    because "it was confirmed" and "it was used" are two different
+    facts about the same decision and the ledger should keep both.
+    """
+    outcome = record.get("outcome")
+    if outcome not in _OUTSTANDING_CONFIRMATION_OUTCOMES:
+        return False
+    return not (record.get("grant") or {}).get("consumed_at")
+
+
+def pending_confirmations() -> list[dict]:
+    """Every call the operator still has something to look at --
+    `awaiting_confirmation` ones to decide, and `confirmed` ones nobody
+    has spent yet. Newest first.
+
+    A record that cannot be read is skipped rather than raised: one
+    unparseable file in a ledger that grows forever must not take the
+    whole pending list -- and with it the operator's only way to decline
+    anything -- off the screen.
+    """
+    outstanding = []
+    for call_id in action_calls_data.list_call_ids():
+        try:
+            record = action_calls_data.read_call_json(call_id)
+        except (OSError, ValueError):
+            _logger.warning("ledger record %s could not be read for the pending list", call_id)
+            continue
+        if _is_outstanding(record):
+            outstanding.append(record)
+    return sorted(outstanding, key=lambda record: record.get("recorded_at") or "", reverse=True)
+
+
+def _why_the_confirmation_cannot_be_spent(
+    confirmed_call_id: str, action_id: str, caller_agent_id: str,
+    validated_inputs: Mapping[str, Any],
+) -> str | None:
+    """Whether THIS call is the one that confirmation authorised, in
+    words, or None if it is.
+
+    Checked before the grant is consumed, never after: a mismatched
+    re-call must leave the confirmation unspent so the operation the
+    operator actually said yes to can still happen.
+
+    The inputs are compared because a confirmation is a decision about a
+    concrete operation. Confirming "file this note in Archive" and then
+    re-calling with "Inbox" would be performing something nobody
+    approved -- the same substitution `ADR-032` forbids, taken one step
+    later.
+    """
+    try:
+        record = action_calls_data.read_call_json(confirmed_call_id)
+    except (OSError, ValueError):
+        return (
+            f"there is no action call {confirmed_call_id!r} in this install's ledger, so nothing "
+            "confirms this call and nothing was performed"
+        )
+    if record.get("action_id") != action_id or record.get("caller_agent_id") != caller_agent_id:
+        return (
+            f"action call {confirmed_call_id!r} is about action {record.get('action_id')!r} "
+            f"called by {record.get('caller_agent_id')!r}, not {action_id!r} called by "
+            f"{caller_agent_id!r}; a confirmation is not transferable and nothing was performed"
+        )
+    outcome = record.get("outcome")
+    if outcome == OUTCOME_DECLINED:
+        return (
+            f"the operator declined action call {confirmed_call_id!r}, so action {action_id!r} "
+            "was not run and nothing was performed -- tell the operator it was declined rather "
+            "than calling it again"
+        )
+    if outcome == OUTCOME_AWAITING_CONFIRMATION:
+        return (
+            f"action call {confirmed_call_id!r} is still awaiting the operator's confirmation, so "
+            "there is nothing to spend yet and nothing was performed"
+        )
+    if (record.get("inputs") or {}) != dict(validated_inputs):
+        return (
+            f"action call {confirmed_call_id!r} was confirmed for inputs "
+            f"{record.get('inputs')!r}, and this call asked for {dict(validated_inputs)!r}; the "
+            "operator confirmed one operation and this is a different one, so nothing was "
+            "performed"
+        )
+    return None
+
+
 def _missing_required_input_names(action: Action, inputs: Mapping[str, Any]) -> list[str]:
     """An input is supplied when the caller sent a value for it. An
     explicit `null` counts as NOT supplied: passing it on would hand
@@ -574,6 +799,7 @@ def _names(names: list[str]) -> str:
 
 def call_action(
     action_id: str, caller_agent_id: str, inputs: Mapping[str, Any] | None = None,
+    confirmed_call_id: str | None = None,
 ) -> ActionCallVerdict:
     """Validate one call against the live catalogue and, only if every
     check passes, enter dispatch exactly once.
@@ -582,6 +808,11 @@ def call_action(
     (`ADR-033`), carries a ledger id, and has to reach the agent as
     words it can relay to the operator. An exception would make the
     four failure classes indistinguishable from a backend fault.
+
+    `confirmed_call_id` is how a re-call names the confirmation it is
+    spending, and is ignored by an Action that needs none -- an Action's
+    confirmation flag, not the caller's say-so, is what decides whether
+    one is required (REQ-SB-95-US-03-T04).
     """
     call_id = uuid.uuid4().hex
     supplied_inputs = dict(inputs or {})
@@ -649,10 +880,61 @@ def call_action(
         for declared in action.inputs if declared.name in supplied_inputs
     }
 
-    # Recorded BEFORE dispatch. Confirmation (T04) inserts here, between
-    # a complete validation and the first thing that could perform
-    # anything.
-    _record_call(call_id, action_id, caller_agent_id, validated_inputs, OUTCOME_VALIDATED, None)
+    # Between a complete validation and the first thing that could
+    # perform anything -- the only place confirmation can sit and still
+    # mean "nothing is half-performed". Validation has finished, so the
+    # operator is asked about a call that is known to be runnable; and
+    # the dispatch seam below has not been entered, so being asked costs
+    # nothing (REQ-SB-95-US-03-T04).
+    granted_by_call_id: str | None = None
+    if action.needs_confirmation:
+        if not (confirmed_call_id or "").strip():
+            waiting_for_the_operator = (
+                f"action {action_id!r} needs the operator's confirmation before it runs, so "
+                f"nothing has been performed. This call is recorded as {call_id!r}: ask the "
+                "operator to confirm it, then call this action again with the same inputs and "
+                f"confirmed_call_id={call_id!r}. If they decline, it will not run."
+            )
+            _record_call(
+                call_id, action_id, caller_agent_id, validated_inputs,
+                OUTCOME_AWAITING_CONFIRMATION, waiting_for_the_operator,
+            )
+            return ActionCallVerdict(
+                call_id=call_id, action_id=action_id, caller_agent_id=caller_agent_id,
+                accepted=False, outcome=OUTCOME_AWAITING_CONFIRMATION,
+                refusal=waiting_for_the_operator, inputs=validated_inputs,
+            )
+
+        cannot_be_spent = _why_the_confirmation_cannot_be_spent(
+            confirmed_call_id, action_id, caller_agent_id, validated_inputs,
+        )
+        if cannot_be_spent is not None:
+            return refuse(REFUSED_CONFIRMATION_NOT_GRANTED, cannot_be_spent)
+
+        # The grant is spent BEFORE dispatch, and its being spent is not
+        # undone if dispatch then fails. A confirmation that could be
+        # replayed after a failure is not single-use, and the operator --
+        # who may by then have seen a half-finished side effect -- is the
+        # one who decides whether to authorise another attempt.
+        spent = consume_single_use_grant(
+            confirmed_call_id, reported_outcome=OUTCOME_CONFIRMED,
+            reported_detail=(
+                f"the operator's confirmation of action call {confirmed_call_id!r} was spent by "
+                f"action call {call_id!r}, which is where what happened is recorded"
+            ),
+        )
+        if not spent.consumed:
+            return refuse(REFUSED_CONFIRMATION_NOT_GRANTED, spent.refusal or (
+                f"the confirmation on action call {confirmed_call_id!r} could not be spent, so "
+                "nothing was performed"
+            ))
+        granted_by_call_id = confirmed_call_id
+
+    # Recorded BEFORE dispatch.
+    _record_call(
+        call_id, action_id, caller_agent_id, validated_inputs, OUTCOME_VALIDATED, None,
+        granted_by_call_id=granted_by_call_id,
+    )
 
     dispatched = dispatch_validated_action_call(action, caller_agent_id, validated_inputs)
     outcome = dispatched.get("outcome") or OUTCOME_NOT_DISPATCHED
@@ -667,6 +949,7 @@ def call_action(
     _record_call(
         call_id, action_id, caller_agent_id, validated_inputs, outcome, None,
         detail=dispatched.get("detail"), result=dispatched.get("result"), grant=grant,
+        granted_by_call_id=granted_by_call_id,
     )
 
     return ActionCallVerdict(
@@ -675,4 +958,5 @@ def call_action(
         detail=dispatched.get("detail"), inputs=validated_inputs,
         result=dispatched.get("result"), grant=grant,
         where_the_operator_does_it=dispatched.get("where_the_operator_does_it"),
+        granted_by_call_id=granted_by_call_id,
     )

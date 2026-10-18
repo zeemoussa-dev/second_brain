@@ -36,6 +36,16 @@ how a missing capability gets discovered (`ADR-033`). 2xx stays
 reserved for a call that passed the gate, so no client can read a
 refusal as a success.
 
+`GET /actions/calls/pending` and `POST /actions/calls/{call_id}/
+confirm|decline` are the operator's side of a confirmation-required
+Action (REQ-SB-95-US-03-T04). They are a small surface over the SAME
+ledger the call route writes -- not the archived Pending Approvals
+subsystem, which is not present in this repo and is not revived here.
+Unlike the call route they answer an operator at a screen, not a runner
+Skill relaying words to one, so a refusal is the plain-sentence 409 the
+write routes above already return rather than the call route's verdict
+dict.
+
 **Read and write shape the implementation differently, and a client has
 to map between them.** A write sends the kind as a KEY --
 `{"implementation": {"skill": {"skill_id": "..."}}}` -- because which
@@ -140,9 +150,18 @@ class ActionCallBody(BaseModel):
     see the Action. An undeclared input must reach the gate to be
     refused BY NAME -- a model that silently dropped it would make the
     refusal AC-04 requires impossible.
+
+    `confirmed_call_id` is a third, optional field, because only a
+    confirmation-required Action has anything to put in it
+    (REQ-SB-95-US-03-T04). A first call omits it and is answered with
+    the ledger id to confirm; the re-call sends that id back. Supplying
+    one for an Action that needs no confirmation changes nothing: the
+    Action's own flag decides whether a confirmation is required, never
+    the caller.
     """
     caller_agent_id: str
     inputs: dict[str, Any] = {}
+    confirmed_call_id: str | None = None
 
 
 def _implementation_payload(body: ActionImplementationBody | None) -> dict[str, Any] | None:
@@ -268,11 +287,66 @@ def call_action(action_id: str, body: ActionCallBody) -> dict:
     reserved as an action id only in the sense that an Action literally
     named `call` would still be reachable at `/actions/call/call`.
     """
-    verdict = action_invocation.call_action(action_id, body.caller_agent_id, body.inputs)
+    verdict = action_invocation.call_action(
+        action_id, body.caller_agent_id, body.inputs, body.confirmed_call_id,
+    )
     if not verdict.accepted:
         # A dict detail, not a sentence: the runner Skill relays the
         # refusal to the operator AND has to quote the call_id, and
         # flattening the verdict into a string here would force it to
         # parse prose back apart.
+        #
+        # `awaiting_confirmation` arrives here too, and is answered with
+        # the same 409 and the same body as any other refusal
+        # (REQ-SB-95-US-03-T04). It is not a second shape to learn: the
+        # caller branches on `accepted`, reads `refusal` for the words,
+        # and -- when `outcome` is `awaiting_confirmation` -- sends
+        # `call_id` back as `confirmed_call_id` once the operator has
+        # confirmed. 2xx stays reserved for a call that passed the gate,
+        # and nothing is performed until one does.
         raise HTTPException(status_code=409, detail=asdict(verdict))
     return asdict(verdict)
+
+
+# The operator's side of confirmation (REQ-SB-95-US-03-T04, `ADR-033`).
+#
+# Under `/actions/calls/...` rather than `/action-calls/...` so the
+# ledger stays visibly part of the Actions surface, and no path here can
+# collide with `/actions/{action_id}`: that route is two segments and
+# these are three and four. These are the only routes the Actions screen
+# uses for pending confirmations -- the archived Pending Approvals
+# subsystem is NOT revived by any of them, and `Agent.working_mode` is
+# not read or written here. An Action's confirmation flag is a
+# per-operation operator decision, orthogonal to an agent's mode.
+
+
+@router.get("/calls/pending")
+def list_pending_action_calls() -> list[dict]:
+    """Everything the operator still has something to do about: calls
+    `awaiting_confirmation`, and calls already `confirmed` that nobody
+    has spent yet. The second kind is listed deliberately -- confirming
+    performs nothing, so a confirmation the agent never came back for
+    must stay visible instead of looking like a finished operation."""
+    return action_invocation.pending_confirmations()
+
+
+@router.post("/calls/{call_id}/confirm")
+def confirm_action_call(call_id: str) -> dict:
+    """Turn one awaiting record into a single-use grant. This performs
+    nothing: the agent's re-call spends the grant, exactly once, and
+    that is what runs the operation."""
+    try:
+        return action_invocation.confirm_action_call(call_id)
+    except action_invocation.ActionCallNotConfirmableError as exc:
+        raise _refusal(exc)
+
+
+@router.post("/calls/{call_id}/decline")
+def decline_action_call(call_id: str) -> dict:
+    """Refuse one awaiting record, permanently. Nothing is performed and
+    every later re-call naming this id is told it was declined, so the
+    agent reports the truth rather than retrying."""
+    try:
+        return action_invocation.decline_action_call(call_id)
+    except action_invocation.ActionCallNotConfirmableError as exc:
+        raise _refusal(exc)
