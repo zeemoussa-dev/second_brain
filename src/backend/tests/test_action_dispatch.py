@@ -17,13 +17,13 @@ records what it was entered with and returns a real result, so "the app
 really performed it" is checkable rather than inferred from a status
 code.
 
-**`http` is exercised on `_perform_http_implementation()` directly,
-`ui` and `skill` end to end through `POST /actions/{id}/call`.** Not a
-preference: the seam does not route to the `http` performer yet
-(`ESC-073` -- wiring it needs two assertions changed in
-`tests/test_action_invocation_gate.py`, a file outside this task's
-scope). The behaviour `ADR-033` decides for `http` is proved here all
-the same; only its one-line wiring is not.
+**All three kinds are exercised end to end through
+`POST /actions/{id}/call`**, so what is proved is the shipped path an
+agent really takes. The two cases that must not reach a route at all --
+an Action naming the call gate's own route, and an operation that fails
+behind one -- drive `_perform_http_implementation()` directly, because
+what they assert is what the performer decides before and after the
+request, not what the gate does with it.
 
 **Nothing here may reach a real write, a real subprocess or a real
 outbound call.** Four things are isolated and nothing else:
@@ -89,6 +89,22 @@ _router = APIRouter()
 @_router.post("/__test_action_target/{folder}")
 def _perform_the_target(folder: str, body: _TargetBody) -> dict:
     return _the_real_operation(folder, body.note, body.urgent)
+
+
+# A second target, shared with `tests/test_action_invocation_gate.py`,
+# which imports this module for the side effect of registering it
+# (`ESC-073`). That file's Action pointed at the REAL
+# `POST /vault-index/refresh` while dispatch performed nothing; the
+# moment it did, every run of the suite re-read the operator's whole
+# vault -- 1.09s to 8.60s for that one file. It declares inputs of its
+# own and only needs somewhere harmless to land, so this target accepts
+# any of them and echoes them back as a real result.
+THE_ANY_INPUTS_TARGET_ROUTE = ("POST", "/__test_action_target_any_inputs")
+
+
+@_router.post("/__test_action_target_any_inputs")
+def _accept_any_inputs(body: dict) -> dict:
+    return {"accepted_inputs": body}
 
 
 main_app.app.include_router(_router)
@@ -257,28 +273,34 @@ def the_http_action() -> Action:
     )
 
 
-def test_an_http_implementation_is_really_performed_by_the_app_and_reported_performed() -> None:
-    """[REQ-SB-95-US-03-AC-02] The app performs what it owns. The target
-    function is entered with the VALIDATED inputs -- the input the route
-    declares as a path parameter bound into the path, the rest in the
-    body -- and what comes back is the route's real result rather than a
-    description of it.
-
-    Exercised directly rather than through `POST /actions/{id}/call`
-    because the seam does not route to it yet (`ESC-073`). What is
-    proved here is the whole of the `http` behaviour `ADR-033` decides;
-    what is NOT proved is the one line that reaches it, which is why
-    this task is `Blocked` rather than `Done`.
+def test_an_http_implementation_is_really_performed_by_the_app_and_reported_performed(
+    resolvable, stored_actions, ledger,
+) -> None:
+    """[REQ-SB-95-US-03-AC-02] The app performs what it owns, through
+    the one door an agent really calls. The target function is entered
+    with the VALIDATED inputs -- the input the route declares as a path
+    parameter bound into the path, the rest in the body -- and what the
+    caller gets back, and what the ledger keeps, is the route's real
+    result rather than a description of it.
     """
-    performed = action_invocation._perform_http_implementation(
-        the_http_action(), "POST", "/__test_action_target/{folder}",
-        {"folder": "Projects", "note": "kickoff", "urgent": True},
+    client.post("/actions", json=AN_HTTP_ACTION)
+
+    verdict = accepted_verdict(
+        call("file-the-note", folder="Projects", note="kickoff", urgent=True),
     )
 
     assert _entered_with == [{"folder": "Projects", "note": "kickoff", "urgent": True}]
-    assert performed["outcome"] == "performed"
-    assert performed["result"] == {"filed": "Projects/kickoff", "urgent": True}
-    assert "POST /__test_action_target/{folder}" in performed["detail"]
+    assert verdict["outcome"] == "performed"
+    assert verdict["result"] == {"filed": "Projects/kickoff", "urgent": True}
+    assert "POST /__test_action_target/{folder}" in verdict["detail"]
+    assert verdict["grant"] is None
+    assert verdict["where_the_operator_does_it"] is None
+
+    record = the_one_record(ledger)
+    assert record["call_id"] == verdict["call_id"]
+    assert record["outcome"] == "performed"
+    assert record["inputs"] == {"folder": "Projects", "note": "kickoff", "urgent": True}
+    assert record["result"] == {"filed": "Projects/kickoff", "urgent": True}
 
 
 def test_an_http_implementation_naming_the_call_gate_itself_is_refused_not_recursed() -> None:

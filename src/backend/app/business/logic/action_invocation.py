@@ -36,11 +36,8 @@ entered at all.
 **Then dispatch by kind, and the app does not perform what it does not
 own** (`ADR-033`, REQ-SB-95-US-03-T03). An `http` implementation is
 performed, in process, against this app's own route, and only a 2xx is
-`performed` -- built and proved in `_perform_http_implementation()`,
-but deliberately not yet wired into the seam, for the reason
-`dispatch_validated_action_call()` records (`ESC-073`). A `ui`
-implementation is never performed -- the answer names the screen the
-operator does it on. A `skill` implementation is
+`performed`. A `ui` implementation is never performed -- the answer
+names the screen the operator does it on. A `skill` implementation is
 `authorised`, not performed: the answer carries a single-use grant the
 runner spends once and performs in the profile where Skills already
 run, because `ADR-019` keeps `skills/catalog/` as payload this app
@@ -241,13 +238,6 @@ def _perform_http_implementation(
 ) -> dict:
     """The one kind the app owns and really runs (`ADR-033`).
 
-    **Complete, tested, and not yet reached from
-    `dispatch_validated_action_call()`** -- see the reason recorded
-    there and in `ESC-073`. It is exercised directly by
-    `tests/test_action_dispatch.py`, so what it does is proved rather
-    than promised; only the one line that routes the `http` branch to
-    it is outstanding.
-
     **Only 2xx is `performed`.** A route answering 4xx or 5xx did not do
     the thing, and reporting it as done -- with its own error body
     attached as if it were a result -- is precisely the fabricated
@@ -377,19 +367,11 @@ def dispatch_validated_action_call(
     before this), which is exactly why it must not be silent if it ever
     happens.
 
-    **`http` is built and proved but deliberately NOT wired here yet
-    (`ESC-073`).** `_perform_http_implementation()` below is complete and
-    tested directly; routing this branch to it is a one-line change. It
-    waits because wiring it makes two tests in
-    `tests/test_action_invocation_gate.py` -- a file outside this task's
-    `## Files to Modify` -- stop telling the truth: one pins the
-    transitional `not_dispatched` outcome `T02` wrote for exactly this
-    moment, and the other points a test Action at the REAL
-    `POST /vault-index/refresh`, which live dispatch turns into a full
-    re-read of the operator's vault on every run of the suite (measured:
-    1s to 8.6s). Reporting `not_dispatched` meanwhile is what `T02`
-    already shipped for every kind, so nothing regresses and nothing
-    claims to have run.
+    **A test that points an Action at a real route now really runs it.**
+    Before this was wired every dispatch was inert, so what a test
+    Action named cost nothing; the first run with it live re-read the
+    operator's whole vault from one gate test (`ESC-073`). A test Action
+    belongs on a test-only route.
     """
     implementation = action.implementation
     if implementation is None:
@@ -401,15 +383,9 @@ def dispatch_validated_action_call(
             ),
         }
     if implementation.kind == "http":
-        return {
-            "outcome": OUTCOME_NOT_DISPATCHED,
-            "detail": (
-                f"action {action.id!r} passed every validation; dispatching an http "
-                "implementation is not implemented yet in this gate (REQ-SB-95-US-03-T03 "
-                "built and proved the performer; ESC-073 holds the wiring), so nothing "
-                "was performed"
-            ),
-        }
+        return _perform_http_implementation(
+            action, implementation.method, implementation.path, validated_inputs,
+        )
     if implementation.kind == "ui":
         return _point_at_ui_implementation(action, implementation.feature_key)
     if implementation.kind == "skill":

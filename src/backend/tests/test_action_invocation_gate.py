@@ -33,11 +33,19 @@ from fastapi.testclient import TestClient
 
 import app.main as main_app
 from app.business.logic import action_invocation
+from tests import test_action_dispatch
 
 client = TestClient(main_app.app)
 
 A_DEPLOYED_SKILL = "email-thread-capture"
-A_REAL_ROUTE = ("POST", "/vault-index/refresh")
+
+# Imported for the side effect of registering it: the accepted calls in
+# this file now REALLY perform their Action's route (`T03` wired the
+# `http` branch), so the route they name has to be a harmless test-only
+# one. It named the real `POST /vault-index/refresh` until then, which
+# live dispatch turns into a full re-read of the operator's vault on
+# every run of the suite (`ESC-073`).
+THE_HARMLESS_TARGET_ROUTE = test_action_dispatch.THE_ANY_INPUTS_TARGET_ROUTE
 A_REAL_FEATURE_KEY = "/settings/artifacts"
 
 THE_CALLER = "cbo-agent"
@@ -55,7 +63,7 @@ def resolvable(monkeypatch):
     )
     monkeypatch.setattr(
         "app.business.core.actions.action_manager.app_route_table",
-        lambda: {A_REAL_ROUTE},
+        lambda: {THE_HARMLESS_TARGET_ROUTE},
     )
     monkeypatch.setattr(
         "app.business.core.actions.action_manager.UI_FEATURE_KEYS",
@@ -129,6 +137,10 @@ def dispatched(monkeypatch) -> list[dict]:
     return entries
 
 
+# What this file is about is the GATE -- which calls it refuses, what it
+# records, and that dispatch is entered exactly once -- so what the
+# Action's route does is immaterial to every assertion here. It must,
+# however, be harmless: see `THE_HARMLESS_TARGET_ROUTE` above.
 A_CATALOGUED_ACTION = {
     "id": "refresh-the-index",
     "description": "Rebuild the vault index now",
@@ -138,7 +150,9 @@ A_CATALOGUED_ACTION = {
     ],
     "allowed_callers": [THE_CALLER],
     "needs_confirmation": False,
-    "implementation": {"http": {"method": "POST", "path": "/vault-index/refresh"}},
+    "implementation": {"http": {
+        "method": THE_HARMLESS_TARGET_ROUTE[0], "path": THE_HARMLESS_TARGET_ROUTE[1],
+    }},
 }
 
 
@@ -259,11 +273,12 @@ def test_a_valid_call_passes_the_gate_records_it_and_enters_dispatch_exactly_onc
     the caller, the Action and the validated inputs, and the dispatch
     seam is entered once with those same inputs.
 
-    And the accepted verdict does NOT claim an operation was performed:
-    dispatch by implementation kind is REQ-SB-95-US-03-T03's, so the
-    seam reports that nothing ran and the ledger records that word. A
-    gate that reported `performed` here would be the fabricated outcome
-    this whole story exists to make impossible."""
+    And an accepted verdict says what really happened: `T03` wired
+    dispatch by implementation kind, so an `http` Action is performed by
+    the app and the verdict carries the route's own result. A gate that
+    reported `performed` without a route having run would be the
+    fabricated outcome this whole story exists to make impossible, which
+    is why the result is asserted here and not only the word."""
     client.post("/actions", json=A_CATALOGUED_ACTION)
 
     accepted = call("refresh-the-index", scope="Projects", force=True)
@@ -272,8 +287,9 @@ def test_a_valid_call_passes_the_gate_records_it_and_enters_dispatch_exactly_onc
     verdict = accepted.json()
     assert verdict["accepted"] is True
     assert verdict["refusal"] is None
-    assert verdict["outcome"] == "not_dispatched"
-    assert "not implemented yet" in verdict["detail"]
+    assert verdict["outcome"] == "performed"
+    assert verdict["result"] == {"accepted_inputs": {"scope": "Projects", "force": True}}
+    assert THE_HARMLESS_TARGET_ROUTE[1] in verdict["detail"]
 
     assert dispatched == [{
         "action_id": "refresh-the-index",
@@ -286,7 +302,7 @@ def test_a_valid_call_passes_the_gate_records_it_and_enters_dispatch_exactly_onc
     assert record["caller_agent_id"] == THE_CALLER
     assert record["action_id"] == "refresh-the-index"
     assert record["inputs"] == {"scope": "Projects", "force": True}
-    assert record["outcome"] == "not_dispatched"
+    assert record["outcome"] == "performed"
 
 
 def test_an_implementation_that_stopped_resolving_is_refused_naming_what_broke(
