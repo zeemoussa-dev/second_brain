@@ -70,7 +70,7 @@ bidirectional link, written at sprint creation. Order by implementation dependen
 
 | Story | Title | Phase | Status |
 |---|---|---|---|
-| [REQ-SB-95-US-04](../UserStories/REQ-SB-95-US-04-workflow-seventh-artifact-kind.md) | Workflow as the seventh artifact kind — the operator documents how a kind of request is handled | P2 | Ready |
+| [REQ-SB-95-US-04](../UserStories/REQ-SB-95-US-04-workflow-seventh-artifact-kind.md) | Workflow as the seventh artifact kind — the operator documents how a kind of request is handled | P2 | In Progress (T01 Done 2026-10-18 — `AC-01`, `AC-07`) |
 
 Build order inside the sprint, read from the task files' own `depends_on`:
 `T01 → T02 → T03`, `T01 → T04`, `T03 → T05 → T06`, `(T03, T04) → T07`.
