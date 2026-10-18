@@ -4,9 +4,9 @@ title: Workflows catalogue screen + ordered-step editor, Settings card, route, a
 parent_story: REQ-SB-95-US-04
 requirement_id: REQ-SB-95
 type: frontend
-status: Blocked
+status: Done
 gate: flagged
-gate_reason: "triggers 4, 6 and 7 — ESC-078 written (unanticipated-file): the seventh KIND_NAV tab needs the ArtifactKind union in features/settings/artifactsApiClient.ts and the exhaustive Record in ArtifactExportModal.tsx, neither of which this task's ## Files to Modify names, so AC-04 could not be verified. AC-01, AC-02 and AC-06 are verified live."
+gate_reason: "triggers 4 and 7 — ESC-078 was written (unanticipated-file) and is now Resolved: the two files it named were added to ## Files to Modify on 2026-10-18 and AC-04 is verified. All four locked ACs pass. Six scope-internal judgement calls are written up in the Implementation Log for an optional skim; nothing is blocked."
 phase: P2
 depends_on: [REQ-SB-95-US-04-T03, REQ-SB-95-US-04-T04, REQ-SB-95-US-02-T06]
 created: 2026-10-16
@@ -64,6 +64,13 @@ and route, and the seventh kind tab on the Artifacts page.
 - `src/frontend/src/App.tsx` (one route)
 - `src/frontend/src/pages/SettingsArtifactsPage.tsx` (seventh `KIND_NAV` entry + the `ArtifactKind` union)
 - `src/frontend/src/pages/SettingsActionsPage.tsx` (render the blocked-delete message naming referencing Workflows)
+- `src/frontend/src/features/settings/artifactsApiClient.ts` — **added 2026-10-18,
+  authorised against `ESC-078`.** The `ArtifactKind` union gains `'workflow'`, one
+  member. The union is declared here, not in `SettingsArtifactsPage.tsx` where the
+  line above assumed it.
+- `src/frontend/src/features/settings/ArtifactExportModal.tsx` — **added 2026-10-18,
+  authorised against `ESC-078`.** `KIND_LABELS` gains `workflow: 'Workflow'`, one
+  entry; a `Record` keyed by the union is exhaustive and fails `TS2741` without it.
 
 ---
 
@@ -124,8 +131,8 @@ browser as above.`
 ## Acceptance Criteria
 
 - [x] Workflows catalogue page + ordered-step editor on existing approved conventions
-- [ ] Settings card and route added; seventh `KIND_NAV` tab on the Artifacts page
-      — card and route **done**; the seventh tab is **blocked** on `ESC-078`
+- [x] Settings card and route added; seventh `KIND_NAV` tab on the Artifacts page
+      — the tab landed 2026-10-18 once `ESC-078` was authorised
 - [x] Step picker populated from the live Actions API
 - [x] Backend refusals (bad step, blocked Action delete) rendered verbatim
 - [x] `MEMORY.md` updated if this task produced a new decision / pattern / constraint
@@ -267,3 +274,70 @@ user-visible defect, not just a compile gate. `GET /artifacts` returns `workflow
 and the page drops those rows through its `?.` guard — no crash, no tab, no kind. So
 `AC-04` is closing a gap that currently exists on the operator's install, not only in
 your branch.
+
+---
+
+### 2026-10-18 (resumed) — `ESC-078` authorised, `AC-04` verified, task `Done`
+
+**The three edits, in the order the extension specifies and nothing else in any of
+them:**
+
+1. `features/settings/artifactsApiClient.ts` — `ArtifactKind` gains `| 'workflow'`.
+2. `features/settings/ArtifactExportModal.tsx` — `KIND_LABELS` gains
+   `workflow: 'Workflow'`.
+3. `pages/SettingsArtifactsPage.tsx` — **`KIND_ORDER` first**, then the `KIND_NAV`
+   entry (`account_tree`, "Workflows"), the `KIND_LABELS` entry, and the intro
+   sentence's list of kinds. `KIND_ORDER` is the load-bearing one: `byKind()`,
+   `SelectionState` and the `useUrlState` `valid:` list all derive from it, so the
+   `KIND_NAV` entry alone would have compiled and then dropped every Workflow row —
+   `ESC-070`'s own recorded failure, and the 2026-09-06 Index regression before it.
+
+**Every `ArtifactKind` site was then enumerated from the source rather than from
+memory** (the `ESC-076` discipline): 16 occurrences across exactly three files. The
+two literal `Record<ArtifactKind, …>` maps are both extended; `byKind()`,
+`SelectionState`, the `useUrlState` `valid:` list and `KIND_ORDER` itself all derive
+from one array; the two remaining sites are `as ArtifactKind` casts with explicit
+runtime fallbacks. No fourth file holds one.
+
+| AC-ID | Observed | Verdict |
+|---|---|---|
+| `REQ-SB-95-US-04-AC-04` | `/settings/artifacts` renders **seven** nav items in order — `artifacts-tab-template` / `-skill` / `-agent` / `-pipeline` / `-index` / `-action`, then **`[data-testid="artifacts-tab-workflow"]`** (`account_tree`, "Workflows"). Selecting it sets `?kind=workflow`, heads the panel "Workflows" and lists the real Workflow as **one `.artifacts-item-row`** (`team-actions-by-mail`) with its own selection checkbox. **Every pre-existing tab still lists exactly what it listed before**, asserted per kind against the untouched backend's own `GET /artifacts` in the same run: template 6, skill 11, agent 1, pipeline 0, index 0, action 4 — rendered id sets **equal** to the API's id sets for all six, `itemRowCount` equal to the API count for all six, the Agents row still showing its display name ("Primary") over its id, and the two genuinely-empty kinds still rendering `No Pipelines yet.` / `No Indexes yet.` rather than anything a failure could be mistaken for. The six nav entries are byte-unchanged (same `data-testid`, icon and label, same order) — confirmed in the DOM and, independently, by the diff being pure insertions. Zero page exceptions. | **Pass** |
+
+**What this actually closed.** This is not only a compile gate: `GET /artifacts` has
+returned `workflow` since `T04`, and the page dropped those rows silently through
+`groupedByKind[artifact.kind]?.push(…)` — no crash, no tab, no kind. Measured on the
+disposable install **before** the fix as `skill 11 / template 6 / agent 1 / action 4 /
+workflow 1` from the API against a page showing six tabs and no Workflows. So a kind
+that was invisible on a real install is now listed. The `?.` guard did its job (a kind
+the page does not know cannot crash Settings) and is exactly why nothing ever
+complained.
+
+**Bonus confirmation of `T04`'s closure, visible only now.** Selecting the Workflow
+enabled Export and the preview modal rendered **"team-actions-by-mail — Workflow ·
+directly selected"** followed by its three Actions, each labelled *"included because:
+workflow:team-actions-by-mail (step step-6f8bfdc9 / step-af83f33e / step-3b5089ff)"*.
+That first line is the `KIND_LABELS` entry this extension added — without it the row
+would have rendered the raw kind. `Confirm export` was deliberately **not** clicked:
+the preview is the closure evidence and writing a bundle is no AC's requirement.
+
+**Gates (final).** `npx tsc --noEmit`: **clean, exit 0** — the widened union now has
+every exhaustive map over it covered. `npx oxlint src`: **12 warnings, 0 errors, none
+in any file this task touched** (unchanged set from the first pass). `pytest -q` in
+`src/backend`: **666 passed / 0 failed**, identical to the pre-resumption run — this
+task is frontend-only and moved the backend suite by **zero** across both sessions
+(655 → 666 overall, every one of the +11 being `T05`'s `tests/test_workflow_runs.py`).
+
+**One method note, recorded because it failed.** The literal reading of *"every
+pre-existing tab still lists exactly what it listed before"* wants a real
+before-render. `git worktree add --detach` into the scratchpad was tried for that and
+**failed** (`fatal: Could not reset index file to revision 'HEAD'`) — the index is
+being written by concurrent sessions in this shared checkout. It was rolled back
+immediately (junction removed, scratch tree deleted, `git worktree prune`, repo
+confirmed healthy and `node_modules` intact), and the before-state was established
+instead from the untouched backend's own per-kind id sets plus a pure-insertion diff
+over the six existing entries. Equivalent evidence, no shared git state touched; worth
+knowing that a worktree is not a safe tool in this checkout while others are working.
+
+gate: flagged 2026-10-18 — trigger 4 (`ESC-078`, now Resolved) and trigger 7. Trigger 6
+no longer applies: all four locked ACs are verified. Nothing is blocked; the flag is
+for an optional skim of the six judgement calls above.
