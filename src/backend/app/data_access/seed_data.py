@@ -5,9 +5,14 @@ files are seed data, and when one is written, is decided by the caller.
 """
 from __future__ import annotations
 
+import os
+import threading
+import time
 from pathlib import Path
 
 from app.config import settings
+
+_REPLACE_ATTEMPTS = 5
 
 
 def _path(relative_path: str) -> Path:
@@ -33,6 +38,31 @@ def read_text(relative_path: str) -> str | None:
 
 
 def write_text(relative_path: str, content: str) -> None:
+    """Atomic: the new content goes to a temporary file beside the target, which
+    then replaces it in one step. Writing in place left a half-written file when
+    the backend stopped mid-write, and a plugin reads a broken file as empty --
+    a 27 MB cache of synced history is lost that way (2026-10-18)."""
     path = _path(relative_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    try:
+        with open(temporary, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        _replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _replace(source: Path, target: Path) -> None:
+    # OneDrive and antivirus hold a file open for a moment after it changes, and
+    # Windows refuses to replace an open file; the lock is gone within a second.
+    for attempt in range(_REPLACE_ATTEMPTS):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if attempt == _REPLACE_ATTEMPTS - 1:
+                raise
+            time.sleep(0.1 * 2 ** attempt)
