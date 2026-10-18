@@ -4,9 +4,9 @@ title: Dispatch by implementation kind — http performed, ui pointed at, skill 
 parent_story: REQ-SB-95-US-03
 requirement_id: REQ-SB-95
 type: backend
-status: Blocked
+status: Done
 gate: flagged
-gate_reason: "ESC-073 Open -- wiring the `http` dispatch branch needs two assertions changed in `src/backend/tests/test_action_invocation_gate.py`, a file outside this task's `## Files to Modify`: one pins `T02`'s transitional `not_dispatched` outcome, and the other points a test Action at the REAL `POST /vault-index/refresh`, which live dispatch turns into a full re-read of the operator's vault on every suite run (measured 1.09s -> 8.60s for that file). The `ui` and `skill` paths, the single-use grant and its ledger claim primitive are built, tested and committed (e16013c, ab0ed44; 490 -> 497 tests, 0 failed), and `_perform_http_implementation()` is complete and proved by three tests driving it directly -- only the one line that reaches it from the seam is withheld, so `AC-02`'s http half is unverified end to end. Also flagged for a spot-check of four scope-internal judgement calls in the Implementation Log, the largest being that `http` is performed IN PROCESS over httpx.ASGITransport rather than over a loopback socket to 127.0.0.1:8001."
+gate_reason: "ESC-073 Resolved -- the scope extension was authorised, `http` is wired, and every locked AC verifies (502 passed, 0 failed; `AC-02` test 1 now runs end to end through `POST /actions/{id}/call`, and manual step 1 passed against a disposable install on 127.0.0.1:8013, never the operator's :8001). Nothing is blocked. Still flagged for a human spot-check of the scope-internal judgement calls in the Implementation Log -- the largest being that `http` is performed IN PROCESS over httpx.ASGITransport rather than over a loopback socket to 127.0.0.1:8001, and, new in this pass, that the gate test file now imports `tests/test_action_dispatch.py` to reuse a shared harmless target route rather than registering a second one of its own."
 phase: P2
 depends_on: [REQ-SB-95-US-03-T02]
 created: 2026-10-16
@@ -58,6 +58,8 @@ authorising what it does not, and pointing at what only the operator can do.
 - `src/backend/app/business/logic/action_invocation.py`
 - `src/backend/app/data_access/action_calls.py` (grant fields, if the record shape needs them)
 - `src/backend/tests/test_action_dispatch.py` (new)
+- `src/backend/tests/test_action_invocation_gate.py` (added 2026-10-18 by the
+  scope extension at the end of this file; `ESC-073`, three named changes only)
 
 ---
 
@@ -113,8 +115,8 @@ authorising what it does not, and pointing at what only the operator can do.
 
 ## Acceptance Criteria
 
-- [ ] Three dispatch paths, each behaving exactly as `ADR-033` decides — `ui` and
-      `skill` done and wired; `http` built and proved but not wired (`ESC-073`)
+- [x] Three dispatch paths, each behaving exactly as `ADR-033` decides — all three
+      wired and verified end to end through `POST /actions/{id}/call`
 - [x] Single-use grant minted for `skill`, consumable exactly once
 - [x] No `skills/catalog/` payload imported or executed by the app
 - [x] Honest failure outcomes; nothing half-performed
@@ -299,3 +301,105 @@ shape and the seam's signature are `T02`'s contract and stay exactly as they are
 `POST /actions/{id}/call`, and manual step 1 against a real loopback `http` Action. If
 the manual step needs a running backend, use a disposable instance on another port as
 `REQ-SB-95-US-02-T06` did — never the operator's :8001.
+
+---
+
+## Implementation Log — the scope extension (`Done`)
+
+**Coder, 2026-10-18 — `Blocked` → `Done`.** The three authorised changes landed,
+`http` is wired, and every locked AC now verifies. Commit `66902a7`.
+
+### What changed
+
+1. **The seam's `http` branch calls `_perform_http_implementation()`** — the one
+   withheld line. The performer itself is untouched; so are the twice-written
+   ledger, the single-409 refusal shape, the seam's signature and `T01`'s
+   suite-wide Hermes sandbox.
+2. **The gate test's two transitional assertions now read `performed`** — the
+   verdict's and the ledger record's — plus the `detail` assertion beside them,
+   which named the withheld "not implemented yet" sentence. The verdict's
+   **real result** is asserted too, so `performed` cannot pass without a route
+   having actually answered.
+3. **The gate test's Action is off `POST /vault-index/refresh`.** It now names a
+   harmless test-only target that `tests/test_action_dispatch.py` registers and
+   this task added for the purpose (`POST /__test_action_target_any_inputs`,
+   which accepts any inputs and echoes them back); the gate file imports that
+   module for the registration side effect. The file's own `A_REAL_ROUTE` was
+   renamed `THE_HARMLESS_TARGET_ROUTE`, since a constant that keeps a test
+   Action off a real route cannot be called "the real route".
+4. **`AC-02` test 1 moved onto the shipped path** — end to end through
+   `POST /actions/{action_id}/call` instead of driving the performer directly —
+   and now asserts the ledger record as well as the verdict. No test was added
+   or removed; one was converted.
+5. The stale "built but not wired / `ESC-073`" paragraphs were removed from the
+   module and function docstrings, and the one thing wiring really changed was
+   recorded in their place: a test Action now really runs what it names.
+
+### Verification
+
+**Baseline measured before the first edit: 502 passed, 0 failed (29.68s).**
+Final: **502 passed, 0 failed (34.10s)**. Neither known flake
+(`test_health_check.py`, `test_marketplace_source.py`) fired in any of the four
+full runs. `test_screen_build_lock.py::test_a_second_build_waits_for_the_first`
+— another session's, reported failing when this task was handed over — **passed
+in every run here**, including the baseline taken before any edit of mine. No
+frontend file was touched.
+
+The two files alone: **13 passed, 0.98s**. The gate file alone: **6 passed,
+3.25s**, of which the two dispatching tests cost **0.05s and 0.03s** — the
+8.60s vault re-read is gone, and ~3s of that total is importing the app at
+collection, not running anything.
+
+**Where writes and outbound calls land, re-measured with `http` dispatch LIVE
+and before the suite was run with it.** The same interceptor as the first pass:
+`builtins.open`, `Path.open/write_text/write_bytes/mkdir/unlink/rename/replace/
+touch/rmdir`, `os.remove/rename/replace/makedirs/mkdir/unlink`,
+`shutil.rmtree/copyfile/copy/copy2/copytree/move`, every `socket.socket.connect`,
+every real `httpx.HTTPTransport.handle_request`, every `urllib.request.urlopen`,
+every `subprocess` entry point, and `HermesProfiles.write_soul/update`.
+
+- **This task's two files** — 1513 write calls intercepted; **0 in the real data
+  path, 0 in the real vault, 0 in the real Hermes home**. **0 real httpx
+  requests, 0 urlopen** (`ASGITransport` hands the request to the application
+  object in process, so performing an `http` Action opens no socket at all). 25
+  socket connects, every one an ephemeral `127.0.0.1` `asyncio` self-pipe;
+  **`any address mentioning 8001: []`**. 2 subprocesses, both
+  `git rev-parse HEAD` from the health route at import. 0 Hermes seam calls.
+- **The whole suite** — 12118 write calls; 0 in the real vault, 0 in the real
+  Hermes home, and **1** "in the real data path" which is the data path
+  directory itself (a pre-existing `mkdir(exist_ok=True)` from another file —
+  nothing inside it). 1 real httpx request, `GET http://127.0.0.1:9119/`,
+  pre-existing and not from these files. 127 socket connects; the only one whose
+  text contains "8001" is `('127.0.0.1', 58001)`, an ephemeral self-pipe port —
+  **no connect to port 8001**. 502 passed under the interceptor too.
+
+| AC-ID | Step | Observed |
+|---|---|---|
+| `REQ-SB-95-US-03-AC-02` | Automated test 1 — an `http` implementation is really performed, **end to end through `POST /actions/{id}/call`** | **Pass.** `POST /actions/file-the-note/call` with `{"folder": "Projects", "note": "kickoff", "urgent": true}` → 200, `accepted: true`, `outcome: "performed"`. The target function was entered **exactly once**, with those three validated inputs — `folder` bound into the path the route declares it in, `note` and `urgent` in the body — and the verdict carried the route's real result `{"filed": "Projects/kickoff", "urgent": true}`, with `grant: null` and `where_the_operator_does_it: null`. The ledger record under the same `call_id` says `performed` and keeps the same inputs and the same real result. |
+| `REQ-SB-95-US-03-AC-02` | Automated tests 2–5 (`skill` authorised, grant single-use, `ui` pointed at, induced `http` failure) | **Pass, unchanged** — re-run green in every suite run above. Their observed outcomes are recorded in the first Implementation Log and were not revisited. |
+| `REQ-SB-95-US-03-AC-02` | Gate-side `AC-02` — a valid call enters dispatch exactly once and the ledger records what dispatch really reported | **Pass.** `test_a_valid_call_passes_the_gate_records_it_and_enters_dispatch_exactly_once` now asserts `outcome: "performed"`, the route's real result `{"accepted_inputs": {"scope": "Projects", "force": true}}`, and the same word in the ledger record — the transitional `not_dispatched` assertions `T02` assigned here. The seam is still entered exactly once, with exactly the validated inputs. |
+| `REQ-SB-95-US-03-AC-02` | **Manual step 1** — a real `http` Action over loopback, checked by its real side effect | **Pass.** Run against a **disposable install on `127.0.0.1:8013`** (its own uvicorn, scratch `VAULT_PATH` / `SECOND_BRAIN_DATA_PATH` / `HERMES_HOME_PATH`), the technique `REQ-SB-95-US-02-T06` established; the operator's `:8001` was never called and was still answering, untouched, afterwards. Two notes were written into the disposable vault behind the backend's back and `GET /vault/overview` still read `total_notes: 0` — the index was genuinely stale. `POST /actions/refresh-my-index/call` (a real `http` Action on `POST /vault-index/refresh`) answered `accepted: true, outcome: "performed"` with the route's own result `{"notes_indexed": 2, "rebuilt_at": "…T06:37:10.238843+00:00", …}`, and the detail *"this app performed action 'refresh-my-index' by running its own POST /vault-index/refresh, which answered HTTP 200"*. **The real side effect, read back through a different route:** `GET /vault/overview` then returned `total_notes: 2`, `folder_counts: {"Notes": 2}`, `last_rebuilt_at` equal to the dispatch's own `rebuilt_at`. The ledger file on the disposable install's disk (`config/data/ActionCalls/b665f7a1….json`) carries `performed` and that same real result. A second Action, `exclude-a-folder` on `PATCH /vault/index-config/{folder_name}`, then proved the wire mapping on a real install: called with `{"folder_name": "Notes", "included": false}` it answered `performed`, the route saw `Notes` as a **path parameter** and `included` in the **body**, and the change was persisted to `config/index_config.json` as `{"folders": {"Notes": {"included": false}}}` and read back by `GET /vault/index-config`. The instance was stopped afterwards. |
+
+### Judgement calls inside scope (for human spot-check)
+
+The six recorded in the first Implementation Log all still stand. One new one:
+
+7. **The gate test file imports `tests/test_action_dispatch.py` for the side
+   effect of registering the shared harmless target, rather than registering a
+   second one of its own.** `ESC-073` named reuse, and two identical
+   test-only routes on the real app would be two things to keep in step. The
+   cost is a test module importing another test module: real coupling, but
+   explicit, commented at both ends, and it keeps the gate file runnable alone
+   (measured: `pytest tests/test_action_invocation_gate.py` → 6 passed). The
+   alternative — pointing the gate's Action at the EXISTING
+   `/__test_action_target/{folder}` — would have forced that route's required
+   `note` body field to become optional and the gate's Action to be rebuilt
+   around `folder`/`note`, rippling through every refusal assertion in the file
+   (`'scope'`, `'force'`, `'recurse'`): far more than the three authorised
+   changes.
+
+### Not done here, deliberately
+
+Unchanged from the first Implementation Log: confirmation is `T04`'s, the runner
+Skill is `T05`'s, and no route exposes grant consumption yet because
+`actions_router.py` is in `T04`'s scope, not this one's.

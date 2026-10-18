@@ -83,6 +83,25 @@ Build order inside the sprint, read from the task files' own `depends_on`:
 
 ## Dependencies / External Blockers
 
+- **UNBLOCKED AND `Done`, 2026-10-18 — `T03` (`ESC-073` Resolved).** The
+  orchestrator authorised the scope extension, so
+  `src/backend/tests/test_action_invocation_gate.py` joined `T03`'s files for
+  the three changes `ESC-073` named. The seam's `http` branch now calls
+  `_perform_http_implementation()`, the two transitional `not_dispatched`
+  assertions assert `performed` **and the route's real result**, and that
+  file's test Action is off the real `POST /vault-index/refresh` and onto a
+  harmless test-only target (its two dispatching tests now cost 0.05s and
+  0.03s). `AC-02`'s `http` test runs end to end through
+  `POST /actions/{action_id}/call`, and its manual loopback step passed against
+  a **disposable install on `127.0.0.1:8013`** — two notes written behind the
+  backend's back stayed invisible until the Action call returned `performed`
+  with the route's own `{"notes_indexed": 2}`, after which the vault overview
+  read 2. The operator's `:8001` was never called. Suite **502 passed, 0
+  failed**, identical to the baseline taken before the first edit, and
+  re-measured behind the write/outbound interceptor with dispatch live: 0
+  writes in the real vault or the real Hermes home, no outbound request, no
+  connect to port 8001. Commit `66902a7`. Only `T04` and `T05` remain.
+  *(What follows is the original blocked note, kept for the record.)*
 - **BLOCKED IN FLIGHT, 2026-10-18 — `T03` (`ESC-073`).** Two of the three
   dispatch paths and the whole single-use grant mechanism are built, tested and
   committed (`e16013c`, `ab0ed44`; suite 490 → 497, 0 failed): `ui` is pointed
