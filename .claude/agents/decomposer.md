@@ -82,6 +82,28 @@ Y, or the one that uses a shared adapter" is good. "trigger-8 fired" is not.
 - You are the **only** role that can mark an AC non-locked: change its tag to
   `<!-- AC-ID: REQ-…-AC-NN | locked: false -->`. The reason MUST go in `## Notes`.
 
+### Name the switch-on site, not just where the code lives
+
+A task's `## Files to Modify` must include **the file that makes the new code
+run**, not only the files it is written in. Five tasks across `SPRINT-087` and
+`SPRINT-088` shipped a working mechanism and then stalled on one line somewhere
+else: the router that carries a Manager's answer to a screen (`ESC-069`), the
+call sites that fire a new trigger (`ESC-072`), the test file one task wrote and
+the next must finish (`ESC-073`), the boot call that seeds shipped data
+(`ESC-074`), a hand-copied route table that drifted the moment a screen was added
+(`ESC-071`). Each cost a `Blocked` task and a human authorisation for a change
+nobody disputed.
+
+Before writing the list, ask of every task: **what single edit, in a file this
+task does not otherwise touch, is the difference between this code existing and
+this code running?** Then name that file, with the one change scoped in words.
+It is usually a router, `app/main.py`, a `conftest.py`, an `__init__`, or the
+test another task owns.
+
+The symptom to watch for in your own draft: a file list where every entry sits in
+the layer the task is *about*. Real work crosses layers, and the crossing point
+is where the list fails.
+
 ### Structural ACs for screen / frontend stories
 
 For any story that builds or changes a screen, the **durable design layer** — which

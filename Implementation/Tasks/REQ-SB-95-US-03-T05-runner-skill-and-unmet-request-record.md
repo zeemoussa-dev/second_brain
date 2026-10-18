@@ -382,3 +382,23 @@ target against the real vault, data path and Hermes home:
   the starter needs the key. Added in `af54a4c`. The deeper question — a
   hand-maintained mirror of another build's route table drifts by construction —
   is **not** solved and is carried into the retro as a follow-up.
+
+---
+
+## Scope extension — 2026-10-18 (unblocks `ESC-074`)
+
+**Added to `## Files to Modify`:** `src/backend/app/main.py` — the boot call only.
+
+`seed_shipped_starters()` is built, tested and committed, and nothing calls it. The
+call belongs beside the Master Template seed in the startup lifespan, which is in no
+task's file list. The three in-scope alternatives were worked through and correctly
+rejected: composing on read breaks a `Done` task's test, and `get_by_id`-only
+composition would put an Action in the gate that no agent is told about and no screen
+lists.
+
+Scope is **the seed call and nothing else** in that file. Then finish the task's own
+verification and draft the sprint retrospective — `SPRINT-088` closes with you.
+
+This is the fifth escalation of one shape in two sprints, and the generator has now
+been fixed rather than the instance: `.claude/agents/decomposer.md` carries a standing
+rule to name the switch-on site, and framework `MEMORY.md` records why.

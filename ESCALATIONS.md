@@ -667,6 +667,12 @@ operator who deletes the starter gets it back on the next restart, which is the
 same property `seed_shipped_masters()` has had since 2026-09-06.
 
 **Resolving artefact:** — (Open)
-**Status:** Open
+**Resolution (2026-10-18):** authorised. `src/backend/app/main.py` is added to `REQ-SB-95-US-03-T05`'s `## Files to Modify`, scoped to the seed call beside the Master Template seed and nothing else. The three in-scope alternatives the coder worked through were correctly rejected -- composing on read breaks a `Done` task's test, and `get_by_id`-only composition hides an Action from every surface that should list it.
+
+**This is the fifth escalation of one shape in two sprints** (`ESC-069`, `ESC-071`, `ESC-072`, `ESC-073`, `ESC-074`): `## Files to Modify` names where new code lives and not the one line that makes it run. Rather than authorise a sixth, the generator is fixed -- `.claude/agents/decomposer.md` now carries a standing rule to name the switch-on site, with these five as the evidence, and framework `MEMORY.md` records it.
+
+**Resolving artefact:** `REQ-SB-95-US-03-T05` scope extension + decomposer rule, 2026-10-18
+
+**Status:** Resolved
 
 ---
