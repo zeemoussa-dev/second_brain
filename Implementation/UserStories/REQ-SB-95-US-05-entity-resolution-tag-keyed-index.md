@@ -244,7 +244,7 @@ mechanism, naming no plugin. Dependency order is
 | ID | Type | Task | ACs | Depends on | Task File |
 |---|---|---|---|---|---|
 | REQ-SB-95-US-05-T01 | backend | **Done 2026-10-18** — The tag-keyed index as a projection, computed and rebound inside `VaultManager.rebuild_index()` | AC-04, AC-07 | — | `../Tasks/REQ-SB-95-US-05-T01-tag-keyed-index-projection.md` |
-| REQ-SB-95-US-05-T02 | backend | `plugin_api.register_tag_namespace(namespace, entries)` — the callable seam, and the one `FRAMEWORK_API` bump | AC-08 | — | `../Tasks/REQ-SB-95-US-05-T02-register-tag-namespace-plugin-api.md` |
+| REQ-SB-95-US-05-T02 | backend | **Blocked 2026-10-18 (`ESC-079`)** — `plugin_api.register_tag_namespace(namespace, entries)` — the callable seam (built and verified), and the one `FRAMEWORK_API` bump (owed, not taken) | AC-08 | — | `../Tasks/REQ-SB-95-US-05-T02-register-tag-namespace-plugin-api.md` |
 | REQ-SB-95-US-05-T03 | backend | The generic tag resolver — name/alias/domain → `(kind, tag, hub)`, ambiguity and non-resolution reported | AC-01, AC-03, AC-05, AC-07 | T01, T02 | `../Tasks/REQ-SB-95-US-05-T03-generic-tag-resolver.md` |
 | REQ-SB-95-US-05-T04 | backend | The scoped read — hub synthesis first, then tagged evidence newest first, nothing outside the tag | AC-02 | T01, T03 | `../Tasks/REQ-SB-95-US-05-T04-scoped-entity-read.md` |
 | REQ-SB-95-US-05-T05 | backend | The scoped read as a shipped, catalogued Action reached through the call gate | AC-06 | T04, REQ-SB-95-US-02-T02, REQ-SB-95-US-03-T02, REQ-SB-95-US-03-T03 | `../Tasks/REQ-SB-95-US-05-T05-scoped-read-as-catalogued-action.md` |
@@ -292,6 +292,34 @@ Task `gate: flagged` for three judgement calls, chiefly that the manual step was
 run against a synthetic vault over the real HTTP surface rather than the
 operator's real vault; nothing is blocked and no `ESCALATIONS.md` entry was
 written.
+
+**Coder, 2026-10-18 — `T02` Blocked (`ESC-079`); the story stays `In Progress`.**
+The registration seam exists and is verified: `register_tag_namespace(namespace,
+entries)` on the facade stores the callable and never asks it at registration
+(observed through a fake plugin that records its own calls), `PluginManager`
+keys the registrations by prefix with the owning `plugin_id`, a second plugin's
+claim on a prefix is refused naming both, and `get_tag_namespaces()` is the read
+surface `T03` will use. `kind` is byte-identical pass-through; nothing but plain
+data and one callable crosses the seam. **Registration decorates, it does not
+gate** — `vault_manager.py` imports nothing from the plugin host, so `T01`'s
+index cannot be filtered by a registry it has no way to reach, and `AC-07` holds
+unchanged. 18 AC-tagged tests; suite 595 → 618 passed with the non-passing set
+identical before and after.
+
+**What blocks it is one line nobody should take unasked.** `AC-08`'s third
+clause — the single `FRAMEWORK_API` move — fired its condition exactly as the
+decomposer designed (`register_action` is present, so this is the later
+landing), but three facts the task could not see make it the operator's: the
+move is **11 → 12**, not the 7 → 8 `ADR-037`, the architecture section and the
+task all state (four versions stale by the time the work started);
+`REVIEW-QUEUE.md` still carries *when* to take it as an open decision, recommending
+the sitting where a plugin first uses one of these capabilities and every
+installed plugin is republished together; and it is live on save against a
+backend that is running, with the republish living in `src/marketplace/`, outside
+this task's scope and mid-flight in another session. The obligation is written at
+the constant and pinned by a test that fails if anyone bumps twice. **`T03` is
+unblocked in code** — the version gate only governs whether a *plugin* may
+declare the capability, and none does yet.
 
 **Operator decision, 2026-10-16 — flag cleared.** Operator, 2026-10-16: "Resolver is framework, Customer stays the plugin." The framework ships a tag-keyed resolver generic over any `<namespace>/<slug>` tag, naming no plugin; a plugin registers its namespace through the Plugin API, and the entities plugin registers `customer/` and `partner/`. This story builds here as mechanism; the namespace registration is `sb-plugins-entities`' own work. `ADR-022` stands unamended. `ESC-063` is Resolved, resolving artefact `ADR-035`.
 

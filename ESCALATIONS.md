@@ -985,3 +985,72 @@ So two rules go into the decomposer rather than one: the union rule itself, and 
 **Resolving artefact:** `REQ-SB-95-US-04-T07` scope extension + two decomposer rules, 2026-10-18
 
 **Status:** Resolved
+
+---
+
+## ESC-079: `REQ-SB-95`'s single `FRAMEWORK_API` bump is now due, and taking it refuses every installed plugin in a sitting nobody chose — 2026-10-18
+
+**Category:** contradictory-requirement
+
+**Trigger:** Building `REQ-SB-95-US-05-T02`. Its conditional read fired exactly as
+written — `register_action` IS present in the real `app/plugin_api.py` (commit
+`68caf71`), so this is the later of `REQ-SB-95`'s two facade additions and
+`ADR-037` assigns the one bump here. Three facts the task file could not see make
+taking it unsafe for a coder to do alone:
+
+1. **The numerals are four versions stale.** `ADR-037`, the architecture section
+   and this task all say "`FRAMEWORK_API` stays 7, becomes 8". The real constant
+   was already 11 when the task was written — `ADR-039`, `ADR-040`, `ADR-041` and
+   `ADR-060` moved it 8 → 11 after `ADR-037` was accepted. The bump owed is
+   **11 → 12**. (This part is not the blocker; the relation `ADR-037` decides —
+   exactly one bump, taken by the later landing — is unambiguous.)
+2. **The sibling task deferred it on operational grounds and the queue turned that
+   into an open human decision.** `REQ-SB-95-US-02-T05` left the constant at 11
+   deliberately, and the `REVIEW-QUEUE.md` item it wrote asks the operator to
+   "decide when the `FRAMEWORK_API` bump to 12 happens, which should be the sitting
+   where the first plugin publishes an Action and every installed plugin is
+   republished together". That sitting has not happened. The same item also says
+   the bump "should fire on its own" in this task — the two halves of one queue
+   entry disagree, and nothing in the repository settles which the operator meant.
+3. **The repair is outside this task's scope, and the window is the worst
+   available.** The constant's own comment says to bump it "only when ready to
+   republish and reinstall every installed plugin in the same sitting" — on
+   2026-10-17 a bump took all four plugins dark mid-session and killed a 64-customer
+   sync job. The backend is **running on `127.0.0.1:8001` right now**, so the bump is
+   live the moment the file is saved; and another session is mid-republish for the
+   v11 bump, with `src/marketplace/entities/1.3.0/` and `src/marketplace/my-day/1.7.1/`
+   both freshly written declaring `framework_api: 11`. `src/marketplace/` is in no
+   task's `## Files to Modify` and this task was told explicitly not to touch it.
+
+**Impact:** `REQ-SB-95-US-05-AC-08` is verified on its first two clauses (the
+callable seam; the duplicate prefix refused naming both plugins) and **not** on its
+third (the constant moving once). `REQ-SB-95-US-05-T02` is therefore `Blocked`, not
+`Done`. Nothing else is blocked: the capability itself is built, tested and
+committed, and `T03` can be built against it — the bump gates only a *plugin*
+declaring either capability, and no plugin does yet.
+
+**The exact change, when the sitting is chosen:**
+
+- `src/backend/app/plugin_api.py` — `FRAMEWORK_API = 11` → `FRAMEWORK_API = 12`,
+  once, plus a `v12` paragraph in the module docstring naming both capabilities
+  (`register_action` and `register_tag_namespace`) as the one contract move, and
+  deletion of the owed-bump note now sitting above the constant.
+- In the same sitting, republish and reinstall at `framework_api: 12`:
+  `src/marketplace/action-center/` (latest `0.19.2`),
+  `src/marketplace/entities/` (latest `1.3.0`),
+  `src/marketplace/my-day/` (latest `1.8.0`, with `1.7.1` in flight). Each install
+  reports `restart_required`.
+- `src/backend/tests/test_tag_namespace_registration.py` already pins the
+  invariant and keeps passing across the move: the constant may be the
+  pre-`REQ-SB-95` baseline (11) or exactly one more (12), never two more, and while
+  it is still 11 the file must carry this escalation id.
+
+**`MEMORY.md` candidate, deliberately not appended** (86 KB against the 40 KB
+budget its own rule 1 sets, which forbids appending while over): *a `FRAMEWORK_API`
+bump is an operator-timed act, not a coder-timed one — it is live on save, refuses
+every installed plugin until each is republished, and the republish lives outside
+the task that earns the bump. A task that "takes the bump" delivers the capability
+and the owed note, and the operator takes the constant.* Held here for the
+compaction pass.
+
+**Status:** Open

@@ -167,6 +167,28 @@ were unreachable throughout. Task `gate: flagged` for three judgement calls
 surface, not the operator's real vault), nothing blocked, no `ESCALATIONS.md`
 entry. **`T02` is the other independent root and is next; `T03` follows both.**
 
+**Coder, 2026-10-18 — `T02` Blocked (`ESC-079`); the sprint stays `In Progress`.**
+The registration seam is built, tested and committed: `register_tag_namespace`
+stores the plugin's `entries` callable and never asks it at registration,
+`PluginManager` keys the registrations by prefix with the owning `plugin_id` and
+refuses a second plugin's claim naming both, and `get_tag_namespaces()` is the
+accessor `T03` will read. `kind` is byte-identical pass-through; registration is
+proved **non-filtering** against `T01`'s `AC-07` (the index builder's module
+imports nothing from the plugin host, so it cannot consult a registry at all).
+18 AC-tagged tests; suite 595 → 618 passed with the non-passing set identical
+before and after (115 ids, all pre-existing against an empty scratch install).
+
+What is blocked is one line: `AC-08`'s `FRAMEWORK_API` clause. The sprint
+ordering did what it was designed to do — `register_action` is present, so the
+conditional read fired here — but the move is **11 → 12** rather than the 7 → 8
+`ADR-037` and both task files state (four versions stale before the sprint
+began), `REVIEW-QUEUE.md` still carries choosing the sitting as the operator's
+open decision, and the bump is live on save against a running backend while the
+republish of every installed plugin lives in `src/marketplace/`, outside any
+task's scope and mid-flight in another session. It is owed, noted at the
+constant, and pinned by a test that fails if anyone bumps twice. **`T03` is
+unblocked in code and is next**; `T04` and `T05` follow.
+
 **gate: clear 2026-10-16 — no product-owner trigger fired.** No assumption (the
 single inbound edge is quoted from `US-05-T05`'s own frontmatter); requirement
 finalised; no ADR created or changed by this pass; no `ESCALATIONS.md` entry;
