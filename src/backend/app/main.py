@@ -22,6 +22,7 @@ from app.api.health_check_router import router as health_check_router
 from app.api.hermes_agents_router import router as hermes_agents_router
 from app.api.hermes_router import router as hermes_router
 from app.api.index_router import router as index_router
+from app.api.operator_router import router as operator_router
 from app.api.pipelines_router import router as pipelines_router
 from app.api.sections_router import router as sections_router
 from app.api.skills_router import router as skills_router
@@ -258,3 +259,4 @@ app.include_router(tools_router)
 app.include_router(index_router)
 app.include_router(actions_router)
 app.include_router(workflows_router)
+app.include_router(operator_router)
