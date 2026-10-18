@@ -33,6 +33,7 @@ from app.api.tools_router import router as tools_router
 from app.api.vault_index_router import router as vault_index_router
 from app.api.vault_router import router as vault_router
 from app.api.vault_search_router import router as vault_search_router
+from app.api.workflows_router import router as workflows_router
 from app.config import settings
 from app.data_access.registry import loader as registry_loader
 
@@ -256,3 +257,4 @@ app.include_router(skills_router)
 app.include_router(tools_router)
 app.include_router(index_router)
 app.include_router(actions_router)
+app.include_router(workflows_router)
