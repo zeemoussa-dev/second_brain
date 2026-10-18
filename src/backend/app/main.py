@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.business.core.actions.action_manager import ActionManager
 from app.business.core.templates.template_manager import TemplateManager
 from app.business.core.plugins.plugin_manager import PluginManager
 from app.business.core.vault.vault_manager import VaultManager
@@ -83,6 +84,20 @@ async def lifespan(app: FastAPI):
         # start hides it behind a dead port -- the operator could not even
         # reach the UI to be told. Serve, and say so loudly instead.
         print(f"[startup] ERROR: could not seed Master Templates: {exc!r}")
+    # REQ-SB-95-US-03-T05 (ESC-074) -- the same shipped-starter shape one
+    # line above, for Actions: install any starter Action this install does
+    # not have yet. Without this call `report-unmet-request` exists only in
+    # the repo, so an agent asked for something no Action covers has nothing
+    # to record the unmet request with. Never overwrites an existing id, so
+    # the operator's own edit to a starter survives every restart; the first
+    # boot after a seed republishes the catalogue into every agent's SOUL.md
+    # in the background, exactly as any other catalogue change does.
+    try:
+        starters = ActionManager().seed_shipped_starters()
+        if starters["seeded"]:
+            print(f"[startup] seeded starter Actions: {', '.join(starters['seeded'])}")
+    except Exception as exc:
+        print(f"[startup] ERROR: could not seed starter Actions: {exc!r}")
     # ADR-022 -- load installed plugins before the app serves a request, so
     # their routes exist from the first one. PluginManager already isolates
     # each plugin's own failure; this guard is for the host itself failing,
