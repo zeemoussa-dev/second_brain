@@ -1,0 +1,55 @@
+"""Suite-wide sandbox: no test can reach the operator's real Hermes install.
+
+Added by `REQ-SB-95-US-03-T01` (resolves `ESC-072`). Until this file existed
+nothing isolated Hermes for any test in this suite, and that was only harmless
+because nothing the suite exercised wrote a profile. `ActionManager`'s
+catalogue-publication trigger changed that: publication rewrites the real
+`SOUL.md` of every agent a catalogue change affects, so the four Action test
+files -- which isolate the Action *store* and nothing else -- were measured
+attempting **123 real SOUL.md writes across all 41 profiles of the install
+they ran on**, plus 40 `Agent.json` writes, in 5m36s instead of ~2s.
+
+The fix is here rather than in those four files on purpose: any test file
+added tomorrow would otherwise have to remember the same isolation, and a
+suite that corrupts the machine running it must fail safe by default, not by
+convention.
+
+Two seams, because sandboxing only one leaves the other wide open:
+
+- **The files.** `settings.hermes_home_path` points at a directory that does
+  not exist under pytest's own tmp root. Every file path in `app/hermes/
+  profiles.py` is derived from `home_path` (`_profile_dir`), so a real profile
+  write is impossible by construction rather than by assertion -- and
+  `HermesProfiles.get_all()`'s documented "returns [] if home_path doesn't
+  exist" makes a roster-wide pass a no-op instead of an error.
+- **The CLI.** `HermesCLI._hermes_exe()` falls back to `shutil.which("hermes")`
+  when the configured home has no `bin/hermes.exe`, so a sandboxed home alone
+  would still let a subprocess act on the REAL install (its own default home
+  comes from the environment, not from our config). Returning None puts every
+  CLI call onto its existing, already-handled "No real Hermes install found"
+  path.
+
+The cached client singleton is reset around each test because it captures
+`hermes_home_path` once, at first use: without this a client built before the
+sandbox was applied would keep the real home for the rest of the session.
+
+A test that wants a Hermes install monkeypatches `settings.hermes_home_path`
+to its own `tmp_path` as usual -- that patch is applied after this fixture and
+undone before it, so nothing here gets in its way (several already do).
+"""
+from __future__ import annotations
+
+import pytest
+
+import app.business.hermes.client as hermes_client_module
+from app.config import settings
+from app.hermes.cli import HermesCLI
+
+
+@pytest.fixture(autouse=True)
+def hermes_install_is_sandboxed(tmp_path_factory, monkeypatch):
+    sandboxed_home = tmp_path_factory.mktemp("hermes-sandbox") / "no-hermes-install-here"
+    monkeypatch.setattr(settings, "hermes_home_path", sandboxed_home)
+    monkeypatch.setattr(HermesCLI, "_hermes_exe", lambda self: None)
+    monkeypatch.setattr(hermes_client_module, "_client", None)
+    yield
