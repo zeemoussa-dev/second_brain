@@ -2,8 +2,8 @@
 id: SPRINT-088
 title: The catalogue published into agent context and enforced at the call — "I cannot do that" becomes a real answer
 status: In Progress                      # Draft | Ready | In Progress | Blocked | Done
-gate: clear                        # clear | flagged — flagged ⇒ parked in REVIEW-QUEUE.md
-gate_reason: ""                    # the MUST-FLAG trigger that fired, when gate: flagged
+gate: flagged                      # clear | flagged — flagged ⇒ parked in REVIEW-QUEUE.md
+gate_reason: "One task blocked: REQ-SB-95-US-03-T05 on ESC-074 — the shipped report-unmet-request starter is built, tested and committed but never seeded, because the boot call belongs in app/main.py and that file is in no task's Files to Modify. Everything else in T05 is verified (AC-02/03/04/05, suite 538 passed). T01-T04 are Done. The sprint cannot close and no retrospective is drafted until that one line is authorised."
 phase: P2                          # single phase only — a sprint never mixes phases
 depends_on_sprints: [SPRINT-087]   # SPRINT-NNN IDs that must be Done before this can start
 sizing_estimate: "~5 tasks, L"     # effort estimate (e.g. "~6 tasks, M"); checked vs actual in retro
@@ -217,6 +217,26 @@ Build order inside the sprint, read from the task files' own `depends_on`:
 ---
 
 ## Notes
+
+**gate: flagged 2026-10-18 (coder) — one task blocked, and the sprint stays open
+for it.** `T01`, `T02`, `T03` and `T04` are `Done`; seven of the story's eight
+locked ACs are verified (`AC-01`…`AC-08` less nothing — `AC-05` is verified at
+the mechanism and on a disposable install, not on a real install, see below).
+`T05` is `Blocked` on **`ESC-074`**: its shipped `report-unmet-request` starter
+and the `seed_shipped_starters()` that installs it are built, tested and
+committed, and nothing calls the seed — the boot call belongs in `app/main.py`,
+five lines below the Master Template seed it mirrors, and that file is in no
+task's `## Files to Modify`. Three in-scope alternatives were worked through and
+rejected (two break a `Done` task's test, the third puts an Action in the gate
+that no agent is told about); the escalation quotes the exact addition to
+authorise. **No retrospective is drafted while a task is blocked** — it is
+written when the sprint closes, which is one authorised line away.
+
+`ESC-071` (the `/settings/actions` key missing from `UI_FEATURE_KEYS`, left Open
+by `SPRINT-087`) is **Resolved** inside `T05`, via that escalation's own option
+(b): the starter is a `ui` implementation and the Actions page is the only screen
+it can honestly name. The drift *mechanism* it exposed is untouched and is the
+first entry under the retro's open follow-ups when this sprint closes.
 
 **gate: clear 2026-10-16 — no product-owner trigger fired.** No assumption (both
 inbound edges are quoted from the task files); requirement finalised; no ADR

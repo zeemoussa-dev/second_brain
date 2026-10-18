@@ -444,8 +444,22 @@ the front end's registered feature keys stay true without a hand-edited tuple �
 into `REQ-SB-95-US-03`, which is the story that gives a `ui` implementation its
 meaning at the call.
 
-**Resolving artefact:** — (Open)
-**Status:** Open
+**Resolution (2026-10-18, `REQ-SB-95-US-03-T05`):** option (b), and it arrived on
+its own. `T05` ships the starter `report-unmet-request` Action, whose whole
+meaning is "the app performs nothing about this, a human decides" — so it is a
+`ui` implementation, and the one screen it can honestly name is the Actions page.
+`action.py` IS inside `T05`'s own `## Files to Modify` (the whole of
+`app/business/core/actions/`), so the one-line addition was made here rather than
+left for a dedicated task: `af54a4c`.
+
+**The deeper question is NOT resolved by that line** and is deliberately not
+claimed to be: `UI_FEATURE_KEYS` is still a hand-maintained mirror of another
+build's route table, and it will drift again the next time a screen is added.
+`http` resolves against the live route table; `ui` is the only kind reading a
+frozen list. Carried into `SPRINT-088`'s retro as an open follow-up.
+
+**Resolving artefact:** `af54a4c` (the drifted key), `REQ-SB-95-US-03-T05`
+**Status:** Resolved — the one stale key only; the drift mechanism stays open
 
 ---
 
@@ -580,5 +594,79 @@ technique in this codebase and is recorded as a judgement call in the task log.
 **Resolving artefact:** `REQ-SB-95-US-03-T03` scope extension, 2026-10-18
 
 **Status:** Resolved
+
+---
+
+## ESC-074: the shipped starter Action is built and never seeded — `app/main.py` is the one place that would run it, and it is outside `REQ-SB-95-US-03-T05`'s scope — 2026-10-18
+
+**Category:** unanticipated-file
+
+**Trigger:** `REQ-SB-95-US-03-T05`'s `## Files to Modify` names
+`src/backend/app/business/core/actions/` for "the shipped-starter mechanism,
+**mirroring how Master Templates ship**". That mechanism has two halves, and only
+one of them lives in that directory:
+
+1. the shipped source plus the Manager method — built here:
+   `business/core/actions/starters/report-unmet-request/Action.json`,
+   `shipped_starters.py`, `ActionManager.seed_shipped_starters()` (`ce38963`);
+2. the boot call that actually runs it. For Master Templates that is five lines
+   in `app/main.py`'s lifespan, immediately above where this one would sit. That
+   file is in no task's `## Files to Modify`.
+
+Without (2) a fresh install never gets `report-unmet-request`, so `AC-05`'s
+"the unmet request is recorded in the Action-call ledger" is true of the
+mechanism and not of the product.
+
+**Three in-scope alternatives were tried on paper and rejected, with reasons —
+nothing was improvised:**
+
+- **Compose the starter on read**, the shape a plugin's Action already uses
+  (`_plugin_contributed()`). It needs no boot call at all, and it breaks a
+  `Done` task's test: the starter is `allowed_callers: ["*"]`, so
+  `test_an_agent_permitted_to_call_nothing_carries_no_block_at_all`
+  (`T01`, `AC-01`) would find a block on the agent that must have none. That
+  test replaces the Action **store**, which a composed entry bypasses by
+  definition. Editing it is forbidden twice over — a `Done` task, and a file
+  outside this scope.
+- **Seed from `ActionManager.__init__()` or from `get_all()`.** Same failure for
+  the same reason, plus it makes a read path write.
+- **Compose into `get_by_id()` only**, so the gate finds it and publication does
+  not. The gate would then accept an Action no agent was ever told about and no
+  screen lists — the exact "the screen and the agent cannot disagree about what
+  exists" property `ADR-033` ships this route for.
+
+**Resolution:** the seed is built, tested and committed; the boot call is not
+made. Everything else in `T05` is complete:
+
+- the runner Skill (`catalog/actions/call-action/`) and 12 AC-tagged tests, suite
+  525 → 538, 0 failed (`199d2dc`);
+- `AC-02`, `AC-03`, `AC-04` and `AC-05` all verified end to end, including the
+  live manual run of the shipped script over a real loopback socket against a
+  disposable install on `127.0.0.1:8015` (never the operator's `:8001`), where
+  the starter was seeded by calling its own shipped mechanism once;
+- `REQ-SB-95-US-03-T05` is therefore `Blocked`, not `Done`.
+
+**What is needed:** authorise `src/backend/app/main.py` into `T05`'s
+`## Files to Modify` for exactly one addition, beside the Master Template seed it
+mirrors:
+
+```python
+    try:
+        starters = ActionManager().seed_shipped_starters()
+        if starters["seeded"]:
+            print(f"[startup] seeded starter Actions: {', '.join(starters['seeded'])}")
+    except Exception as exc:
+        print(f"[startup] ERROR: could not seed starter Actions: {exc!r}")
+```
+
+Two consequences to accept with it, neither hidden: the first boot after this
+lands will publish the new Action into **every** agent's `SOUL.md` (it is
+`["*"]`, and that is the point — an agent that is not told it exists cannot use
+it), in the background, the way any catalogue change already does; and an
+operator who deletes the starter gets it back on the next restart, which is the
+same property `seed_shipped_masters()` has had since 2026-09-06.
+
+**Resolving artefact:** — (Open)
+**Status:** Open
 
 ---

@@ -4,13 +4,13 @@ title: The shipped runner Skill over loopback, honest refusal end-to-end, and th
 parent_story: REQ-SB-95-US-03
 requirement_id: REQ-SB-95
 type: backend
-status: Ready
-gate: clear
-gate_reason: ""
+status: Blocked
+gate: flagged
+gate_reason: "ESC-074 — the shipped starter is built, tested and committed but never seeded: the boot call that would run it lives in app/main.py, which is in no task's Files to Modify. Everything else in this task is complete and AC-02/03/04/05 are verified end to end, including the live manual run against a disposable install on 127.0.0.1:8015."
 phase: P2
 depends_on: [REQ-SB-95-US-03-T01, REQ-SB-95-US-03-T03, REQ-SB-95-US-03-T04]
 created: 2026-10-16
-updated: 2026-10-16
+updated: 2026-10-18
 ---
 
 # REQ-SB-95-US-03-T05 — The Runner Skill + "I Cannot Do That" as a Recorded Answer
@@ -129,12 +129,13 @@ a loopback-shaped transport.
 
 ## Acceptance Criteria
 
-- [ ] One shipped runner Skill, loopback, modelled on `search_vault.py`
-- [ ] Refusals relayed verbatim; no invented outcome on any path
-- [ ] `awaiting_confirmation` and `skill` grants handled correctly by the runner
-- [ ] Shipped `report-unmet-request` starter Action; unmet requests recorded
-- [ ] `MEMORY.md` updated if this task produced a new decision / pattern / constraint
-- [ ] `CHANGELOG.md` entry appended
+- [x] One shipped runner Skill, loopback, modelled on `search_vault.py`
+- [x] Refusals relayed verbatim; no invented outcome on any path
+- [x] `awaiting_confirmation` and `skill` grants handled correctly by the runner
+- [x] Shipped `report-unmet-request` starter Action; unmet requests recorded —
+      **built and verified, but never seeded on a real install: `ESC-074`**
+- [x] `MEMORY.md` updated if this task produced a new decision / pattern / constraint
+- [x] `CHANGELOG.md` entry appended
 
 ---
 
@@ -157,4 +158,227 @@ the exact two shipped scripts to model this on — read both before writing.
 
 ## Implementation Log
 
-_(Filled in by the coder.)_
+**2026-10-18 — built and verified; `Blocked` on one out-of-scope line
+(`ESC-074`).** Suite **525 → 538 passed, 0 failed** (the task's own baseline at
+`6fce391` was **511**; another session landed `SPRINT-091`'s `T01` plus three
+more commits mid-task, moving HEAD to `c826512` and the upstream baseline to
+525 — re-measured, not assumed). Commits: `af54a4c` (the missing UI feature
+key, `ESC-071`), `ce38963` (the shipped starter + its seed), `199d2dc` (the
+runner Skill + 12 AC-tagged tests).
+
+### What shipped
+
+**The runner Skill — `business/core/skills/catalog/actions/call-action/`.**
+`SKILL.md` + `scripts/call_action.py`: stdlib-only payload, deployed into a
+Hermes profile, never imported by the app (`ADR-019`). It POSTs
+`{"caller_agent_id", "inputs", "confirmed_call_id"}` to
+`{SECOND_BRAIN_API_URL}/actions/{action_id}/call`, the exact body the catalogue
+block already tells agents to send (`T01`), and branches on **`accepted`** and
+nothing else — the field `T02` made separate from `outcome` precisely so a
+runner cannot read a new outcome word as success. Its answers:
+
+| What the app said | What the runner says | Exit |
+|---|---|---|
+| `accepted: false` | `REFUSED BY THE APP (<outcome>, call <id>)` + the refusal **verbatim** + "do not substitute another action" | 2 |
+| `awaiting_confirmation` | `WAITING FOR THE OPERATOR` + the call id + "do not retry" — and it stops | 2 |
+| `performed` | `PERFORMED` + the route's own real result | 0 |
+| `pointed_at` | `RECORDED, NOT PERFORMED` + the screen the operator does it on | 0 |
+| `authorised` | runs the granted Skill **here**, reports its real exit status and its own words | 0 / 1 |
+| `failed` | `THE APP TRIED AND FAILED` — the operation did not happen | 1 |
+| anything else | names it and refuses to interpret it | 1 |
+| unreachable | `NOTHING WAS PERFORMED: ... could not be reached at <url>` | 1 |
+
+It names itself by the profile it is deployed in — `<home>/profiles/<id>/skills/
+<tool>/<slug>/` read off its own `__file__`, with `--caller` and
+`HERMES_PROFILE_ID` ahead of it — and **refuses to call at all** when it cannot
+tell, because the app believes the id it is given (`ADR-033`'s loopback trust
+boundary) and a guessed one would record a call nobody made.
+
+**The shipped starter — `business/core/actions/starters/report-unmet-request/
+Action.json`** plus `shipped_starters.py` and
+`ActionManager.seed_shipped_starters()`, mirroring
+`TemplateManager.seed_shipped_masters()` including its one hard rule (an id this
+install already has is **never** overwritten — the seed is meant to run on every
+boot and would otherwise revert the operator's edit on every restart). The
+Action's implementation is `ui` → `/settings/actions`: the app genuinely cannot
+do anything about a capability it does not have, so it performs nothing and the
+record is the product. `allowed_callers: ["*"]` — an agent not told it exists
+cannot use it. Required input `request` ("their own words — not a paraphrase and
+not your guess at which action they meant"), optional `why_no_action_matched`.
+
+### AC verification
+
+Automated: `tests/test_action_runner_skill.py`, 12 tests, run with
+`pytest tests/test_action_runner_skill.py` from `src/backend`. The shipped
+script is loaded **by path** and driven through its real `main()` over a real
+command line; `urllib.request.urlopen` is replaced by one that takes the very
+`Request` the runner built, asserts the POST shape, and hands it to `TestClient`
+— `httpx.ASGITransport(app=app)`, in process. So the gate, the dispatch and the
+ledger are real, no socket is opened, and a refusal arrives as a real
+`HTTPError` with its body.
+
+| AC | Step | Observed |
+|---|---|---|
+| `REQ-SB-95-US-03-AC-03` | unknown action id through the runner | `exit 2`, `REFUSED BY THE APP (refused:unknown_action, call <id>)`, `"there is no action 'send-the-invoice' in this install's catalogue"` relayed verbatim, none of `PERFORMED`/`AUTHORISED`/`RECORDED` present, ledger row `refused:unknown_action` naming the id. **Pass** |
+| `REQ-SB-95-US-03-AC-03` | a caller not in `allowed_callers` | `exit 2`, `refused:caller_not_permitted`, `"agent 'someone-else' may not run action 'capture-this-thread'"`, ledger row. **Pass** |
+| `REQ-SB-95-US-03-AC-04` | a required input omitted | `exit 2`, `refused:missing_required_input`, names `'folder'` and "ask for it by name — nothing is guessed or defaulted in its place"; the sent inputs and the ledger row both hold exactly `{"urgent": "true"}` and the string `folder` appears in neither. **Pass** |
+| `REQ-SB-95-US-03-AC-02` | a valid `skill`-implementation call | `exit 0`, `AUTHORISED`, the grant received, the Skill **really run** in a throwaway profile under `tmp_path` in the deployed flat shape, its own stdout (`filed thread AAMk-0042`) relayed; the Skill's side-effect file proves it got the validated inputs on **both** stdin and `SECOND_BRAIN_ACTION_INPUTS`, and the call id; ledger `authorised`. The runner derived its own caller id from its deployed path and the app accepted it. **Pass** |
+| `REQ-SB-95-US-03-AC-02` | a granted Skill that fails | `exit 1`, `RAN AND FAILED (exit 3)` with the Skill's own stderr, the word `successfully` absent. **Pass** |
+| `REQ-SB-95-US-03-AC-05` | the shipped starter called with an unmet request | `exit 0`, `RECORDED, NOT PERFORMED`, "claiming it was done would be false"; the ledger row holds the operator's words under `inputs.request`, outcome `pointed_at`, and is **retrievable afterwards** through `action_calls.read_call_json()` by the id it reported. **Pass** |
+| `REQ-SB-95-US-03-AC-05` | the app unreachable | `exit 1`, `NOTHING WAS PERFORMED: ... could not be reached at <url>`, "do not report the action as done", "do not attempt it another way"; **no ledger row at all**, because no call was made. **Pass** |
+| `REQ-SB-95-US-03-AC-06` | `awaiting_confirmation`, then the confirmed re-call | first call: `WAITING FOR THE OPERATOR`, nothing performed, the call id named, and **exactly one** HTTP call made (it stopped rather than retrying); after `POST /actions/calls/<id>/confirm`, the re-call with `--confirmed-call-id` is accepted and leaves the second row joined by `granted_by_call_id`. `T04` owns `AC-06`; this is the runner's half of it. **Pass** |
+
+**Manual steps.** Performed against a **disposable install on
+`127.0.0.1:8015`** — its own vault, data path and Hermes home under the session
+scratchpad — with the **shipped script copied into a profile in the deployed
+flat shape** and run as a real subprocess over a real loopback socket. The
+operator's `:8001` was never called (`T03` used `:8013`, `T04` `:8014`).
+Verbatim, as the operator would read them:
+
+1. `[REQ-SB-95-US-03-AC-03]` an action id nobody has —
+   `python call_action.py book-the-meeting --input when=Tuesday`:
+
+   ```
+   REFUSED BY THE APP (refused:unknown_action, call 9457097e20794e2d835e6eed3412afb7). NOTHING WAS PERFORMED.
+   there is no action 'book-the-meeting' in this install's catalogue, so it cannot be called
+   Relay this to the operator as it is written. Do not substitute another action, do not do it another way, and do not describe an outcome that did not happen.
+   [exit 2]
+   ```
+
+2. `[REQ-SB-95-US-03-AC-04]` the required input omitted:
+
+   ```
+   REFUSED BY THE APP (refused:missing_required_input, call daa9ca0c462042bcbadf49f639936245). NOTHING WAS PERFORMED.
+   action 'report-unmet-request' requires 'request', which this call did not supply; ask for it by name -- nothing is guessed or defaulted in its place
+   ```
+
+3. `[REQ-SB-95-US-03-AC-05]` something no catalogued Action covers:
+
+   ```
+   RECORDED, NOT PERFORMED (call b05e64ed14f74eb0b354ef80a38fcfc7).
+   action 'report-unmet-request' is something only the operator can do, on this app's '/settings/actions' screen. Nothing was performed -- tell the operator to go there.
+   The operator does this themselves at /settings/actions. Say so plainly; claiming it was done would be false.
+   [exit 0]
+   ```
+
+   and on disk, `<DATA_PATH>/data/ActionCalls/b05e64…json`:
+
+   ```json
+   { "action_id": "report-unmet-request", "caller_agent_id": "manual-test-agent",
+     "inputs": { "request": "book the Tuesday refinery meeting into my Outlook calendar",
+                 "why_no_action_matched": "the catalogue has one action and it is this one" },
+     "outcome": "pointed_at", "grant": null }
+   ```
+
+   `caller_agent_id` is the profile the runner worked out from its own deployed
+   path, over the wire, with no `--caller` passed.
+
+4. `[REQ-SB-95-US-03-AC-05]` the backend stopped, same command:
+
+   ```
+   NOTHING WAS PERFORMED: Second Brain could not be reached at http://127.0.0.1:8015 (<urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>). Tell the operator the app is not running -- do not report the action as done and do not attempt it another way.
+   [exit 1]
+   ```
+
+**What the manual steps did NOT cover, stated plainly.** The task's manual steps
+are written as a real chat with a real agent in a real Hermes profile. That half
+was not performed: deploying this Skill into one of the operator's 41 live
+profiles is the exact accident `tests/conftest.py` exists to prevent, and the
+disposable install has no Hermes gateway or model keys. What was run instead is
+the shipped script itself over a real socket — which is *literally* the text the
+agent would relay, since the runner's output is the agent's source of truth
+about what happened. The model-side clauses ("states plainly", "does not invent
+an action") rest on that text plus `T01`'s published block, both of which are
+recorded above verbatim. Recorded as an assumption for human spot-check, not as
+a pass.
+
+### Where writes, subprocesses and outbound calls landed
+
+Measured before the suite was trusted, behind a plugin wrapping `Path.write_text
+/write_bytes/open/mkdir/unlink`, `builtins.open` (write modes), `os.makedirs/
+remove/system`, `shutil.rmtree/copy/copyfile/copytree`, `socket.socket.connect/
+connect_ex`, `httpx`'s **real** `HTTPTransport`/`AsyncHTTPTransport`,
+`urllib.request.urlopen` and `subprocess.Popen.__init__`, classifying every
+target against the real vault, data path and Hermes home:
+
+- **this file alone (12 tests): 0 writes** anywhere under the vault, the data
+  path or the Hermes home; **0** real httpx requests; **0** `urlopen` calls (the
+  loopback transport is in process); 3 subprocesses — one pre-existing
+  `git rev-parse HEAD` from the version module, and the **two deliberate ones**,
+  both `…/.venv/Scripts/python.exe <pytest tmp>/…/capture-the-thread/capture.py`
+  inside pytest's own tmp tree;
+- **the whole 538-test suite:** 7150 write calls seen, **9** touching a
+  protected root — all of them `Path.mkdir` on the data-path root itself, which
+  already exists and is pre-existing (0 of them come from this file); **0**
+  connects to `:8001`, `:8088`, `:8090` or `:5173` (185 connects, all ephemeral
+  local ports from anyio's own portal); one real httpx request, to
+  `127.0.0.1:9119`, which is a pre-existing unreachable-port test; the remaining
+  subprocesses are the plugin/marketplace suites' `git` calls in tmp dirs.
+
+### Judgement calls (in scope — for human spot-check, not escalations)
+
+1. **The Skill definition is `SKILL.md`, not the `Skill.json` this task's
+   `## Files to Modify` names.** There is no such thing as a `Skill.json` in
+   this codebase: `data_access/skills.py` finds a Skill by `<tool>/<slug>/
+   SKILL.md` and a folder without one is invisible to `list_skill_ids()`, so a
+   `Skill.json` would have shipped a Skill nothing could deploy. Same artefact,
+   the catalogue's real name for it.
+2. **Tool folder `actions/`, slug `call-action`** — a new Tool folder, which
+   `list_categories()` picks up by existing. The catalogue's README says the
+   Tool is "the capability domain the Skill acts through", and this one acts
+   through the app's Action API, not the vault.
+3. **`shipped_starters.py` lives in the business package, not in
+   `data_access/actions.py`.** Every raw read of *install* data still goes
+   through `data_access`; this reads bundled **source** shipped beside the
+   Manager, the same category as `action.py`'s own `UI_FEATURE_KEYS` constant.
+   `data_access/templates.py` holds the equivalent reader for Master Templates,
+   so moving these two functions there is a one-line change a human may prefer —
+   it was kept here because `data_access/` is outside this task's scope. Noted
+   in the module's own docstring.
+4. **A granted Skill receives its validated inputs as JSON on stdin AND in
+   `SECOND_BRAIN_ACTION_INPUTS`** (`SECOND_BRAIN_ACTION_CALL_ID` beside it).
+   `ADR-033` says the runner performs the Skill but nothing said how a Skill
+   receives Action inputs, and no such contract existed — every deployed Skill
+   today is agent-mediated with its own hand-written CLI. Two channels rather
+   than invented `--flag` names, because a flag name would be a guess about a
+   script this runner has never seen. Documented in the Skill's own `SKILL.md`
+   and recorded in `MEMORY.md` as a pattern.
+5. **Which script runs a granted Skill is read from that Skill's own
+   `SKILL.md`** (the `python …<name>.py` command `test_skill_command_paths.py`
+   already pins against what the deploy writes), falling back to the single
+   `.py` file when a Skill has exactly one — and **refusing to pick** when it is
+   ambiguous, reporting that nothing was performed. A guessed entry point is the
+   silent fallback this whole task exists to prevent.
+6. **The runner cannot tell the app that a granted Skill finished.**
+   `consume_single_use_grant(reported_outcome=…)` was built by `T03` for exactly
+   that, but no route exposes it (`actions_router.py` and
+   `action_invocation.py` are both outside this scope), so a performed grant
+   leaves its ledger row at `authorised` and the operator learns the real
+   outcome from the agent. Not a defect of anything built here; filed as an open
+   follow-up in the sprint retro.
+7. **`confirmed_call_id` is NOT published into the agents' SOUL block** —
+   decided by the orchestrator before this task started, and the task holds to
+   it: the refusal sentence already carries the whole instruction at the moment
+   the agent needs it, so an agent discovers confirmation by being refused once
+   rather than by carrying standing text it will rarely use. `agent_manager.py`
+   was not touched. No case was found where discover-on-refusal fails: the
+   `awaiting_confirmation` refusal names the call id, the action, the inputs to
+   repeat and the field to send.
+
+### Escalations
+
+- **`ESC-074` (Open) — this task is `Blocked` on it.** The starter's seed is
+  built, tested and committed; the boot call that runs it lives in
+  `app/main.py`, five lines below the Master Template seed it mirrors, and that
+  file is in no task's `## Files to Modify`. Three in-scope alternatives were
+  worked through and rejected — all of them either break a `Done` task's test
+  (`test_an_agent_permitted_to_call_nothing_carries_no_block_at_all`, because
+  the starter is `["*"]` and a read-time composition bypasses the store that
+  test replaces) or put an Action in the gate that no agent is told about and no
+  screen lists. The escalation carries the exact five lines to authorise.
+- **`ESC-071` (Resolved here)** — `/settings/actions` was missing from
+  `UI_FEATURE_KEYS`; that escalation's own option (b) was "fold it into
+  `REQ-SB-95-US-03`", `action.py` is inside this task's scoped directory, and
+  the starter needs the key. Added in `af54a4c`. The deeper question — a
+  hand-maintained mirror of another build's route table drifts by construction —
+  is **not** solved and is carried into the retro as a follow-up.
