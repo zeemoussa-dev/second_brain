@@ -12,6 +12,7 @@ import { pluginSettingsPages } from '../pluginHost/registry';
 // (business/core/provider/), just with no Settings UI of its own yet.
 const SETTINGS_SECTIONS = [
   { key: 'system', icon: 'tune', label: 'System', desc: 'Core app-level behaviour.', href: '/settings/system' },
+  { key: 'operator', icon: 'badge', label: 'Operator Profile', desc: 'Who your agents act for — your name, your other mail addresses, your timezone, and your team as emails and roles.', href: '/settings/operator' },
   { key: 'sections', icon: 'hub', label: 'Sections', desc: 'Business-domain groupings agents belong to.', href: '/settings/sections' },
   { key: 'vault', icon: 'folder_open', label: 'Vault', desc: 'Your Obsidian vault path and status.', href: '/settings/vault' },
   { key: 'config', icon: 'settings', label: 'Config', desc: 'App configuration.', href: '/settings/config' },

@@ -11,6 +11,7 @@ import { SettingsArtifactsPage } from './pages/SettingsArtifactsPage';
 import { SettingsWorkflowsPage } from './pages/SettingsWorkflowsPage';
 import { SettingsBlueprintsPage } from './pages/SettingsBlueprintsPage';
 import { SettingsMarketplacePage } from './pages/SettingsMarketplacePage';
+import { SettingsOperatorPage } from './pages/SettingsOperatorPage';
 import { SettingsSystemPage } from './pages/SettingsSystemPage';
 import { SettingsSectionsPage } from './pages/SettingsSectionsPage';
 import { SettingsVaultPage } from './pages/SettingsVaultPage';
@@ -44,6 +45,7 @@ function App() {
           <Route path="/crawlers" element={<CrawlersPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/system" element={<SettingsSystemPage />} />
+          <Route path="/settings/operator" element={<SettingsOperatorPage />} />
           <Route path="/settings/sections" element={<SettingsSectionsPage />} />
           <Route path="/settings/vault" element={<SettingsVaultPage />} />
           <Route path="/settings/vault/templates" element={<SettingsVaultTemplatesPage />} />
