@@ -747,21 +747,37 @@ def test_a_genuinely_unknown_kind_still_fails_the_bundle_by_name(in_memory_insta
     """[REQ-SB-95-US-02-AC-05] This task widened the accepted set; it did
     not remove the guard. A manifest naming a kind nothing here can deploy
     still raises, and still says which kinds it would have accepted --
-    which is how the next kind's author finds this map."""
+    which is how the next kind's author finds this map.
+
+    `hologram` is deliberately a kind nobody plans to build. This test
+    originally used `workflow`, which was the next kind on the roadmap at
+    the time -- named as "next" in the conflict map's own comment -- and
+    it duly failed the day `REQ-SB-95-US-04-T04` shipped that kind
+    (`ESC-077`). A test asserting "X is unsupported" schedules its own
+    failure for the day X ships, so its example must be something nothing
+    intends to build.
+
+    The accepted-kinds assertion reads `_MANAGER_BY_KIND` itself for the
+    same reason: a frozen tuple would have to be hand-extended for every
+    future kind, and the author who forgot would see this test fail for a
+    reason that has nothing to do with the guard.
+    """
     bundle_path = str(tmp_path / "from-the-future.sbf")
     sbf_archive.write_archive(
         bundle_path,
         {
             "format_version": 1, "generated_at": "2026-10-16T00:00:00+00:00",
-            "artifacts": [{"kind": "workflow", "id": "monday-sweep"}],
+            "artifacts": [{"kind": "hologram", "id": "monday-sweep"}],
             "secret_scan": {"findings_decided": 0, "redacted_count": 0},
         },
-        {"workflows/monday-sweep/Workflow.json": b"{}"},
+        {"holograms/monday-sweep/Hologram.json": b"{}"},
     )
+
+    assert "hologram" not in artifact_import_conflicts._MANAGER_BY_KIND
 
     with pytest.raises(ValueError) as refusal:
         artifact_import.preview_import(bundle_path)
 
-    assert "unrecognized artifact kind 'workflow'" in str(refusal.value)
-    for accepted_kind in ("skill", "template", "agent", "pipeline", "index", "action"):
+    assert "unrecognized artifact kind 'hologram'" in str(refusal.value)
+    for accepted_kind in artifact_import_conflicts._MANAGER_BY_KIND:
         assert accepted_kind in str(refusal.value)
