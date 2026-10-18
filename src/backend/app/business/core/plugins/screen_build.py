@@ -208,6 +208,12 @@ def screen_build_lock(
     try:
         yield
     finally:
+        # `finally`, so a cancelled request releases too: asyncio's
+        # CancelledError is a BaseException rather than an Exception, but
+        # `finally` runs for both. This was a suspect for the 2026-10-18
+        # outages and was not the cause -- the lock outlived the request
+        # because the worker was KILLED, which no Python-level cleanup can
+        # survive. That case is covered by the dead-holder takeover instead.
         try:
             lock_path.unlink()
         except OSError:
