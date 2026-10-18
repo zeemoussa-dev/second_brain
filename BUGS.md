@@ -78,6 +78,7 @@ is a thin status mirror of the index table below.
 | BUG-089 | The app has no error boundary, so one screen's throw blanks the whole window | UI | Major | Fixed | 2026-10-17 | direct fix, 2026-10-17 |
 | BUG-090 | My Day showed 0 emails for eight days -- capture had stopped, and one unreadable note could also empty the index -- and nothing on the screen said which | Logic | Major | Fixed | 2026-10-17 | My Day 1.8.0; direct fix, 2026-10-17 |
 | BUG-091 | Deploying the Graph capture Skill deleted the install's Outlook one of the same name -- one machine silently became a Graph install and lost email for eight days | Logic | Critical | Fixed | 2026-10-18 | direct fix, 2026-10-18 |
+| BUG-092 | Writing an agent's `SOUL.md` strips its final newline, so every prompt edit silently rewrites the file's last byte | Logic | Minor | Open | 2026-10-18 | — |
 
 > **Emptied 2026-09-06 (operator-directed), starting a clean cross-device build.**
 > This file carried 42 bugs / 2,054 lines, 19 of them still `Open` and the oldest
@@ -1413,3 +1414,15 @@ is a thin status mirror of the index table below.
 - **Expected:** a deploy never removes a Skill that belongs to another Tool; which provider an install uses is that install's choice.
 - **Actual:** the Outlook Skill is deleted and the Graph one replaces it silently.
 - **Fix:** the move now applies only when the deployed category is no longer a catalog Tool; a copy under another live Tool raises `SkillPreconditionError` instead (`tests/test_skill_deploy_other_tool.py`). Providers carry distinct slugs: Graph keeps `email-thread-capture` / `meeting-capture` (the Graph install needs no change), and the COM Skills ship as `outlook-email-thread-capture` / `outlook-meeting-capture` under the `outlook` Tool (restore session, separate commits). Each install's capture cron jobs name the Skill of the provider it uses.
+
+### BUG-092 — Writing an agent's `SOUL.md` strips its final newline
+
+- **Area:** Logic
+- **Severity:** Minor
+- **Status:** Open
+- **Found:** 2026-10-18, while building `REQ-SB-95-US-03-T01` (publishing the Action catalogue into agent context). Found by measurement, not by symptom: the task's own verification compared a real profile byte-for-byte before and after a publish.
+- **Root cause:** `AgentManager.update()` / `_soul_text()` reassemble the soul from parts and write it back without the trailing newline the file had. Pre-existing and not introduced by that task, which is why it was restored by hand rather than fixed in a task that does not own `_soul_text`.
+- **Repro:** take any profile's `SOUL.md`, note its size; cause anything to write it — the Action catalogue publish, or an ordinary prompt edit through the UI, which goes the same way. Observed on a real profile: **3415 bytes → 3414**, content otherwise byte-identical.
+- **Expected:** a write that changes nothing about the text leaves the file byte-identical; a write that changes a section leaves the rest, including the final newline, exactly as it was.
+- **Actual:** the last byte is dropped on the first write and stays dropped. Harmless in isolation, and no locked AC turns on it.
+- **Note:** it matters for two reasons rather than tidiness. A vault and its profiles are synced and diffed, so a one-byte change makes a file look edited when nothing about it was; and POSIX tools treat a file without a trailing newline as a different shape, so "no change" is not what a later diff will say. Every UI prompt edit already causes this — the Action catalogue publish only made it visible by being the first thing to compare bytes.
