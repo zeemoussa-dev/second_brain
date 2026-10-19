@@ -1,7 +1,11 @@
 """HTTP surface for browse/tag-filter/note-detail/ranked-search
-(REQ-SB-02-US-01) -- delegates to VaultManager only, HTTP-only, no
-data_access/filesystem access of its own (ADR-003)."""
+(REQ-SB-02-US-01) -- HTTP-only, no data_access/filesystem access of its
+own (ADR-003). It delegates to `VaultManager` and, for the two reads
+that compose more than one source, to a `business/logic` module
+(`hybrid_search`, and `scoped_entity_read` since REQ-SB-95-US-05-T05)."""
 from __future__ import annotations
+
+from dataclasses import asdict
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
@@ -12,7 +16,7 @@ from app.business.core.semantic.semantic_manager import (
     SemanticManager,
 )
 from app.business.core.vault.vault_manager import VaultManager
-from app.business.logic import hybrid_search
+from app.business.logic import hybrid_search, scoped_entity_read
 from app.data_access.compass_client import CompassClientError
 
 router = APIRouter(prefix="/vault-search")
@@ -130,6 +134,59 @@ def post_resolve(payload: WikilinkTargets) -> dict:
     thousands, so the browser asks about the targets it actually holds instead of
     downloading the index."""
     return {"resolved": _vault_manager.resolve_wikilink_targets(payload.targets)}
+
+
+@router.get("/entity-read")
+def get_entity_read(
+    name: str,
+    evidence_limit: int = scoped_entity_read.DEFAULT_EVIDENCE_LIMIT,
+) -> dict:
+    """Everything known about ONE named entity, read from that entity's own
+    tag scope -- hub synthesis first, then its tagged evidence newest first
+    (`REQ-SB-95-US-05-T05`, `ADR-037`). This is the `http` implementation of
+    the shipped scoped-read Action, so an agent reaches it through the Action
+    call gate and never as a private endpoint of its own (`ADR-033`).
+
+    **It performs no search**, despite the prefix it is mounted under. The
+    read reaches the vault only through the tag-keyed projection
+    (`scoped_entity_read`'s own guarantee, asserted in its tests by arming
+    every search entry point to fail), so this route is the honest
+    alternative to `/vault-search/search` for a question that names an
+    entity, sitting beside it rather than inside it.
+
+    **An honest non-answer is a 200, not a 404.** A name that did not
+    resolve, a name two registered entries both claim, and an entity nothing
+    has been written about are three real answers to a question this app
+    understood -- and the call gate treats any non-2xx as "the operation did
+    NOT happen" (`ADR-033`), which would report all three to the agent as a
+    failed call rather than as what is actually known. A status is reserved
+    for the app failing, and these are the app succeeding at telling the
+    truth.
+
+    **It surfaces the result; it does not flatten it.** The body is the read
+    itself, field for field -- `performed`, the resolution that produced it
+    (`resolved` / `ambiguous` / `did_not_resolve`, with the candidates when
+    two entries matched), `hub_status`, the synthesis, the evidence newest
+    first with each note's own `recency_field` and `undated_because`, and
+    `evidence_total` beside the capped list. The five keys added below are
+    what `asdict` cannot carry -- four computed properties of the result, and
+    the undated rule itself -- each one a distinction a caller would otherwise
+    have to re-derive or go to the source for. `every_namespace_answered` is
+    the sharpest: false means a registered namespace could not be asked, which
+    makes this answer incomplete rather than final.
+    """
+    result = scoped_entity_read.read_entity_named(name, evidence_limit=evidence_limit)
+    resolution = result.resolution
+    return {
+        **asdict(result),
+        "resolution_outcome": resolution.outcome if resolution is not None else None,
+        "every_namespace_answered": (
+            resolution.every_namespace_answered if resolution is not None else None
+        ),
+        "found_anything": result.found_anything,
+        "evidence_returned": len(result.evidence),
+        "undated_evidence_rule": scoped_entity_read.UNDATED_EVIDENCE_RULE,
+    }
 
 
 @router.get("/graph")
