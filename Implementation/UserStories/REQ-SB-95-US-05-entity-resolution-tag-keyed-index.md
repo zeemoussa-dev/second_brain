@@ -9,7 +9,7 @@ gate: clear
 gate_reason: "RESOLVED operator confirmed ADR-037, 2026-10-17 — was: trigger-3 (ADR-037 created) — the tag-keyed index is a projection rebound inside VaultManager.rebuild_index() rather than a new Index artifact with its own cron job, a plugin registers a namespace as a callable, and the FRAMEWORK_API bump is taken once for all of REQ-SB-95; plus trigger-7 (decomposer, 2026-10-16) — the sibling US-02 task files carry no FRAMEWORK_API instruction, so the single bump is owed by whichever story lands last and only this story's T02 currently knows it"
 sprint: SPRINT-090
 created: 2026-10-16
-updated: 2026-10-18  # coder: T03 Done (AC-01, AC-03, AC-05 verified; AC-07 verified on both sides); Ready -> In Progress, T01 Done (AC-04, AC-07 verified); 2026-10-16 product-owner: grouped into SPRINT-090 (alone — depends_on_sprints: [SPRINT-087, SPRINT-088]; that ordering also takes the FRAMEWORK_API bump via T02's conditional read)
+updated: 2026-10-19  # coder: T04 Done (AC-02 verified; T05 remains, story stays In Progress); 2026-10-18 coder: T03 Done (AC-01, AC-03, AC-05 verified; AC-07 verified on both sides); Ready -> In Progress, T01 Done (AC-04, AC-07 verified); 2026-10-16 product-owner: grouped into SPRINT-090 (alone — depends_on_sprints: [SPRINT-087, SPRINT-088]; that ordering also takes the FRAMEWORK_API bump via T02's conditional read)
 ---
 
 # REQ-SB-95-US-05 — Entity resolution instead of search — one tag-keyed index, synthesis first then evidence
@@ -246,7 +246,7 @@ mechanism, naming no plugin. Dependency order is
 | REQ-SB-95-US-05-T01 | backend | **Done 2026-10-18** — The tag-keyed index as a projection, computed and rebound inside `VaultManager.rebuild_index()` | AC-04, AC-07 | — | `../Tasks/REQ-SB-95-US-05-T01-tag-keyed-index-projection.md` |
 | REQ-SB-95-US-05-T02 | backend | **Blocked 2026-10-18 (`ESC-079`)** — `plugin_api.register_tag_namespace(namespace, entries)` — the callable seam (built and verified), and the one `FRAMEWORK_API` bump (owed, not taken) | AC-08 | — | `../Tasks/REQ-SB-95-US-05-T02-register-tag-namespace-plugin-api.md` |
 | REQ-SB-95-US-05-T03 | backend | **Done 2026-10-18** — The generic tag resolver — name/alias/domain → `(kind, tag, hub)`, ambiguity and non-resolution reported | AC-01, AC-03, AC-05, AC-07 | T01, T02 | `../Tasks/REQ-SB-95-US-05-T03-generic-tag-resolver.md` |
-| REQ-SB-95-US-05-T04 | backend | The scoped read — hub synthesis first, then tagged evidence newest first, nothing outside the tag | AC-02 | T01, T03 | `../Tasks/REQ-SB-95-US-05-T04-scoped-entity-read.md` |
+| REQ-SB-95-US-05-T04 | backend | **Done 2026-10-19** — The scoped read — hub synthesis first, then tagged evidence newest first, nothing outside the tag | AC-02 | T01, T03 | `../Tasks/REQ-SB-95-US-05-T04-scoped-entity-read.md` |
 | REQ-SB-95-US-05-T05 | backend | The scoped read as a shipped, catalogued Action reached through the call gate | AC-06 | T04, REQ-SB-95-US-02-T02, REQ-SB-95-US-03-T02, REQ-SB-95-US-03-T03 | `../Tasks/REQ-SB-95-US-05-T05-scoped-read-as-catalogued-action.md` |
 
 ## Definition of Done
@@ -345,6 +345,44 @@ Task `gate: flagged` for four judgement calls, chiefly the synthetic-vault
 manual step; nothing is blocked and no `ESCALATIONS.md` entry was written.
 **`T04` is next** and is the first caller of both `T01`'s projection and this
 resolver.
+
+**Coder, 2026-10-19 — `T04` Done; the story stays `In Progress`.** The scoped
+read exists as `app/business/logic/scoped_entity_read.py` — a **sibling** of the
+resolver rather than more functions inside it, so `T03`'s file-wide tripwires
+("this module reads no note and performs no scoped read") survive intact and
+both claims stay separately checkable. **`AC-02` is verified** by 15 AC-tagged
+tests: the hub's synthesis is first and everything after it is tagged evidence;
+the evidence is strictly newest first by each kind's own real field
+(`Meeting.start`, `Thread.last_message_at`, `RawMessage.received` — the live
+convention `capture_freshness.py` records, with its `_parsed` imported rather
+than copied so there is one reader of this vault's two real stamp formats), with
+the dates interleaved across kinds and both formats present on both kinds so
+only the dates can explain the result; every returned item carries the entity's
+tag, and the second entity's notes, an untagged Thread stamped newer than
+everything and a note whose only tag has no namespace are each asserted absent
+while separately asserted to be in the index. **The vault is reached only
+through `get_entries_for_tag`** — proved by arming both `get_entries()` and
+`get_index()` to fail after the index is built and watching the read still
+succeed, and by returning both of two tagged notes that share a filename, which
+the by-stem map would have dropped (`BUG-076`). **No search on any path:** all
+three search entry points are counters for every test in the file and the
+teardown asserts zero for every test, with the empty-entity case asserted
+explicitly — an entity nothing has been written about comes back
+`performed=True, found_anything=False` saying so, and a name that did not
+resolve comes back `performed=False` with nothing searched in its place. The
+fallback for a note that cannot be dated is a stated rule, not an accident:
+undated sorts after every dated note, asserted over `evidence_sort_key` as a
+relation and re-asserted by indexing the same vault in reverse walk order and
+getting a byte-identical answer. The tests were proved to bite under four
+in-memory mutations. Suite 742 → **757 passed**, the same 9 scratch-install
+failures before and after. Task `gate: flagged` for six judgement calls, chiefly
+the synthetic-vault manual step (no plugin anywhere in the checkout registers a
+namespace, so the real-vault half is a **disclosed gap**, not a fabricated
+positive) and the hub being matched inside the tag scope. Nothing is blocked and
+no `ESCALATIONS.md` entry was written. **`T05` is the last task**, and it has
+its caller ready: `read_entity_named(name)` carries the "did not resolve ⇒
+perform no read, and do not search instead" guard so `T05` does not have to
+re-implement the rule this story exists to enforce.
 
 **Operator decision, 2026-10-16 — flag cleared.** Operator, 2026-10-16: "Resolver is framework, Customer stays the plugin." The framework ships a tag-keyed resolver generic over any `<namespace>/<slug>` tag, naming no plugin; a plugin registers its namespace through the Plugin API, and the entities plugin registers `customer/` and `partner/`. This story builds here as mechanism; the namespace registration is `sb-plugins-entities`' own work. `ADR-022` stands unamended. `ESC-063` is Resolved, resolving artefact `ADR-035`.
 

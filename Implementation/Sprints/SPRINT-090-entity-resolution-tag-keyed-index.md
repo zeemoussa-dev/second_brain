@@ -80,7 +80,7 @@ bidirectional link, written at sprint creation. Order by implementation dependen
 
 | Story | Title | Phase | Status |
 |---|---|---|---|
-| [REQ-SB-95-US-05](../UserStories/REQ-SB-95-US-05-entity-resolution-tag-keyed-index.md) | Entity resolution instead of search — one tag-keyed index, synthesis first then evidence | P2 | In Progress (`T01`, `T03` Done 2026-10-18; `T02` Blocked on `ESC-079`) |
+| [REQ-SB-95-US-05](../UserStories/REQ-SB-95-US-05-entity-resolution-tag-keyed-index.md) | Entity resolution instead of search — one tag-keyed index, synthesis first then evidence | P2 | In Progress (`T01`, `T03` Done 2026-10-18, `T04` Done 2026-10-19; `T02` Blocked on `ESC-079`; `T05` remains) |
 
 Build order inside the sprint, read from the task files' own `depends_on`:
 `(T01, T02) → T03 → T04 → T05` (`T05` also needs `US-02-T02`, `US-03-T02`,
@@ -201,6 +201,34 @@ really holds, and the resolver — no plugin installed — still answers "did no
 resolve". `T02`'s `ESC-079` did **not** block it: the `FRAMEWORK_API` gate
 governs only whether a *plugin* may declare the capability, and no file outside
 `T03`'s own two was touched. **`T04` (the scoped read) is next**, then `T05`.
+
+**Coder, 2026-10-19 — `T04` Done; the sprint stays `In Progress`.** The scoped
+read (`app/business/logic/scoped_entity_read.py`) answers "what is known about
+this entity" from that entity's own tag alone: the hub's synthesis first, then
+its tagged evidence newest first by each note kind's own real recency field, and
+nothing from anywhere else. It is a **sibling** of `tag_resolution.py` rather
+than an extension of it, so that module's file-wide tripwires — it reads no
+note, searches nothing, performs no scoped read — stay intact and keep earning
+`T03`'s central claim mechanically. `AC-02` is verified by 15 AC-tagged tests;
+the suite moved 742 → **757 passed** with the same 9 pre-existing
+scratch-install failures, compared id by id. The three things the story exists
+to guarantee are each enforced rather than inspected: all three vault search
+entry points are counters asserted zero for **every** test in the file including
+the entity-with-no-evidence path; `get_entries()` and `get_index()` are both
+armed to fail after the index is built and the read still succeeds, so the
+tag-keyed projection is provably the only door; and the undated-note fallback is
+asserted as a relation over the sort key and re-asserted by re-indexing the same
+vault in reverse walk order. Four in-memory mutations were run to confirm the
+tests fail when the behaviour is removed. `gate: flagged` for six judgement
+calls, nothing blocked, no `ESCALATIONS.md` entry. The manual step's real-vault
+half was **not performed and is disclosed as a gap**: `register_tag_namespace`
+is called by nothing in this checkout outside `plugin_api.py` and three test
+files, so no install has a registered namespace, and creating one would have
+meant writing a plugin into the operator's live store and reading their real
+notes. **`T05` is the last task in the sprint** — the scoped read as a shipped,
+catalogued Action reached through the call gate. The sprint does not close until
+it lands, and `T02` remains `Blocked` on `ESC-079` (the single `FRAMEWORK_API`
+move), which `T04` neither touched nor needed.
 
 **gate: clear 2026-10-16 — no product-owner trigger fired.** No assumption (the
 single inbound edge is quoted from `US-05-T05`'s own frontmatter); requirement
