@@ -4,13 +4,13 @@ title: The scoped read as a shipped, catalogued Action reached through the call 
 parent_story: REQ-SB-95-US-05
 requirement_id: REQ-SB-95
 type: backend
-status: Ready
-gate: clear
-gate_reason: ""
+status: Blocked
+gate: flagged
+gate_reason: "trigger 7 / unanticipated file (`ESC-080`): the shipped starter is one new folder under `business/core/actions/starters/`, and adding it fails three `[REQ-SB-95-US-03-AC-05]` tests in `src/backend/tests/test_action_runner_skill.py`, which pin the shipped-starter set as a one-element literal. That file belongs to a `Done` task and is outside this task's `## Files to Modify`. The route, the tests and the definition's own bytes are built, committed and verified — including live, against a disposable backend — and the starter file alone is held back. Also carries four scope-internal judgement calls."
 phase: P2
 depends_on: [REQ-SB-95-US-05-T04, REQ-SB-95-US-02-T02, REQ-SB-95-US-03-T02, REQ-SB-95-US-03-T03]
 created: 2026-10-16
-updated: 2026-10-16
+updated: 2026-10-19
 ---
 
 # REQ-SB-95-US-05-T05 — The Scoped Read, Reached Through the Catalogue
@@ -122,12 +122,12 @@ app with `httpx.ASGITransport(app=app)` the way the existing API tests do.
 
 ## Acceptance Criteria
 
-- [ ] The scoped read has a route, and a shipped Action whose `http` implementation names it
-- [ ] Calls go through the existing gate; unknown id / missing input / unresolved implementation refused there
-- [ ] A caller outside `allowed_callers` is refused and the refusal is in the ledger
-- [ ] No gate, ledger or dispatch logic duplicated in this task
-- [ ] `MEMORY.md` updated if this task produced a new decision / pattern / constraint
-- [ ] `CHANGELOG.md` entry appended
+- [~] The scoped read has a route, and a shipped Action whose `http` implementation names it — the route is committed and the definition is verified through the real shipped-starter mechanism; its file is held out of the repository pending `ESC-080`
+- [x] Calls go through the existing gate; unknown id / missing input / unresolved implementation refused there
+- [x] A caller outside `allowed_callers` is refused and the refusal is in the ledger
+- [x] No gate, ledger or dispatch logic duplicated in this task
+- [~] `MEMORY.md` updated if this task produced a new decision / pattern / constraint — two constraints emerged and neither could be appended (86 KB against the file's own 40 KB budget, whose rule 1 forbids appending while over); both are written verbatim into `REVIEW-QUEUE.md` for the compaction pass
+- [x] `CHANGELOG.md` entry appended
 
 ---
 

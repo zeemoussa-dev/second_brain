@@ -1075,3 +1075,149 @@ compaction pass.
 **Resolving artefact:** `FRAMEWORK_API` 11 -> 12 + five republish requests, 2026-10-18
 
 **Status:** Resolved
+
+---
+
+## ESC-080: shipping a SECOND starter Action fails three tests in `test_action_runner_skill.py` — they enumerate the shipped-starter set exhaustively, and the file is outside `REQ-SB-95-US-05-T05`'s scope — 2026-10-19
+
+**Category:** unanticipated-file
+
+**Trigger:** `REQ-SB-95-US-05-T05` ships the scoped entity read as a catalogued
+Action. Its `## Files to Modify` names "the shipped-starter Action definition,
+wherever `REQ-SB-95-US-02`'s landed code puts shipped starters" — which is one
+new folder, `business/core/actions/starters/read-entity-updates/Action.json`,
+and no code change at all: `shipped_starters.list_shipped_starter_ids()`
+enumerates the directory, and `app/main.py` already calls
+`seed_shipped_starters()` at boot (`ESC-074`).
+
+The folder is additive and nothing in the product notices it. Three tests do,
+because they pin the shipped set as a literal one-element list. **Measured, not
+predicted** — with the file in place, `pytest tests/test_action_runner_skill.py`
+gives `3 failed, 9 passed`:
+
+1. `test_the_shipped_starter_is_a_real_definition_this_catalogue_can_hold`
+   — `assert shipped_starters.list_shipped_starter_ids() == [THE_UNMET_REQUEST_STARTER]`
+   → `['read-entity-updates', 'report-unmet-request'] != ['report-unmet-request']`
+2. `test_the_shipped_starter_records_an_unmet_request_and_it_is_retrievable`
+   — `assert seeding["seeded"] == [THE_UNMET_REQUEST_STARTER]`
+   → `{'seeded': ['read-entity-updates', 'report-unmet-request'], 'kept': []}`
+3. `test_seeding_a_starter_twice_never_overwrites_the_operators_own_copy`
+   — the same `seeded ==` assertion, and then
+   `again == {"seeded": [], "kept": [THE_UNMET_REQUEST_STARTER]}`
+
+All three are `[REQ-SB-95-US-03-AC-05]`-tagged and belong to `REQ-SB-95-US-03-T05`,
+which is `Done`. `src/backend/tests/test_action_runner_skill.py` is in no part of
+`T05`'s scope. This is `.claude/agents/decomposer.md`'s **second variant** of the
+same rule ("which existing fixtures does my change invalidate?", `ESC-075`) and its
+**fourth** ("assert over the live collection rather than a hand-maintained tuple",
+`ESC-077`) arriving together: the task adds a member to a family, and someone
+else's test enumerates the family.
+
+**Two in-scope alternatives were worked through on paper and rejected:**
+
+- **Ship the starter and repair the three assertions.** It is four lines and
+  nobody would dispute them — but two of them would be *weakened* (`== [x]` to
+  `x in ...`) in another story's locked-AC verification, and `ESC-077`'s own
+  resolution says in terms that the coder was right not to reach into a `Done`
+  task's test, "which cost one round trip instead of a silent edit".
+- **Ship the Action some other way** — composed on read like a plugin's, or
+  seeded from a Manager read path. Both were already worked through and rejected
+  under `ESC-074`, for reasons that have not changed: a composed entry bypasses
+  the Action store that `T01`'s publication test replaces, and a read path that
+  writes is its own defect.
+
+**Resolution:** everything else in `T05` is built, committed and verified; the
+one file that breaks somebody else's tests is not in the repository.
+
+- the route — `GET /vault-search/entity-read` on `vault_search_router.py` — and
+  `src/backend/tests/test_scoped_read_action.py` with **14 AC-tagged tests** are
+  committed (`420dd6c`). Suite **757 → 771 passed**, the same 9 pre-existing
+  scratch-install failures before and after, compared id by id;
+- the shipped definition is exercised through the **real**
+  `ActionManager.seed_shipped_starters()` in those tests, from a starters
+  directory the test writes, holding the exact bytes below — so the mechanism,
+  the bytes, the save-time resolution against the real route table and every
+  gate behaviour over them are all verified;
+- **and all of it was additionally observed live**, on a disposable backend on
+  `127.0.0.1:8019` against a scratch vault and a scratch install (never the
+  operator's `:8001`, vault, store or Hermes install), with the starters
+  directory rebound to a scratch copy holding BOTH starters so the real boot
+  path did the seeding: `[startup] seeded starter Actions: read-entity-updates,
+  report-unmet-request`, `GET /actions` reporting it `"status": "resolves"`, the
+  **shipped runner Skill** calling it and printing the scoped answer, and a
+  caller outside `allowed_callers` refused with the refusal on disk in the
+  ledger;
+- `REQ-SB-95-US-05-T05` is therefore `Blocked`, not `Done`, and with it
+  `REQ-SB-95-US-05` and `SPRINT-090`.
+
+**What is needed:** authorise `src/backend/tests/test_action_runner_skill.py`
+into `T05`'s `## Files to Modify` for exactly these three edits, and the starter
+file is then created with the bytes below and the task closed.
+
+```python
+# 1. test_the_shipped_starter_is_a_real_definition_this_catalogue_can_hold
+#    -- derive from the live set instead of pinning it, which is what the
+#    decomposer's fourth variant asks for, and keep the per-starter checks:
+assert THE_UNMET_REQUEST_STARTER in shipped_starters.list_shipped_starter_ids()
+
+# 2. test_the_shipped_starter_records_an_unmet_request_and_it_is_retrievable
+seeding = ActionManager().seed_shipped_starters()
+assert seeding["seeded"] == shipped_starters.list_shipped_starter_ids(), seeding
+assert THE_UNMET_REQUEST_STARTER in seeding["seeded"], seeding
+
+# 3. test_seeding_a_starter_twice_never_overwrites_the_operators_own_copy
+assert THE_UNMET_REQUEST_STARTER in manager.seed_shipped_starters()["seeded"]
+...
+again = manager.seed_shipped_starters()
+assert again["seeded"] == []
+assert THE_UNMET_REQUEST_STARTER in again["kept"]
+```
+
+And the file to create, `src/backend/app/business/core/actions/starters/read-entity-updates/Action.json`
+(byte-identical to `THE_SHIPPED_ACTION_JSON` in `tests/test_scoped_read_action.py`,
+which is what verifies it):
+
+```json
+{
+  "description": "Read what this install actually knows about ONE named thing -- that thing's own synthesis first, then the evidence tagged to it, newest first. Call this INSTEAD of searching whenever the question names something in particular: the name is resolved against the namespaces registered on this install, and the answer is read from that name's own scope alone, so nothing outside it is returned and no whole-vault search is run. If the name resolves to nothing, or to more than one registered entry, the answer says exactly that -- report it back rather than falling back to a search or answering about something else.",
+  "inputs": [
+    {
+      "name": "name",
+      "type": "string",
+      "required": true,
+      "description": "The name, alias or email domain the operator used, in their own words -- not a tag, not a search phrase, and not your guess at which one they meant."
+    },
+    {
+      "name": "evidence_limit",
+      "type": "integer",
+      "required": false,
+      "description": "Optional: how many evidence notes to return (20 by default). The answer always reports the true total beside the list and says when the list was cut, so ask again for more rather than treating a capped list as everything there is."
+    }
+  ],
+  "allowed_callers": ["*"],
+  "needs_confirmation": false,
+  "implementation": {
+    "http": {
+      "method": "GET",
+      "path": "/vault-search/entity-read"
+    }
+  }
+}
+```
+
+Two consequences to accept with it, neither hidden and both the same ones
+`ESC-074` already accepted for the first starter: the first boot after it lands
+publishes the new Action into **every** agent's `SOUL.md` (it is `["*"]`, and
+that is the point — an agent not told it exists cannot use it), in the
+background; and an operator who deletes it gets it back on the next restart.
+
+**`MEMORY.md` candidate, deliberately not appended** (86 KB against the 40 KB
+budget its own rule 1 sets, which forbids appending while over): *a route that is
+the `http` implementation of an Action must answer 2xx for an honest non-answer —
+the call gate reads any non-2xx as "the operation did not happen", so a 404 for
+"that name did not resolve" reaches the agent as a failed call rather than as
+what is known.* Carried in `REVIEW-QUEUE.md` for the compaction pass.
+
+**Resolving artefact:** — (Open)
+
+**Status:** Open
