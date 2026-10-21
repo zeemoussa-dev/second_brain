@@ -162,3 +162,66 @@ def sign_out(request: Request, response: Response) -> dict:
 @router.get("/me")
 def who_am_i(identity: Identity = Depends(current_identity)) -> dict:
     return _user_response(identity)
+
+
+class UpdateMeBody(BaseModel):
+    display_name: str
+
+
+class ChangeMyPasswordBody(BaseModel):
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=8)
+
+
+@router.put("/me")
+def update_me(body: UpdateMeBody, identity: Identity = Depends(current_identity)) -> dict:
+    """The display name, and only that.
+
+    The username is deliberately not editable here: it is what the person
+    signs in with and what every attributed record will name, so changing
+    it is an Admin's decision about identity rather than a preference.
+    The role is not editable for the obvious reason.
+
+    Note these `/auth/me` routes are reachable because the middleware lets
+    all of `/auth/` through -- they are guarded by `current_identity`
+    alone, which is why it is declared on each one rather than assumed.
+    """
+    try:
+        user = UserManager().set_display_name(identity.user.id, body.display_name)
+    except UserError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "id": user.id,
+        "username": user.username,
+        "display_name": user.display_name,
+        "role": user.role.value,
+    }
+
+
+@router.put("/me/password")
+def change_my_password(
+    body: ChangeMyPasswordBody,
+    request: Request,
+    identity: Identity = Depends(current_identity),
+) -> dict:
+    """Changing your own password needs your current one, which an
+    Admin's reset of someone else's does not: a self-service change is
+    reached with nothing but a live session, so without the check a
+    stolen session becomes a stolen account.
+
+    Every other session of yours ends; the one you are using survives.
+    """
+    token = request.cookies.get(SESSION_COOKIE) or ""
+    try:
+        UserManager().change_own_password(
+            identity.user.id,
+            body.current_password,
+            body.new_password,
+            identity.session_token_sha256 if token else "",
+        )
+    except UserError as exc:
+        # 400, not 401: the caller IS authenticated. A 401 would tell the
+        # frontend the session had ended and bounce them to sign-in,
+        # losing a form they only mistyped one field of.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"password_changed": True}

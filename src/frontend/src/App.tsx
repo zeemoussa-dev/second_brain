@@ -14,6 +14,7 @@ import { SettingsMarketplacePage } from './pages/SettingsMarketplacePage';
 import { SettingsOperatorPage } from './pages/SettingsOperatorPage';
 import { SettingsSystemPage } from './pages/SettingsSystemPage';
 import { SettingsUsersPage } from './pages/SettingsUsersPage';
+import { ProfilePage } from './pages/ProfilePage';
 import { SettingsSectionsPage } from './pages/SettingsSectionsPage';
 import { SettingsVaultPage } from './pages/SettingsVaultPage';
 import { SettingsVaultTemplatesPage } from './pages/SettingsVaultTemplatesPage';
@@ -48,6 +49,10 @@ function App() {
           <Route path="/settings/system" element={<SettingsSystemPage />} />
           <Route path="/settings/operator" element={<SettingsOperatorPage />} />
           <Route path="/settings/users" element={<SettingsUsersPage />} />
+          {/* Your own account (REQ-SB-101). Not under /settings: it is
+              not a setting of the install, it is one person's account,
+              and everyone signed in has one regardless of role. */}
+          <Route path="/profile" element={<ProfilePage />} />
           <Route path="/settings/sections" element={<SettingsSectionsPage />} />
           <Route path="/settings/vault" element={<SettingsVaultPage />} />
           <Route path="/settings/vault/templates" element={<SettingsVaultTemplatesPage />} />

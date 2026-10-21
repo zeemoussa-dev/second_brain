@@ -203,3 +203,74 @@
 .signed-in-as-sign-out:hover {
   background: var(--color-surface-raised);
 }
+
+/* The avatar + name in the sidebar foot double as the link to your own
+   profile. Stretched across the grid's first row so the whole block is
+   the target, not just the two words. */
+.signed-in-as-link {
+  grid-area: avatar / avatar / who / who;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  text-decoration: none;
+  color: inherit;
+}
+
+.signed-in-as-link:hover .signed-in-as-name {
+  text-decoration: underline;
+}
+
+/* -- Your profile page ------------------------------------------------ */
+
+.profile-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.profile-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  font-size: var(--font-size-lg);
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.profile-name {
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-serif);
+  font-size: var(--font-size-lg);
+  color: var(--color-text);
+}
+
+.profile-page section {
+  margin-bottom: var(--space-6);
+}
+
+.profile-page .auth-card {
+  width: min(420px, 100%);
+}
+
+/* What you may do, as a list rather than a role name: the question this
+   page answers is "why can't I do X", which a role name cannot. */
+.profile-capabilities {
+  margin: var(--space-3) 0;
+  padding-left: var(--space-5);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  line-height: 1.7;
+}
+
+.profile-done {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-success);
+}

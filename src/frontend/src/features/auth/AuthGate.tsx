@@ -15,6 +15,11 @@ interface AuthContextValue {
   user: SignedInUser;
   signOut: () => Promise<void>;
   may: (capability: string) => boolean;
+  /** Re-reads `/auth/state`. For a screen that changes something about
+   * the signed-in person -- their display name today -- so the sidebar
+   * and everything else holding `user` update from the backend's answer
+   * rather than from the screen's guess at it. */
+  refresh: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -130,6 +135,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     user: phase.user,
     signOut: handleSignOut,
     may: (capability: string) => phase.user.capabilities.includes(capability),
+    refresh,
   };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

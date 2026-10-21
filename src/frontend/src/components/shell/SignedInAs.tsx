@@ -1,3 +1,4 @@
+import { NavLink } from 'react-router';
 import { useAuth } from '../../features/auth/AuthGate';
 import { ROLE_LABELS } from '../../features/auth/authApiClient';
 
@@ -36,13 +37,18 @@ export function SignedInAs({ collapsed }: { collapsed: boolean }) {
 
   return (
     <div className="signed-in-as" data-testid="signed-in-as">
-      <span className="signed-in-as-avatar" aria-hidden="true">
-        {initialsFor(user.display_name, user.username)}
-      </span>
-      <span className="signed-in-as-who">
-        <span className="signed-in-as-name">{user.display_name || user.username}</span>
-        <span className="signed-in-as-role">{ROLE_LABELS[user.role]}</span>
-      </span>
+      {/* The avatar and name are the link to your own profile -- the
+          place people already look for it, and it keeps the sidebar
+          foot to two controls rather than three. */}
+      <NavLink to="/profile" className="signed-in-as-link" title="Your profile">
+        <span className="signed-in-as-avatar" aria-hidden="true">
+          {initialsFor(user.display_name, user.username)}
+        </span>
+        <span className="signed-in-as-who">
+          <span className="signed-in-as-name">{user.display_name || user.username}</span>
+          <span className="signed-in-as-role">{ROLE_LABELS[user.role]}</span>
+        </span>
+      </NavLink>
       <button
         type="button"
         className="signed-in-as-sign-out"

@@ -118,3 +118,25 @@ export const ROLE_DESCRIPTIONS: Record<ManagedUser['role'], string> = {
   power_user: 'Everything a User can do, plus running actions and workflows, confirming them, reading agent transcripts and rebuilding the index.',
   admin: 'Everything, including authoring actions and workflows, plugins, settings, Hermes and managing users.',
 };
+
+// ---- your own account -------------------------------------------------
+
+export function updateMyProfile(displayName: string): Promise<SignedInUser> {
+  return apiFetch<SignedInUser>('/auth/me', {
+    method: 'PUT',
+    body: JSON.stringify({ display_name: displayName }),
+  });
+}
+
+/** Changing your own password requires your current one — an Admin's
+ * reset of someone else's does not. Every other session of yours ends;
+ * the one you are using survives. */
+export function changeMyPassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ password_changed: boolean }> {
+  return apiFetch<{ password_changed: boolean }>('/auth/me/password', {
+    method: 'PUT',
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+}

@@ -250,6 +250,22 @@ def delete_sessions_for_user(user_id: str) -> int:
         ).rowcount
 
 
+def delete_sessions_for_user_except(user_id: str, keep_token_sha256: str) -> int:
+    """Every session a user holds except the one making the request.
+
+    For a person changing their OWN password: the point of doing so is
+    usually that someone else may hold a session, so the others must go
+    -- but signing the person out of the browser they are typing in,
+    at the moment they improved their own security, punishes the right
+    behaviour. `delete_sessions_for_user` stays the right call when an
+    Admin resets someone else's."""
+    with connect() as connection:
+        return connection.execute(
+            "DELETE FROM sessions WHERE user_id = ? AND token_sha256 != ?",
+            (user_id, keep_token_sha256),
+        ).rowcount
+
+
 def delete_sessions_expiring_before(moment: str) -> int:
     with connect() as connection:
         return connection.execute(

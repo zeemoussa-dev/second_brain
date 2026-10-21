@@ -191,6 +191,64 @@ class UserManager:
         )
         users_db.delete_sessions_for_user(user_id)
 
+    # -- a person acting on their own account ----------------------------
+
+    def set_display_name(self, user_id: str, display_name: str) -> User:
+        """The one field a person may change about themselves. The
+        username is not: it is what they sign in with and what every
+        attributed record names, so changing it is an Admin's decision
+        about identity rather than a preference."""
+        self._require(user_id)
+        users_db.update_user_fields(
+            user_id, {"display_name": display_name.strip(), "updated_at": _now()}
+        )
+        return self._require(user_id)
+
+    def change_own_password(
+        self,
+        user_id: str,
+        current_password: str,
+        new_password: str,
+        keep_session_sha256: str,
+    ) -> None:
+        """Requires the current password, which `set_password` does not.
+
+        An Admin resetting someone else's password has already proved
+        who they are and is acting deliberately on another account. A
+        self-service change is reached with nothing but a live session,
+        so without this check a stolen session becomes a stolen account:
+        whoever holds it sets a new password and the owner is locked out
+        of their own install. The check is what keeps a session from
+        being as good as a credential.
+
+        Every OTHER session of this user ends; the one making the
+        request survives. The reason to change a password is usually
+        that someone else may hold a session, and signing the person out
+        of the browser they just secured would punish the right move.
+        """
+        if not new_password:
+            raise UserError("A new password is required.")
+        row = users_db.read_user_by_id(user_id)
+        if row is None:
+            raise UserError(f"There is no user with id {user_id!r}.")
+        if not password_hashing.verify_password(
+            current_password, row["password_digest"], row["password_salt"], row["password_params"]
+        ):
+            raise UserError("That is not your current password; nothing was changed.")
+        digest, salt, parameters = password_hashing.hash_password(
+            new_password, self._password_parameters
+        )
+        users_db.update_user_fields(
+            user_id,
+            {
+                "password_digest": digest,
+                "password_salt": salt,
+                "password_params": parameters,
+                "updated_at": _now(),
+            },
+        )
+        users_db.delete_sessions_for_user_except(user_id, keep_session_sha256)
+
     def delete_user(self, user_id: str) -> None:
         user = self._require(user_id)
         if user.role == Role.ADMIN:
