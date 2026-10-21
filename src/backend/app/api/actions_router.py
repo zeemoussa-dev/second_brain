@@ -74,7 +74,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.business.core.actions.action import Action
@@ -86,7 +86,7 @@ from app.business.core.actions.action_manager import (
     PluginContributedActionIsReadOnlyError,
 )
 from app.business.logic import action_invocation
-from app.api.auth_guard import optional_identity, requires
+from app.api.auth_guard import optional_identity, requires, the_agent_really_calling
 from app.business.core.users.user import Capability, Identity
 
 router = APIRouter(prefix="/actions")
@@ -387,6 +387,7 @@ def delete_action(action_id: str) -> dict:
 def call_action(
     action_id: str,
     body: ActionCallBody,
+    request: Request,
     identity: Identity | None = Depends(optional_identity),
 ) -> dict:
     """The validating door (`ADR-033`). The gate refuses an unknown id,
@@ -399,8 +400,12 @@ def call_action(
     reserved as an action id only in the sense that an Action literally
     named `call` would still be reachable at `/actions/call/call`.
     """
+    # From a worker, the credential decides which agent this is; from a
+    # person, their claim stands and the gate checks it as it always
+    # has (`REQ-SB-103`).
+    caller_agent_id = the_agent_really_calling(request, body.caller_agent_id)
     verdict = action_invocation.call_action(
-        action_id, body.caller_agent_id, body.inputs, body.confirmed_call_id,
+        action_id, caller_agent_id, body.inputs, body.confirmed_call_id,
         # None when an agent calls on its own schedule with nobody
         # signed in -- an honest "we do not know who", never the
         # operator by default (REQ-SB-101).

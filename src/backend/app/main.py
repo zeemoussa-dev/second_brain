@@ -12,6 +12,7 @@ from app.business.core.plugins.plugin_manager import PluginManager
 from app.business.core.vault.vault_manager import VaultManager
 from app.api.actions_router import router as actions_router
 from app.api.admin_users_router import router as admin_users_router
+from app.api.agent_tokens_router import router as agent_tokens_router
 from app.api.agents_router import router as agents_router
 from app.api.auth_guard import AuthenticationMiddleware
 from app.api.auth_router import router as auth_router
@@ -270,6 +271,7 @@ async def gate_on_setup_mode(request: Request, call_next):
 app.include_router(auth_router)
 app.include_router(branding_router)
 app.include_router(admin_users_router)
+app.include_router(agent_tokens_router)
 app.include_router(health_check_router)
 app.include_router(setup_router)
 app.include_router(artifacts_router)

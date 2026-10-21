@@ -37,18 +37,36 @@ from __future__ import annotations
 
 import hmac
 import logging
+import re
 import secrets
 
 from fastapi import Depends, HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
+from app.business.core.users.agent_token import AgentCaller, looks_like_an_agent_token
+from app.business.core.users.agent_token_manager import AgentTokenManager
 from app.business.core.users.user import Capability, Identity
 from app.business.core.users.user_manager import UserManager
 
 _logger = logging.getLogger(__name__)
 
 SESSION_COOKIE = "second_brain_session"
+
+
+def _bearer_or_cookie(request: Request) -> str:
+    """The credential this request carries, whatever kind it is. One
+    reader for both so a person's cookie and a worker's bearer header
+    cannot drift into being read by different rules."""
+    token = request.cookies.get(SESSION_COOKIE)
+    if token:
+        return token
+    # A non-browser caller (a script, a Hermes worker) sends its
+    # credential as a bearer header rather than a cookie.
+    header = request.headers.get("authorization", "")
+    if header.lower().startswith("bearer "):
+        return header[7:].strip()
+    return ""
 
 # The Action gate performs an `http` implementation by calling THIS app
 # in process (`action_invocation._request_this_apps_own_route`), which
@@ -96,6 +114,51 @@ _ALWAYS_PUBLIC_PREFIXES = ("/boot-status", "/auth/", "/branding")
 # Open only while the install has no users at all (see the docstring).
 _UNBOOTSTRAPPED_ONLY_PREFIXES = ("/setup",)
 
+# What a Hermes worker may CHANGE (`REQ-SB-103`, `ADR-062`). Reads are
+# open to an authenticated agent -- serving what this install knows is
+# what the agents are for -- but a write matches a pattern here or it
+# is refused.
+#
+# **Exact patterns, not prefixes, and that is load-bearing.** `POST
+# /actions` creates an Action and `PUT /actions/{id}` edits one, and
+# NEITHER carries a `requires()` today (see the note below), so a
+# prefix of `/actions/` would have handed every worker the ability to
+# author the very catalogue that bounds it. A pattern that names the
+# route cannot acquire a new meaning because a new route was added
+# beside it.
+#
+# Each entry earns its place:
+#   POST /actions/{id}/call        -- the Action gate itself.
+#       `allowed_callers`, the declared inputs and the confirmation
+#       rule all still apply; `ADR-033` decides what this agent may
+#       actually call, and this only decides that it may ask.
+#   POST /workflows/{id}/run
+#   POST /workflows/runs/{id}/next-step
+#   POST /workflows/runs/{id}/steps/{id}/outcome
+#       -- stepping through documented handling, which is the one thing
+#       a Workflow is for.
+#   POST /workflows/runs/{id}/steps/{id}/answer
+#       -- relaying what a PERSON said. The route resolves WHO from the
+#       door it came through; an agent cannot name a person.
+#
+# Deliberately absent: confirming or declining an Action call
+# (`/actions/calls/{id}/confirm`). That is the operator answering, and
+# an agent that could confirm its own pending call would be the whole
+# gate undone. It is left out by not being listed, which is why the
+# list is of what is allowed.
+_AGENT_MAY_WRITE = (
+    re.compile(r"^/actions/[^/]+/call$"),
+    re.compile(r"^/workflows/[^/]+/run$"),
+    re.compile(r"^/workflows/runs/[^/]+/next-step$"),
+    re.compile(r"^/workflows/runs/[^/]+/steps/[^/]+/outcome$"),
+    re.compile(r"^/workflows/runs/[^/]+/steps/[^/]+/answer$"),
+)
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def _an_agent_may_write_here(path: str) -> bool:
+    return any(pattern.match(path) for pattern in _AGENT_MAY_WRITE)
+
 
 def _is_always_public(path: str) -> bool:
     return path in _ALWAYS_PUBLIC_EXACT or path.startswith(_ALWAYS_PUBLIC_PREFIXES)
@@ -113,16 +176,17 @@ class _AuthenticationReader:
 
     def __init__(self, user_manager: UserManager | None = None) -> None:
         self._users = user_manager or UserManager()
+        self._agent_tokens = AgentTokenManager()
 
     def identity_for(self, request: Request) -> Identity | None:
-        token = request.cookies.get(SESSION_COOKIE)
+        token = _bearer_or_cookie(request)
         if not token:
-            # A non-browser caller (a script, a Hermes worker) sends the
-            # same token as a bearer header rather than a cookie.
-            header = request.headers.get("authorization", "")
-            if header.lower().startswith("bearer "):
-                token = header[7:].strip()
-        if not token:
+            return None
+        if looks_like_an_agent_token(token):
+            # An agent's credential, which is NOT a person and must not
+            # be looked up as one. Returning None here is what keeps
+            # `requires()` closed to a worker: a capability is about a
+            # person, and a machine holding a key has none.
             return None
         try:
             return self._users.identity_for_token(token)
@@ -132,6 +196,15 @@ class _AuthenticationReader:
             # the request pipeline is neither.
             _logger.exception("Could not resolve a session token")
             return None
+
+    def agent_caller_for(self, request: Request) -> AgentCaller | None:
+        """The agent a request proved it is, or None. Separate from
+        `identity_for` and never merged with it: the whole value of this
+        type is that it cannot be mistaken for a person."""
+        token = _bearer_or_cookie(request)
+        if not token or not looks_like_an_agent_token(token):
+            return None
+        return self._agent_tokens.caller_for_token(token)
 
     def has_any_user(self) -> bool:
         try:
@@ -165,9 +238,32 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
         identity = self._reader.identity_for(request)
         request.state.identity = identity
+        request.state.agent_caller = None
 
         if identity is not None or _is_always_public(request.url.path):
             return await call_next(request)
+
+        # A Hermes worker, holding a credential bound to one agent
+        # (`REQ-SB-103`). It is not a person and never becomes one:
+        # `request.state.identity` stays None, so every `requires()`
+        # route still refuses it.
+        agent_caller = self._reader.agent_caller_for(request)
+        if agent_caller is not None:
+            request.state.agent_caller = agent_caller
+            if request.method in _SAFE_METHODS or _an_agent_may_write_here(request.url.path):
+                return await call_next(request)
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "detail": (
+                        f"Agent {agent_caller.agent_id!r} is authenticated, but this app does "
+                        f"not accept {request.method} {request.url.path} from an agent. An agent "
+                        "reads what this install knows and acts through the Action gate and "
+                        "documented Workflows; everything else is a person's to do."
+                    ),
+                    "reason": "not_for_agents",
+                },
+            )
 
         # The app calling itself to perform an `http` Action (ESC-081).
         # Authorisation already happened at the Action gate, one layer
@@ -205,6 +301,58 @@ def identity_from_request(request: Request) -> Identity | None:
     if cached is not None:
         return cached
     return _AuthenticationReader().identity_for(request)
+
+
+def agent_caller_from_request(request: Request) -> AgentCaller | None:
+    """The agent a request proved it is, resolved from the request
+    itself when the middleware has not already done it -- the same
+    self-sufficiency `identity_from_request` has, for the same reason: a
+    guard whose correctness depends on middleware ordering is a guard
+    that fails quietly."""
+    cached = getattr(request.state, "agent_caller", None)
+    if cached is not None:
+        return cached
+    return _AuthenticationReader().agent_caller_for(request)
+
+
+def optional_agent_caller(request: Request) -> AgentCaller | None:
+    """For a route that serves both a person and a worker and answers
+    differently. The route decides; this only reports."""
+    return agent_caller_from_request(request)
+
+
+def the_agent_really_calling(request: Request, claimed_agent_id: str) -> str:
+    """Which agent a call is really from (`REQ-SB-103`).
+
+    `ADR-033` authorises an Action call against `caller_agent_id`, and
+    until now that id was simply **claimed**: `call_action.py`'s own
+    help text said "the app believes the id it is given". A worker
+    holding a token for one agent must not be able to act as another by
+    typing a different id, or the token buys nothing.
+
+    So: from an agent, the token decides, and a body naming a different
+    agent is refused rather than silently corrected -- a caller that
+    asked to act as somebody else has either a bug or an intention, and
+    quietly doing something else would hide both.
+
+    From a PERSON, the claim stands. An operator driving the app names
+    the agent they are acting for, the gate still checks
+    `allowed_callers`, and nothing about that changes here.
+    """
+    agent = agent_caller_from_request(request)
+    if agent is None:
+        return claimed_agent_id
+    claimed = (claimed_agent_id or "").strip()
+    if claimed and claimed != agent.agent_id:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"this credential is for agent {agent.agent_id!r}, and this call named "
+                f"{claimed!r} as its caller. Nothing was performed. An agent acts as itself; "
+                "if this worker really is both, it needs the other agent's own token."
+            ),
+        )
+    return agent.agent_id
 
 
 def current_identity(request: Request) -> Identity:

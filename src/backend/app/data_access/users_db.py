@@ -65,6 +65,31 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 
 CREATE INDEX IF NOT EXISTS sessions_by_user ON sessions(user_id);
+
+-- How a Hermes worker proves which agent it is (`REQ-SB-103`).
+--
+-- `agent_id` is deliberately NOT a foreign key to `users`: an agent is
+-- not a person and must never resolve to one. The whole point of this
+-- table is that a worker's credential cannot produce a human identity,
+-- so a record of what a person decided can never be written by a
+-- machine holding a key.
+--
+-- There is no `expires_at`, unlike `sessions`. A browser session should
+-- lapse because the person walked away. A worker is a running install,
+-- and its token lapsing means every agent silently stops reaching the
+-- app in the middle of the night, which is the failure this whole
+-- table exists to end. Revocation is explicit and dated instead.
+CREATE TABLE IF NOT EXISTS agent_tokens (
+    token_sha256 TEXT PRIMARY KEY,
+    agent_id     TEXT NOT NULL,
+    label        TEXT NOT NULL DEFAULT '',
+    created_at   TEXT NOT NULL,
+    created_by   TEXT NOT NULL DEFAULT '',
+    last_seen_at TEXT,
+    revoked_at   TEXT
+);
+
+CREATE INDEX IF NOT EXISTS agent_tokens_by_agent ON agent_tokens(agent_id);
 """
 
 
@@ -119,6 +144,12 @@ def initialise() -> None:
     `executescript`, which issues its own COMMIT before it runs and so
     ends the transaction `connect` opened -- leaving `connect`'s own
     COMMIT to fail with "cannot commit - no transaction is active".
+
+    **The split is on `;` and knows nothing about SQL.** So a semicolon
+    anywhere in `_SCHEMA` -- including inside a `--` comment -- cuts a
+    statement in half and the whole schema fails to build with a syntax
+    error pointing at a word from the prose. Do not put one in a
+    comment there; it cost a confused half hour once already.
     """
     with connect() as connection:
         for statement in filter(None, (part.strip() for part in _SCHEMA.split(";"))):
@@ -285,3 +316,54 @@ _USER_COLUMNS = {
     "updated_at",
     "last_login_at",
 }
+
+
+def insert_agent_token(record: dict) -> None:
+    with connect() as connection:
+        connection.execute(
+            """INSERT INTO agent_tokens
+               (token_sha256, agent_id, label, created_at, created_by, last_seen_at, revoked_at)
+               VALUES (:token_sha256, :agent_id, :label, :created_at, :created_by,
+                       :last_seen_at, :revoked_at)""",
+            record,
+        )
+
+
+def read_agent_token(token_sha256: str) -> dict | None:
+    with connect() as connection:
+        row = connection.execute(
+            "SELECT * FROM agent_tokens WHERE token_sha256 = ?", (token_sha256,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def list_agent_tokens() -> list[dict]:
+    """Revoked rows included. A revoked credential is part of the record
+    of who could reach this install and when, and a list that quietly
+    dropped it would make a revocation unverifiable afterwards."""
+    with connect() as connection:
+        return [
+            dict(row)
+            for row in connection.execute(
+                "SELECT * FROM agent_tokens ORDER BY agent_id COLLATE NOCASE, created_at"
+            )
+        ]
+
+
+def touch_agent_token(token_sha256: str, last_seen_at: str) -> int:
+    with connect() as connection:
+        return connection.execute(
+            "UPDATE agent_tokens SET last_seen_at = ? WHERE token_sha256 = ?",
+            (last_seen_at, token_sha256),
+        ).rowcount
+
+
+def revoke_agent_token(token_sha256: str, revoked_at: str) -> int:
+    """Dated, never deleted. A row that vanished would leave no way to
+    answer "was this key ever revoked, and when" -- the question that
+    matters after a key has leaked."""
+    with connect() as connection:
+        return connection.execute(
+            "UPDATE agent_tokens SET revoked_at = ? WHERE token_sha256 = ? AND revoked_at IS NULL",
+            (revoked_at, token_sha256),
+        ).rowcount

@@ -91,6 +91,39 @@ def caller_agent_id_of_this_profile(explicit: str | None) -> str | None:
     return "default"
 
 
+def auth_headers() -> dict:
+    """This worker's credential, if it has one (`REQ-SB-103`).
+
+    `SECOND_BRAIN_AGENT_TOKEN` is set in the worker's environment by
+    whoever provisioned it; an Admin mints it in the app, for one named
+    agent, and it is shown once. **It identifies the agent, which until
+    now was merely claimed** -- the app used to believe whatever
+    `caller_agent_id` a caller typed.
+
+    Absent, the headers are empty and the app answers 401. That is the
+    right failure: an agent that cannot prove who it is must not reach
+    an install that has accounts, and a script that quietly carried on
+    unauthenticated would be asking for the default-deny guard to be
+    weakened on its behalf.
+    """
+    token = os.environ.get("SECOND_BRAIN_AGENT_TOKEN", "").strip()
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+
+def not_signed_in_text(base_url: str) -> str:
+    """What to say when the app refuses this worker. Written once
+    because both doors in this Skill hit it the same way, and because
+    "401" on its own has sent people looking at the wrong layer."""
+    return (
+        f"Second Brain at {base_url} refused this worker: it is not signed in. Nothing was "
+        "performed and nothing may be described as done.\n\n"
+        "This profile has no SECOND_BRAIN_AGENT_TOKEN in its environment, or the one it has "
+        "was revoked. An Admin mints one in the app under Admin Center -> Agent access, for "
+        "this agent by name; it is shown once and goes in this worker's environment. Tell the "
+        "operator that -- do not handle the request yourself instead."
+    )
+
+
 def post_call(base_url: str, action_id: str, payload: dict) -> tuple[int, dict]:
     """(status, body) for one POST to the call route. A 409 is the gate
     refusing, which is an ANSWER -- urllib raises on it, so it is caught
@@ -99,7 +132,11 @@ def post_call(base_url: str, action_id: str, payload: dict) -> tuple[int, dict]:
     request = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            **auth_headers(),
+        },
         method="POST",
     )
     try:
@@ -355,6 +392,14 @@ def main() -> int:
             f"NOTHING WAS PERFORMED: Second Brain answered something that is not JSON ({exc}).",
             file=sys.stderr,
         )
+        return 1
+
+    if status in (401, 403):
+        # Named before the verdict check below, which would otherwise
+        # report "a body this runner does not recognise" -- true, and
+        # useless. This one has a fix and the operator is the only one
+        # who can apply it.
+        print(not_signed_in_text(args.base_url), file=sys.stderr)
         return 1
 
     verdict = verdict_of(status, body)

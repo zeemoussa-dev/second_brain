@@ -90,7 +90,15 @@ def post(base_url: str, path: str, payload: dict) -> tuple[int, dict]:
     request = urllib.request.Request(
         f"{base_url.rstrip('/')}{path}",
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            # This worker's credential, read from its environment by
+            # `call_action.auth_headers()` -- one copy, so the two doors
+            # in this Skill cannot drift into authenticating differently
+            # (`REQ-SB-103`).
+            **call_action.auth_headers(),
+        },
         method="POST",
     )
     try:
@@ -325,6 +333,10 @@ def main() -> int:
         except ValueError as exc:
             print(f"NO RUN WAS STARTED: Second Brain answered something that is not JSON ({exc}).",
                   file=sys.stderr)
+            return 1
+
+        if status in (401, 403):
+            print(call_action.not_signed_in_text(args.base_url), file=sys.stderr)
             return 1
 
         if status != 200 or not body.get("run_id"):
