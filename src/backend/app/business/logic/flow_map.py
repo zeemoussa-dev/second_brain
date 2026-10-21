@@ -227,12 +227,16 @@ def _touches(implementation: Any) -> str | None:
     the guess this map exists to avoid."""
     if implementation is None:
         return None
-    for attribute in ("http", "skill", "ui"):
-        value = getattr(implementation, attribute, None)
-        if value:
-            if attribute == "http":
-                return f"{getattr(value, 'method', '')} {getattr(value, 'path', '')}".strip()
-            if attribute == "skill":
-                return f"skill {getattr(value, 'skill_id', value)}"
-            return f"screen {getattr(value, 'feature_key', value)}"
-    return None
+    # `ActionImplementation` is FLAT with a `kind` discriminator, not
+    # three nested objects -- an earlier version of this function
+    # assumed the nested shape and quietly reported every Action as
+    # having no implementation, which is the worst kind of wrong on a
+    # map: confidently blank. Read the kind and the fields it populates.
+    kind = getattr(implementation, "kind", "")
+    if kind == "http":
+        return f"{implementation.method} {implementation.path}".strip() or "an http route"
+    if kind == "skill":
+        return f"the deployed skill {implementation.skill_id!r}"
+    if kind == "ui":
+        return f"the screen {implementation.feature_key!r} -- pointed at, never performed"
+    return kind or None

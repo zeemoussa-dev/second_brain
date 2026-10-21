@@ -602,3 +602,57 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
 }
+
+/* -- Rules (REQ-SB-102) ----------------------------------------------- */
+
+.rules-explainer {
+  width: 100%;
+  margin-bottom: var(--space-5);
+}
+
+.rule-card {
+  width: 100%;
+  margin-bottom: var(--space-4);
+}
+
+.rule-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rule-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--space-2);
+  font-family: inherit;
+  font-size: var(--font-size-base);
+  color: var(--color-text);
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.rule-enabled {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.rule-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+}
+
+.rule-pattern {
+  font-family: var(--font-mono);
+}
+
+.rules-actions {
+  display: flex;
+  gap: var(--space-3);
+  margin: var(--space-4) 0;
+}

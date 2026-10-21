@@ -20,6 +20,8 @@ import { AdminCenterPage } from './pages/AdminCenterPage';
 import { SessionTranscriptPage } from './pages/SessionTranscriptPage';
 import { EntryPointsPage } from './pages/EntryPointsPage';
 import { FlowMapPage } from './pages/FlowMapPage';
+import { AgentFlowPage } from './pages/AgentFlowPage';
+import { SettingsRulesPage } from './pages/SettingsRulesPage';
 import { SettingsSectionsPage } from './pages/SettingsSectionsPage';
 import { SettingsVaultPage } from './pages/SettingsVaultPage';
 import { SettingsVaultTemplatesPage } from './pages/SettingsVaultTemplatesPage';
@@ -82,6 +84,9 @@ function App() {
           <Route path="/agent-activity/:sessionId" element={<SessionTranscriptPage />} />
           <Route path="/entry-points" element={<EntryPointsPage />} />
           <Route path="/flow" element={<FlowMapPage />} />
+          {/* One agent's own slice of the flow (REQ-SB-102). */}
+          <Route path="/flow/:agentId" element={<AgentFlowPage />} />
+          <Route path="/settings/rules" element={<SettingsRulesPage />} />
           <Route path="/browse" element={<VaultBrowserPage />} />
           <Route path="/browse/:stem" element={<NoteDetailPage />} />
           <Route path="/vault" element={<VaultGraphPage />} />

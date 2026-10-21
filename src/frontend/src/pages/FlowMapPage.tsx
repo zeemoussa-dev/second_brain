@@ -111,6 +111,8 @@ export function FlowMapPage() {
               {' · may call '}
               {agentsById.get(focus)?.may_call.join(', ') || 'nothing'}
             </div>
+            <Link to={`/flow/${encodeURIComponent(focus)}`}>Open this agent's flow</Link>
+            {' · '}
             <Link to={`/agents/${encodeURIComponent(focus)}/profile`}>
               Read this profile as it really is
             </Link>
