@@ -2,6 +2,12 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { apiFetch } from '../api/client';
 import { refusalText } from '../features/auth/SignInScreen';
+import { useAuth } from '../features/auth/AuthGate';
+import {
+  ActionAssignmentEditor,
+  SkillsEditor,
+  SpecialistsEditor,
+} from '../features/settings/AgentFlowEditors';
 
 interface Edge { from: string; to: string; when: string | null; declared: boolean }
 interface AgentNode { id: string; name: string; routes_to: string[]; may_call: string[]; is_entry: boolean }
@@ -28,14 +34,17 @@ interface FlowMap {
  */
 export function AgentFlowPage() {
   const { agentId = '' } = useParams();
+  const { may } = useAuth();
+  const canEdit = may('manage_agents');
   const [map, setMap] = useState<FlowMap | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const [reloads, setReloads] = useState(0);
 
   useEffect(() => {
     apiFetch<FlowMap>('/hermes/flow-map')
       .then(setMap)
       .catch((error) => setFailure(refusalText(error)));
-  }, [agentId]);
+  }, [agentId, reloads]);
 
   if (failure) return <><h1>{agentId}</h1><p className="auth-refusal" role="alert">{failure}</p></>;
   if (!map) return <><h1>{agentId}</h1><p>Reading the flow…</p></>;
@@ -166,6 +175,29 @@ export function AgentFlowPage() {
           </ul>
         )}
       </section>
+
+      {canEdit && (
+        <section>
+          <h2>Change this agent's flow</h2>
+          <p className="auth-note">
+            Routes and Action assignment take effect at once. The <em>when</em> on a route is
+            written on <Link to="/flow">The Flow</Link> and only reaches the agent's prompt
+            when you publish there.
+          </p>
+          <SpecialistsEditor
+            agentId={agent.id}
+            current={agent.routes_to}
+            candidates={map.agents.map((other) => other.id)}
+            onChanged={() => setReloads((n) => n + 1)}
+          />
+          <ActionAssignmentEditor
+            agentId={agent.id}
+            actions={map.actions}
+            onChanged={() => setReloads((n) => n + 1)}
+          />
+          <SkillsEditor agentId={agent.id} onChanged={() => setReloads((n) => n + 1)} />
+        </section>
+      )}
 
       <p className="auth-note">
         Want to see what it actually did, rather than what it may do?{' '}

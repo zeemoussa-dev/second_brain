@@ -217,3 +217,50 @@ export function publishSpecialists(agentId: string): Promise<unknown> {
     `/agents/${encodeURIComponent(agentId)}/specialists/regenerate`, { method: 'POST' },
   );
 }
+
+// ---- editing one agent's flow (REQ-SB-102) ---------------------------
+
+/** Replaces this agent's specialist list. `depends_on` is the SHAPE of
+ * the flow and lives in Hermes' registry, unlike the routing conditions
+ * beside it which are this app's own annotation — so this write goes
+ * through the agent's own PATCH, the same one the Agents Map uses. */
+export function setSpecialists(agentId: string, dependsOn: string[]): Promise<unknown> {
+  return apiFetch<unknown>(`/agents/${encodeURIComponent(agentId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ depends_on: dependsOn }),
+  });
+}
+
+/** Who may call one Action. Assigning an Action TO an agent is the same
+ * field read from the other end, so this is the Action's own update
+ * rather than a second store that could disagree with it. */
+export function setAllowedCallers(actionId: string, callers: string[]): Promise<unknown> {
+  return apiFetch<unknown>(`/actions/${encodeURIComponent(actionId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ allowed_callers: callers }),
+  });
+}
+
+export interface SkillSummary { id: string; name?: string; description?: string }
+
+export function fetchAllSkills(): Promise<SkillSummary[]> {
+  return apiFetch<SkillSummary[]>('/skills');
+}
+
+export function fetchAgentSkills(agentId: string): Promise<SkillSummary[]> {
+  return apiFetch<SkillSummary[]>(`/agents/${encodeURIComponent(agentId)}/skills`);
+}
+
+export function deploySkill(agentId: string, skillId: string): Promise<{ detail: string }> {
+  return apiFetch<{ detail: string }>(
+    `/agents/${encodeURIComponent(agentId)}/skills/${encodeURIComponent(skillId)}`,
+    { method: 'POST' },
+  );
+}
+
+export function undeploySkill(agentId: string, skillId: string): Promise<{ detail: string }> {
+  return apiFetch<{ detail: string }>(
+    `/agents/${encodeURIComponent(agentId)}/skills/${encodeURIComponent(skillId)}`,
+    { method: 'DELETE' },
+  );
+}
