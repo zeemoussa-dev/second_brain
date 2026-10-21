@@ -219,7 +219,11 @@ class WorkflowManager:
             taken.add(step_id)
             identified.append({
                 "id": step_id,
+                "kind": str(step.get("kind") or "action"),
                 "action_id": step.get("action_id", ""),
+                "agent_id": step.get("agent_id", ""),
+                "ask": step.get("ask", ""),
+                "allows_edit": bool(step.get("allows_edit", False)),
                 "inputs": dict(step.get("inputs") or {}),
                 "needs_confirmation": bool(step.get("needs_confirmation", False)),
                 "description": step.get("description", ""),
@@ -254,11 +258,35 @@ class WorkflowManager:
             return
         catalogued_action_ids = {action.id for action in ActionManager().get_all()}
         for position, step in enumerate(steps, start=1):
+            kind = str(step.get("kind") or "action")
+            if kind not in ("action", "agent", "human"):
+                raise WorkflowStepActionNotFoundError(
+                    f"step {position} of this Workflow is of kind {kind!r}, which this app does "
+                    "not know how to run; nothing was saved"
+                )
+            # An agent step names an agent and a human step names
+            # nobody, so neither has an Action to catalogue
+            # (`REQ-SB-103`). The checks each kind DOES need are below.
+            if kind == "agent":
+                if not str(step.get("agent_id") or "").strip():
+                    raise WorkflowStepActionNotFoundError(
+                        f"step {position} asks an agent to do it and names no agent; "
+                        "nothing was saved"
+                    )
+                continue
+            if kind == "human":
+                if not str(step.get("ask") or "").strip():
+                    raise WorkflowStepActionNotFoundError(
+                        f"step {position} asks a person and says nothing to ask them; "
+                        "a human step whose question is blank cannot be answered, so "
+                        "nothing was saved"
+                    )
+                continue
             action_id = str(step.get("action_id") or "")
             if not action_id:
                 raise WorkflowStepActionNotFoundError(
-                    f"step {position} of this Workflow names no action id; every step runs one "
-                    "catalogued Action, so nothing was saved"
+                    f"step {position} of this Workflow names no action id; an action step runs "
+                    "one catalogued Action, so nothing was saved"
                 )
             if action_id not in catalogued_action_ids:
                 raise WorkflowStepActionNotFoundError(
@@ -308,7 +336,13 @@ class WorkflowManager:
         return [
             WorkflowStep(
                 id=str(entry.get("id") or WorkflowManager._mint_step_id()),
+                # Absent means "action" -- a step stored before kinds
+                # existed is exactly what it always was (`REQ-SB-103`).
+                kind=str(entry.get("kind") or "action"),
                 action_id=entry.get("action_id", ""),
+                agent_id=entry.get("agent_id", ""),
+                ask=entry.get("ask", ""),
+                allows_edit=bool(entry.get("allows_edit", False)),
                 inputs=dict(entry.get("inputs") or {}),
                 needs_confirmation=bool(entry.get("needs_confirmation", False)),
                 description=entry.get("description", ""),

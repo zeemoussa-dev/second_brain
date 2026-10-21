@@ -48,15 +48,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from app.api.auth_guard import requires
+from app.business.core.users.user import Capability, Identity
 from app.business.core.workflows.workflow import Workflow
 from app.business.core.workflows.workflow_manager import (
     WorkflowManager,
     WorkflowStepActionNotFoundError,
 )
-from app.business.logic import workflow_run
+from app.business.logic import action_invocation, workflow_run
 
 router = APIRouter(prefix="/workflows")
 _workflow_manager = WorkflowManager()
@@ -76,9 +78,28 @@ class WorkflowStepBody(BaseModel):
     dispatched (`ADR-033`). Typing them here would duplicate that rule
     in a place that cannot see the Action, and would silently drop any
     field it had not been taught about.
+
+    `kind` is `action`, `agent` or `human` (`REQ-SB-103`), and which of
+    the other fields a step needs follows from it -- an `action` step
+    names an Action, an `agent` step names an agent and what to ask it,
+    a `human` step names what to ask the person. That rule is the
+    Manager's, not this router's, for the reason the module docstring
+    gives: one refusal, in one place, naming which step.
+
+    `kind` defaults to `action` so every Workflow written before this
+    requirement, and every client that has not been taught about step
+    kinds, keeps meaning exactly what it meant.
     """
     id: str = ""
+    kind: str = "action"
     action_id: str = ""
+    agent_id: str = ""
+    ask: str = ""
+    # Whether the person may change what was proposed before it goes on,
+    # rather than only approving or declining it. False by default: a
+    # step that silently accepted an edit would send something the
+    # Workflow never said could be changed.
+    allows_edit: bool = False
     inputs: dict[str, Any] = {}
     needs_confirmation: bool = False
     description: str = ""
@@ -321,6 +342,67 @@ def report_workflow_run_step_outcome(
     try:
         return workflow_run.record_step_outcome(
             run_id, step_id, body.outcome, body.detail, body.result,
+        )
+    except workflow_run.WorkflowRunNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except workflow_run.WorkflowRunRefusedError as exc:
+        raise _run_refusal(exc)
+
+
+class HumanStepAnswerBody(BaseModel):
+    """What a person answered at a human step (`REQ-SB-103`).
+
+    There is no `decided_by` field, deliberately. Who answered is taken
+    from the signed-in session and never from the body: a route that
+    accepted a name would let any caller write "the Admin approved
+    this" into a record whose whole value is that it cannot be written
+    by anyone else.
+
+    `said` is what the person actually wrote, verbatim. `result` is what
+    goes on to the steps that reference this one, and an edit must
+    supply it -- the engine refuses an edit that names nothing to put in
+    place of what was proposed.
+    """
+    decision: str
+    said: str = ""
+    result: Any = None
+    # Where it was said, when a channel relays it. Empty from the app's
+    # own screens, which ARE the place it was said.
+    said_in_session_id: str = ""
+    said_in_message_id: str = ""
+
+
+@router.post("/runs/{run_id}/steps/{step_id}/answer")
+def answer_workflow_run_human_step(
+    run_id: str,
+    step_id: str,
+    body: HumanStepAnswerBody,
+    identity: Identity = Depends(requires(Capability.CONFIRM_ACTIONS)),
+) -> dict:
+    """Record what a person answered at the human step this run is
+    waiting on.
+
+    Separate from the outcome route, and guarded by `CONFIRM_ACTIONS`
+    rather than by whatever may call a Workflow: approving something a
+    Workflow is about to send is the same decision as confirming an
+    Action call, so it is the same capability -- and a step whose
+    question a person answered must never be recordable as an ordinary
+    step outcome by the agent running the Workflow.
+
+    A decline is a 200, not an error: the person answered, the record
+    says so, and the run is blocked at this step with their words as the
+    reason. Nothing after it ran.
+    """
+    try:
+        return workflow_run.answer_human_step(
+            run_id,
+            step_id,
+            body.decision,
+            action_invocation.attribution_for(identity.user),
+            said=body.said,
+            result=body.result,
+            said_in_session_id=body.said_in_session_id,
+            said_in_message_id=body.said_in_message_id,
         )
     except workflow_run.WorkflowRunNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))

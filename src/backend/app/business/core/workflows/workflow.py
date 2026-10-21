@@ -6,8 +6,14 @@ from typing import Any
 
 @dataclass
 class WorkflowStep:
-    """One documented step: the catalogued Action it runs, what that
-    Action is called with, and whether the operator must confirm it.
+    """One documented step: who does it, what they are asked for, and
+    whether the operator must confirm it.
+
+    Was Action-only until `REQ-SB-103`. `kind` now says which of three
+    does the work, and the fields each kind uses are named below --
+    unused ones stay empty rather than being modelled as three classes,
+    because a run addresses steps uniformly by id and a polymorphic step
+    would put a type check at every one of those sites.
 
     `id` is the step's own stable handle, NOT its position. A run
     addresses one step at a time by id and refuses an outcome for a step
@@ -24,7 +30,32 @@ class WorkflowStep:
     kind's job, checking them is not.
     """
     id: str
-    action_id: str
+    # WHO does this step (`REQ-SB-103`). Three kinds, and they differ in
+    # what the run record may honestly claim afterwards:
+    #
+    #   "action" -- this app performed it and the call gate saw the
+    #       outcome. The only kind that is a FACT.
+    #   "agent"  -- a named agent was asked to do it. The record can say
+    #       the agent REPORTED it did; the app cannot check.
+    #   "human"  -- a person was shown something and answered. A claim
+    #       too, made checkable by recording the session and message it
+    #       was said in.
+    #
+    # Defaulted to "action" so every Workflow written before this field
+    # existed means exactly what it meant then, byte for byte.
+    kind: str = "action"
+    # Only for `kind == "action"`.
+    action_id: str = ""
+    # Only for `kind == "agent"` -- the agent asked to do this step.
+    agent_id: str = ""
+    # Only for `kind == "agent"` or `"human"`: what to ask. May hold
+    # references, resolved the same way inputs are, so a question can
+    # carry a prior step's result.
+    ask: str = ""
+    # Only for `kind == "human"`: whether the person may change the
+    # thing before it goes on, or only approve it. An edit becomes the
+    # step's result and so can be referenced by a later step.
+    allows_edit: bool = False
     inputs: dict[str, Any] = field(default_factory=dict)
     # Per step, not per Workflow: the operator marks the one step that
     # needs them in the loop (sending the mail), not the whole intent.

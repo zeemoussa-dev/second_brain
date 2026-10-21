@@ -103,6 +103,13 @@ _logger = logging.getLogger(__name__)
 STEP_NOT_REACHED = "not_reached"
 STEP_RUNNING = "running"
 STEP_AWAITING_CONFIRMATION = "awaiting_confirmation"
+# A step waiting on a PERSON to answer a question, which is not the same
+# as an Action waiting for approval (`REQ-SB-103`). An awaiting_
+# confirmation step has already been dispatched and is held at the gate;
+# this one has been asked and nothing has happened yet. They are kept
+# apart so "what is waiting on me" can list both and still say which is
+# which.
+STEP_AWAITING_PERSON = "awaiting_person"
 STEP_DONE = "done"
 STEP_FAILED = "failed"
 STEP_REFUSED = "refused"
@@ -129,6 +136,22 @@ RUN_RUNNING = "running"
 RUN_AWAITING_CONFIRMATION = "awaiting_confirmation"
 RUN_BLOCKED = "blocked"
 RUN_COMPLETE = "complete"
+# A run held at a question a person has not answered (`REQ-SB-103`).
+# Distinct from `running`, which reads as "something is happening", and
+# from `blocked`, which reads as "something went wrong" -- this run is
+# fine and is waiting on a human, and "what is waiting on me" is built
+# by looking for exactly this.
+RUN_AWAITING_PERSON = "awaiting_person"
+
+# What a person did with the question a human step asked them
+# (`REQ-SB-103`). Three answers, because the operator's own framing was
+# "edit, so the human can change it before it goes": approving what was
+# proposed, changing it, and stopping it are three different decisions
+# and the record has to be able to tell them apart afterwards.
+HUMAN_APPROVED = "approved"
+HUMAN_EDITED = "edited"
+HUMAN_DECLINED = "declined"
+HUMAN_DECISIONS = (HUMAN_APPROVED, HUMAN_EDITED, HUMAN_DECLINED)
 
 
 class WorkflowRunNotFoundError(Exception):
@@ -170,12 +193,31 @@ def _snapshot_step(position: int, step: WorkflowStep) -> dict:
     return {
         "step_id": step.id,
         "position": position,
+        "kind": getattr(step, "kind", "action") or "action",
         "action_id": step.action_id,
+        "agent_id": getattr(step, "agent_id", ""),
+        "ask": getattr(step, "ask", ""),
+        "allows_edit": bool(getattr(step, "allows_edit", False)),
         "description": step.description,
         "needs_confirmation": bool(step.needs_confirmation),
         "inputs": dict(step.inputs or {}),
         # Filled at dispatch, once references are resolved.
         "resolved_inputs": None,
+        # Set when the step is reached. "app" for an Action the gate
+        # performed, "agent" for a claim, "human" for a decision --
+        # the distinction REQ-SB-103 exists to keep.
+        "performed_by": None,
+        "resolved_ask": None,
+        "asked_at": None,
+        # Human steps only: what the person actually wrote, what the
+        # agent made of it, and where it was said. Kept apart on
+        # purpose -- collapsing the first two destroys the ability to
+        # tell "they said that" from "the agent understood that".
+        "human_said": None,
+        "human_decision": None,
+        "said_in_session_id": None,
+        "said_in_message_id": None,
+        "decided_by": None,
         "status": STEP_NOT_REACHED,
         # The gate's own word for what it did, kept verbatim and never
         # overwritten by what a caller later reports: a step reported
@@ -279,6 +321,8 @@ def _run_status_for(run: Mapping[str, Any]) -> str:
         return RUN_COMPLETE
     if current.get("status") == STEP_AWAITING_CONFIRMATION:
         return RUN_AWAITING_CONFIRMATION
+    if current.get("status") == STEP_AWAITING_PERSON:
+        return RUN_AWAITING_PERSON
     if current.get("status") in (STEP_FAILED, STEP_REFUSED):
         return RUN_BLOCKED
     return RUN_RUNNING
@@ -358,6 +402,65 @@ def _dispatch(run: dict, step: dict, confirmed_call_id: str | None = None) -> No
         step["action_id"], run["caller_agent_id"], inputs, confirmed_call_id,
     )
     _apply_verdict(step, verdict)
+
+
+def _resolve_or_refuse(run: dict, step: dict, text: str) -> str | None:
+    """Resolves references inside a step's `ask`, or refuses the step.
+
+    An unresolved reference in a QUESTION is as bad as one in an email
+    body: "here is {{steps.find.result}}, shall I send it?" is a
+    question nobody can answer, and asking it would spend a person's
+    attention on a bug.
+    """
+    if not step_references.is_reference(text):
+        return text
+    try:
+        return step_references.resolve_inputs({"ask": text}, run)["ask"]
+    except step_references.ReferenceError as exc:
+        step["status"] = STEP_REFUSED
+        step["refusal"] = f"step {step.get('step_id')!r} was not asked: {exc}"
+        return None
+
+
+def _hand_to_agent(run: dict, step: dict) -> None:
+    """Hand this step to a named agent (`REQ-SB-103`).
+
+    The app does not call the agent: Hermes owns that conversation and
+    the agent running this Workflow is already in one. So the step is
+    marked `running` and handed BACK, carrying who to ask and what to
+    ask them -- the caller relays it and reports the answer as this
+    step's outcome, exactly as it already does for a `pointed_at`
+    Action.
+
+    What the record may claim afterwards is therefore "the agent
+    reported this", never "this happened". `performed_by` says so in
+    the record rather than leaving a reader to infer it from `kind`.
+    """
+    ask = _resolve_or_refuse(run, step, step.get("ask") or "")
+    if ask is None:
+        return
+    step["resolved_ask"] = ask
+    step["status"] = STEP_RUNNING
+    step["performed_by"] = "agent"
+    step["dispatch_outcome"] = "handed_to_agent"
+
+
+def _ask_the_person(run: dict, step: dict) -> None:
+    """Ask a person, and wait (`REQ-SB-103`).
+
+    Like an agent step, the app cannot reach the person -- over WhatsApp
+    the agent is the one in the conversation. So this is handed back for
+    the agent to ask, and the run HOLDS at `awaiting_person` until an
+    answer is recorded. A run can therefore wait indefinitely, which is
+    a real state and the reason "what is waiting on me" has to exist.
+    """
+    ask = _resolve_or_refuse(run, step, step.get("ask") or "")
+    if ask is None:
+        return
+    step["resolved_ask"] = ask
+    step["status"] = STEP_AWAITING_PERSON
+    step["performed_by"] = "human"
+    step["asked_at"] = _now()
 
 
 def _refuse_unconfirmable_step(step: dict) -> None:
@@ -490,7 +593,12 @@ def next_step(run_id: str) -> dict:
         if step.get("status") == STEP_AWAITING_CONFIRMATION:
             _advance_awaiting_step(run, step)
         elif step.get("status") == STEP_NOT_REACHED:
-            if step.get("needs_confirmation") and not _action_needs_confirmation(
+            kind = step.get("kind") or "action"
+            if kind == "agent":
+                _hand_to_agent(run, step)
+            elif kind == "human":
+                _ask_the_person(run, step)
+            elif step.get("needs_confirmation") and not _action_needs_confirmation(
                 step.get("action_id") or ""
             ):
                 _refuse_unconfirmable_step(step)
@@ -545,6 +653,20 @@ def _where_this_run_stands(run: Mapping[str, Any], handed_out: Mapping[str, Any]
                 f"{handed_out['step_id']!r} (position {handed_out['position']}) until the "
                 f"operator confirms action call {handed_out.get('awaiting_call_id')!r}. Nothing "
                 "beyond this step has been run."
+            )
+        if handed_out.get("status") == STEP_AWAITING_PERSON:
+            return (
+                f"run {run['run_id']!r} of workflow {workflow_id!r} is waiting at step "
+                f"{handed_out['step_id']!r} (position {handed_out['position']}) for a person to "
+                f"answer: {handed_out.get('resolved_ask')!r}. Nothing beyond this step has been "
+                "run, and it will wait until someone answers."
+            )
+        if (handed_out.get("kind") or "action") == "agent":
+            return (
+                f"run {run['run_id']!r} of workflow {workflow_id!r} is on step "
+                f"{handed_out['step_id']!r} (position {handed_out['position']}), which asks agent "
+                f"{handed_out.get('agent_id')!r}: {handed_out.get('resolved_ask')!r}. Report what "
+                "that agent came back with before asking for the next step."
             )
         return (
             f"run {run['run_id']!r} of workflow {workflow_id!r} is on step "
@@ -632,6 +754,153 @@ def record_step_outcome(
     return run
 
 
+def _who_answered(attribution: Mapping[str, Any]) -> str:
+    """How the person is named inside the detail or refusal sentence.
+    Never falls back to "the operator": this engine refuses an
+    unattributed answer, so there is always somebody to name, and a
+    sentence that invented one would be the fabrication the refusal
+    exists to prevent."""
+    return str(
+        attribution.get("display_name")
+        or attribution.get("username")
+        or attribution.get("entry_point")
+        or "somebody this install cannot name"
+    )
+
+
+def answer_human_step(
+    run_id: str,
+    step_id: str,
+    decision: str,
+    decided_by: Mapping[str, Any] | None,
+    said: str = "",
+    result: Any | None = None,
+    said_in_session_id: str = "",
+    said_in_message_id: str = "",
+) -> dict:
+    """Record what a person answered at a human step (`REQ-SB-103`).
+
+    Deliberately NOT `record_step_outcome`. A caller reporting "this
+    step is done" is asserting something about work; a caller recording
+    an answer is relaying a decision someone else made, and the record
+    has to be able to say which it holds. Keeping them apart is what
+    lets the run record carry "a person approved this" without that ever
+    being producible by an agent reporting its own step.
+
+    Six refusals, all of them before anything is written:
+
+    1. a step id this run does not hold;
+    2. a step that is not the one the run is on;
+    3. a step that is not waiting on a person -- an Action step takes an
+       outcome, not an answer, and a human step that is already answered
+       is not re-answered;
+    4. a decision word that is none of the three;
+    5. an edit to a step the Workflow says may not be edited, or an edit
+       with nothing to put in its place -- the operator wrote
+       `allows_edit: false` meaning "what goes out is what was
+       proposed", and quietly honouring an edit anyway would send
+       something nobody authorised;
+    6. an answer with nobody named. An approval attributed to no one is
+       the attribution hole the ledger work closed, and an unattributable
+       approval is worse than none: it reads as authority it never had.
+
+    `decided_by` is an attribution BLOCK, not a name -- the same
+    snapshot shape the Action-call ledger carries (`REQ-SB-101`), built
+    by whoever knows who answered: the route builds it from the signed-in
+    identity, and a channel relaying a person's reply builds it from that
+    channel's own owner. A snapshot rather than a reference, for the
+    ledger's reason: a person who later loses their access still
+    approved this, and re-reading them would rewrite history.
+    """
+    run = _read_run(run_id)
+
+    step = _step_by_id(run, step_id)
+    if step is None:
+        documented = ", ".join(repr(entry["step_id"]) for entry in run.get("steps") or [])
+        raise WorkflowRunRefusedError(
+            f"run {run_id!r} of workflow {run.get('workflow_id')!r} holds no step {step_id!r} -- "
+            f"its documented steps are {documented}. No answer was recorded."
+        )
+
+    current = _current_step(run)
+    if current is None or current.get("step_id") != step_id:
+        if current is None:
+            raise WorkflowRunRefusedError(
+                f"run {run_id!r} has already run every documented step, so step {step_id!r} is "
+                "not waiting on an answer and none was recorded"
+            )
+        raise WorkflowRunRefusedError(
+            f"run {run_id!r} is on step {current['step_id']!r} (position {current['position']}), "
+            f"not step {step_id!r} (position {step['position']}); no answer was recorded"
+        )
+
+    if step.get("status") != STEP_AWAITING_PERSON:
+        raise WorkflowRunRefusedError(
+            f"step {step_id!r} of run {run_id!r} is {step.get('status')!r}, not a step waiting on "
+            f"a person's answer, so there is no question to answer and nothing was recorded. A "
+            "step the framework ran takes its outcome reported, not an answer recorded."
+        )
+
+    if decision not in HUMAN_DECISIONS:
+        allowed = ", ".join(repr(word) for word in HUMAN_DECISIONS)
+        raise WorkflowRunRefusedError(
+            f"{decision!r} is not a decision a person's answer can carry; it is one of {allowed}, "
+            f"and nothing was recorded for step {step_id!r}"
+        )
+
+    if decision == HUMAN_EDITED:
+        if not step.get("allows_edit"):
+            raise WorkflowRunRefusedError(
+                f"step {step_id!r} of run {run_id!r} does not allow editing -- the Workflow asks "
+                "this question to be approved or declined, not changed. Nothing was recorded, and "
+                "nothing was sent. Record an approval or a decline, or change the Workflow."
+            )
+        if result is None:
+            raise WorkflowRunRefusedError(
+                f"an edit at step {step_id!r} of run {run_id!r} replaces what was proposed, and "
+                "this one named nothing to replace it with. Nothing was recorded; an edit with no "
+                "new value is not an approval of the old one."
+            )
+
+    if not decided_by:
+        raise WorkflowRunRefusedError(
+            f"an answer at step {step_id!r} of run {run_id!r} names who gave it, and this one "
+            "named nobody. Nothing was recorded: an approval attributed to no one cannot be "
+            "relied on later by anyone."
+        )
+
+    who = _who_answered(decided_by)
+    step["human_decision"] = decision
+    step["human_said"] = said
+    step["decided_by"] = dict(decided_by)
+    step["said_in_session_id"] = said_in_session_id or None
+    step["said_in_message_id"] = said_in_message_id or None
+    step["recorded_at"] = _now()
+
+    if decision == HUMAN_DECLINED:
+        step["status"] = STEP_REFUSED
+        step["refusal"] = (
+            f"{who} declined at step {step_id!r}"
+            + (f": {said}" if said else "")
+            + ". The steps after it were not run and nothing was performed."
+        )
+        step["detail"] = step["refusal"]
+    else:
+        step["status"] = STEP_DONE
+        # What flows on to the steps that reference this one. An edit
+        # supplies it; an approval carries what the person said, because
+        # at a human step their words ARE the value -- "send it to
+        # finance too" is the answer, not a comment on it.
+        step["result"] = result if result is not None else said
+        step["detail"] = (
+            f"{who} {decision} at step {step_id!r}" + (f": {said}" if said else "")
+        )
+
+    run["status"] = _run_status_for(run)
+    _save_run(run)
+    return run
+
+
 def _why_this_step_takes_no_outcome(run_id: str, step: Mapping[str, Any]) -> str:
     status = step.get("status")
     step_id = step.get("step_id")
@@ -646,6 +915,12 @@ def _why_this_step_takes_no_outcome(run_id: str, step: Mapping[str, Any]) -> str
             f"step {step_id!r} of run {run_id!r} is waiting for the operator to confirm action "
             f"call {step.get('awaiting_call_id')!r}; its outcome is not yours to record until "
             "they answer, and nothing was recorded"
+        )
+    if status == STEP_AWAITING_PERSON:
+        return (
+            f"step {step_id!r} of run {run_id!r} asked a person a question and is waiting for "
+            "their answer, which is recorded as an answer and not as a step outcome -- a person's "
+            "decision is not something the caller may report on their behalf. Nothing was recorded."
         )
     return (
         f"step {step_id!r} of run {run_id!r} is already {status!r}; an outcome that is recorded "
@@ -689,10 +964,22 @@ def compose_report(run: Mapping[str, Any]) -> dict:
             {
                 "step_id": step["step_id"],
                 "position": step["position"],
+                "kind": step.get("kind") or "action",
                 "action_id": step["action_id"],
+                "agent_id": step.get("agent_id") or "",
                 "description": step.get("description", ""),
                 "status": step.get("status"),
                 "dispatch_outcome": step.get("dispatch_outcome"),
+                # WHO did this step, carried into the report rather than
+                # left for a reader to infer from `kind`: a report that
+                # reads the same whether the app performed a step, an
+                # agent claimed it, or a person approved it is exactly
+                # the fabricated certainty `REQ-SB-103` exists against.
+                "performed_by": step.get("performed_by"),
+                "resolved_ask": step.get("resolved_ask"),
+                "human_decision": step.get("human_decision"),
+                "human_said": step.get("human_said"),
+                "decided_by": step.get("decided_by"),
                 "detail": step.get("detail"),
                 "result": step.get("result"),
                 "refusal": step.get("refusal"),
