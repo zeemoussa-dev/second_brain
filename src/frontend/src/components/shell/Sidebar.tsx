@@ -54,7 +54,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           ☰
         </button>
         {logoUrl && <img className="sidebar-logo" src={logoUrl} alt="" />}
-        <h2>{appName}</h2>
+        <h2 title={appName}>{appName}</h2>
       </div>
       <div className="sidebar-links">
       <NavLink

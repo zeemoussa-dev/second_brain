@@ -107,6 +107,9 @@ html {
   align-items: center;
   gap: var(--space-2);
   margin-bottom: var(--space-4);
+  /* The logo and the name can both be long or absent, and neither may
+     push the burger out of the panel. */
+  min-width: 0;
 }
 
 /* Marcellus target element (REQ-SB-52-US-01-T01, Scenario 4) — the "Second
@@ -118,6 +121,34 @@ html {
   font-family: var(--font-serif);
   font-weight: 400;
   letter-spacing: 0.02em;
+  /* `margin: 0` is the alignment fix, not tidiness: an h2's default
+     bottom margin inside an `align-items: center` row makes the row
+     taller than its tallest item and lifts the text above the burger
+     and the logo it is supposed to sit level with. Measured at 43px
+     tall for 32px of content, with the wordmark ~6px high (2026-10-21).
+     One line, truncated: a 60-character name is allowed and wrapping it
+     would push the whole nav list down by a row or two. */
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Matched to the burger, so the two square things either side of the
+   wordmark are the same size rather than 32 against 28. */
+.sidebar-logo {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+/* Collapsed, the panel is 64px and the burger alone is 32 -- a logo
+   beside it needs 68 and would push past the edge. The burger is the
+   control you need there; the logo is decoration, so it goes. */
+.app-shell.sidebar-collapsed .sidebar-logo {
+  display: none;
 }
 
 .burger-btn {

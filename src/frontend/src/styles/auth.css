@@ -281,13 +281,6 @@
 
 /* -- Branding -------------------------------------------------------- */
 
-.sidebar-logo {
-  width: 1.75rem;
-  height: 1.75rem;
-  object-fit: contain;
-  flex-shrink: 0;
-}
-
 /* On the sign-in and first-Admin screens the logo sits above the
    heading, centred -- the one place this install's identity is the
    first thing a person sees. */
