@@ -73,7 +73,7 @@ from uuid import uuid4
 from app.business.core.actions.action_manager import ActionManager
 from app.business.core.workflows.workflow import Workflow, WorkflowStep
 from app.business.core.workflows.workflow_manager import WorkflowManager
-from app.business.logic import action_invocation, step_references
+from app.business.logic import action_invocation, entry_point_owners, step_references
 from app.data_access import action_calls as action_calls_data
 from app.data_access import workflow_runs as workflow_runs_data
 
@@ -240,13 +240,23 @@ def _snapshot_step(position: int, step: WorkflowStep) -> dict:
 
 def _new_run_record(
     run_id: str, workflow: Workflow, caller_agent_id: str,
-    request: dict | None = None,
+    request: dict | None = None, entry_point: Mapping[str, Any] | None = None,
 ) -> dict:
+    door = dict(entry_point or {})
     return {
         "run_id": run_id,
         "workflow_id": workflow.id,
         "request_kind": workflow.request_kind,
         "caller_agent_id": caller_agent_id,
+        # Which outside door the ask came in through, and whose door
+        # that is (`REQ-SB-103`). Resolved ONCE, at the start: a run
+        # that re-read its owner would quietly change who it had been
+        # waiting on all along. `None` is a real answer -- an unowned
+        # door means "whoever is watching", never the operator.
+        "entry_point": door or None,
+        "for_person": entry_point_owners.owner_of(
+            door.get("source"), door.get("chat_id"),
+        ) if door else None,
         "status": RUN_RUNNING,
         "started_at": _now(),
         "updated_at": _now(),
@@ -540,6 +550,7 @@ def _advance_awaiting_step(run: dict, step: dict) -> None:
 
 def start_run(
     workflow_id: str, caller_agent_id: str, request: dict | None = None,
+    entry_point: Mapping[str, Any] | None = None,
 ) -> dict:
     """Open a run of one Workflow. Nothing is dispatched and nothing is
     performed here: a run starts as a record of what is to be done, with
@@ -566,7 +577,7 @@ def start_run(
             "was started"
         )
 
-    run = _new_run_record(uuid4().hex, workflow, caller_agent_id, request)
+    run = _new_run_record(uuid4().hex, workflow, caller_agent_id, request, entry_point)
     workflow_runs_data.write_run_json(run["run_id"], run)
     return run
 
@@ -752,6 +763,62 @@ def record_step_outcome(
     run["status"] = _run_status_for(run)
     _save_run(run)
     return run
+
+
+def waiting_on_a_person(for_user_id: str = "") -> list[dict]:
+    """Every run held at a question nobody has answered (`REQ-SB-103`).
+
+    This is the surface the operator's own framing demands: a human step
+    can hold a run indefinitely, and a run that waits forever with
+    nothing showing it is waiting is worse than one that fails.
+
+    `for_user_id` narrows to the runs whose entry point belongs to that
+    person. **Runs through an unowned door are ALWAYS included**, for
+    either filter: nobody has been made responsible for them, so leaving
+    them out of every person's list is exactly how they would be waited
+    on by no one. They are marked `is_for_anybody` rather than quietly
+    attributed to whoever asked.
+
+    A run whose record cannot be read is reported as unreadable and not
+    skipped. A run waiting on a person that silently vanished from this
+    list is the failure this whole surface exists to prevent, and an
+    empty list is read as "nothing is waiting".
+    """
+    waiting: list[dict] = []
+    for run_id in workflow_runs_data.list_run_ids():
+        try:
+            run = workflow_runs_data.read_run_json(run_id)
+        except (OSError, ValueError) as exc:
+            waiting.append({"run_id": run_id, "unreadable": str(exc)})
+            continue
+
+        step = _current_step(run)
+        if step is None or step.get("status") != STEP_AWAITING_PERSON:
+            continue
+
+        owner = run.get("for_person") or {}
+        if for_user_id and owner and owner.get("user_id") != for_user_id:
+            continue
+
+        waiting.append({
+            "run_id": run.get("run_id"),
+            "workflow_id": run.get("workflow_id"),
+            "request_kind": run.get("request_kind"),
+            "caller_agent_id": run.get("caller_agent_id"),
+            "entry_point": run.get("entry_point"),
+            "for_person": owner or None,
+            "is_for_anybody": not owner,
+            "step_id": step.get("step_id"),
+            "position": step.get("position"),
+            "description": step.get("description", ""),
+            "asks": step.get("resolved_ask"),
+            "allows_edit": bool(step.get("allows_edit")),
+            "asked_at": step.get("asked_at"),
+            "started_at": run.get("started_at"),
+        })
+    # Oldest question first: the one that has been waiting longest is
+    # the one most likely to have been forgotten.
+    return sorted(waiting, key=lambda row: row.get("asked_at") or "")
 
 
 def _who_answered(attribution: Mapping[str, Any]) -> str:

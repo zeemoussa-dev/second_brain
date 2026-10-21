@@ -51,7 +51,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from app.api.auth_guard import requires
+from app.api.auth_guard import current_identity, requires
 from app.business.core.users.user import Capability, Identity
 from app.business.core.workflows.workflow import Workflow
 from app.business.core.workflows.workflow_manager import (
@@ -253,6 +253,13 @@ class WorkflowRunStartBody(BaseModel):
     # that changes without a deploy, and typing it here would silently
     # drop a key the Workflow was written to use.
     request: dict[str, Any] = {}
+    # Which outside door the ask came in through -- `{"source":
+    # "whatsapp", "chat_id": "..."}`, the pair entry points are keyed on
+    # (`REQ-SB-102`). The app resolves whose door that is and records it
+    # on the run, which is what lets a human step be waited on by a
+    # named person rather than by nobody (`REQ-SB-103`). Omitted means
+    # the ask came from inside the app, and the run is for anybody.
+    entry_point: dict[str, Any] = {}
 
 
 class WorkflowStepOutcomeBody(BaseModel):
@@ -280,6 +287,29 @@ def _run_refusal(exc: Exception) -> HTTPException:
     return HTTPException(status_code=409, detail=str(exc))
 
 
+@router.get("/runs/waiting-on-a-person")
+def list_runs_waiting_on_a_person(
+    scope: str = "mine",
+    identity: Identity = Depends(current_identity),
+) -> list[dict]:
+    """What is waiting on me (`REQ-SB-103`).
+
+    `scope=mine` (the default) narrows to the runs whose entry point
+    belongs to the signed-in person, PLUS every run through a door
+    nobody owns -- an unowned question left out of each person's list
+    would be waited on by no one, which is the failure this surface
+    exists to prevent. `scope=all` is every pending question on the
+    install.
+
+    A `GET`, unlike the routes around it: this reads and dispatches
+    nothing. Declared above `POST /{workflow_id}/run` only for
+    readability -- it cannot be shadowed, because that route is a
+    `POST` whose last segment is literally `run`.
+    """
+    for_user_id = "" if scope == "all" else identity.user.id
+    return workflow_run.waiting_on_a_person(for_user_id)
+
+
 @router.post("/{workflow_id}/run")
 def start_workflow_run(workflow_id: str, body: WorkflowRunStartBody) -> dict:
     """Open a run of this Workflow. Nothing is dispatched and nothing is
@@ -291,7 +321,9 @@ def start_workflow_run(workflow_id: str, body: WorkflowRunStartBody) -> dict:
     The caller then asks for the next step, which is where the first
     step -- like every later one -- goes through the Action gate."""
     try:
-        return workflow_run.start_run(workflow_id, body.caller_agent_id, body.request)
+        return workflow_run.start_run(
+            workflow_id, body.caller_agent_id, body.request, body.entry_point,
+        )
     except workflow_run.WorkflowRunNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except workflow_run.WorkflowRunRefusedError as exc:

@@ -39,6 +39,12 @@ THE_UI_ACTION = "review-the-open-actions"
 # recorded the wrong person.
 THE_SIGNED_IN_PERSON = "The Test Suite"
 
+# A door and its owner, both invented here. A real chat id would make
+# these tests pass or fail by accident of what this machine has in
+# `entry-points.json` today (`ESC-064`, `ESC-075`).
+A_CHAT_ID = "000000000000000@lid"
+THE_DOOR_OWNER_ID = "00000000-0000-0000-0000-0000000door1"
+
 # The operator's own motivating ask, in its three-kind shape: find the
 # Actions (an Action), have an agent draft the mail (an agent), show it
 # to the person before it goes (a human), then send (an Action).
@@ -196,10 +202,53 @@ def workflows(a_catalogued_action, stored_workflows, runs, ledger) -> None:
         assert created.status_code == 200, created.text
 
 
-def start_a_run(workflow_id: str, request: dict | None = None) -> dict:
+@pytest.fixture
+def a_door_owned_by_somebody(monkeypatch) -> str:
+    """One declared entry point, owned by one person -- both of them
+    this test's own. The declaration is read through the real reader
+    with its store replaced, and the person through the real
+    `UserManager` with `get_by_id` replaced: what this install really
+    has declared and who really has an account are instance state, and
+    a test that read either would pass by accident of this machine.
+    """
+    from app.business.core.users.user import Role, User
+
+    monkeypatch.setattr(
+        "app.data_access.entry_points.read_entry_points",
+        lambda: [{
+            "label": "a chat this test invented",
+            "source": "whatsapp",
+            "chat_id": A_CHAT_ID,
+            "agent_id": THE_CALLER,
+            "owner_user_id": THE_DOOR_OWNER_ID,
+        }],
+    )
+    monkeypatch.setattr(
+        "app.business.core.users.user_manager.UserManager.get_by_id",
+        lambda self, user_id: User(
+            id=THE_DOOR_OWNER_ID,
+            username="the-door-owner",
+            display_name="Whoever This Door Belongs To",
+            role=Role.POWER_USER,
+            is_disabled=False,
+            created_at="2026-01-01T00:00:00+00:00",
+            updated_at="2026-01-01T00:00:00+00:00",
+            last_login_at=None,
+        ) if user_id == THE_DOOR_OWNER_ID else None,
+    )
+    return THE_DOOR_OWNER_ID
+
+
+def start_a_run(
+    workflow_id: str, request: dict | None = None, entry_point: dict | None = None,
+) -> dict:
     started = client.post(
         f"/workflows/{workflow_id}/run",
-        json={"caller_agent_id": THE_CALLER, "request": request or {}},
+        json={
+            "caller_agent_id": THE_CALLER,
+            "request": request or {},
+            "entry_point": entry_point or {},
+        },
     )
     assert started.status_code == 200, started.text
     return started.json()
@@ -450,6 +499,79 @@ def test_a_question_with_an_unresolvable_reference_is_refused_not_asked(
     assert refused["status"] == "refused"
     assert refused["asked_at"] is None, "nobody was asked"
     assert "nothing_was_supplied" in refused["refusal"]
+
+
+def test_a_run_through_an_owned_door_is_waiting_on_that_person(
+    workflows, runs, a_door_owned_by_somebody,
+) -> None:
+    """[REQ-SB-103] "Yes an entry point belongs to a person". The owner
+    is resolved ONCE, when the run starts, and a run held at a human
+    step shows up on that person's list of what is waiting on them."""
+    run_id = start_a_run(
+        THE_UNEDITABLE_WORKFLOW["id"],
+        entry_point={"source": "whatsapp", "chat_id": A_CHAT_ID},
+    )["run_id"]
+    take_the_next_step(run_id)
+
+    on_disk = stored_run(runs, run_id)
+    assert on_disk["for_person"]["user_id"] == THE_DOOR_OWNER_ID
+    assert on_disk["entry_point"] == {"source": "whatsapp", "chat_id": A_CHAT_ID}
+
+    waiting = client.get("/workflows/runs/waiting-on-a-person?scope=all")
+    assert waiting.status_code == 200, waiting.text
+    [question] = [row for row in waiting.json() if row["run_id"] == run_id]
+    assert question["asks"] == "Shall I send the team list?"
+    assert question["for_person"]["user_id"] == THE_DOOR_OWNER_ID
+    assert question["is_for_anybody"] is False
+
+
+def test_a_question_through_an_unowned_door_is_waiting_on_everybody(
+    workflows, runs,
+) -> None:
+    """[REQ-SB-103] Most doors have no owner declared. A question
+    through one is NOT left off every person's list -- that is how it
+    would be waited on by nobody -- so it appears on each of them,
+    marked as belonging to no one rather than quietly attributed."""
+    run_id = start_a_run(THE_UNEDITABLE_WORKFLOW["id"])["run_id"]
+    take_the_next_step(run_id)
+
+    assert stored_run(runs, run_id)["for_person"] is None
+
+    mine = client.get("/workflows/runs/waiting-on-a-person")
+    assert mine.status_code == 200, mine.text
+    [question] = [row for row in mine.json() if row["run_id"] == run_id]
+    assert question["is_for_anybody"] is True
+    assert question["for_person"] is None
+
+
+def test_a_run_nobody_is_waiting_at_is_not_on_the_list(workflows, runs) -> None:
+    """[REQ-SB-103] The list is what is waiting on a PERSON, not every
+    open run: a run mid-flight at an Action step is not somebody's to
+    answer, and listing it would bury the questions that are."""
+    run_id = start_a_run(THE_MIXED_WORKFLOW["id"])["run_id"]
+    take_the_next_step(run_id)
+
+    waiting = client.get("/workflows/runs/waiting-on-a-person?scope=all")
+    assert [row for row in waiting.json() if row["run_id"] == run_id] == []
+
+
+def test_an_answered_question_leaves_the_waiting_list(workflows, runs) -> None:
+    """[REQ-SB-103] The list is derived from the runs at every read, not
+    kept as a second copy -- so answering is the only thing needed to
+    clear it, and nothing can stay on it after it has been answered."""
+    run_id = start_a_run(THE_UNEDITABLE_WORKFLOW["id"])["run_id"]
+    take_the_next_step(run_id)
+    assert [
+        row for row in client.get("/workflows/runs/waiting-on-a-person").json()
+        if row["run_id"] == run_id
+    ]
+
+    answer(run_id, "approve", "approved", said="yes")
+
+    assert [
+        row for row in client.get("/workflows/runs/waiting-on-a-person").json()
+        if row["run_id"] == run_id
+    ] == []
 
 
 def test_a_step_is_called_with_what_the_ask_was_about(workflows, runs) -> None:
