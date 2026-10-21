@@ -77,6 +77,42 @@ class HermesRestAPI:
             params["profile"] = profile
         return self._request("GET", "/api/sessions", params=params)
 
+    def get_session_messages(
+        self, session_id: str, limit: int = 200, offset: int = 0, order: str = "oldest",
+    ) -> dict:
+        """GET /api/sessions/{id}/messages -- the real transcript, as
+        Hermes recorded it (`REQ-SB-100`).
+
+        Paginated at the source and NOT aggregated here: a long session
+        can run to thousands of messages, and a client that cannot page
+        has to load all of them to show the first one. The envelope
+        carries Hermes' own `pagination` block through unchanged.
+
+        `order` takes Hermes' own vocabulary, "oldest" or "latest" --
+        not "asc"/"desc", which it refuses with a 400 naming the two it
+        does accept. Oldest-first by default, because a transcript is
+        read forwards -- the listing endpoints sort newest-first for a very
+        different reason (which session do I want), and copying that
+        here would hand the reader the end of the conversation.
+        """
+        return self._request(
+            "GET",
+            f"/api/sessions/{session_id}/messages",
+            params={"limit": limit, "offset": offset, "order": order},
+        )
+
+    def get_session(self, session_id: str) -> dict:
+        """GET /api/sessions/{id} -- the session itself: which profile,
+        which chat, what it cost. The header above a transcript."""
+        return self._request("GET", f"/api/sessions/{session_id}")
+
+    def search_sessions(self, query: str, limit: int = 50) -> dict:
+        """GET /api/sessions/search -- Hermes' own search across
+        sessions, not a filter over one page of them."""
+        return self._request(
+            "GET", "/api/sessions/search", params={"q": query, "limit": limit},
+        )
+
     def get_session_stats(self) -> dict:
         return self._request("GET", "/api/sessions/stats")
 

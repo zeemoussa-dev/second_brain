@@ -34,6 +34,21 @@ def get_session_stats() -> dict:
     return hermes_status.get_session_stats()
 
 
+@router.get("/sessions/search")
+def search_sessions(q: str, limit: int = 50) -> dict:
+    """Declared BEFORE /sessions/{session_id} on purpose: FastAPI matches
+    in declaration order, so the dynamic route would otherwise swallow
+    "search" as a session id."""
+    return hermes_status.search_sessions(q, limit=limit)
+
+
+@router.get("/sessions/{session_id}/transcript")
+def get_session_transcript(session_id: str, limit: int = 200, offset: int = 0) -> dict:
+    """REQ-SB-100 -- what the agent was told, what it decided, which
+    tools it called with what arguments, and what each answered."""
+    return hermes_status.get_session_transcript(session_id, limit=limit, offset=offset)
+
+
 @router.get("/cron/jobs")
 def list_cron_jobs() -> list[dict]:
     return hermes_cron_status.list_cron_jobs()
