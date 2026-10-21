@@ -466,3 +466,46 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
 }
+
+/* -- The flow (REQ-SB-102) -------------------------------------------- */
+
+.flow-gaps,
+.flow-doors,
+.flow-edges {
+  margin: var(--space-3) 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.flow-gaps li,
+.flow-doors li,
+.flow-edges li {
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+/* A gap is the reason this page exists, so it is coloured like one. */
+.flow-gaps li {
+  border-left: 3px solid var(--color-warning);
+}
+
+/* An edge with no condition is still a real edge -- muted, not alarming:
+   the agent still has the specialist, nobody has said when to use it. */
+.flow-edge-silent {
+  border-style: dashed;
+}
+
+.flow-workflow {
+  margin-bottom: var(--space-4);
+}
+
+.flow-workflow ol {
+  margin: var(--space-2) 0;
+  padding-left: var(--space-5);
+  line-height: 1.8;
+}

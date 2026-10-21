@@ -99,6 +99,13 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         <span className="nav-label">System Health</span>
       </NavLink>
       <NavLink
+        to="/flow"
+        className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
+      >
+        <span className="nav-icon">&#128506;</span>
+        <span className="nav-label">The Flow</span>
+      </NavLink>
+      <NavLink
         to="/agent-activity"
         className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
       >

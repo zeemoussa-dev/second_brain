@@ -172,10 +172,16 @@ def build(
         })
 
     # One fact, said once. When NOTHING declares an edge anywhere, every
-    # agent is unreachable for the same single reason, and forty-two
-    # identical gaps would bury the one line that explains them -- it
-    # reads as forty-two problems when it is one. Measured on the real
-    # install: 42 agents, 0 edges, 40 copies of the same sentence.
+    # agent is unreachable for the same single reason, and one gap per
+    # agent would bury the single line that explains them all.
+    #
+    # The "0 edges" case that prompted this is ALSO how I learned to
+    # distrust it: a standalone script outside the app reported 42
+    # agents and 0 edges, because `registry_loader` boots in the app's
+    # lifespan and without it every agent comes back with an empty
+    # `depends_on`. Through the real API the same install has 23 edges.
+    # So this branch is a genuine state to handle, and never evidence
+    # about an install unless it was read through the running app.
     if edges:
         for agent in agents:
             if agent.id in reachable_from_a_door:

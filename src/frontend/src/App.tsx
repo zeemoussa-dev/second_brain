@@ -19,6 +19,7 @@ import { SettingsBrandingPage } from './pages/SettingsBrandingPage';
 import { AdminCenterPage } from './pages/AdminCenterPage';
 import { SessionTranscriptPage } from './pages/SessionTranscriptPage';
 import { EntryPointsPage } from './pages/EntryPointsPage';
+import { FlowMapPage } from './pages/FlowMapPage';
 import { SettingsSectionsPage } from './pages/SettingsSectionsPage';
 import { SettingsVaultPage } from './pages/SettingsVaultPage';
 import { SettingsVaultTemplatesPage } from './pages/SettingsVaultTemplatesPage';
@@ -80,6 +81,7 @@ function App() {
               conversation, and the outside doors into this install. */}
           <Route path="/agent-activity/:sessionId" element={<SessionTranscriptPage />} />
           <Route path="/entry-points" element={<EntryPointsPage />} />
+          <Route path="/flow" element={<FlowMapPage />} />
           <Route path="/browse" element={<VaultBrowserPage />} />
           <Route path="/browse/:stem" element={<NoteDetailPage />} />
           <Route path="/vault" element={<VaultGraphPage />} />
