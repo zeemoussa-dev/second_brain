@@ -4,12 +4,12 @@ title: Entity resolution instead of search — one tag-keyed index, synthesis fi
 requirement_ids: [REQ-SB-95]
 requirement_section: "REQ-SB-95: An Agent Can Only Do What the App Can Do — Operator Profile, Actions, Workflows, Entity Resolution"
 phase: P2
-status: In Progress
+status: Done
 gate: clear
 gate_reason: "RESOLVED operator confirmed ADR-037, 2026-10-17 — was: trigger-3 (ADR-037 created) — the tag-keyed index is a projection rebound inside VaultManager.rebuild_index() rather than a new Index artifact with its own cron job, a plugin registers a namespace as a callable, and the FRAMEWORK_API bump is taken once for all of REQ-SB-95; plus trigger-7 (decomposer, 2026-10-16) — the sibling US-02 task files carry no FRAMEWORK_API instruction, so the single bump is owed by whichever story lands last and only this story's T02 currently knows it"
 sprint: SPRINT-090
 created: 2026-10-16
-updated: 2026-10-19  # coder: T04 Done (AC-02 verified; T05 remains, story stays In Progress); 2026-10-18 coder: T03 Done (AC-01, AC-03, AC-05 verified; AC-07 verified on both sides); Ready -> In Progress, T01 Done (AC-04, AC-07 verified); 2026-10-16 product-owner: grouped into SPRINT-090 (alone — depends_on_sprints: [SPRINT-087, SPRINT-088]; that ordering also takes the FRAMEWORK_API bump via T02's conditional read)
+updated: 2026-10-21  # coder: T05 Done (AC-06 verified; all five tasks Done) -> story Done; T02 row corrected to Done (ESC-079 Resolved 2026-10-18). The one open thread is NOT this story's: ESC-081, REQ-SB-101's guard refusing the Action gate's own in-process dispatch; 2026-10-19 coder: T04 Done (AC-02 verified; T05 remains, story stays In Progress); 2026-10-18 coder: T03 Done (AC-01, AC-03, AC-05 verified; AC-07 verified on both sides); Ready -> In Progress, T01 Done (AC-04, AC-07 verified); 2026-10-16 product-owner: grouped into SPRINT-090 (alone — depends_on_sprints: [SPRINT-087, SPRINT-088]; that ordering also takes the FRAMEWORK_API bump via T02's conditional read)
 ---
 
 # REQ-SB-95-US-05 — Entity resolution instead of search — one tag-keyed index, synthesis first then evidence
@@ -244,19 +244,19 @@ mechanism, naming no plugin. Dependency order is
 | ID | Type | Task | ACs | Depends on | Task File |
 |---|---|---|---|---|---|
 | REQ-SB-95-US-05-T01 | backend | **Done 2026-10-18** — The tag-keyed index as a projection, computed and rebound inside `VaultManager.rebuild_index()` | AC-04, AC-07 | — | `../Tasks/REQ-SB-95-US-05-T01-tag-keyed-index-projection.md` |
-| REQ-SB-95-US-05-T02 | backend | **Blocked 2026-10-18 (`ESC-079`)** — `plugin_api.register_tag_namespace(namespace, entries)` — the callable seam (built and verified), and the one `FRAMEWORK_API` bump (owed, not taken) | AC-08 | — | `../Tasks/REQ-SB-95-US-05-T02-register-tag-namespace-plugin-api.md` |
+| REQ-SB-95-US-05-T02 | backend | **Done 2026-10-18 (`ESC-079` Resolved)** — `plugin_api.register_tag_namespace(namespace, entries)` — the callable seam, and the one `FRAMEWORK_API` bump, taken by the operator at the republish sitting (`FRAMEWORK_API` is **12**) | AC-08 | — | `../Tasks/REQ-SB-95-US-05-T02-register-tag-namespace-plugin-api.md` |
 | REQ-SB-95-US-05-T03 | backend | **Done 2026-10-18** — The generic tag resolver — name/alias/domain → `(kind, tag, hub)`, ambiguity and non-resolution reported | AC-01, AC-03, AC-05, AC-07 | T01, T02 | `../Tasks/REQ-SB-95-US-05-T03-generic-tag-resolver.md` |
 | REQ-SB-95-US-05-T04 | backend | **Done 2026-10-19** — The scoped read — hub synthesis first, then tagged evidence newest first, nothing outside the tag | AC-02 | T01, T03 | `../Tasks/REQ-SB-95-US-05-T04-scoped-entity-read.md` |
-| REQ-SB-95-US-05-T05 | backend | The scoped read as a shipped, catalogued Action reached through the call gate | AC-06 | T04, REQ-SB-95-US-02-T02, REQ-SB-95-US-03-T02, REQ-SB-95-US-03-T03 | `../Tasks/REQ-SB-95-US-05-T05-scoped-read-as-catalogued-action.md` |
+| REQ-SB-95-US-05-T05 | backend | **Done 2026-10-21 (`ESC-080` Resolved)** — The scoped read as a shipped, catalogued Action reached through the call gate: `GET /vault-search/entity-read` and the `read-entity-updates` starter that names it | AC-06 | T04, REQ-SB-95-US-02-T02, REQ-SB-95-US-03-T02, REQ-SB-95-US-03-T03 | `../Tasks/REQ-SB-95-US-05-T05-scoped-read-as-catalogued-action.md` |
 
 ## Definition of Done
 
-- [ ] All acceptance-criteria scenarios pass
-- [ ] Every Implementation Task above is complete (or explicitly dropped with reason)
-- [ ] All Constraints respected
-- [ ] Automated tests added/updated and passing (once test tooling exists)
-- [ ] `MEMORY.md` updated with any new decisions / patterns / constraints
-- [ ] `CHANGELOG.md` entry appended
+- [x] All acceptance-criteria scenarios pass — AC-01/03/05/07 (`T03`), AC-02 (`T04`), AC-04/AC-07 (`T01`), AC-06 (`T05`), AC-08 (`T02`); every one verified by AC-tagged automated tests plus a manual step, with each task's observed outcomes in its own `## Implementation Log`
+- [x] Every Implementation Task above is complete (or explicitly dropped with reason) — all five `Done`
+- [x] All Constraints respected
+- [x] Automated tests added/updated and passing — backend suite 778 passed / 2 failed of 780 at story close, the two being tests that read a real Hermes install the test isolation deliberately removes
+- [~] `MEMORY.md` updated with any new decisions / patterns / constraints — **not appended by any of the five tasks**: 86 KB against the file's own 40 KB budget, whose rule 1 forbids appending while over. Every constraint is written verbatim into `REVIEW-QUEUE.md` for the compaction pass
+- [x] `CHANGELOG.md` entry appended
 
 ## Non-Goals / Out of Scope
 

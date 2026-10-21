@@ -1231,3 +1231,89 @@ what is known.* Carried in `REVIEW-QUEUE.md` for the compaction pass.
 **Resolving artefact:** `REQ-SB-95-US-05-T05` scope extension + decomposer rule, 2026-10-21
 
 **Status:** Resolved
+
+---
+
+## ESC-081: `REQ-SB-101`'s default-deny middleware refuses the Action gate's own in-process dispatch, so EVERY `http` implementation now answers "the operation did NOT happen" — 2026-10-21
+
+**Category:** cross-story regression, found by measurement during another task's
+manual verification.
+
+**Raised by:** `REQ-SB-95-US-05-T05`'s coder, from the task's own manual step.
+
+**What happened.** The Action call gate performs an `http` implementation by
+re-entering this very app:
+`action_invocation._request_this_apps_own_route()` builds an
+`httpx.ASGITransport(app=app)` client and issues the request in process. Its own
+docstring states the intent plainly — "the real route, its real dependencies and
+the real middleware stack all run". `REQ-SB-101` then made that middleware stack
+**default-deny**, and the sub-request carries no cookie and no bearer header, so
+the app refuses itself `401`.
+
+**Measured, not predicted.** A disposable backend on `127.0.0.1:8099` with a
+scratch vault and data store, bootstrapped with a first Admin, called
+`POST /actions/read-entity-updates/call` as a permitted caller with a valid
+input:
+
+```json
+{"accepted": true, "outcome": "failed",
+ "detail": "action 'read-entity-updates' was dispatched to this app's own GET /vault-search/entity-read and it answered HTTP 401, so the operation did NOT happen",
+ "result": {"detail": "You are not signed in. Sign in to continue.", "reason": "not_authenticated"}}
+```
+
+The same call ran end to end on 2026-10-19 — the `REVIEW-QUEUE.md` entry from
+that session records watching the scoped answer come back over a real socket.
+`REQ-SB-101` landed between the two runs.
+
+**Scope.** This is not specific to the scoped read. Every Action whose
+implementation kind is `http` is dispatched through the same function, so every
+one of them now fails on any install that has an account. `ui` and `skill`
+implementations are unaffected — neither re-enters the app.
+
+**Why the test suite is green over it, which is the sharp part.**
+`tests/conftest.py`'s autouse `every_request_is_signed_in_as_an_admin` patches
+`_AuthenticationReader.identity_for` to return an Admin for **every** request —
+including the dispatcher's own sub-request. So the in-process dispatch is
+authenticated under pytest and anonymous in production, and 14 AC-tagged tests
+pass against behaviour that cannot happen on a real install. A fixture that makes
+the suite more permissive than production hid a product-breaking regression for
+two days.
+
+**Not fixed here, deliberately.** The fix is in
+`app/business/logic/action_invocation.py` or in `app/api/auth_guard.py` (or
+both), neither of which is in `REQ-SB-95-US-05-T05`'s `## Files to Modify`, and
+both belong to `Done` tasks. Guessing at the shape would also be wrong: there are
+at least three defensible designs and they differ in what they mean for security,
+not only in code.
+
+**The three, so the decision is a choice and not a discovery:**
+
+1. **The dispatcher carries the calling operator's identity.** Most honest — an
+   Action call performs something *as somebody*, and the ledger already records
+   who. Needs the identity to reach the business layer, which `ADR-003`'s
+   api → business direction makes a real design question rather than a parameter.
+2. **The dispatcher mints a short-lived internal session.** Smallest change;
+   creates a credential that exists only to let the app bypass its own guard,
+   which is the thing `auth_guard.py`'s own docstring argues against for a
+   settings flag.
+3. **The dispatch bypasses the middleware by calling the route object directly.**
+   Avoids the credential entirely and loses the "it is a real request" property
+   the current design is explicit about wanting.
+
+**Also owed, same root cause:** the shipped runner Skill
+(`business/core/skills/catalog/actions/call-action/scripts/call_action.py`) sends
+no credential either, so a real Hermes agent is refused `401` at the front door
+before the gate is reached. Whatever is decided above has to say how a deployed
+worker authenticates.
+
+**`MEMORY.md` candidate, deliberately not appended** (86 KB against the 40 KB
+budget its own rule 1 sets, which forbids appending while over): *the app's own
+in-process dispatch is a real request through the real middleware stack, so
+anything that makes the app default-deny makes the app unable to call itself.
+Authentication added to an app that re-enters itself must name every internal
+re-entry point in the same change.* Carried in `REVIEW-QUEUE.md` for the
+compaction pass.
+
+**Resolving artefact:** — (Open)
+
+**Status:** Open
