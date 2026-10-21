@@ -179,7 +179,7 @@ _TOP_LEVEL_EXTRA_INCLUDE = [
 _DISABLED_SKILLS_PREFIX = "_disabled-skills"
 
 
-_SECOND_BRAIN_DATA_ROOT_EXCLUDE = {"index", "email_staging"}
+_SECOND_BRAIN_DATA_ROOT_EXCLUDE = {"index", "email_staging", "auth"}
 
 
 def _is_excluded_second_brain_root(path: Path, root: Path) -> bool:
@@ -207,6 +207,17 @@ def _is_excluded_second_brain_root(path: Path, root: Path) -> bool:
     folder at all, and its own real content is stale (last touched
     2026-08-23, 11+ days before this fix, zero activity since) --
     orphaned data from a retired capture mechanism, not live state.
+
+    `auth/` -- the user store (`REQ-SB-101`): accounts, password digests
+    and live sessions, in `auth/users.db`. Excluded on the operator's
+    decision, 2026-10-21, taken deliberately rather than by default
+    because it has a real cost: a restore arrives with no users and the
+    first Admin has to be bootstrapped again. That was judged the better
+    half of the trade -- a backup is a file that gets copied to other
+    machines and shared drives, and credentials should not be the thing
+    that travels with it. Unlike `index/` this is NOT regenerable, so
+    the exclusion is a choice about where accounts belong (the machine
+    they were made on), not a claim that nothing is lost.
 
     `Settings/` is DELIBERATELY NOT excluded -- an earlier version of
     this tool excluded it entirely, on a real misunderstanding: the

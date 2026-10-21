@@ -40,7 +40,14 @@ from app.data_access import users_db
 
 _logger = logging.getLogger(__name__)
 
-SESSION_LIFETIME = timedelta(hours=12)
+# Rolling, not fixed (operator's choice, 2026-10-21): a session dies after
+# this much INACTIVITY, and every authenticated request pushes it out again,
+# so a long piece of work is never interrupted by the clock. There is
+# deliberately no absolute cap on top: a tab left open and used once a day
+# stays signed in indefinitely. That is the cost of the choice and it is
+# written here rather than discovered -- add a `created_at + N` ceiling in
+# `identity_for_token` if it ever stops being acceptable.
+SESSION_IDLE_TIMEOUT = timedelta(hours=8)
 _TOKEN_BYTES = 32
 
 _UNKNOWN_USER_DIGEST, _UNKNOWN_USER_SALT, _UNKNOWN_USER_PARAMETERS = (
@@ -228,7 +235,7 @@ class UserManager:
                 "token_sha256": _sha256(token),
                 "user_id": row["id"],
                 "created_at": moment.isoformat(),
-                "expires_at": (moment + SESSION_LIFETIME).isoformat(),
+                "expires_at": (moment + SESSION_IDLE_TIMEOUT).isoformat(),
                 "last_seen_at": moment.isoformat(),
             }
         )
@@ -253,7 +260,11 @@ class UserManager:
         if row is None or row["is_disabled"]:
             users_db.delete_session(token_sha256)
             return None
-        users_db.touch_session(token_sha256, moment.isoformat())
+        users_db.touch_session(
+            token_sha256,
+            moment.isoformat(),
+            (moment + SESSION_IDLE_TIMEOUT).isoformat(),
+        )
         return Identity(user=_user_from_row(row), session_token_sha256=token_sha256)
 
     def sign_out(self, token: str) -> None:

@@ -14,12 +14,13 @@ has and an Admin does not, or a fourth role that is not above or below
 the others. Each role names its own set; Admin's happens to be a superset
 today, and nothing depends on that staying true.
 
-**One row is deliberately undecided.** `AUTHOR_AUTOMATIONS` -- creating
-and editing Actions and Workflows -- is Admin-only here, and that is the
-row the operator marked `?` in the PRD because it is what decides what
-"Power User" means. Denied is the safe placeholder while it is open:
-granting a capability by accident is discovered when something goes
-wrong, denying one is discovered immediately by the person who needed it.
+**`AUTHOR_AUTOMATIONS` is Admin-only, and that is settled, not pending.**
+Creating and editing Actions and Workflows was the row the PRD marked `?`
+because it is what decides what "Power User" means; the operator chose
+Admin-only on 2026-10-21. A Power User runs automations and does not
+author them. The reason it mattered: an Action's `http` implementation
+may name any route in this app, so authoring one is closer to
+configuring the install than to using it.
 """
 from __future__ import annotations
 
@@ -80,7 +81,9 @@ _POWER_USER_ADDS = frozenset(
 
 _ADMIN_ADDS = frozenset(
     {
-        # The open row: Admin-only until the operator settles it.
+        # Settled Admin-only, 2026-10-21: an Action's `http` implementation
+        # may name any route in this app, so authoring one is configuring
+        # the install rather than using it.
         Capability.AUTHOR_AUTOMATIONS,
         Capability.MANAGE_AGENTS,
         Capability.MANAGE_PLUGINS,

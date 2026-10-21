@@ -220,11 +220,16 @@ def read_session(token_sha256: str) -> dict | None:
     return dict(row) if row else None
 
 
-def touch_session(token_sha256: str, last_seen_at: str) -> int:
+def touch_session(token_sha256: str, last_seen_at: str, expires_at: str) -> int:
+    """Both columns move together because the session is rolling: it
+    expires after a period of inactivity, not at a fixed hour, so every
+    request that proves the session is in use pushes its expiry out.
+    Writing `last_seen_at` without `expires_at` would record the activity
+    and still log the person out mid-task."""
     with connect() as connection:
         return connection.execute(
-            "UPDATE sessions SET last_seen_at = ? WHERE token_sha256 = ?",
-            (last_seen_at, token_sha256),
+            "UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE token_sha256 = ?",
+            (last_seen_at, expires_at, token_sha256),
         ).rowcount
 
 
