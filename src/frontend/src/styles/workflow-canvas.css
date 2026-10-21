@@ -1,0 +1,207 @@
+/* The visual Workflow builder (REQ-SB-103; operator 2026-10-21: "I am a
+   visual person, I love drag and drop").
+
+   Every colour comes from tokens.css. Nothing here introduces a hue of
+   its own: a builder that looked like a different app would make the
+   Workflow screen read as a separate product rather than as the place
+   the same artifacts are authored. */
+
+.wf-builder {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 360px);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+/* One column under a narrow pane. The inspector goes BELOW the canvas
+   rather than beside it, because the chain is what you navigate by and
+   a 160px-wide chain is not a chain. */
+@media (max-width: 1100px) {
+  .wf-builder { grid-template-columns: minmax(0, 1fr); }
+}
+
+.wf-canvas {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* The two ends of a run, named. Without them the first card reads as
+   the beginning of a list rather than as what happens when an ask
+   arrives. */
+.wf-rail {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+.wf-rail::before,
+.wf-rail::after {
+  content: "";
+  flex: 1;
+  border-top: 1px dashed var(--color-border);
+}
+.wf-rail-label { white-space: nowrap; }
+
+/* The drop target between two cards. It keeps its height whether armed
+   or not, so arming it does not shove the whole chain down by 6px and
+   move the card out from under the pointer. */
+.wf-gap {
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.wf-gap-line {
+  width: 2px;
+  height: 100%;
+  background: var(--color-border);
+  border-radius: 1px;
+  transition: background 120ms ease, width 120ms ease;
+}
+.wf-gap--armed .wf-gap-line {
+  width: 100%;
+  background: var(--color-accent);
+}
+
+.wf-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: grab;
+}
+.wf-card:hover { background: var(--color-surface-raised); }
+.wf-card:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.wf-card--dragging { opacity: 0.45; cursor: grabbing; }
+.wf-card--selected {
+  background: var(--color-surface-raised);
+  border-color: var(--color-accent);
+}
+
+/* The kind, said in the left edge as well as in words. Colour is the
+   second signal and never the only one -- the card always carries the
+   word and the icon too. */
+.wf-card--action { border-left-color: var(--color-accent); }
+.wf-card--agent { border-left-color: var(--agent-color-producer); }
+.wf-card--human { border-left-color: var(--color-text-muted); }
+.wf-card--broken { border-left-color: var(--color-danger); }
+
+.wf-card-grip {
+  color: var(--color-text-muted);
+  cursor: grab;
+  flex: none;
+}
+.wf-card-position {
+  flex: none;
+  min-width: 1.6em;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+.wf-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  flex: 1;
+}
+.wf-card-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.wf-card-kind .material-symbols-outlined { font-size: 1rem; }
+.wf-card-headline { font-weight: 600; word-break: break-word; }
+
+.wf-card-wiring {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+.wf-wire {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+}
+.wf-wire .material-symbols-outlined { font-size: 0.9rem; }
+
+.wf-card-broken {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--color-danger);
+  word-break: break-word;
+}
+.wf-card-broken .material-symbols-outlined { font-size: 1rem; flex: none; }
+.wf-card-broken code { word-break: break-all; }
+
+.wf-card-remove { flex: none; }
+
+.wf-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.wf-palette-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.wf-side {
+  position: sticky;
+  top: var(--space-4);
+  min-width: 0;
+}
+.wf-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+/* A value that is either typed or wired. The picker sits beside the box
+   rather than replacing it, because the reference it writes stays
+   visible in the box -- what will be sent is never hidden behind a
+   chip. */
+.wf-wired { display: flex; gap: var(--space-2); align-items: center; }
+.wf-wired-input { flex: 1; min-width: 0; }
+.wf-wired-input--wired { font-family: var(--font-mono); color: var(--color-accent); }
+.wf-wired-picker { flex: none; max-width: 42%; }
+
+.wf-inputs { display: flex; flex-direction: column; gap: var(--space-2); }
+.wf-input-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+.wf-input-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+.wf-input-add { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }

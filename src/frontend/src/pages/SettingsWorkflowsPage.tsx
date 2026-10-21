@@ -2,8 +2,16 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { Field } from '../features/settings/Field';
 import { extractErrorDetail } from '../features/settings/artifactFlowUtils';
-import { fetchActions, type ActionCatalogueEntry } from '../features/settings/actionsApiClient';
+import {
+  fetchAction,
+  fetchActions,
+  type ActionCatalogueEntry,
+  type ActionInputField,
+} from '../features/settings/actionsApiClient';
 import { fetchAgentList, type AgentSummary } from '../features/agents-map/agentsApiClient';
+import { WorkflowCanvas } from '../features/settings/WorkflowCanvas';
+import { WorkflowStepInspector } from '../features/settings/WorkflowStepInspector';
+import { brokenReferences } from '../features/settings/workflowReferences';
 import {
   createWorkflow,
   deleteWorkflow,
@@ -12,7 +20,6 @@ import {
   updateWorkflow,
   type Workflow,
   type WorkflowStep,
-  type WorkflowStepKind,
 } from '../features/settings/workflowsApiClient';
 
 // The Workflow catalogue and its ordered-step editor (REQ-SB-95-US-04-T07,
@@ -87,10 +94,6 @@ function toDraft(workflow: Workflow): EditorDraft {
   };
 }
 
-function describeInputs(inputs: Record<string, unknown>): string {
-  const named = Object.entries(inputs).map(([name, value]) => `${name}: ${JSON.stringify(value)}`);
-  return named.length === 0 ? 'No inputs stored.' : named.join(' · ');
-}
 
 /** One step in a one-line summary. Named by what it IS, because a
  *  three-kind Workflow summarised only by its Action ids would read as
@@ -113,6 +116,15 @@ export function SettingsWorkflowsPage() {
   // read/unread/empty distinction the Action catalogue gets below.
   const [agents, setAgents] = useState<AgentSummary[] | null>(null);
   const [agentsError, setAgentsError] = useState<string | null>(null);
+  // Which card the inspector is editing. The canvas shows the shape and
+  // this says which step's detail is open beside it.
+  const [selectedStep, setSelectedStep] = useState<number | null>(null);
+  // What each Action declares it takes, read one Action at a time.
+  // `GET /actions` lists Actions WITHOUT their inputs, so this is a
+  // second request and is only worth making for an Action a step
+  // actually names -- and only once per id (`BUG-086`'s own rule about
+  // what a screen is allowed to cost).
+  const [declaredInputs, setDeclaredInputs] = useState<Record<string, ActionInputField[]>>({});
   const [draft, setDraft] = useState<EditorDraft | null>(null);
   const [editingExisting, setEditingExisting] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -146,6 +158,27 @@ export function SettingsWorkflowsPage() {
     reloadAgents();
   }, []);
 
+  // The selected Action step's declared inputs, fetched once per Action
+  // id and kept. A failed read leaves the id unrecorded rather than
+  // caching an empty list, because "this Action declares nothing" and
+  // "we could not find out" must not look the same in the editor.
+  const selectedActionId = selectedStep !== null
+    ? draft?.steps[selectedStep]?.action_id ?? ''
+    : '';
+  useEffect(() => {
+    if (!selectedActionId || declaredInputs[selectedActionId] !== undefined) return;
+    let stale = false;
+    fetchAction(selectedActionId).then(
+      (detail) => {
+        if (!stale) {
+          setDeclaredInputs((known) => ({ ...known, [selectedActionId]: detail.inputs }));
+        }
+      },
+      () => {},
+    );
+    return () => { stale = true; };
+  }, [selectedActionId, declaredInputs]);
+
   function patchDraft(patch: Partial<EditorDraft>) {
     setDraft((previous) => (previous === null ? previous : { ...previous, ...patch }));
   }
@@ -157,18 +190,24 @@ export function SettingsWorkflowsPage() {
     }));
   }
 
-  /** Swaps two adjacent steps, ids and all -- the whole point of the move
-   *  controls is that the same step moves, so a run already addressing it
-   *  by id still means the same step. */
-  function moveStep(index: number, offset: number) {
+  /** Moves one step to another position, ids and all -- the whole point
+   *  is that the same step moves, so a run already addressing it by id
+   *  still means the same step (`ADR-034`).
+   *
+   *  A move, not a swap: dragging a card four places down should take it
+   *  four places down and shuffle the rest up by one, which is what the
+   *  eye expects from the gesture. A swap would send whatever was at the
+   *  destination back to where the dragged card came from. */
+  function moveStepTo(from: number, to: number) {
     setDraft((previous) => {
       if (previous === null) return previous;
-      const target = index + offset;
-      if (target < 0 || target >= previous.steps.length) return previous;
+      if (to < 0 || to >= previous.steps.length || from === to) return previous;
       const steps = [...previous.steps];
-      [steps[index], steps[target]] = [steps[target], steps[index]];
+      const [moved] = steps.splice(from, 1);
+      steps.splice(to, 0, moved);
       return { ...previous, steps };
     });
+    setSelectedStep((at) => (at === from ? to : at));
   }
 
   function openNewEditor() {
@@ -245,7 +284,11 @@ export function SettingsWorkflowsPage() {
   }
 
   const catalogueActionIds = (actions ?? []).map((action) => action.id);
-  const agentIds = (agents ?? []).map((agent) => agent.id);
+  const broken = draft === null ? [] : brokenReferences(draft.steps);
+
+  function declaredInputsFor(actionId: string): ActionInputField[] | undefined {
+    return actionId ? declaredInputs[actionId] : undefined;
+  }
   // A save onto an id this install already has REPLACES that Workflow
   // (POST /workflows, same as POST /actions). The operator is told before
   // they save, because "New workflow" would otherwise be the screen's own
@@ -392,235 +435,58 @@ export function SettingsWorkflowsPage() {
               />
             </Field>
 
-            <Field label="Steps, in the order they run">
+            {/* A plain block, NOT a `Field`. `Field` renders a
+                `<label>`, and a label re-targets every click inside it
+                to its own control -- which silently swallowed the
+                cards' clicks, so nothing could be selected. A label
+                wrapping a drag-and-drop canvas is invalid HTML for the
+                same reason it misbehaves. */}
+            <div className="field-labeled">
+              <span className="field-labeled-label">The steps, in the order they run</span>
+              <span className="item-row-meta">
+                Drag a card to move it. A step keeps its id when it moves, so a run already
+                under way still means the same step — but a step can only use a result from a
+                step ABOVE it, and moving one past what it depends on is shown here in red.
+              </span>
               {actionsError !== null && (
                 <span className="item-row-meta" data-testid="workflow-actions-error">
                   <span className="badge badge-danger">Could not be read</span>{' '}
-                  The Action catalogue could not be read from <code>GET /actions</code>, so no step
-                  picker is offered: {actionsError}
-                </span>
-              )}
-              {actions === null && actionsError === null && (
-                <span className="item-row-meta">Loading the Action catalogue...</span>
-              )}
-              {actions !== null && actions.length === 0 && (
-                <span className="item-row-meta" data-testid="workflow-actions-empty">
-                  This install has no catalogued Actions yet, so a step that runs one has nothing to
-                  pick — catalogue an Action first. Steps that hand work to an agent or ask a person
-                  need none.
+                  The Action catalogue could not be read from <code>GET /actions</code>, so an
+                  Action step keeps whatever it already names: {actionsError}
                 </span>
               )}
               {agentsError !== null && (
                 <span className="item-row-meta" data-testid="workflow-agents-error">
                   <span className="badge badge-danger">Could not be read</span>{' '}
-                  The agent roster could not be read, so a step that hands work to an agent keeps
-                  whatever it already names instead of offering a picker: {agentsError}
+                  The agent roster could not be read, so a step that hands work to an agent
+                  keeps whatever it already names: {agentsError}
+                </span>
+              )}
+              {broken.length > 0 && (
+                <span className="item-row-meta" data-testid="workflow-broken-summary">
+                  <span className="badge badge-danger">{broken.length} broken</span>{' '}
+                  {broken.length === 1 ? 'One value points' : 'Values point'} at something that
+                  will not be there when the step runs. The app refuses such a step mid-run, so
+                  it is worth fixing before saving.
                 </span>
               )}
 
-              <div className="item-list" data-testid="workflow-editor-steps">
-                {draft.steps.map((step, index) => {
-                  const picksAnUncataloguedAction = actions !== null
-                    && step.action_id !== ''
-                    && !catalogueActionIds.includes(step.action_id);
-                  const kind = step.kind ?? 'action';
-                  return (
-                    <div className="item-row" key={step.id || `new-${index}`} data-testid={`workflow-step-row-${index}`}>
-                      <div className="item-row-main">
-                        <span className="item-row-title">Step {index + 1}</span>
-                        {/* What this step IS (REQ-SB-103). Changing it
-                            leaves the other fields alone rather than
-                            clearing them: an operator who switches kind
-                            to look at the options and switches back has
-                            not asked to lose what they typed, and the
-                            Manager refuses a save whose kind and fields
-                            disagree, naming the step. */}
-                        <select
-                          className="input"
-                          data-testid={`workflow-step-kind-${index}`}
-                          value={kind}
-                          onChange={(event) => patchStep(index, {
-                            kind: event.target.value as WorkflowStepKind,
-                          })}
-                        >
-                          <option value="action">Run an Action</option>
-                          <option value="agent">Hand it to another agent</option>
-                          <option value="human">Ask a person</option>
-                        </select>
-                        {kind === 'agent' && (
-                          <>
-                            {agents !== null ? (
-                              <select
-                                className="input"
-                                data-testid={`workflow-step-agent-${index}`}
-                                value={step.agent_id}
-                                onChange={(event) => patchStep(index, { agent_id: event.target.value })}
-                              >
-                                <option value="">(no agent named)</option>
-                                {agentIds.map((agentId) => (
-                                  <option key={agentId} value={agentId}>{agentId}</option>
-                                ))}
-                                {/* Same reason the Action picker carries
-                                    an uncatalogued id: a select with no
-                                    matching option would display its
-                                    first one and quietly rewrite the
-                                    stored step into a different agent. */}
-                                {step.agent_id !== '' && !agentIds.includes(step.agent_id) && (
-                                  <option value={step.agent_id}>
-                                    {step.agent_id} — not an agent on this install
-                                  </option>
-                                )}
-                              </select>
-                            ) : (
-                              <span className="item-row-meta" data-testid={`workflow-step-agent-unpickable-${index}`}>
-                                Handed to {step.agent_id || '(no agent named)'} — kept exactly as stored.
-                              </span>
-                            )}
-                            <input
-                              className="input"
-                              placeholder="what to ask that agent — or {{steps.<id>.result}}"
-                              data-testid={`workflow-step-ask-${index}`}
-                              value={step.ask}
-                              onChange={(event) => patchStep(index, { ask: event.target.value })}
-                            />
-                          </>
-                        )}
-                        {kind === 'human' && (
-                          <input
-                            className="input"
-                            placeholder="what to ask the person — or {{steps.<id>.result}}"
-                            data-testid={`workflow-step-ask-${index}`}
-                            value={step.ask}
-                            onChange={(event) => patchStep(index, { ask: event.target.value })}
-                          />
-                        )}
-                        {kind === 'action' && actions !== null && (
-                          <select
-                            className="input"
-                            data-testid={`workflow-step-action-${index}`}
-                            value={step.action_id}
-                            onChange={(event) => patchStep(index, { action_id: event.target.value })}
-                          >
-                            {/* Exactly the real catalogued Actions -- plus,
-                                only when this step already names something
-                                the catalogue does not have, that id itself,
-                                so the stored step is not silently rewritten
-                                into whichever Action happened to be first. */}
-                            {catalogueActionIds.map((actionId) => (
-                              <option key={actionId} value={actionId}>{actionId}</option>
-                            ))}
-                            {picksAnUncataloguedAction && (
-                              <option value={step.action_id}>
-                                {step.action_id} — not in this install's Action catalogue
-                              </option>
-                            )}
-                          </select>
-                        )}
-                        {kind === 'action' && actions === null && (
-                          <span className="item-row-meta" data-testid={`workflow-step-action-unpickable-${index}`}>
-                            Runs {step.action_id || '(no action named)'} — kept exactly as stored.
-                          </span>
-                        )}
-                        <input
-                          className="input"
-                          placeholder="what this step is for"
-                          data-testid={`workflow-step-description-${index}`}
-                          value={step.description}
-                          onChange={(event) => patchStep(index, { description: event.target.value })}
-                        />
-                        <span className="item-row-meta" data-testid={`workflow-step-id-${index}`}>
-                          {step.id || 'This step gets its id when you save.'}
-                        </span>
-                        {/* Stored and interpreted by nobody here: the call
-                            gate validates inputs against the Action's own
-                            declared inputs when the step is dispatched.
-                            Shown read-only so a save cannot quietly drop
-                            what is on disk. */}
-                        <span className="item-row-meta" data-testid={`workflow-step-inputs-${index}`}>
-                          {describeInputs(step.inputs)}
-                        </span>
-                      </div>
-                      <div className="item-row-actions">
-                        {/* Confirmation is the Action gate's, so the flag
-                            is offered only where there is a gate to pause
-                            at: a run refuses a confirmation-marked step
-                            whose Action needs none, and a human step is
-                            already the operator being asked. */}
-                        {kind === 'action' && (
-                          <label className="badge" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                            <input
-                              type="checkbox"
-                              data-testid={`workflow-step-confirm-${index}`}
-                              checked={step.needs_confirmation}
-                              style={{ margin: 0 }}
-                              onChange={(event) => patchStep(index, { needs_confirmation: event.target.checked })}
-                            />
-                            Needs confirmation
-                          </label>
-                        )}
-                        {kind === 'human' && (
-                          <label className="badge" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                            <input
-                              type="checkbox"
-                              data-testid={`workflow-step-allows-edit-${index}`}
-                              checked={step.allows_edit}
-                              style={{ margin: 0 }}
-                              onChange={(event) => patchStep(index, { allows_edit: event.target.checked })}
-                            />
-                            They may edit it
-                          </label>
-                        )}
-                        <button
-                          type="button"
-                          className="btn"
-                          data-testid={`workflow-step-up-${index}`}
-                          disabled={index === 0}
-                          onClick={() => moveStep(index, -1)}
-                        >
-                          Move up
-                        </button>
-                        <button
-                          type="button"
-                          className="btn"
-                          data-testid={`workflow-step-down-${index}`}
-                          disabled={index === draft.steps.length - 1}
-                          onClick={() => moveStep(index, 1)}
-                        >
-                          Move down
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-danger"
-                          data-testid={`workflow-step-remove-${index}`}
-                          onClick={() => patchDraft({
-                            steps: draft.steps.filter((_, position) => position !== index),
-                          })}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-                {draft.steps.length === 0 && (
-                  <span className="item-row-meta" data-testid="workflow-editor-no-steps">No steps yet.</span>
-                )}
-                <div>
-                  {/* No longer gated on the Action catalogue: a step is
-                      not always an Action, and a Workflow whose only
-                      step asks a person needs no catalogued Action at
-                      all. A new step starts as an `action` one, since
-                      that is what every Workflow written before
-                      REQ-SB-103 is made of. */}
-                  <button
-                    type="button"
-                    className="btn"
-                    data-testid="workflow-step-add"
-                    onClick={() => patchDraft({
+              <div className="wf-builder">
+                <WorkflowCanvas
+                  steps={draft.steps}
+                  selectedIndex={selectedStep}
+                  onSelect={setSelectedStep}
+                  onReorder={moveStepTo}
+                  onRemove={(index) => {
+                    patchDraft({ steps: draft.steps.filter((_, position) => position !== index) });
+                    setSelectedStep(null);
+                  }}
+                  onAdd={(kind) => {
+                    patchDraft({
                       steps: [...draft.steps, {
                         id: '',
-                        kind: 'action',
-                        action_id: catalogueActionIds[0] ?? '',
+                        kind,
+                        action_id: kind === 'action' ? (catalogueActionIds[0] ?? '') : '',
                         agent_id: '',
                         ask: '',
                         allows_edit: false,
@@ -628,13 +494,30 @@ export function SettingsWorkflowsPage() {
                         needs_confirmation: false,
                         description: '',
                       }],
-                    })}
-                  >
-                    Add step
-                  </button>
+                    });
+                    setSelectedStep(draft.steps.length);
+                  }}
+                />
+                <div className="wf-side">
+                  {selectedStep !== null && draft.steps[selectedStep] !== undefined ? (
+                    <WorkflowStepInspector
+                      step={draft.steps[selectedStep]}
+                      steps={draft.steps}
+                      actions={actions}
+                      actionsError={actionsError}
+                      agents={agents}
+                      agentsError={agentsError}
+                      declaredInputs={declaredInputsFor(draft.steps[selectedStep].action_id)}
+                      onPatch={(patch) => patchStep(selectedStep, patch)}
+                    />
+                  ) : (
+                    <p className="item-row-meta" data-testid="workflow-inspector-nothing">
+                      Pick a step to edit it.
+                    </p>
+                  )}
                 </div>
               </div>
-            </Field>
+            </div>
 
             <Field label="What is reported back">
               <textarea
