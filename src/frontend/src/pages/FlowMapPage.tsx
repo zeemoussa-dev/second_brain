@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { apiFetch } from '../api/client';
 import { refusalText } from '../features/auth/SignInScreen';
 import { useAuth } from '../features/auth/AuthGate';
@@ -51,7 +51,7 @@ export function FlowMapPage() {
   const [targets, setTargets] = useState<Map<string, EdgeTarget>>(new Map());
   const [failure, setFailure] = useState<string | null>(null);
   const [reloads, setReloads] = useState(0);
-  const [focus, setFocus] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     apiFetch<FlowMap>('/hermes/flow-map')
@@ -101,23 +101,12 @@ export function FlowMapPage() {
           doors={map.entry_points}
           agents={map.agents}
           edges={map.edges}
-          onPick={(agentId) => setFocus(agentId === focus ? null : agentId)}
+          // Straight to that agent's own page. The panel this used to
+          // open rendered BELOW a diagram 42 agents tall, so clicking
+          // looked like it did nothing at all (operator, 2026-10-21) --
+          // a detail view you cannot see is worse than no detail view.
+          onPick={(agentId) => navigate(`/flow/${encodeURIComponent(agentId)}`)}
         />
-        {focus && (
-          <div className="flow-focus" data-testid="flow-focus">
-            <strong>{focus}</strong>
-            <div className="auth-note">
-              routes to {agentsById.get(focus)?.routes_to.join(', ') || 'nobody'}
-              {' · may call '}
-              {agentsById.get(focus)?.may_call.join(', ') || 'nothing'}
-            </div>
-            <Link to={`/flow/${encodeURIComponent(focus)}`}>Open this agent's flow</Link>
-            {' · '}
-            <Link to={`/agents/${encodeURIComponent(focus)}/profile`}>
-              Read this profile as it really is
-            </Link>
-          </div>
-        )}
       </section>
 
       <section>
