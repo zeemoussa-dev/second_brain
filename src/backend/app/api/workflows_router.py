@@ -48,17 +48,22 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from app.api.auth_guard import current_identity, requires
+from app.api.auth_guard import (
+    current_identity,
+    optional_agent_caller,
+    the_agent_really_calling,
+)
+from app.business.core.users.agent_token import AgentCaller
 from app.business.core.users.user import Capability, Identity
 from app.business.core.workflows.workflow import Workflow
 from app.business.core.workflows.workflow_manager import (
     WorkflowManager,
     WorkflowStepActionNotFoundError,
 )
-from app.business.logic import action_invocation, workflow_run
+from app.business.logic import action_invocation, entry_point_owners, workflow_run
 
 router = APIRouter(prefix="/workflows")
 _workflow_manager = WorkflowManager()
@@ -311,7 +316,9 @@ def list_runs_waiting_on_a_person(
 
 
 @router.post("/{workflow_id}/run")
-def start_workflow_run(workflow_id: str, body: WorkflowRunStartBody) -> dict:
+def start_workflow_run(
+    workflow_id: str, body: WorkflowRunStartBody, request: Request,
+) -> dict:
     """Open a run of this Workflow. Nothing is dispatched and nothing is
     performed: the answer is a record whose every documented step reads
     `not_reached`, which is what makes "the run holds every documented
@@ -320,9 +327,12 @@ def start_workflow_run(workflow_id: str, body: WorkflowRunStartBody) -> dict:
 
     The caller then asks for the next step, which is where the first
     step -- like every later one -- goes through the Action gate."""
+    # From a worker, the credential decides which agent this run is
+    # dispatched as; from a person, their claim stands (`REQ-SB-103`).
+    caller_agent_id = the_agent_really_calling(request, body.caller_agent_id)
     try:
         return workflow_run.start_run(
-            workflow_id, body.caller_agent_id, body.request, body.entry_point,
+            workflow_id, caller_agent_id, body.request, body.entry_point,
         )
     except workflow_run.WorkflowRunNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -384,11 +394,13 @@ def report_workflow_run_step_outcome(
 class HumanStepAnswerBody(BaseModel):
     """What a person answered at a human step (`REQ-SB-103`).
 
-    There is no `decided_by` field, deliberately. Who answered is taken
-    from the signed-in session and never from the body: a route that
-    accepted a name would let any caller write "the Admin approved
-    this" into a record whose whole value is that it cannot be written
-    by anyone else.
+    There is no `decided_by` field, deliberately, and there is no way
+    to add one. A person answering here is taken from their session; an
+    agent relaying one names the DOOR it came through and the app
+    resolves whose door that is. Either way the caller cannot choose a
+    name, because a route that accepted one would let any caller write
+    "the Admin approved this" into a record whose whole value is that
+    it cannot be written by anyone else.
 
     `said` is what the person actually wrote, verbatim. `result` is what
     goes on to the steps that reference this one, and an edit must
@@ -398,10 +410,66 @@ class HumanStepAnswerBody(BaseModel):
     decision: str
     said: str = ""
     result: Any = None
+    # Which door this came in through, and who spoke. Required from an
+    # agent and ignored from a person -- a person signed in here IS the
+    # evidence of who they are, and a door they typed into the body
+    # would be a way to answer as somebody else.
+    entry_point: dict[str, Any] = {}
     # Where it was said, when a channel relays it. Empty from the app's
     # own screens, which ARE the place it was said.
     said_in_session_id: str = ""
     said_in_message_id: str = ""
+
+
+def _who_this_answer_is_from(
+    request: Request, body: HumanStepAnswerBody, agent: AgentCaller | None,
+) -> dict:
+    """The attribution block for this answer, from whichever kind of
+    caller sent it -- and from nothing the caller typed.
+
+    A PERSON is taken from their session: they are signed in, the app
+    watched them click it, and `how` says `in_person`.
+
+    An AGENT names the door and the app resolves the owner, with `how`
+    saying `relayed` and the agent named beside it. The two are
+    different evidence and the record keeps them apart.
+
+    A caller that is neither is refused rather than defaulted to
+    anybody.
+    """
+    if agent is not None:
+        door = body.entry_point or {}
+        if not door.get("source") or not door.get("chat_id"):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"agent {agent.agent_id!r} relayed an answer without saying which door it "
+                    "came through, so there is no person to record it as and nothing was "
+                    'recorded. Send `entry_point` as {"source": "...", "chat_id": "...", '
+                    '"sender_id": "..."} -- `sender_id` is what makes a group chat attribute '
+                    "to whoever actually spoke."
+                ),
+            )
+        try:
+            return entry_point_owners.relayed_attribution(
+                agent.agent_id, door.get("source"), door.get("chat_id"), door.get("sender_id"),
+            )
+        except entry_point_owners.NobodyOwnsThatDoorError as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+
+    identity = current_identity(request)
+    if not identity.may(Capability.CONFIRM_ACTIONS):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"This needs the {Capability.CONFIRM_ACTIONS.value!r} capability, which the "
+                f"{identity.user.role.value!r} role does not have. Ask an Admin."
+            ),
+        )
+    return {
+        **(action_invocation.attribution_for(identity.user) or {}),
+        "how": entry_point_owners.DECIDED_IN_PERSON,
+    }
 
 
 @router.post("/runs/{run_id}/steps/{step_id}/answer")
@@ -409,28 +477,36 @@ def answer_workflow_run_human_step(
     run_id: str,
     step_id: str,
     body: HumanStepAnswerBody,
-    identity: Identity = Depends(requires(Capability.CONFIRM_ACTIONS)),
+    request: Request,
+    agent: AgentCaller | None = Depends(optional_agent_caller),
 ) -> dict:
     """Record what a person answered at the human step this run is
-    waiting on.
+    waiting on -- whether they clicked it here or said it over WhatsApp.
 
-    Separate from the outcome route, and guarded by `CONFIRM_ACTIONS`
-    rather than by whatever may call a Workflow: approving something a
-    Workflow is about to send is the same decision as confirming an
-    Action call, so it is the same capability -- and a step whose
-    question a person answered must never be recordable as an ordinary
-    step outcome by the agent running the Workflow.
+    Separate from the outcome route, and for a person it needs
+    `CONFIRM_ACTIONS`: approving something a Workflow is about to send
+    is the same decision as confirming an Action call, so it is the
+    same capability -- and a step whose question a person answered must
+    never be recordable as an ordinary step outcome by the agent
+    running the Workflow.
+
+    **An agent may reach this route and still cannot approve anything
+    of its own.** It carries somebody else's words and names the door
+    they came through; the app decides whose door that is. An agent
+    whose door has no declared owner is refused by design: the question
+    stays waiting, and a person can answer it in the app.
 
     A decline is a 200, not an error: the person answered, the record
     says so, and the run is blocked at this step with their words as the
     reason. Nothing after it ran.
     """
+    decided_by = _who_this_answer_is_from(request, body, agent)
     try:
         return workflow_run.answer_human_step(
             run_id,
             step_id,
             body.decision,
-            action_invocation.attribution_for(identity.user),
+            decided_by,
             said=body.said,
             result=body.result,
             said_in_session_id=body.said_in_session_id,

@@ -35,6 +35,20 @@ from app.data_access import entry_points as entry_points_data
 
 OWNER_FIELD = "owner_user_id"
 
+# How the app came to believe a person decided something. Carried in
+# every attribution block, because the two are NOT the same evidence
+# and a record that read identically for both would be the fabricated
+# certainty `REQ-SB-103` exists against:
+#
+#   in_person -- they were signed in and clicked it here. The app
+#                watched them do it.
+#   relayed   -- an agent says the owner of this door said it. The app
+#                watched an AGENT say so, which is a weaker claim, and
+#                the record names the agent that made it so the
+#                transcript can be read back.
+DECIDED_IN_PERSON = "in_person"
+DECIDED_BY_RELAY = "relayed"
+
 
 def _key(source: Any, chat_id: Any) -> tuple[str, str]:
     """The same `(source, chat_id)` pair `entry_points.observe` joins
@@ -49,6 +63,31 @@ def declared_owner_id(source: Any, chat_id: Any) -> str | None:
             owner = str(entry.get(OWNER_FIELD) or "").strip()
             return owner or None
     return None
+
+
+def owner_of_the_sender(source: Any, chat_id: Any, sender_id: Any = None) -> dict | None:
+    """Whose words these are, when an agent relays them.
+
+    **The sender is looked up before the chat, and that is the whole
+    point of this function** (operator, 2026-10-21: the link is per
+    SENDER). In a direct message the chat IS the person, so the two
+    answers agree and the distinction costs nothing. In a group they do
+    not: the chat belongs to whoever the operator declared for the
+    group, and attributing a group member's "yes" to that person would
+    put one person's name on another's decision -- which is the exact
+    failure the whole attribution rule exists to prevent.
+
+    So a declaration for the sender wins where one exists, and the
+    chat's owner is the fallback for the direct-message case the
+    operator described. Where neither is declared the answer is `None`
+    and the caller must refuse: an unowned door cannot produce an
+    attributable approval.
+    """
+    if sender_id:
+        spoke_for_themselves = owner_of(source, sender_id)
+        if spoke_for_themselves is not None:
+            return spoke_for_themselves
+    return owner_of(source, chat_id)
 
 
 def owner_of(source: Any, chat_id: Any) -> dict | None:
@@ -75,4 +114,48 @@ def owner_of(source: Any, chat_id: Any) -> dict | None:
         "role": user.role.value,
         "source": str(source or ""),
         "chat_id": str(chat_id or ""),
+    }
+
+
+class NobodyOwnsThatDoorError(Exception):
+    """An agent relayed an answer through a door no person is declared
+    for. Carries the sentence the agent relays onward; the router turns
+    it into a status without rewording it."""
+
+
+def relayed_attribution(
+    agent_id: str, source: Any, chat_id: Any, sender_id: Any = None,
+) -> dict:
+    """The attribution block for an answer an agent relays.
+
+    Three facts, all of them true, and none of them collapsed into the
+    others: WHO is the person the operator declared for this door, HOW
+    is `relayed` rather than `in_person`, and WHICH AGENT said so.
+
+    **The agent names the door, never the person.** That asymmetry is
+    the design: a worker that could put a name in the field could put
+    any name in the field, and an approval is worth exactly as much as
+    the hardest thing to forge about it. The app resolves the person
+    from its own declarations, so relabelling who may approve what is
+    an Admin editing entry points, not an agent choosing.
+
+    Refuses rather than guessing when the door is unowned. An
+    unattributable approval reads as authority it never had, which is
+    worse than no approval at all -- and the question is still there,
+    on everybody's "Waiting on You", for a person to answer in the app.
+    """
+    owner = owner_of_the_sender(source, chat_id, sender_id)
+    if owner is None:
+        raise NobodyOwnsThatDoorError(
+            f"agent {agent_id!r} relayed an answer from {source!r}/"
+            f"{sender_id or chat_id!r}, and this install has nobody declared as the owner of "
+            "that door -- so there is no person to record this decision as, and nothing was "
+            "recorded. An Admin can say whose door it is on the Entry points screen; until "
+            "then the question is still waiting and can be answered in the app by anyone."
+        )
+    return {
+        **owner,
+        "how": DECIDED_BY_RELAY,
+        "relayed_by_agent": agent_id,
+        "sender_id": str(sender_id) if sender_id else None,
     }
