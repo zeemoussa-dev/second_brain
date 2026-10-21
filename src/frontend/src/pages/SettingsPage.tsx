@@ -1,4 +1,5 @@
 import { Link } from 'react-router';
+import { useAuth } from '../features/auth/AuthGate';
 import { pluginSettingsPages } from '../pluginHost/registry';
 
 // Icon-card grid landing page (operator, 2026-08-27: "I need a Settings
@@ -13,6 +14,7 @@ import { pluginSettingsPages } from '../pluginHost/registry';
 const SETTINGS_SECTIONS = [
   { key: 'system', icon: 'tune', label: 'System', desc: 'Core app-level behaviour.', href: '/settings/system' },
   { key: 'operator', icon: 'badge', label: 'Operator Profile', desc: 'Who your agents act for — your name, your other mail addresses, your timezone, and your team as emails and roles.', href: '/settings/operator' },
+  { key: 'users', icon: 'group', label: 'Users', desc: 'Who can sign in, and what each of them may do. Everyone shares the same vault and agents; a role decides what a person may change.', href: '/settings/users', needs: 'manage_users' },
   { key: 'sections', icon: 'hub', label: 'Sections', desc: 'Business-domain groupings agents belong to.', href: '/settings/sections' },
   { key: 'vault', icon: 'folder_open', label: 'Vault', desc: 'Your Obsidian vault path and status.', href: '/settings/vault' },
   { key: 'config', icon: 'settings', label: 'Config', desc: 'App configuration.', href: '/settings/config' },
@@ -27,12 +29,19 @@ const SETTINGS_SECTIONS = [
 ] as const;
 
 export function SettingsPage() {
+  // REQ-SB-101: a card whose `needs` the signed-in person does not have
+  // is not offered. This is a convenience, never the control -- the
+  // capability is enforced on the router, so reaching the page by URL
+  // still refuses. Hiding it only spares someone a 403 they cannot act
+  // on; every card without a `needs` is open to anyone signed in.
+  const { may } = useAuth();
+  const sections = SETTINGS_SECTIONS.filter((section) => !section.needs || may(section.needs));
   return (
     <>
       <h1>Settings</h1>
       <p className="text-muted">Pick a section to configure.</p>
       <div className="settings-grid">
-        {SETTINGS_SECTIONS.map((section) => (
+        {sections.map((section) => (
           <Link key={section.key} className="card settings-card" to={section.href}>
             <span className="material-symbols-outlined settings-card-icon" aria-hidden="true">
               {section.icon}

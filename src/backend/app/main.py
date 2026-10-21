@@ -13,6 +13,7 @@ from app.business.core.vault.vault_manager import VaultManager
 from app.api.actions_router import router as actions_router
 from app.api.admin_users_router import router as admin_users_router
 from app.api.agents_router import router as agents_router
+from app.api.auth_guard import AuthenticationMiddleware
 from app.api.auth_router import router as auth_router
 from app.api.artifacts_router import router as artifacts_router
 from app.api.backup_router import router as backup_router
@@ -196,11 +197,33 @@ async def return_unhandled_errors_as_json(request: Request, call_next):
         )
 
 
+# REQ-SB-101 -- default-deny. Added BEFORE CORSMiddleware deliberately:
+# Starlette makes the last-added middleware the outermost, so registering
+# this first leaves CORS wrapping it, and a 401 from here comes back with
+# the CORS headers the browser needs to read it. Registered the other way
+# round, a signed-out request would surface in the console as an opaque
+# CORS failure instead of "you are not signed in" -- the same trap the
+# setup gate below documents for preflights.
+#
+# It also sits INSIDE `gate_on_setup_mode`, which is outermost: an
+# unconfigured install answers 503 and sends the operator to the wizard
+# before anything asks them to sign in, which is the right order on a
+# machine that has neither settings nor accounts yet.
+app.add_middleware(AuthenticationMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins_list,
     allow_methods=["*"],
     allow_headers=["*"],
+    # REQ-SB-101: the session is an httponly cookie, and the frontend is a
+    # different origin (:5173 -> :8001). Without this the browser silently
+    # drops the cookie on every cross-origin request and the failure looks
+    # like "signed in, then immediately signed out" rather than like CORS.
+    # Safe only because `allow_origins` is a real list -- the spec forbids
+    # credentials with `*`, and a wildcard here would break sign-in rather
+    # than merely loosen it.
+    allow_credentials=True,
 )
 
 # Paths that must keep working while the app is unconfigured: the wizard

@@ -45,6 +45,14 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   const request = (async () => {
     const response = await fetch(`${BASE_URL}${path}`, {
       ...init,
+      // REQ-SB-101: the session is an httponly cookie the backend sets, and
+      // the backend is a different origin (:8001 against this :5173), so
+      // `fetch` omits it unless asked. Set here, once, rather than in each
+      // feature's client -- a caller that forgot it would be anonymous and
+      // get a 401 that looks like a permissions bug rather than a missing
+      // flag. `apiUrl` callers (an <a href> or <img src>) are unaffected:
+      // the browser sends cookies for those itself.
+      credentials: 'include',
       headers: { ...(isFormData ? {} : { 'Content-Type': 'application/json' }), ...init?.headers },
     });
     if (!response.ok) {

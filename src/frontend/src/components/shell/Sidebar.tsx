@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink } from 'react-router';
 import { apiFetch } from '../../api/client';
 import { pluginNavEntries } from '../../pluginHost/registry';
+import { SignedInAs } from './SignedInAs';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -117,7 +118,14 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         <span className="nav-icon">&#128279;</span>
         <span className="nav-label">The Vault</span>
       </NavLink>
-      {!collapsed && version && <div className="sidebar-version">v{version}</div>}
+      {/* REQ-SB-101 -- who is signed in, then the version, at the foot of
+          the panel. The user sits ABOVE the version because it is the line
+          someone actually comes here to read; the version stays the last
+          thing, where it has always been. */}
+      <div className="sidebar-foot">
+        <SignedInAs collapsed={collapsed} />
+        {!collapsed && version && <div className="sidebar-version">v{version}</div>}
+      </div>
     </nav>
   );
 }

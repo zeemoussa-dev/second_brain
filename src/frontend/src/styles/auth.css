@@ -1,0 +1,205 @@
+/* REQ-SB-101 -- the sign-in, first-Admin and "backend unreachable"
+   screens. Deliberately the same visual language as styles/boot.css: a
+   person meets these two full-screen gates in the same moment (boot,
+   then identity) and a different look between them reads as two
+   different products failing, rather than one app asking two questions. */
+
+.auth-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+  background: var(--color-bg);
+}
+
+.auth-card {
+  width: min(400px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.auth-card-quiet {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+.auth-card h1 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--font-size-xl);
+  color: var(--color-text);
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.auth-field > span {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.auth-field > span em {
+  font-style: normal;
+  opacity: 0.7;
+}
+
+.auth-field input {
+  padding: var(--space-3);
+  font-family: inherit;
+  font-size: var(--font-size-base);
+  color: var(--color-text);
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.auth-field input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.auth-hint,
+.auth-hint-warn {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.auth-hint-warn {
+  color: var(--color-warning);
+}
+
+.auth-primary {
+  padding: var(--space-3) var(--space-4);
+  font-family: inherit;
+  font-size: var(--font-size-base);
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.auth-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* The backend's own refusal sentence. Never shortened to an icon or a
+   colour: the sign-in refusal says the same thing for a wrong username,
+   a wrong password and a disabled account on purpose, and the words are
+   the only part that carries that. */
+.auth-refusal {
+  margin: 0;
+  padding: var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--color-danger);
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+}
+
+.auth-note,
+.auth-detail {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.auth-detail {
+  color: var(--color-text);
+}
+
+/* The foot of the sidebar: who is signed in, then the version. Pushed
+   to the bottom with `margin-top: auto` so it sits against the floor of
+   the panel however many nav items a plugin adds above it. */
+.sidebar-foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+}
+
+.signed-in-as {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    'avatar who'
+    'signout signout';
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.signed-in-as-avatar {
+  grid-area: avatar;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  font-size: var(--font-size-sm);
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+  border-radius: 50%;
+}
+
+.signed-in-as-who {
+  grid-area: who;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Both lines truncate rather than wrap: the sidebar has a fixed width
+   and a long display name would otherwise push the avatar out of line
+   or make this block twice the height of the version beneath it. */
+.signed-in-as-name,
+.signed-in-as-role {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signed-in-as-name {
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+}
+
+.signed-in-as-role {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  opacity: 0.85;
+}
+
+.signed-in-as-sign-out {
+  grid-area: signout;
+  padding: var(--space-1) var(--space-2);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.signed-in-as-sign-out:hover {
+  background: var(--color-surface-raised);
+}

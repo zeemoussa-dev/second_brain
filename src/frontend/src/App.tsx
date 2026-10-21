@@ -13,6 +13,7 @@ import { SettingsBlueprintsPage } from './pages/SettingsBlueprintsPage';
 import { SettingsMarketplacePage } from './pages/SettingsMarketplacePage';
 import { SettingsOperatorPage } from './pages/SettingsOperatorPage';
 import { SettingsSystemPage } from './pages/SettingsSystemPage';
+import { SettingsUsersPage } from './pages/SettingsUsersPage';
 import { SettingsSectionsPage } from './pages/SettingsSectionsPage';
 import { SettingsVaultPage } from './pages/SettingsVaultPage';
 import { SettingsVaultTemplatesPage } from './pages/SettingsVaultTemplatesPage';
@@ -46,6 +47,7 @@ function App() {
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/system" element={<SettingsSystemPage />} />
           <Route path="/settings/operator" element={<SettingsOperatorPage />} />
+          <Route path="/settings/users" element={<SettingsUsersPage />} />
           <Route path="/settings/sections" element={<SettingsSectionsPage />} />
           <Route path="/settings/vault" element={<SettingsVaultPage />} />
           <Route path="/settings/vault/templates" element={<SettingsVaultTemplatesPage />} />

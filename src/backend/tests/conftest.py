@@ -61,3 +61,49 @@ def hermes_install_is_sandboxed(tmp_path_factory, monkeypatch):
     monkeypatch.setattr(hermes_client_module, "_client", None)
     yield
     action_manager.join_background_publications(timeout=30.0)
+
+
+@pytest.fixture(autouse=True)
+def every_request_is_signed_in_as_an_admin(monkeypatch):
+    """REQ-SB-101 made every route default-deny, which turned 106 existing
+    tests into 401s overnight. They were all written before sign-in existed
+    and none of them is about authentication, so the suite runs as an
+    Admin unless a test says otherwise.
+
+    Patched at `_AuthenticationReader.identity_for` -- the one seam both
+    the middleware and the `current_identity` dependency go through -- so
+    production code carries no test switch. A flag like
+    `settings.auth_disabled` would be a line of real code whose only
+    purpose is to turn the guard off, and the day it is read from the
+    environment by mistake is the day the install has no auth at all.
+
+    **A test about authentication undoes this**, with
+    `monkeypatch.setattr(auth_guard._AuthenticationReader, "identity_for", ...)`
+    of its own or by restoring the real method: tests/test_authentication.py
+    does exactly that, which is what keeps this fixture from quietly
+    hiding the behaviour it bypasses.
+
+    The identity is synthetic and writes nothing -- no row in the user
+    store, so a test that counts users still sees an empty install.
+    """
+    from app.api import auth_guard
+    from app.business.core.users.user import Identity, Role, User
+
+    the_suite_admin = Identity(
+        user=User(
+            id="00000000-0000-0000-0000-00000000test",
+            username="suite-admin",
+            display_name="The Test Suite",
+            role=Role.ADMIN,
+            is_disabled=False,
+            created_at="2026-01-01T00:00:00+00:00",
+            updated_at="2026-01-01T00:00:00+00:00",
+            last_login_at=None,
+        ),
+        session_token_sha256="test-session",
+    )
+    monkeypatch.setattr(
+        auth_guard._AuthenticationReader,
+        "identity_for",
+        lambda self, request: the_suite_admin,
+    )
