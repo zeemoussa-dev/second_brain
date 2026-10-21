@@ -1,4 +1,4 @@
-import { ApiError, apiFetch } from '../../api/client';
+import { ApiError, apiFetch, API_BASE_URL } from '../../api/client';
 
 export interface CockpitPersonChip {
   name: string;
@@ -145,7 +145,10 @@ export type CockpitStreamEvent =
 
 // Raw fetch rather than apiFetch, for the same reason agentsApiClient's own
 // streaming call uses one: apiFetch awaits and parses a whole JSON body.
-const STREAM_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8001';
+// Shares api/client.ts's corrected origin -- an EventSource carries cookies
+// too, so a differing loopback spelling would make the stream anonymous
+// (REQ-SB-101).
+const STREAM_BASE_URL = API_BASE_URL;
 
 export async function streamMessage(
   subjectKind: string,

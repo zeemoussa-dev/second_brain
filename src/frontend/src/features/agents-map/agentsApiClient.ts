@@ -1,4 +1,4 @@
-import { apiFetch, ApiError } from '../../api/client';
+import { apiFetch, ApiError, API_BASE_URL } from '../../api/client';
 // The Hermes cron job shape is already declared once, for the Hermes Ops
 // screen, off the same backend dataclass -- the profile debug view extends it
 // rather than declaring a second copy to drift (REQ-SB-99-US-01, ESC-066).
@@ -224,7 +224,10 @@ export interface ChatAttachmentResponse {
 // this call intentionally uses a raw fetch instead, duplicating
 // client.ts's own BASE_URL fallback (client.ts is out of this task's
 // Files to Modify; BASE_URL is not exported from it).
-const ATTACHMENT_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8001';
+// Shares api/client.ts's corrected origin: a loopback spelling that differs
+// from the page's is rewritten there, and re-reading the env var here would
+// reintroduce the cookie mismatch on this path (REQ-SB-101).
+const ATTACHMENT_BASE_URL = API_BASE_URL;
 
 export async function sendChatMessageWithAttachment(
   agentId: string,

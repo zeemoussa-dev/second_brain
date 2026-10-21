@@ -1,4 +1,4 @@
-import { apiFetch, ApiError } from '../../api/client';
+import { apiFetch, ApiError, API_BASE_URL } from '../../api/client';
 
 // Artifact inventory (REQ-SB-85-US-01) -- a thin client over the real,
 // already-Done GET /artifacts endpoint (app/api/artifacts_router.py),
@@ -59,7 +59,8 @@ export function previewExport(selection: ArtifactSelectionEntry[]): Promise<Expo
 // here (rather than importing a non-exported constant) because this call
 // needs the raw Response to read it as a Blob; apiFetch always resolves
 // via response.json().
-const EXPORT_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8001';
+// Shares api/client.ts's corrected origin (REQ-SB-101).
+const EXPORT_BASE_URL = API_BASE_URL;
 
 export async function commitExport(
   selection: ArtifactSelectionEntry[],
