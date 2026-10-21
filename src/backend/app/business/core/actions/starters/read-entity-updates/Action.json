@@ -1,0 +1,25 @@
+{
+  "description": "Read what this install actually knows about ONE named thing -- that thing's own synthesis first, then the evidence tagged to it, newest first. Call this INSTEAD of searching whenever the question names something in particular: the name is resolved against the namespaces registered on this install, and the answer is read from that name's own scope alone, so nothing outside it is returned and no whole-vault search is run. If the name resolves to nothing, or to more than one registered entry, the answer says exactly that -- report it back rather than falling back to a search or answering about something else.",
+  "inputs": [
+    {
+      "name": "name",
+      "type": "string",
+      "required": true,
+      "description": "The name, alias or email domain the operator used, in their own words -- not a tag, not a search phrase, and not your guess at which one they meant."
+    },
+    {
+      "name": "evidence_limit",
+      "type": "integer",
+      "required": false,
+      "description": "Optional: how many evidence notes to return (20 by default). The answer always reports the true total beside the list and says when the list was cut, so ask again for more rather than treating a capped list as everything there is."
+    }
+  ],
+  "allowed_callers": ["*"],
+  "needs_confirmation": false,
+  "implementation": {
+    "http": {
+      "method": "GET",
+      "path": "/vault-search/entity-read"
+    }
+  }
+}

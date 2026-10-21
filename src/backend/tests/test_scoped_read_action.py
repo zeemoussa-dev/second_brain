@@ -25,17 +25,14 @@ step 5's rename genuinely break it.
   so the vault walked and the plugins loaded are this file's own;
 - `shipped_starters._SHIPPED_STARTERS_DIR` -- see below.
 
-**Why the shipped definition is read from a directory this file writes.** The
-starter's own `Action.json` is held back pending `ESC-080`: a second folder
-under `app/business/core/actions/starters/` makes three `[REQ-SB-95-US-03-AC-05]`
-tests in `tests/test_action_runner_skill.py` fail, because they enumerate the
-shipped-starter set exhaustively (`== ["report-unmet-request"]`), and that file
-belongs to a `Done` task and is outside this task's `## Files to Modify`.
-`THE_SHIPPED_ACTION_JSON` below is the exact text destined for
-`starters/read-entity-updates/Action.json`, and it is seeded here through the
-real `ActionManager.seed_shipped_starters()` -- so the mechanism, the bytes and
-every gate behaviour over them are all verified; only the bytes' resting place
-in the repository waits on the authorisation.
+**Why the shipped definition is seeded from a directory this file writes.**
+The bytes are the repository's own -- `starters/read-entity-updates/Action.json`
+is read at import and laid down in `tmp_path` -- but the directory the real
+reader is pointed at is this file's, so the set seeded here is exactly one
+starter. Seeding out of the repository directory itself would install every
+OTHER shipped starter into these tests too, and this file would then fail the
+day an unrelated one is added, which is the enumeration mistake `ESC-080` was
+about.
 
 The entity vocabulary is synthetic throughout (`glyph`), for the reason the
 code under test has none: the framework names no plugin and enumerates no kind
@@ -70,37 +67,16 @@ THE_ROUTE = ("GET", "/vault-search/entity-read")
 THE_CALLER = "an-agent"
 ANOTHER_AGENT = "another-agent"
 
-# The exact bytes destined for
-# `app/business/core/actions/starters/read-entity-updates/Action.json`
-# (`ESC-080`). Kept as one literal rather than assembled from a dict so that
-# what this file verifies and what ships are the same text, character for
-# character, when the authorisation lands.
-THE_SHIPPED_ACTION_JSON = """{
-  "description": "Read what this install actually knows about ONE named thing -- that thing's own synthesis first, then the evidence tagged to it, newest first. Call this INSTEAD of searching whenever the question names something in particular: the name is resolved against the namespaces registered on this install, and the answer is read from that name's own scope alone, so nothing outside it is returned and no whole-vault search is run. If the name resolves to nothing, or to more than one registered entry, the answer says exactly that -- report it back rather than falling back to a search or answering about something else.",
-  "inputs": [
-    {
-      "name": "name",
-      "type": "string",
-      "required": true,
-      "description": "The name, alias or email domain the operator used, in their own words -- not a tag, not a search phrase, and not your guess at which one they meant."
-    },
-    {
-      "name": "evidence_limit",
-      "type": "integer",
-      "required": false,
-      "description": "Optional: how many evidence notes to return (20 by default). The answer always reports the true total beside the list and says when the list was cut, so ask again for more rather than treating a capped list as everything there is."
-    }
-  ],
-  "allowed_callers": ["*"],
-  "needs_confirmation": false,
-  "implementation": {
-    "http": {
-      "method": "GET",
-      "path": "/vault-search/entity-read"
-    }
-  }
-}
-"""
+# The shipped starter's own bytes, read out of the repository rather than
+# restated here (`ESC-080` is resolved and the file ships). One source of text
+# on purpose: a literal copy would let the definition this file verifies drift
+# away from the definition a fresh install actually seeds, and nothing would
+# notice. The module-level private is the directory the real reader reads --
+# used directly because `shipped_starters` exposes the parsed dict and not the
+# text, and the text is what the fixture below has to lay down.
+THE_SHIPPED_ACTION_JSON = (
+    shipped_starters._SHIPPED_STARTERS_DIR / THE_STARTER / "Action.json"
+).read_text(encoding="utf-8")
 
 # -- the entity, its scope and the vault ----------------------------------------------
 
@@ -309,9 +285,9 @@ def ledger(tmp_path, monkeypatch) -> Path:
 
 @pytest.fixture
 def shipped(tmp_path, monkeypatch) -> Path:
-    """The shipped starter, as the real mechanism reads it -- see this file's
-    docstring for why the directory is this test's own rather than the
-    repository's."""
+    """The shipped starter, as the real mechanism reads it: the repository's
+    own bytes, in a directory holding nothing else -- see this file's docstring
+    for why the directory is this test's own."""
     starters = tmp_path / "starters"
     (starters / THE_STARTER).mkdir(parents=True)
     (starters / THE_STARTER / "Action.json").write_text(THE_SHIPPED_ACTION_JSON, encoding="utf-8")
