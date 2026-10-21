@@ -455,6 +455,7 @@ def _record_call(
     inputs: Mapping[str, Any], outcome: str, refusal: str | None,
     detail: str | None = None, result: Any | None = None,
     grant: Mapping[str, Any] | None = None, granted_by_call_id: str | None = None,
+    initiated_by: dict | None = None,
 ) -> None:
     """One ledger file per call, rewritten in place as the call
     progresses -- there is exactly one record per `call_id`, and
@@ -495,6 +496,11 @@ def _record_call(
             "result": result,
             "grant": dict(grant) if grant is not None else None,
             "granted_by_call_id": granted_by_call_id,
+            # WHICH person set this call going, when a person did
+            # (REQ-SB-101). None means an agent acted on its own
+            # schedule with nobody present, or the record predates
+            # sign-in -- both real answers, neither back-filled.
+            "initiated_by": initiated_by,
             "recorded_at": _now(),
         })
     except OSError:
@@ -614,7 +620,7 @@ def _confirmation_record(call_id: str) -> dict:
     return record
 
 
-def confirm_action_call(call_id: str) -> dict:
+def confirm_action_call(call_id: str, decided_by: Any | None = None) -> dict:
     """The operator says yes, and the record becomes a single-use grant.
 
     **Confirming performs nothing.** It authorises the agent's re-call
@@ -624,11 +630,16 @@ def confirm_action_call(call_id: str) -> dict:
     happened.
     """
     record = _confirmation_record(call_id)
+    attribution = attribution_for(decided_by)
     record["outcome"] = OUTCOME_CONFIRMED
     record["refusal"] = None
+    # WHO approved this, by name, in the record and in the sentence the
+    # agent relays. On a shared install "the operator confirmed it" is no
+    # longer an answer to "who said yes".
+    record["decided_by"] = attribution
     record["detail"] = (
-        f"the operator confirmed action call {call_id!r}. Nothing has been performed yet: call "
-        f"action {record.get('action_id')!r} again with the same inputs and "
+        f"{_who(attribution)} confirmed action call {call_id!r}. Nothing has been performed yet: "
+        f"call action {record.get('action_id')!r} again with the same inputs and "
         f"confirmed_call_id={call_id!r} to spend this confirmation, once."
     )
     # The same shape a `skill` dispatch's grant has, down to `call_id`
@@ -642,22 +653,28 @@ def confirm_action_call(call_id: str) -> dict:
         "call_id": call_id,
         "single_use": True,
         "confirmed_at": _now(),
+        # Carried on the grant too, not only on the record: the grant is
+        # what the re-call spends, and whoever audits a performed
+        # operation reads the grant that authorised it.
+        "confirmed_by": attribution,
     }
     record["recorded_at"] = _now()
     action_calls_data.write_call_json(call_id, record)
     return record
 
 
-def decline_action_call(call_id: str) -> dict:
+def decline_action_call(call_id: str, decided_by: Any | None = None) -> dict:
     """The operator says no. Terminal, grantless, and kept -- every
     later re-call naming this id reads the same `declined` back, so the
     agent can tell the operator the truth rather than retrying."""
     record = _confirmation_record(call_id)
+    attribution = attribution_for(decided_by)
     record["outcome"] = OUTCOME_DECLINED
     record["grant"] = None
+    record["decided_by"] = attribution
     record["refusal"] = (
-        f"the operator declined action call {call_id!r}, so action {record.get('action_id')!r} "
-        "was not run and nothing was performed"
+        f"{_who(attribution)} declined action call {call_id!r}, so action "
+        f"{record.get('action_id')!r} was not run and nothing was performed"
     )
     record["detail"] = record["refusal"]
     record["recorded_at"] = _now()
@@ -797,9 +814,48 @@ def _names(names: list[str]) -> str:
     return ", ".join(repr(name) for name in names)
 
 
+def attribution_for(user: Any | None) -> dict | None:
+    """The block a ledger record carries to say WHICH person did this
+    (`REQ-SB-101`).
+
+    **Absent means "we do not know", and that is a real answer.** Every
+    record written before sign-in existed has no attribution, and so
+    does any call an agent makes on its own schedule with no human
+    present. Neither is back-filled with the operator: this install had
+    exactly one person for its whole life before now, so stamping their
+    name on the past would turn "nobody was asked" into "they approved
+    it", which is the one thing a ledger must never say.
+
+    A snapshot, not a reference. The username and role are copied as
+    they were at the moment of the decision, because an Admin who is
+    later demoted still confirmed it as an Admin, and a record that
+    re-read the user would quietly rewrite its own history. `user_id`
+    is kept alongside so the person can still be identified after a
+    rename.
+    """
+    if user is None:
+        return None
+    return {
+        "user_id": user.id,
+        "username": user.username,
+        "display_name": user.display_name,
+        "role": user.role.value,
+        "at": _now(),
+    }
+
+
+def _who(attribution: dict | None, fallback: str = "the operator") -> str:
+    """How a person is named inside a refusal or a detail sentence.
+    Falls back to the old wording for an unattributed record, so a
+    sentence never reads "None confirmed this"."""
+    if not attribution:
+        return fallback
+    return attribution.get("display_name") or attribution.get("username") or fallback
+
+
 def call_action(
     action_id: str, caller_agent_id: str, inputs: Mapping[str, Any] | None = None,
-    confirmed_call_id: str | None = None,
+    confirmed_call_id: str | None = None, initiated_by: Any | None = None,
 ) -> ActionCallVerdict:
     """Validate one call against the live catalogue and, only if every
     check passes, enter dispatch exactly once.
@@ -816,10 +872,17 @@ def call_action(
     """
     call_id = uuid.uuid4().hex
     supplied_inputs = dict(inputs or {})
+    # Snapshotted once, here, so every row this call writes -- the
+    # refusals included -- names the same person. A refused call is
+    # exactly the one an audit asks "who tried this" about, so leaving
+    # attribution off the refusal paths would drop it where it matters
+    # most (REQ-SB-101).
+    _initiated = attribution_for(initiated_by)
 
     def refuse(reason: str, sentence: str) -> ActionCallVerdict:
         outcome = f"refused:{reason}"
-        _record_call(call_id, action_id, caller_agent_id, supplied_inputs, outcome, sentence)
+        _record_call(call_id, action_id, caller_agent_id, supplied_inputs, outcome, sentence,
+                     initiated_by=_initiated)
         return ActionCallVerdict(
             call_id=call_id, action_id=action_id, caller_agent_id=caller_agent_id,
             accepted=False, outcome=outcome, refusal=sentence, inputs=supplied_inputs,
@@ -933,7 +996,7 @@ def call_action(
     # Recorded BEFORE dispatch.
     _record_call(
         call_id, action_id, caller_agent_id, validated_inputs, OUTCOME_VALIDATED, None,
-        granted_by_call_id=granted_by_call_id,
+        granted_by_call_id=granted_by_call_id, initiated_by=_initiated,
     )
 
     dispatched = dispatch_validated_action_call(action, caller_agent_id, validated_inputs)
@@ -949,7 +1012,7 @@ def call_action(
     _record_call(
         call_id, action_id, caller_agent_id, validated_inputs, outcome, None,
         detail=dispatched.get("detail"), result=dispatched.get("result"), grant=grant,
-        granted_by_call_id=granted_by_call_id,
+        granted_by_call_id=granted_by_call_id, initiated_by=_initiated,
     )
 
     return ActionCallVerdict(

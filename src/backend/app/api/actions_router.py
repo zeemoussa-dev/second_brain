@@ -74,7 +74,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.business.core.actions.action import Action
@@ -86,6 +86,8 @@ from app.business.core.actions.action_manager import (
     PluginContributedActionIsReadOnlyError,
 )
 from app.business.logic import action_invocation
+from app.api.auth_guard import optional_identity, requires
+from app.business.core.users.user import Capability, Identity
 
 router = APIRouter(prefix="/actions")
 _action_manager = ActionManager()
@@ -282,7 +284,11 @@ def delete_action(action_id: str) -> dict:
 
 
 @router.post("/{action_id}/call")
-def call_action(action_id: str, body: ActionCallBody) -> dict:
+def call_action(
+    action_id: str,
+    body: ActionCallBody,
+    identity: Identity | None = Depends(optional_identity),
+) -> dict:
     """The validating door (`ADR-033`). The gate refuses an unknown id,
     a caller not in `allowed_callers`, a missing required or undeclared
     input, and an implementation that no longer resolves -- each
@@ -295,6 +301,10 @@ def call_action(action_id: str, body: ActionCallBody) -> dict:
     """
     verdict = action_invocation.call_action(
         action_id, body.caller_agent_id, body.inputs, body.confirmed_call_id,
+        # None when an agent calls on its own schedule with nobody
+        # signed in -- an honest "we do not know who", never the
+        # operator by default (REQ-SB-101).
+        initiated_by=identity.user if identity else None,
     )
     if not verdict.accepted:
         # A dict detail, not a sentence: the runner Skill relays the
@@ -337,22 +347,28 @@ def list_pending_action_calls() -> list[dict]:
 
 
 @router.post("/calls/{call_id}/confirm")
-def confirm_action_call(call_id: str) -> dict:
+def confirm_action_call(
+    call_id: str,
+    identity: Identity = Depends(requires(Capability.CONFIRM_ACTIONS)),
+) -> dict:
     """Turn one awaiting record into a single-use grant. This performs
     nothing: the agent's re-call spends the grant, exactly once, and
     that is what runs the operation."""
     try:
-        return action_invocation.confirm_action_call(call_id)
+        return action_invocation.confirm_action_call(call_id, decided_by=identity.user)
     except action_invocation.ActionCallNotConfirmableError as exc:
         raise _refusal(exc)
 
 
 @router.post("/calls/{call_id}/decline")
-def decline_action_call(call_id: str) -> dict:
+def decline_action_call(
+    call_id: str,
+    identity: Identity = Depends(requires(Capability.CONFIRM_ACTIONS)),
+) -> dict:
     """Refuse one awaiting record, permanently. Nothing is performed and
     every later re-call naming this id is told it was declined, so the
     agent reports the truth rather than retrying."""
     try:
-        return action_invocation.decline_action_call(call_id)
+        return action_invocation.decline_action_call(call_id, decided_by=identity.user)
     except action_invocation.ActionCallNotConfirmableError as exc:
         raise _refusal(exc)
