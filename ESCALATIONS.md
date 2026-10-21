@@ -1316,4 +1316,16 @@ compaction pass.
 
 **Resolving artefact:** — (Open)
 
-**Status:** Open
+**Resolution (2026-10-21): fixed, not authorised away.** This was a real production regression introduced by `REQ-SB-101`'s default-deny middleware on 2026-10-19, and `REQ-SB-95-US-05-T05` was right about every part of it: the Action gate performs an `http` implementation by calling this app in process, the real middleware stack runs, the sub-request carries no credential, and so **every `http` Action answered "the operation did NOT happen" on any install with an account** -- which, since the operator bootstrapped theirs, meant theirs.
+
+**The sharp part the escalation named is the part worth keeping.** `tests/conftest.py`'s autouse sign-in fixture authenticates the dispatcher's sub-request too, so fourteen green tests covered behaviour that could not happen in production. The fixture was added in the same change that caused the bug; a suite-wide "everything is signed in" is exactly the shape that hides an authentication regression, and it did.
+
+**The fix.** `auth_guard` mints `INTERNAL_DISPATCH_TOKEN` once per process -- random, never written to disk, not a setting, different every restart -- and the dispatcher sends it as a header on its in-process sub-request. It authenticates "this request was constructed inside this process" and nothing more. It is not a privilege: the dispatch is only reached after the gate has checked `allowed_callers`, the declared inputs and any confirmation, so authorisation already happened one layer up against the agent, where `ADR-033` puts it. A route behind `requires()` still refuses, because a capability is about a person and this sub-request has none -- an Action naming such a route SHOULD be refused rather than quietly run with more authority than its caller.
+
+**Verified outside pytest**, deliberately, since the fixture is what hid it: a script loading no conftest, on a scratch store with a real account so default-deny is fully live. Before the fix the call failed with a 401 from the app's own dispatch; after it, `accepted: True, outcome: performed`, the route answering HTTP 200. Separately confirmed the marker is not a hole: anonymous 401, a forged marker 401, an empty marker 401, and only the real value -- unreachable from a socket -- 200. Full suite 780 passed.
+
+**Still owed, and not done here:** the shipped runner Skill sends no credential either, so an agent calling `POST /actions/{id}/call` over a real socket from Hermes is refused for the same underlying reason. That is a different seam (a deployed Skill, not this app's own dispatch) and needs the operator's decision about how a Hermes worker authenticates. Logged in `REVIEW-QUEUE.md` rather than guessed at.
+
+**Resolving artefact:** `auth_guard.INTERNAL_DISPATCH_TOKEN` + `action_invocation._request_this_apps_own_route`, 2026-10-21
+
+**Status:** Resolved

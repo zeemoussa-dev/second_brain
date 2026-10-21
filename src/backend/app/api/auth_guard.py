@@ -35,7 +35,9 @@ is closed by the first account rather than by a timer.
 """
 from __future__ import annotations
 
+import hmac
 import logging
+import secrets
 
 from fastapi import Depends, HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -47,6 +49,36 @@ from app.business.core.users.user_manager import UserManager
 _logger = logging.getLogger(__name__)
 
 SESSION_COOKIE = "second_brain_session"
+
+# The Action gate performs an `http` implementation by calling THIS app
+# in process (`action_invocation._request_this_apps_own_route`), which
+# runs the real middleware stack -- so default-deny refused the app's
+# own dispatch and every `http` Action answered "the operation did NOT
+# happen" on any install with an account (`ESC-081`, found by
+# `REQ-SB-95-US-05-T05` on 2026-10-21, introduced by this file on
+# 2026-10-19).
+#
+# The marker is a random value minted once per process and never
+# written anywhere: not a config value, not a setting, not on disk. A
+# caller on a socket cannot know it, and it changes every restart, so
+# it authenticates "this request was constructed inside this process"
+# and nothing else.
+#
+# It says the request is INTERNAL, not that it is privileged. The
+# dispatch is only reached after the Action gate has already checked
+# `allowed_callers`, the declared inputs and any confirmation, so the
+# authorisation has happened -- one layer up, against the agent, where
+# `ADR-033` puts it. A route behind `requires()` still refuses, because
+# a capability is about a person and this sub-request has none; an
+# Action naming such a route SHOULD be refused rather than quietly run
+# with more authority than its caller.
+INTERNAL_DISPATCH_HEADER = "x-second-brain-internal-dispatch"
+INTERNAL_DISPATCH_TOKEN = secrets.token_urlsafe(32)
+
+
+def is_internal_dispatch(request: Request) -> bool:
+    sent = request.headers.get(INTERNAL_DISPATCH_HEADER, "")
+    return bool(sent) and hmac.compare_digest(sent, INTERNAL_DISPATCH_TOKEN)
 
 # Always open, signed in or not. Each entry earns its place:
 #   /health      -- liveness, read by tooling that has no account
@@ -135,6 +167,13 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         request.state.identity = identity
 
         if identity is not None or _is_always_public(request.url.path):
+            return await call_next(request)
+
+        # The app calling itself to perform an `http` Action (ESC-081).
+        # Authorisation already happened at the Action gate, one layer
+        # up and against the agent; this only says the request was
+        # built inside this process.
+        if is_internal_dispatch(request):
             return await call_next(request)
 
         if _is_open_while_unbootstrapped(request.url.path) and not self._reader.has_any_user():

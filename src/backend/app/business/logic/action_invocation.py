@@ -258,10 +258,17 @@ async def _request_this_apps_own_route(
     from app.main import app
 
     bound_path, unplaced_inputs = _bind_path_parameters(path, inputs)
+    # Marks the sub-request as built inside this process, so the
+    # default-deny guard lets the app perform its own Action rather
+    # than refusing it as an anonymous caller (`ESC-081`). Imported
+    # here with `app` for the same cycle reason.
+    from app.api.auth_guard import INTERNAL_DISPATCH_HEADER, INTERNAL_DISPATCH_TOKEN
+
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),
         base_url="http://action-dispatch.localhost",
         timeout=_HTTP_DISPATCH_TIMEOUT_SECONDS,
+        headers={INTERNAL_DISPATCH_HEADER: INTERNAL_DISPATCH_TOKEN},
     ) as in_process_client:
         if method in _HTTP_METHODS_WITH_A_BODY:
             return await in_process_client.request(method, bound_path, json=unplaced_inputs)
