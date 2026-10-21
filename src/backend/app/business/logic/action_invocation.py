@@ -87,6 +87,11 @@ _logger = logging.getLogger(__name__)
 # operator and may be reworded, while a caller (and a later
 # capability-gap review over this ledger) counts these.
 REFUSED_UNKNOWN_ACTION = "unknown_action"
+# A block the operator threw, not a fault and not a permission
+# problem -- its own reason so the ledger can be asked "what did we
+# stop" without that question being tangled up with "who was not
+# allowed" (`REQ-SB-102`).
+REFUSED_BLOCKED = "blocked"
 REFUSED_CALLER_NOT_PERMITTED = "caller_not_permitted"
 REFUSED_MISSING_REQUIRED_INPUT = "missing_required_input"
 REFUSED_UNKNOWN_INPUT = "unknown_input"
@@ -900,6 +905,21 @@ def call_action(
         return refuse(
             REFUSED_UNKNOWN_ACTION,
             f"there is no action {action_id!r} in this install's catalogue, so it cannot be called",
+        )
+
+    # Checked before who-may-call and before the inputs, deliberately.
+    # A blocked Action is off for everyone, so asking whether this
+    # particular caller was allowed, or whether their arguments were
+    # well formed, answers a question that no longer matters -- and
+    # refusing it as "you are not permitted" would send the operator
+    # looking at allowed_callers for a switch they threw themselves.
+    if getattr(action, "is_blocked", False):
+        reason = (action.blocked_reason or "").strip()
+        return refuse(
+            REFUSED_BLOCKED,
+            f"action {action_id!r} is blocked on this install and was not run"
+            + (f": {reason}" if reason else
+               ". No reason was recorded; ask the operator who blocked it."),
         )
 
     # A caller that named nothing is refused here rather than being let

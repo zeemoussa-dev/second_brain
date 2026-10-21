@@ -239,6 +239,35 @@ def create_action(body: ActionCreateBody) -> Action:
         raise _refusal(exc)
 
 
+class BlockBody(BaseModel):
+    is_blocked: bool
+    reason: str = ""
+
+
+@router.put("/{action_id}/blocked", dependencies=[Depends(requires(Capability.AUTHOR_AUTOMATIONS))])
+def set_action_blocked(action_id: str, body: BlockBody) -> Action:
+    """Throw or release the kill switch on one Action (`REQ-SB-102`).
+
+    Its own route rather than a field on the edit form, for two reasons.
+    Blocking is urgent and should not require filling in a whole Action;
+    and it needs a different permission question -- `AUTHOR_AUTOMATIONS`
+    is Admin-only today, which is right for "stop this now", while the
+    edit form may one day be reachable by more people.
+
+    A block is reversible and loses nothing: `allowed_callers` is left
+    exactly as it was, so releasing restores the Action rather than
+    requiring the operator to remember who used to be allowed.
+    """
+    updated = ActionManager().update(
+        action_id,
+        is_blocked=body.is_blocked,
+        blocked_reason=body.reason if body.is_blocked else "",
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail=f"There is no action {action_id!r}.")
+    return updated
+
+
 @router.put("/{action_id}")
 def update_action(action_id: str, body: ActionUpdateBody) -> Action:
     try:

@@ -452,6 +452,8 @@ class ActionManager:
             inputs=self._to_inputs(data.get("inputs")),
             allowed_callers=list(data.get("allowed_callers") or []),
             needs_confirmation=bool(data.get("needs_confirmation", False)),
+            is_blocked=bool(data.get("is_blocked", False)),
+            blocked_reason=str(data.get("blocked_reason", "") or ""),
             implementation=self._to_implementation(data.get("implementation")),
             created_at=data.get("created_at", ""),
             updated_at=data.get("updated_at"),
@@ -637,6 +639,8 @@ class ActionManager:
             "inputs": self._stored_inputs(inputs),
             "allowed_callers": list(allowed_callers or []),
             "needs_confirmation": bool(needs_confirmation),
+            "is_blocked": False,
+            "blocked_reason": "",
             "implementation": dict(implementation),
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": None,
@@ -650,6 +654,8 @@ class ActionManager:
         inputs: list[Mapping[str, Any]] | None = None,
         allowed_callers: list[str] | None = None,
         needs_confirmation: bool | None = None,
+        is_blocked: bool | None = None,
+        blocked_reason: str | None = None,
         implementation: Mapping[str, Any] | None = None,
     ) -> Action | None:
         """`None` (omitted) = leave unchanged for every field, the same
@@ -678,6 +684,10 @@ class ActionManager:
             data["allowed_callers"] = list(allowed_callers)
         if needs_confirmation is not None:
             data["needs_confirmation"] = bool(needs_confirmation)
+        if is_blocked is not None:
+            data["is_blocked"] = bool(is_blocked)
+        if blocked_reason is not None:
+            data["blocked_reason"] = str(blocked_reason)
 
         data["updated_at"] = datetime.now(timezone.utc).isoformat()
         actions_data.write_action_json(action_id, data)

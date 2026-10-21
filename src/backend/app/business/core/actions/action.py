@@ -102,5 +102,16 @@ class Action:
     # ledger (ADR-033). This story stores the flag and nothing more.
     needs_confirmation: bool = False
     implementation: ActionImplementation | None = None
+    # A kill switch the operator can throw (`REQ-SB-102`). Separate from
+    # `allowed_callers` on purpose: emptying that list also means "nobody
+    # may call this", but it DESTROYS the caller list in the process, so
+    # turning the Action back on means remembering who used to be allowed.
+    # A block is reversible without losing anything, which is what makes
+    # it usable in a hurry -- and in a hurry is when it gets used.
+    is_blocked: bool = False
+    # Why it was blocked, in the operator's words. Reaches the agent
+    # inside the refusal, so "I cannot do that" carries a reason the
+    # operator wrote rather than a generic denial.
+    blocked_reason: str = ""
     created_at: str = ""
     updated_at: str | None = None

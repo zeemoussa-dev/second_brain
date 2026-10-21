@@ -12,6 +12,11 @@ export const ACTION_IMPLEMENTATION_KINDS: ActionImplementationKind[] = ['skill',
  *  live resolution status the backend recomputes on every read (never
  *  stored), plus the contributing plugin where there is one. */
 export interface ActionCatalogueEntry {
+  /** The operator's kill switch (`REQ-SB-102`). Optional because an
+   * Action saved before blocking existed carries neither field, and
+   * absent means not blocked -- never unknown. */
+  is_blocked?: boolean;
+  blocked_reason?: string;
   id: string;
   description: string;
   implementation_kind: ActionImplementationKind | null;
@@ -48,6 +53,8 @@ export interface ActionDetail {
   inputs: ActionInputField[];
   allowed_callers: string[];
   needs_confirmation: boolean;
+  is_blocked?: boolean;
+  blocked_reason?: string;
   implementation: ActionImplementationRead | null;
   created_at: string;
   updated_at: string | null;
@@ -69,6 +76,8 @@ export interface ActionWriteBody {
   inputs: ActionInputField[];
   allowed_callers: string[];
   needs_confirmation: boolean;
+  is_blocked?: boolean;
+  blocked_reason?: string;
   /** `null` means "named nothing", which the backend refuses with its own
    *  exactly-one message -- the screen never refuses the save itself. */
   implementation: ActionImplementationWrite | null;
@@ -135,4 +144,16 @@ export function updateAction(actionId: string, body: ActionWriteBody): Promise<A
 
 export function deleteAction(actionId: string): Promise<{ deleted: boolean }> {
   return apiFetch(`/actions/${encodeURIComponent(actionId)}`, { method: 'DELETE' });
+}
+
+/** Throw or release the kill switch on one Action (`REQ-SB-102`).
+ * Reversible and lossless: `allowed_callers` is untouched, so releasing
+ * restores the Action rather than asking who used to be allowed. */
+export function setActionBlocked(
+  actionId: string, isBlocked: boolean, reason = '',
+): Promise<ActionCatalogueEntry> {
+  return apiFetch<ActionCatalogueEntry>(`/actions/${encodeURIComponent(actionId)}/blocked`, {
+    method: 'PUT',
+    body: JSON.stringify({ is_blocked: isBlocked, reason }),
+  });
 }

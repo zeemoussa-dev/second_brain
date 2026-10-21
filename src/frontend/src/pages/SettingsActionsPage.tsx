@@ -8,6 +8,7 @@ import {
   createAction,
   declineActionCall,
   deleteAction,
+  setActionBlocked,
   fetchAction,
   fetchActions,
   fetchPendingActionCalls,
@@ -212,6 +213,43 @@ export function SettingsActionsPage() {
     }
   }
 
+  /** Throw or release the kill switch (`REQ-SB-102`).
+   *
+   * Blocking asks for a reason and unblocking does not: the reason is
+   * what the agent is told when it tries and cannot, so an empty one
+   * leaves it saying only that someone stopped it. Cancelling the
+   * prompt cancels the block -- a blank reason by accident is the one
+   * outcome worth refusing, since this is the message that reaches a
+   * confused agent.
+   */
+  /** Matches handleDelete's handling: the backend's own sentence on
+   * failure, and a re-read rather than a local patch, so the badge and
+   * the reason come from the store instead of from a guess. */
+  async function apply(work: () => Promise<unknown>) {
+    setListError(null);
+    try {
+      await work();
+      await reload();
+    } catch (error) {
+      setListError(extractErrorDetail(error));
+    }
+  }
+
+  async function handleBlock(action: ActionCatalogueEntry) {
+    if (action.is_blocked) {
+      await apply(() => setActionBlocked(action.id, false));
+      return;
+    }
+    const reason = window.prompt(
+      `Block "${action.id}"?
+
+No agent will be able to call it, and every attempt is ` +
+        `refused and recorded. Why are you blocking it? The agent is told this.`,
+    );
+    if (reason === null) return;
+    await apply(() => setActionBlocked(action.id, true, reason.trim()));
+  }
+
   async function handleDelete(actionId: string) {
     setListError(null);
     try {
@@ -333,7 +371,24 @@ export function SettingsActionsPage() {
             {catalogue.map((action) => (
               <div className="item-row" key={action.id} data-testid={`action-row-${action.id}`}>
                 <div className="item-row-main">
-                  <span className="item-row-title">{action.id}</span>
+                  <span className="item-row-title">
+                    {action.id}
+                    {action.is_blocked && (
+                      <>
+                        {' '}
+                        <span className="badge badge-danger" data-testid={`action-blocked-${action.id}`}>
+                          Blocked
+                        </span>
+                      </>
+                    )}
+                  </span>
+                  {action.is_blocked && (
+                    <span className="item-row-meta" data-testid={`action-blocked-reason-${action.id}`}>
+                      {action.blocked_reason
+                        ? `Blocked: ${action.blocked_reason}`
+                        : 'Blocked, with no reason recorded.'}
+                    </span>
+                  )}
                   <span className="item-row-meta" data-testid={`action-description-${action.id}`}>
                     {action.description || 'No description.'}
                   </span>
@@ -384,6 +439,14 @@ export function SettingsActionsPage() {
                       onClick={() => openExistingEditor(action.id)}
                     >
                       Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="btn"
+                      data-testid={`action-block-${action.id}`}
+                      onClick={() => handleBlock(action)}
+                    >
+                      {action.is_blocked ? 'Unblock' : 'Block'}
                     </button>
                     <button
                       type="button"
