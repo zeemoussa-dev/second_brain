@@ -216,6 +216,77 @@ def list_actions() -> list[dict]:
     return catalogue
 
 
+class RuleBody(BaseModel):
+    id: str = ""
+    name: str
+    action_id: str = "*"
+    caller_agent_id: str = "*"
+    input_name: str
+    kind: str = "refuse_if"
+    pattern: str
+    effect: str = "refuse"
+    reason: str = ""
+    enabled: bool = True
+
+
+@router.get("/rules")
+def list_rules() -> list[dict]:
+    """The operator's call-time rules, in their own order -- the gate
+    stops at the first that refuses, so the order IS meaning and is
+    never sorted on the way out."""
+    from app.data_access import action_rules as rules_data
+
+    return rules_data.read_rules()
+
+
+@router.put("/rules", dependencies=[Depends(requires(Capability.AUTHOR_AUTOMATIONS))])
+def set_rules(body: list[RuleBody]) -> list[dict]:
+    """Replaces the whole list, because the order matters and the
+    operator is editing an ordered thing.
+
+    Every pattern is compiled here, before anything is written. A rule
+    whose pattern does not compile refuses every call it touches, so
+    saving one and finding out at the next call would mean the operator
+    broke their install by typing -- it is refused now, naming the rule
+    and the error.
+    """
+    import re
+
+    from app.data_access import action_rules as rules_data
+
+    rows = []
+    for position, rule in enumerate(body, start=1):
+        try:
+            re.compile(rule.pattern)
+        except re.error as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Rule {position} ({rule.name!r}) has a pattern that is not valid: "
+                    f"{exc}. Nothing was saved."
+                ),
+            ) from exc
+        if rule.kind not in ("refuse_if", "refuse_unless"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Rule {position} ({rule.name!r}): kind must be refuse_if or "
+                       "refuse_unless. Nothing was saved.",
+            )
+        if rule.effect not in ("refuse", "needs_confirmation"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Rule {position} ({rule.name!r}): effect must be refuse or "
+                       "needs_confirmation. Nothing was saved.",
+            )
+        rows.append({**rule.model_dump(), "id": rule.id or f"rule-{position}"})
+    rules_data.write_rules(rows)
+    return rows
+
+
+# Declared BEFORE /{action_id}: FastAPI matches in declaration order, so
+# a dynamic single-segment route swallows every literal one after it --
+# GET /actions/rules was resolving as "the action called rules" and
+# returning the wrong shape entirely (found by a smoke test, 2026-10-21).
 @router.get("/{action_id}")
 def get_action(action_id: str) -> Action:
     action = _action_manager.get_by_id(action_id)

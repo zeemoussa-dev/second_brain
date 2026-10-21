@@ -92,6 +92,10 @@ REFUSED_UNKNOWN_ACTION = "unknown_action"
 # stop" without that question being tangled up with "who was not
 # allowed" (`REQ-SB-102`).
 REFUSED_BLOCKED = "blocked"
+# A rule the operator wrote, fired against this call's own inputs
+# (`REQ-SB-102`). Distinct from `blocked` so the ledger can tell "we
+# switched this off" from "this particular call was not allowed".
+REFUSED_BY_RULE = "refused_by_rule"
 REFUSED_CALLER_NOT_PERMITTED = "caller_not_permitted"
 REFUSED_MISSING_REQUIRED_INPUT = "missing_required_input"
 REFUSED_UNKNOWN_INPUT = "unknown_input"
@@ -865,6 +869,31 @@ def _who(attribution: dict | None, fallback: str = "the operator") -> str:
     return attribution.get("display_name") or attribution.get("username") or fallback
 
 
+def _rules_verdict(action_id: str, caller_agent_id: str, inputs):
+    """Reads and evaluates the operator's rules.
+
+    A rules FILE that cannot be read refuses the call rather than
+    letting it through: the file exists because the operator wanted
+    something stopped, and an unreadable one that silently allowed
+    everything would be the exact failure a rules engine must not have.
+    """
+    from app.business.logic import action_rules as rules_logic
+    from app.data_access import action_rules as rules_data
+
+    try:
+        rules = [rules_logic.Rule.from_dict(row) for row in rules_data.read_rules()]
+    except Exception as exc:  # noqa: BLE001 -- turned into a refusal, never swallowed
+        broken = rules_logic.Verdict()
+        broken.refused_by = rules_logic.Rule(id="", name="(the rules file)")
+        broken.sentence = (
+            f"action {action_id!r} was not run: this install's rules file could not be "
+            f"read ({exc}), so none of the operator's rules could be applied. Refusing "
+            "is the safe answer -- running would ignore every rule they wrote."
+        )
+        return broken
+    return rules_logic.evaluate(rules, action_id, caller_agent_id, inputs)
+
+
 def call_action(
     action_id: str, caller_agent_id: str, inputs: Mapping[str, Any] | None = None,
     confirmed_call_id: str | None = None, initiated_by: Any | None = None,
@@ -1019,6 +1048,15 @@ def call_action(
                 "nothing was performed"
             ))
         granted_by_call_id = confirmed_call_id
+
+    # The operator's own rules, against the real inputs (`REQ-SB-102`).
+    # After validation on purpose: a rule names an input, and judging a
+    # call whose inputs have not been checked would read undeclared or
+    # missing ones as absent and let a deny-unless rule pass something
+    # it should have caught.
+    rules_verdict = _rules_verdict(action_id, caller_agent_id, validated_inputs)
+    if rules_verdict.refused_by is not None:
+        return refuse(REFUSED_BY_RULE, rules_verdict.sentence)
 
     # Recorded BEFORE dispatch.
     _record_call(
