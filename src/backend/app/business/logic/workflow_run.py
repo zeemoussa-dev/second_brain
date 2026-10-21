@@ -203,9 +203,13 @@ def _snapshot_step(position: int, step: WorkflowStep) -> dict:
         "inputs": dict(step.inputs or {}),
         # Filled at dispatch, once references are resolved.
         "resolved_inputs": None,
-        # Set when the step is reached. "app" for an Action the gate
-        # performed, "agent" for a claim, "human" for a decision --
-        # the distinction REQ-SB-103 exists to keep.
+        # Set when the step is reached, and the whole point of it is
+        # that the three values are three different kinds of claim
+        # (`REQ-SB-103`): "app" for a step the Action gate handled --
+        # `dispatch_outcome` says what it did, `pointed_at` being the
+        # operator doing it themselves -- "agent" for something an agent
+        # reported, "human" for something a person decided. `None` means
+        # the step has not been reached, and nothing else.
         "performed_by": None,
         "resolved_ask": None,
         "asked_at": None,
@@ -408,6 +412,13 @@ def _dispatch(run: dict, step: dict, confirmed_call_id: str | None = None) -> No
     # debugging a run needs to see BOTH what the step was written to
     # send and what it actually sent.
     step["resolved_inputs"] = inputs
+    # Which of the three kinds of claim this step's record carries. Set
+    # here rather than left null, because a report in which only two of
+    # the three kinds say who did them reads as "we do not know" for the
+    # third -- and `null` is already what an unreached step holds. What
+    # the gate ACTUALLY did with it, `pointed_at` included, stays in
+    # `dispatch_outcome` and is never overwritten.
+    step["performed_by"] = "app"
     verdict = action_invocation.call_action(
         step["action_id"], run["caller_agent_id"], inputs, confirmed_call_id,
     )

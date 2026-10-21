@@ -305,9 +305,14 @@ def test_an_agent_step_is_handed_back_and_never_claimed_as_performed(workflows, 
     assert handed["step"]["resolved_ask"] == {"tasks": ["review the MSA", "call Ana"]}
     assert "send-email-agent" in handed["detail"]
 
-    on_disk = step_of(stored_run(runs, run_id), "draft")
-    assert on_disk["performed_by"] == "agent"
-    assert on_disk["call_ids"] == [], "an agent step opens no Action call"
+    on_disk = stored_run(runs, run_id)
+    assert step_of(on_disk, "draft")["performed_by"] == "agent"
+    assert step_of(on_disk, "draft")["call_ids"] == [], "an agent step opens no Action call"
+    # Every reached step says which of the three kinds of claim its
+    # record carries. A report where only two of the three answer reads
+    # as "we do not know" for the third.
+    assert step_of(on_disk, "find")["performed_by"] == "app"
+    assert step_of(on_disk, "send")["performed_by"] is None, "not reached yet"
 
 
 def test_a_human_step_holds_the_run_until_somebody_answers(workflows, runs) -> None:
@@ -596,6 +601,7 @@ def test_the_report_says_who_did_each_step(workflows, runs) -> None:
     described = finished["report"]["steps"][0]
     assert described["kind"] == "human"
     assert described["performed_by"] == "human"
+    assert described["human_said"] == "yes"
     assert described["human_decision"] == "approved"
     assert described["decided_by"]["display_name"] == THE_SIGNED_IN_PERSON
     assert finished["report"]["every_documented_step_done"] is True
