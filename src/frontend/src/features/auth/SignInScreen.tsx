@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { ApiError } from '../../api/client';
 import { signIn } from './authApiClient';
+import { useBranding } from '../branding/BrandingProvider';
 
 
 /** REQ-SB-101 -- the sign-in screen.
@@ -13,6 +14,7 @@ import { signIn } from './authApiClient';
  * the one surface where it matters.
  */
 export function SignInScreen({ onSignedIn }: { onSignedIn: () => void }) {
+  const { app_name: appName, logoUrl } = useBranding();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -34,7 +36,10 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: () => void }) {
   return (
     <div className="auth-screen">
       <form className="auth-card" onSubmit={handleSubmit}>
-        <h1>Sign in to Second Brain</h1>
+      <div className="auth-brand">
+        {logoUrl && <img className="auth-logo" src={logoUrl} alt="" />}
+      </div>
+        <h1>Sign in to {appName}</h1>
 
         <label className="auth-field">
           <span>Username</span>

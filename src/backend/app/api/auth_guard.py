@@ -53,7 +53,13 @@ SESSION_COOKIE = "second_brain_session"
 #   /boot-status -- the boot screen renders before anything else exists
 #   /auth/...    -- sign in, sign out, and "who am I"; the door itself
 _ALWAYS_PUBLIC_EXACT = frozenset({"/health"})
-_ALWAYS_PUBLIC_PREFIXES = ("/boot-status", "/auth/")
+#   /branding    -- the sign-in screen renders this install's own name
+#                   and logo, so a caller who cannot read it cannot be
+#                   shown the door they are meant to come through. It is
+#                   deliberately the ONLY thing an anonymous caller
+#                   learns about this install, and it is what the
+#                   operator chose to show.
+_ALWAYS_PUBLIC_PREFIXES = ("/boot-status", "/auth/", "/branding")
 
 # Open only while the install has no users at all (see the docstring).
 _UNBOOTSTRAPPED_ONLY_PREFIXES = ("/setup",)
@@ -137,7 +143,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         return JSONResponse(
             status_code=401,
             content={
-                "detail": "You are not signed in. Sign in to use Second Brain.",
+                "detail": "You are not signed in. Sign in to continue.",
                 "reason": "not_authenticated",
             },
         )
@@ -170,7 +176,7 @@ def current_identity(request: Request) -> Identity:
     if identity is None:
         raise HTTPException(
             status_code=401,
-            detail="You are not signed in. Sign in to use Second Brain.",
+            detail="You are not signed in. Sign in to continue.",
         )
     return identity
 

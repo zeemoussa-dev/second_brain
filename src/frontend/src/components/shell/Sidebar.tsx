@@ -3,6 +3,7 @@ import { NavLink } from 'react-router';
 import { apiFetch } from '../../api/client';
 import { pluginNavEntries } from '../../pluginHost/registry';
 import { SignedInAs } from './SignedInAs';
+import { useBranding } from '../../features/branding/BrandingProvider';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -35,6 +36,7 @@ function useAppVersion(): string | null {
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const version = useAppVersion();
+  const { app_name: appName, logoUrl } = useBranding();
   return (
     <nav className="sidebar">
       <div className="sidebar-header">
@@ -47,7 +49,8 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         >
           ☰
         </button>
-        <h2>Second Brain</h2>
+        {logoUrl && <img className="sidebar-logo" src={logoUrl} alt="" />}
+        <h2>{appName}</h2>
       </div>
       <div className="sidebar-links">
       <NavLink

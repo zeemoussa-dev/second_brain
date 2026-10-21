@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { bootstrapFirstAdmin } from './authApiClient';
 import { refusalText } from './SignInScreen';
+import { useBranding } from '../branding/BrandingProvider';
 
 
 const MINIMUM_PASSWORD_LENGTH = 8;
@@ -21,6 +22,7 @@ const MINIMUM_PASSWORD_LENGTH = 8;
  * nobody can be locked out of is friction without a benefit.
  */
 export function FirstAdminScreen({ onBootstrapped }: { onBootstrapped: () => void }) {
+  const { logoUrl } = useBranding();
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
@@ -45,6 +47,9 @@ export function FirstAdminScreen({ onBootstrapped }: { onBootstrapped: () => voi
   return (
     <div className="auth-screen">
       <form className="auth-card" onSubmit={handleSubmit}>
+      <div className="auth-brand">
+        {logoUrl && <img className="auth-logo" src={logoUrl} alt="" />}
+      </div>
         <h1>Create the first Admin</h1>
         <p className="auth-note" data-testid="first-admin-explainer">
           This install has no accounts yet. The account you create here becomes its

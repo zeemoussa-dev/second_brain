@@ -33,6 +33,7 @@ const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { key: 'system', icon: 'tune', label: 'System', desc: 'Core app-level behaviour.', href: '/settings/system' },
   { key: 'operator', icon: 'badge', label: 'Operator Profile', desc: 'Who your agents act for — your name, your other mail addresses, your timezone, and your team as emails and roles.', href: '/settings/operator' },
   { key: 'users', icon: 'group', label: 'Users', desc: 'Who can sign in, and what each of them may do. Everyone shares the same vault and agents; a role decides what a person may change.', href: '/settings/users', needs: 'manage_users' },
+  { key: 'branding', icon: 'palette', label: 'Branding', desc: "What this install calls itself, and the logo beside it — in the sidebar, the browser tab and the sign-in screen.", href: '/settings/branding', needs: 'manage_settings' },
   { key: 'sections', icon: 'hub', label: 'Sections', desc: 'Business-domain groupings agents belong to.', href: '/settings/sections' },
   { key: 'vault', icon: 'folder_open', label: 'Vault', desc: 'Your Obsidian vault path and status.', href: '/settings/vault' },
   { key: 'config', icon: 'settings', label: 'Config', desc: 'App configuration.', href: '/settings/config' },

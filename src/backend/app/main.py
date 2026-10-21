@@ -15,6 +15,7 @@ from app.api.admin_users_router import router as admin_users_router
 from app.api.agents_router import router as agents_router
 from app.api.auth_guard import AuthenticationMiddleware
 from app.api.auth_router import router as auth_router
+from app.api.branding_router import router as branding_router
 from app.api.artifacts_router import router as artifacts_router
 from app.api.backup_router import router as backup_router
 from app.api.blueprints_router import router as blueprints_router
@@ -267,6 +268,7 @@ async def gate_on_setup_mode(request: Request, call_next):
 # itself is added only once the frontend can sign in -- switching it on
 # first would lock the operator out of their own running app.
 app.include_router(auth_router)
+app.include_router(branding_router)
 app.include_router(admin_users_router)
 app.include_router(health_check_router)
 app.include_router(setup_router)

@@ -15,6 +15,7 @@ import './styles/setup.css'
 import './styles/auth.css'
 import App from './App.tsx'
 import { AuthGate } from './features/auth/AuthGate.tsx'
+import { BrandingProvider } from './features/branding/BrandingProvider.tsx'
 import { BootGate } from './features/boot/BootGate.tsx'
 
 createRoot(document.getElementById('root')!).render(
@@ -24,9 +25,14 @@ createRoot(document.getElementById('root')!).render(
         in to, and a password form in front of a broken backend replaces
         a useful boot error with one that cannot succeed. */}
     <BootGate>
-      <AuthGate>
-        <App />
-      </AuthGate>
+      {/* Branding wraps AuthGate: the sign-in and first-Admin screens
+          render this install's name and logo, so it must be known
+          before anyone is identified. */}
+      <BrandingProvider>
+        <AuthGate>
+          <App />
+        </AuthGate>
+      </BrandingProvider>
     </BootGate>
   </StrictMode>,
 )

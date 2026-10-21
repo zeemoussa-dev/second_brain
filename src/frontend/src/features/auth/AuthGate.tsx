@@ -109,7 +109,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return (
       <div className="auth-screen">
         <div className="auth-card">
-          <h1>Second Brain cannot reach its backend</h1>
+          <h1>This app cannot reach its backend</h1>
           <p className="auth-detail">{phase.detail}</p>
           <p className="auth-note">
             This is not a sign-in problem — there is nothing to sign in to until the
