@@ -91,6 +91,17 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           <span className="nav-label">{entry.label}</span>
         </NavLink>
       ))}
+      {/* REQ-SB-103 -- a Workflow that stopped to ask holds until
+          somebody answers, so there has to be somewhere that shows it
+          is waiting. Above System Health because it is work of yours,
+          not a reading about the machine. */}
+      <NavLink
+        to="/waiting-on-me"
+        className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
+      >
+        <span className="nav-icon">&#9203;</span>
+        <span className="nav-label">Waiting on You</span>
+      </NavLink>
       <NavLink
         to="/system-health"
         className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { useAuth } from '../features/auth/AuthGate';
 import { refusalText } from '../features/auth/SignInScreen';
+import { listUsers, type ManagedUser } from '../features/auth/authApiClient';
 import { fetchEntryPoints, saveEntryPoints } from '../features/hermes-ops/client';
 import type { EntryPoint, EntryPointsView } from '../features/hermes-ops/client';
 
@@ -26,6 +27,16 @@ const STATUS_BADGE: Record<EntryPoint['status'], string> = {
   agrees: 'badge badge-success',
 };
 
+/** Whose door it is, in words. An owner this install no longer has is
+ *  shown as the raw id rather than as "nobody": the declaration really
+ *  does name somebody, and the operator needs to see that it no longer
+ *  resolves. */
+function ownerLabel(row: EntryPoint, people: ManagedUser[] | null) {
+  if (!row.owner_user_id) return <span className="auth-note">nobody in particular</span>;
+  const person = (people ?? []).find((candidate) => candidate.id === row.owner_user_id);
+  return <>{person ? (person.display_name || person.username) : row.owner_user_id}</>;
+}
+
 /** REQ-SB-102 — the outside doors into this install, and which agent
  * answers each.
  *
@@ -48,7 +59,13 @@ export function EntryPointsPage() {
   const [view, setView] = useState<EntryPointsView | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
+  const [ownerDraft, setOwnerDraft] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  // The people this install has, for the owner picker. Reading them
+  // needs MANAGE_USERS, which MANAGE_HERMES does not imply — so `null`
+  // is an ordinary state here, and the owner falls back to a plain
+  // user-id field rather than the page refusing to load.
+  const [people, setPeople] = useState<ManagedUser[] | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -60,24 +77,34 @@ export function EntryPointsPage() {
 
   useEffect(() => {
     void load();
+    listUsers().then(setPeople, () => setPeople(null));
   }, [load]);
 
   const keyOf = (row: EntryPoint) => `${row.source}::${row.chat_id}`;
 
   async function declare(row: EntryPoint) {
     if (!view) return;
-    const agentId = (draft[keyOf(row)] ?? row.agent_id ?? '').trim();
+    const key = keyOf(row);
+    const agentId = (draft[key] ?? row.agent_id ?? '').trim();
+    const ownerId = (ownerDraft[key] ?? row.owner_user_id ?? '').trim();
     // The whole declared set is sent: it is small, and the operator is
     // editing a map, so saving the map they are looking at is the
-    // honest operation.
+    // honest operation. Every field each row already carries is carried
+    // back — a save REPLACES the stored list, so a field left out here
+    // is a field deleted on disk, and the owner of every OTHER door
+    // would quietly vanish because one door's agent was edited.
     const next = view.entry_points
       .map((entry) => ({
         label: entry.label ?? entry.observed?.chat_name ?? entry.chat_id,
         source: entry.source,
         chat_id: entry.chat_id,
-        agent_id: keyOf(entry) === keyOf(row) ? agentId : entry.agent_id,
+        agent_id: keyOf(entry) === key ? agentId : entry.agent_id,
+        owner_user_id: keyOf(entry) === key ? (ownerId || null) : (entry.owner_user_id ?? null),
       }))
-      .filter((entry) => entry.agent_id);
+      // A row is kept once it declares EITHER an agent or an owner:
+      // whose door it is is worth recording even before anyone has
+      // decided which agent should answer it.
+      .filter((entry) => entry.agent_id || entry.owner_user_id);
     setFailure(null);
     setBusy(true);
     try {
@@ -131,6 +158,7 @@ export function EntryPointsPage() {
             <tr>
               <th>Door</th>
               <th>Should reach</th>
+              <th>Belongs to</th>
               <th>Actually answered</th>
               <th>State</th>
             </tr>
@@ -176,6 +204,41 @@ export function EntryPointsPage() {
                     </div>
                   ) : (
                     row.agent_id ?? <span className="auth-note">not declared</span>
+                  )}
+                </td>
+                {/* Whose door this is (REQ-SB-103). When a Workflow stops
+                    to ask a person, this is who it waits on; a door with
+                    nobody declared waits on everybody, which is shown as
+                    such rather than quietly attributed to the operator. */}
+                <td>
+                  {canDeclare ? (
+                    people !== null ? (
+                      <select
+                        aria-label={`Owner of ${row.chat_id}`}
+                        value={ownerDraft[keyOf(row)] ?? row.owner_user_id ?? ''}
+                        onChange={(event) =>
+                          setOwnerDraft((d) => ({ ...d, [keyOf(row)]: event.target.value }))
+                        }
+                      >
+                        <option value="">nobody in particular</option>
+                        {people.map((person) => (
+                          <option key={person.id} value={person.id}>
+                            {person.display_name || person.username}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        aria-label={`Owner of ${row.chat_id}`}
+                        placeholder="user id"
+                        value={ownerDraft[keyOf(row)] ?? row.owner_user_id ?? ''}
+                        onChange={(event) =>
+                          setOwnerDraft((d) => ({ ...d, [keyOf(row)]: event.target.value }))
+                        }
+                      />
+                    )
+                  ) : (
+                    ownerLabel(row, people)
                   )}
                 </td>
                 <td>

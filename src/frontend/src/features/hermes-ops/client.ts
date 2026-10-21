@@ -173,6 +173,13 @@ export interface EntryPoint {
   source: string;
   chat_id: string;
   agent_id: string | null;
+  /** Whose door this is (`REQ-SB-103`) — the person a Workflow's human
+   *  step asks when a run comes in through it. A reference, not a
+   *  snapshot: renaming a person fixes every door at once, while a run
+   *  keeps who it resolved to when it started. Absent means nobody is
+   *  declared, which is a real state and never back-filled with the
+   *  operator. */
+  owner_user_id?: string | null;
   status: 'agrees' | 'drifted' | 'declared_only' | 'observed_only';
   observed: EntryPointObservation | null;
   answered_by: string[];

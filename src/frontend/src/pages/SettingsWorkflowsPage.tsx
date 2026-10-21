@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { Field } from '../features/settings/Field';
 import { extractErrorDetail } from '../features/settings/artifactFlowUtils';
 import { fetchActions, type ActionCatalogueEntry } from '../features/settings/actionsApiClient';
+import { fetchAgentList, type AgentSummary } from '../features/agents-map/agentsApiClient';
 import {
   createWorkflow,
   deleteWorkflow,
@@ -11,6 +12,7 @@ import {
   updateWorkflow,
   type Workflow,
   type WorkflowStep,
+  type WorkflowStepKind,
 } from '../features/settings/workflowsApiClient';
 
 // The Workflow catalogue and its ordered-step editor (REQ-SB-95-US-04-T07,
@@ -90,11 +92,27 @@ function describeInputs(inputs: Record<string, unknown>): string {
   return named.length === 0 ? 'No inputs stored.' : named.join(' · ');
 }
 
+/** One step in a one-line summary. Named by what it IS, because a
+ *  three-kind Workflow summarised only by its Action ids would read as
+ *  having fewer steps than it has -- a step that asks a person would
+ *  show as "(no action)" and look like a mistake. */
+function describeStep(step: WorkflowStep): string {
+  const kind = step.kind ?? 'action';
+  if (kind === 'agent') return `ask ${step.agent_id || '(no agent)'}`;
+  if (kind === 'human') return 'ask a person';
+  return step.action_id || '(no action)';
+}
+
 export function SettingsWorkflowsPage() {
   const [catalogue, setCatalogue] = useState<Workflow[] | null>(null);
   const [catalogueError, setCatalogueError] = useState<string | null>(null);
   const [actions, setActions] = useState<ActionCatalogueEntry[] | null>(null);
   const [actionsError, setActionsError] = useState<string | null>(null);
+  // The agent roster, for an `agent` step's picker. `null` is "not read"
+  // and is rendered as such rather than as an empty picker -- the same
+  // read/unread/empty distinction the Action catalogue gets below.
+  const [agents, setAgents] = useState<AgentSummary[] | null>(null);
+  const [agentsError, setAgentsError] = useState<string | null>(null);
   const [draft, setDraft] = useState<EditorDraft | null>(null);
   const [editingExisting, setEditingExisting] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -115,9 +133,17 @@ export function SettingsWorkflowsPage() {
     );
   }
 
+  function reloadAgents() {
+    return fetchAgentList().then(
+      (roster) => { setAgents(roster); setAgentsError(null); },
+      (error) => { setAgents(null); setAgentsError(extractErrorDetail(error)); },
+    );
+  }
+
   useEffect(() => {
     reloadCatalogue();
     reloadActions();
+    reloadAgents();
   }, []);
 
   function patchDraft(patch: Partial<EditorDraft>) {
@@ -219,6 +245,7 @@ export function SettingsWorkflowsPage() {
   }
 
   const catalogueActionIds = (actions ?? []).map((action) => action.id);
+  const agentIds = (agents ?? []).map((agent) => agent.id);
   // A save onto an id this install already has REPLACES that Workflow
   // (POST /workflows, same as POST /actions). The operator is told before
   // they save, because "New workflow" would otherwise be the screen's own
@@ -238,9 +265,13 @@ export function SettingsWorkflowsPage() {
       </div>
       <p className="text-muted">
         How a particular kind of request is handled: the ordered steps you decided on, which of them
-        need your confirmation, and what gets reported back. Each step runs one catalogued Action, so a
-        Workflow can only ask for things this app can actually do — and an Action a step names cannot be
-        deleted while the step still names it.
+        need your confirmation, and what gets reported back. A step either runs a catalogued Action,
+        hands the work to another agent, or stops and asks a person — so a Workflow can only ask for
+        things this app can actually do, and an Action a step names cannot be deleted while the step
+        still names it. A step's inputs, and what an agent or a person is asked, may name what the
+        request was about (<code>{'{{request.customer}}'}</code>) or what an earlier step came back
+        with (<code>{'{{steps.find.result}}'}</code>); a reference that cannot be resolved stops the
+        step rather than being sent as it is written.
       </p>
 
       {listError && (
@@ -277,7 +308,7 @@ export function SettingsWorkflowsPage() {
                     <span className="badge" data-testid={`workflow-step-order-${workflow.id}`}>
                       {workflow.steps.length === 0
                         ? 'No steps yet'
-                        : workflow.steps.map((step) => step.action_id || '(no action)').join(' → ')}
+                        : workflow.steps.map(describeStep).join(' → ')}
                     </span>
                   </span>
                 </div>
@@ -374,8 +405,16 @@ export function SettingsWorkflowsPage() {
               )}
               {actions !== null && actions.length === 0 && (
                 <span className="item-row-meta" data-testid="workflow-actions-empty">
-                  This install has no catalogued Actions yet, and every step runs one — catalogue an
-                  Action first.
+                  This install has no catalogued Actions yet, so a step that runs one has nothing to
+                  pick — catalogue an Action first. Steps that hand work to an agent or ask a person
+                  need none.
+                </span>
+              )}
+              {agentsError !== null && (
+                <span className="item-row-meta" data-testid="workflow-agents-error">
+                  <span className="badge badge-danger">Could not be read</span>{' '}
+                  The agent roster could not be read, so a step that hands work to an agent keeps
+                  whatever it already names instead of offering a picker: {agentsError}
                 </span>
               )}
 
@@ -384,11 +423,78 @@ export function SettingsWorkflowsPage() {
                   const picksAnUncataloguedAction = actions !== null
                     && step.action_id !== ''
                     && !catalogueActionIds.includes(step.action_id);
+                  const kind = step.kind ?? 'action';
                   return (
                     <div className="item-row" key={step.id || `new-${index}`} data-testid={`workflow-step-row-${index}`}>
                       <div className="item-row-main">
                         <span className="item-row-title">Step {index + 1}</span>
-                        {actions !== null && (
+                        {/* What this step IS (REQ-SB-103). Changing it
+                            leaves the other fields alone rather than
+                            clearing them: an operator who switches kind
+                            to look at the options and switches back has
+                            not asked to lose what they typed, and the
+                            Manager refuses a save whose kind and fields
+                            disagree, naming the step. */}
+                        <select
+                          className="input"
+                          data-testid={`workflow-step-kind-${index}`}
+                          value={kind}
+                          onChange={(event) => patchStep(index, {
+                            kind: event.target.value as WorkflowStepKind,
+                          })}
+                        >
+                          <option value="action">Run an Action</option>
+                          <option value="agent">Hand it to another agent</option>
+                          <option value="human">Ask a person</option>
+                        </select>
+                        {kind === 'agent' && (
+                          <>
+                            {agents !== null ? (
+                              <select
+                                className="input"
+                                data-testid={`workflow-step-agent-${index}`}
+                                value={step.agent_id}
+                                onChange={(event) => patchStep(index, { agent_id: event.target.value })}
+                              >
+                                <option value="">(no agent named)</option>
+                                {agentIds.map((agentId) => (
+                                  <option key={agentId} value={agentId}>{agentId}</option>
+                                ))}
+                                {/* Same reason the Action picker carries
+                                    an uncatalogued id: a select with no
+                                    matching option would display its
+                                    first one and quietly rewrite the
+                                    stored step into a different agent. */}
+                                {step.agent_id !== '' && !agentIds.includes(step.agent_id) && (
+                                  <option value={step.agent_id}>
+                                    {step.agent_id} — not an agent on this install
+                                  </option>
+                                )}
+                              </select>
+                            ) : (
+                              <span className="item-row-meta" data-testid={`workflow-step-agent-unpickable-${index}`}>
+                                Handed to {step.agent_id || '(no agent named)'} — kept exactly as stored.
+                              </span>
+                            )}
+                            <input
+                              className="input"
+                              placeholder="what to ask that agent — or {{steps.<id>.result}}"
+                              data-testid={`workflow-step-ask-${index}`}
+                              value={step.ask}
+                              onChange={(event) => patchStep(index, { ask: event.target.value })}
+                            />
+                          </>
+                        )}
+                        {kind === 'human' && (
+                          <input
+                            className="input"
+                            placeholder="what to ask the person — or {{steps.<id>.result}}"
+                            data-testid={`workflow-step-ask-${index}`}
+                            value={step.ask}
+                            onChange={(event) => patchStep(index, { ask: event.target.value })}
+                          />
+                        )}
+                        {kind === 'action' && actions !== null && (
                           <select
                             className="input"
                             data-testid={`workflow-step-action-${index}`}
@@ -410,7 +516,7 @@ export function SettingsWorkflowsPage() {
                             )}
                           </select>
                         )}
-                        {actions === null && (
+                        {kind === 'action' && actions === null && (
                           <span className="item-row-meta" data-testid={`workflow-step-action-unpickable-${index}`}>
                             Runs {step.action_id || '(no action named)'} — kept exactly as stored.
                           </span>
@@ -435,16 +541,35 @@ export function SettingsWorkflowsPage() {
                         </span>
                       </div>
                       <div className="item-row-actions">
-                        <label className="badge" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <input
-                            type="checkbox"
-                            data-testid={`workflow-step-confirm-${index}`}
-                            checked={step.needs_confirmation}
-                            style={{ margin: 0 }}
-                            onChange={(event) => patchStep(index, { needs_confirmation: event.target.checked })}
-                          />
-                          Needs confirmation
-                        </label>
+                        {/* Confirmation is the Action gate's, so the flag
+                            is offered only where there is a gate to pause
+                            at: a run refuses a confirmation-marked step
+                            whose Action needs none, and a human step is
+                            already the operator being asked. */}
+                        {kind === 'action' && (
+                          <label className="badge" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <input
+                              type="checkbox"
+                              data-testid={`workflow-step-confirm-${index}`}
+                              checked={step.needs_confirmation}
+                              style={{ margin: 0 }}
+                              onChange={(event) => patchStep(index, { needs_confirmation: event.target.checked })}
+                            />
+                            Needs confirmation
+                          </label>
+                        )}
+                        {kind === 'human' && (
+                          <label className="badge" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <input
+                              type="checkbox"
+                              data-testid={`workflow-step-allows-edit-${index}`}
+                              checked={step.allows_edit}
+                              style={{ margin: 0 }}
+                              onChange={(event) => patchStep(index, { allows_edit: event.target.checked })}
+                            />
+                            They may edit it
+                          </label>
+                        )}
                         <button
                           type="button"
                           className="btn"
@@ -481,15 +606,24 @@ export function SettingsWorkflowsPage() {
                   <span className="item-row-meta" data-testid="workflow-editor-no-steps">No steps yet.</span>
                 )}
                 <div>
+                  {/* No longer gated on the Action catalogue: a step is
+                      not always an Action, and a Workflow whose only
+                      step asks a person needs no catalogued Action at
+                      all. A new step starts as an `action` one, since
+                      that is what every Workflow written before
+                      REQ-SB-103 is made of. */}
                   <button
                     type="button"
                     className="btn"
                     data-testid="workflow-step-add"
-                    disabled={actions === null || actions.length === 0}
                     onClick={() => patchDraft({
                       steps: [...draft.steps, {
                         id: '',
+                        kind: 'action',
                         action_id: catalogueActionIds[0] ?? '',
+                        agent_id: '',
+                        ask: '',
+                        allows_edit: false,
                         inputs: {},
                         needs_confirmation: false,
                         description: '',
@@ -540,7 +674,7 @@ export function SettingsWorkflowsPage() {
                             : draft.reportStepIds.filter((stepId) => stepId !== step.id),
                         })}
                       />
-                      Step {index + 1}: {step.action_id || '(no action)'}
+                      Step {index + 1}: {describeStep(step)}
                     </label>
                   )
                 ))}
