@@ -12,7 +12,10 @@ AgentDetailPanel.tsx, which is REST request/response, not WS.
 /sessions gained real limit/offset query params 2026-08-23 for the Agent
 Activity page's own real Hermes session log (operator: "the Agents
 Activities Tab should get the Agents Log from Hermes")."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+
+from app.api.auth_guard import requires
+from app.business.core.users.user import Capability
 
 from app.business.hermes import cron_status as hermes_cron_status, status as hermes_status
 
@@ -47,6 +50,23 @@ def get_session_transcript(session_id: str, limit: int = 200, offset: int = 0) -
     """REQ-SB-100 -- what the agent was told, what it decided, which
     tools it called with what arguments, and what each answered."""
     return hermes_status.get_session_transcript(session_id, limit=limit, offset=offset)
+
+
+@router.get("/entry-points")
+def get_entry_points(scan: int = 400) -> dict:
+    """REQ-SB-102 -- which outside doors reach which agent, as the
+    operator declared it and as the traffic actually shows."""
+    return hermes_status.get_entry_points(scan=scan)
+
+
+@router.put("/entry-points")
+def set_entry_points(
+    body: list[dict],
+    _: object = Depends(requires(Capability.MANAGE_HERMES)),
+) -> dict:
+    """Declaring which agent a door should reach is configuring the
+    install, so it needs MANAGE_HERMES. Reading it does not."""
+    return hermes_status.set_entry_points(body)
 
 
 @router.get("/cron/jobs")

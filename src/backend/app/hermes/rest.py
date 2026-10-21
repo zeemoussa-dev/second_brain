@@ -113,6 +113,23 @@ class HermesRestAPI:
             "GET", "/api/sessions/search", params={"q": query, "limit": limit},
         )
 
+    def list_sessions_excluding(
+        self, exclude_sources: str, limit: int = 100, offset: int = 0,
+    ) -> dict:
+        """GET /api/sessions with Hermes' own `exclude_sources` filter.
+
+        Filtering at the source rather than scanning and discarding
+        here, because the ratio makes the difference between working and
+        not: this install holds 3546 sessions of which 3540 are cron, so
+        the single WhatsApp chat sits thousands of rows down and a
+        window of the newest few hundred finds nothing at all. Measured,
+        not predicted -- the window version returned an empty set.
+        """
+        return self._request("GET", "/api/sessions", params={
+            "limit": limit, "offset": offset, "order": "created",
+            "exclude_sources": exclude_sources,
+        })
+
     def get_session_stats(self) -> dict:
         return self._request("GET", "/api/sessions/stats")
 
