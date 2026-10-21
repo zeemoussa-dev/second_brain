@@ -318,3 +318,14 @@
   max-height: 96px;
   object-fit: contain;
 }
+
+/* Nav items in the foot sit tighter than those in the scrolling list:
+   there are two of them against a dozen, and the same vertical rhythm
+   reads as a gap between the links and the person below them. */
+.sidebar-foot .nav-item {
+  margin: 0;
+}
+
+.sidebar-foot .signed-in-as {
+  margin-top: var(--space-2);
+}

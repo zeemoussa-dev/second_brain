@@ -92,22 +92,6 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         </NavLink>
       ))}
       <NavLink
-        to="/settings"
-        className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
-      >
-        <span className="nav-icon">⚙</span>
-        <span className="nav-label">Settings</span>
-      </NavLink>
-      {hasAdminCenter && (
-        <NavLink
-          to="/admin"
-          className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
-        >
-          <span className="nav-icon">&#128737;</span>
-          <span className="nav-label">Admin Center</span>
-        </NavLink>
-      )}
-      <NavLink
         to="/system-health"
         className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
       >
@@ -140,7 +124,28 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           the panel. The user sits ABOVE the version because it is the line
           someone actually comes here to read; the version stays the last
           thing, where it has always been. */}
+      {/* Configuration and the person using the app live together at the
+          foot (operator, 2026-10-21). They are the two things you reach
+          for about the app ITSELF rather than about your work, so they
+          sit below the scrolling list of places to go rather than
+          inside it. */}
       <div className="sidebar-foot">
+        <NavLink
+          to="/settings"
+          className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
+        >
+          <span className="nav-icon">⚙</span>
+          <span className="nav-label">Settings</span>
+        </NavLink>
+        {hasAdminCenter && (
+          <NavLink
+            to="/admin"
+            className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
+          >
+            <span className="nav-icon">&#128737;</span>
+            <span className="nav-label">Admin Center</span>
+          </NavLink>
+        )}
         <SignedInAs collapsed={collapsed} />
         {!collapsed && version && <div className="sidebar-version">v{version}</div>}
       </div>
