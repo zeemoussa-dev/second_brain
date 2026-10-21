@@ -59,6 +59,9 @@ def test_a_declaration_without_requires_is_still_allowed(monkeypatch) -> None:
     assert manager.validate_declared_writes("anything") == []
 
 
+# Drift is the difference between shipped and really deployed; a
+# scratch store has nothing deployed to drift from.
+@pytest.mark.reads_the_real_data_store
 def test_drift_report_uses_the_documented_statuses() -> None:
     """The report is only useful if the statuses mean what they say.
     `modified` is the sharp one: same version, different content -- the

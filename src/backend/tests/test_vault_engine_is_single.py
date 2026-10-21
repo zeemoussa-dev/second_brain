@@ -1,3 +1,4 @@
+import pytest
 """There is ONE vault engine.
 
 `app/vault/vault_manager.py` used to be a second, older copy that claimed to
@@ -41,6 +42,9 @@ def test_a_real_shipped_template_loads() -> None:
     assert template["root"]["sections"], "parsed to zero sections -- v1 reader on a v2 file"
 
 
+# This test IS about the real data root being read from the
+# environment, so sandboxing that root would test the sandbox.
+@pytest.mark.reads_the_real_data_store
 def test_the_engine_resolves_the_data_root_from_the_environment() -> None:
     """It is standalone by design (no backend import), so it reads the
     environment. app/config.py exports SECOND_BRAIN_DATA_PATH on load; without

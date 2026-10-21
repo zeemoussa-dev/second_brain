@@ -107,3 +107,63 @@ def every_request_is_signed_in_as_an_admin(monkeypatch):
         "identity_for",
         lambda self, request: the_suite_admin,
     )
+
+
+@pytest.fixture(autouse=True)
+def the_data_store_is_sandboxed(request, tmp_path_factory, monkeypatch):
+    """REQ-SB-103: the suite no longer reads the operator's real
+    artifacts.
+
+    `hermes_install_is_sandboxed` above isolated Hermes and nothing
+    else, so `SECOND_BRAIN_DATA_PATH` stayed pointed at the real store
+    and tests enumerated whatever artifacts happened to exist on the
+    machine. That was invisible for months and then was not: creating
+    ONE real Workflow on 2026-10-21 broke four tests that assert the
+    exact set of artifact kinds, none of which had anything to do with
+    the change. A suite whose result depends on the operator's data is
+    a suite that cannot be trusted to say what a change did -- the same
+    reasoning that put the Hermes sandbox here, applied to the half it
+    left out.
+
+    The shipped Masters and starter Actions are seeded into the scratch
+    store, because they are part of what this app IS rather than
+    operator data: several tests legitimately expect a shipped Template
+    to load, and an empty store would fail them for the wrong reason.
+    Session-scoped so the cost is paid once, not per test.
+
+    A test that genuinely needs the real install -- one asserting what
+    is really deployed, or that the data root is read from the
+    environment at all -- opts out with
+    `@pytest.mark.reads_the_real_data_store`. Three do, and each says
+    why at its own marker. An opt-out is better than no sandbox: it
+    makes "this one touches real data" a thing you can grep for.
+    """
+    if request.node.get_closest_marker("reads_the_real_data_store"):
+        return
+    monkeypatch.setattr(
+        settings, "second_brain_data_path", _sandboxed_data_root(tmp_path_factory)
+    )
+
+
+def _sandboxed_data_root(tmp_path_factory):
+    """One scratch store per session, seeded once. Cached on the
+    function because `tmp_path_factory.mktemp` would otherwise mint a
+    fresh empty directory for every test and re-seed 700 times."""
+    existing = getattr(_sandboxed_data_root, "_root", None)
+    if existing is not None:
+        return existing
+
+    root = tmp_path_factory.mktemp("second-brain-data")
+    _sandboxed_data_root._root = root
+
+    from app.business.core.actions.action_manager import ActionManager
+    from app.business.core.templates.template_manager import TemplateManager
+
+    original = settings.second_brain_data_path
+    try:
+        settings.second_brain_data_path = root
+        TemplateManager().seed_shipped_masters()
+        ActionManager().seed_shipped_starters()
+    finally:
+        settings.second_brain_data_path = original
+    return root

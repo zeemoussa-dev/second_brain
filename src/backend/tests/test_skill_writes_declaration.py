@@ -46,6 +46,9 @@ def test_the_map_contains_exactly_what_the_deployed_skills_declare() -> None:
     assert not (undeployed_actions - granted) & granted, "an undeployed Skill must grant nothing"
 
 
+# Reads what is really DEPLOYED across the install's profiles, which
+# a scratch data store does not have (`REQ-SB-103`).
+@pytest.mark.reads_the_real_data_store
 def test_every_writer_of_a_restricted_template_is_declared() -> None:
     """Declaring `writes:` for a Template turns enforcement ON for it: any
     section it names is then closed to every caller not listed. A second
