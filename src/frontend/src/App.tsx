@@ -20,6 +20,7 @@ import { AdminCenterPage } from './pages/AdminCenterPage';
 import { SessionTranscriptPage } from './pages/SessionTranscriptPage';
 import { EntryPointsPage } from './pages/EntryPointsPage';
 import { WaitingOnMePage } from './pages/WaitingOnMePage';
+import { SettingsAgentAccessPage } from './pages/SettingsAgentAccessPage';
 import { FlowMapPage } from './pages/FlowMapPage';
 import { AgentFlowPage } from './pages/AgentFlowPage';
 import { SettingsRulesPage } from './pages/SettingsRulesPage';
@@ -60,6 +61,8 @@ function App() {
           <Route path="/settings/operator" element={<SettingsOperatorPage />} />
           <Route path="/settings/users" element={<SettingsUsersPage />} />
           <Route path="/settings/branding" element={<SettingsBrandingPage />} />
+          {/* The keys Hermes workers authenticate with (REQ-SB-103). */}
+          <Route path="/settings/agent-access" element={<SettingsAgentAccessPage />} />
           {/* Your own account (REQ-SB-101). Not under /settings: it is
               not a setting of the install, it is one person's account,
               and everyone signed in has one regardless of role. */}
