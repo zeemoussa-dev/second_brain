@@ -4,6 +4,7 @@ import { apiFetch } from '../../api/client';
 import { pluginNavEntries } from '../../pluginHost/registry';
 import { SignedInAs } from './SignedInAs';
 import { useBranding } from '../../features/branding/BrandingProvider';
+import { useHasAdminCenter } from '../../features/settings/SectionGrid';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -37,6 +38,9 @@ function useAppVersion(): string | null {
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const version = useAppVersion();
   const { app_name: appName, logoUrl } = useBranding();
+  // Asked of the same list the page renders, so the link can never
+  // lead to a page with nothing on it.
+  const hasAdminCenter = useHasAdminCenter();
   return (
     <nav className="sidebar">
       <div className="sidebar-header">
@@ -94,6 +98,15 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         <span className="nav-icon">⚙</span>
         <span className="nav-label">Settings</span>
       </NavLink>
+      {hasAdminCenter && (
+        <NavLink
+          to="/admin"
+          className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
+        >
+          <span className="nav-icon">&#128737;</span>
+          <span className="nav-label">Admin Center</span>
+        </NavLink>
+      )}
       <NavLink
         to="/system-health"
         className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}

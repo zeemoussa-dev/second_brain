@@ -16,6 +16,7 @@ import { SettingsSystemPage } from './pages/SettingsSystemPage';
 import { SettingsUsersPage } from './pages/SettingsUsersPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { SettingsBrandingPage } from './pages/SettingsBrandingPage';
+import { AdminCenterPage } from './pages/AdminCenterPage';
 import { SettingsSectionsPage } from './pages/SettingsSectionsPage';
 import { SettingsVaultPage } from './pages/SettingsVaultPage';
 import { SettingsVaultTemplatesPage } from './pages/SettingsVaultTemplatesPage';
@@ -47,6 +48,8 @@ function App() {
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/crawlers" element={<CrawlersPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          {/* Running the install, split out of Settings on 2026-10-21. */}
+          <Route path="/admin" element={<AdminCenterPage />} />
           <Route path="/settings/system" element={<SettingsSystemPage />} />
           <Route path="/settings/operator" element={<SettingsOperatorPage />} />
           <Route path="/settings/users" element={<SettingsUsersPage />} />
