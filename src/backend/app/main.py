@@ -11,7 +11,9 @@ from app.business.core.templates.template_manager import TemplateManager
 from app.business.core.plugins.plugin_manager import PluginManager
 from app.business.core.vault.vault_manager import VaultManager
 from app.api.actions_router import router as actions_router
+from app.api.admin_users_router import router as admin_users_router
 from app.api.agents_router import router as agents_router
+from app.api.auth_router import router as auth_router
 from app.api.artifacts_router import router as artifacts_router
 from app.api.backup_router import router as backup_router
 from app.api.blueprints_router import router as blueprints_router
@@ -235,6 +237,14 @@ async def gate_on_setup_mode(request: Request, call_next):
     return await call_next(request)
 
 
+# REQ-SB-101. These two are registered ahead of the default-deny
+# middleware that will guard everything else: `/auth/*` is the door and
+# must work before there is any way in, and `/admin/users` guards itself
+# on MANAGE_USERS via its own router-level dependency. The middleware
+# itself is added only once the frontend can sign in -- switching it on
+# first would lock the operator out of their own running app.
+app.include_router(auth_router)
+app.include_router(admin_users_router)
 app.include_router(health_check_router)
 app.include_router(setup_router)
 app.include_router(artifacts_router)
