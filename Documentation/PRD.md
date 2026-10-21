@@ -5695,3 +5695,115 @@ Action-call ledger and confirmation records name the signed-in person; the user 
 SQLite database outside the vault and outside the artifact data path, and no export or bundle
 contains it; and the route guard is default-deny, so a router added tomorrow is protected
 without its author remembering to protect it.
+
+---
+
+### REQ-SB-102: See the Flow — Entry Points, Routing, Actions and Workflows, and Where to Block
+
+Raised 2026-10-21 by the operator: "When I talk to WhatsApp I talk to an Agent I need to see
+the Flow of How it routes to Actions and Workflows how it Access the data, a Visual
+Representation of Hermes in full So I Can Modify Actions Or Add a Block to Stop Doing Certain
+things". Scoped the same day: **map first, then trace**; blocks are **a kill switch** and
+later **a rule**; and the map's top level is **the external interfaces**, not the profile list
+— "In WhatsApp There is A Primary Agent for my Number and Another Agent for Another Number I
+need to be able to Work on both Separately", with all 43 profiles still debuggable one by one.
+
+And the decisive one, which changes what this requirement even is: "My Plan is to Tell The
+Soul File that if the Operator is Asking for Entity, Look for the Entities Agent. In the
+Entities Agent it will have its own Steps. This Can Make the Soul More Structured and I can
+Now See a Flow and Gaps".
+
+**Finding 1 — the routing is not a graph today, and that is the whole problem.** `Primary` is
+the WhatsApp router, and it routes by reading its soul and deciding. That decision is a model
+judgement at runtime, so there is nothing to draw: `agents_map_adapter.py` says as much in its
+own words — what the Agents Map renders is "Second Brain's OWN presentation decision… not
+something Hermes reports". Any map built by inferring intent from behaviour would be a guess
+dressed as a diagram.
+
+**Finding 2 — the operator's plan removes that problem rather than working around it.** Make
+the routing declarative in the soul, and the map stops being an inference: it is a reading of
+what this install actually tells the agent. This is the right shape and it is not a new
+mechanism — a soul already carries five auto-generated marker blocks (`SPECIALISTS`,
+`INDEX GUIDANCE`, `ACTION CATALOGUE`, `WORKFLOW CATALOGUE`, `OPERATOR PROFILE`), each written
+by `AgentManager` and each already both prompt and data.
+
+**Finding 3 — half the edge already exists; the missing half is the condition.** `Agent` has a
+real `depends_on`, and `regenerate_specialists_section` publishes a delegation instruction into
+the PARENT's soul naming each child and how to reach it (`terminal(hermes -p <profile> chat …)`,
+because `hermes peer` is cross-gateway only). So *"these are your specialists"* is already
+declared. What is absent is *"and go to this one WHEN the ask is X"* — today the block is
+`id — description` and the model infers the rest. The operator's "if the Operator is Asking
+for Entity" is exactly that missing field.
+
+**Finding 4 — there is no concept of an external entry point.** Nothing in the app records
+that one WhatsApp number reaches `Primary` and another reaches a different agent. That mapping
+lives in Hermes' channel configuration and the app has never read it. Without it the map has
+no top level, and the operator's requirement to work on two numbers separately cannot be met.
+
+**Finding 5 — the downstream half is already recorded and now says who.** An Action-call row
+carries the action, the caller agent, the inputs, the outcome, any refusal, the grant, and
+since `REQ-SB-101` the person who initiated or confirmed it. A Workflow run carries an explicit
+state word per step. So the *trace* needs very little new data — mostly a reading of records
+that exist. The one missing piece is the session transcript (`REQ-SB-100`, still Draft on its
+privacy decision).
+
+**Finding 6 — "block" does not exist in any form.** The only levers are per-Action:
+`allowed_callers`, `needs_confirmation`, or deleting it. There is no off switch and no rule.
+
+**What is wanted.**
+
+1. **A routing block in the soul, with the condition on each edge.** A sixth marker block, or
+   `SPECIALISTS` extended: for each child, the `when` that should send the ask there. Written
+   by the app, read by the agent, and read back by the app to draw the map. One text, serving
+   both, so the diagram cannot drift from the instruction.
+2. **Entry points as the map's top level.** Each external interface — a WhatsApp number, a
+   mailbox — named, with the agent it reaches. Worked on separately, as the operator asked.
+3. **The map.** From an entry point: the agent, its routing conditions and where each leads,
+   the Actions each agent may call, the Workflows and their ordered steps, and what data each
+   Action touches (its implementation). Every edge from a real record.
+4. **Gaps, named as first-class output.** The reason the operator wants the picture. At least:
+   a condition routing to an agent that does not exist; an agent reachable by nothing; an
+   Action in a catalogue that no agent may call; a Workflow step naming an Action that is
+   missing or unresolvable; an entry point whose agent has no routing at all.
+5. **A kill switch per Action**, refusing every call with a reason and recording the refusal
+   in the ledger — the ledger already records refusals, so a blocked attempt is visible rather
+   than silent.
+6. **Per-profile debugging for all 43**, which `REQ-SB-99` already delivers; this requirement
+   adds the way IN to it from the map.
+
+**Deliberately separate, not in this requirement.** A **rule** ("never mail outside the
+company", "never write to that folder"), evaluated at call time against the inputs, is a policy
+engine and is larger than everything above put together. The operator asked for both; this
+records that it is wanted and that it is its own requirement. The **trace** is phase two, and
+needs `REQ-SB-100`'s privacy decision first.
+
+**Worth knowing before choosing.**
+
+- **The map is only as true as the agent's obedience.** A structured `when` is still an
+  instruction to a model, not an enforced branch — the agent can ignore it. That is not a
+  reason to avoid it: it is the reason the trace matters. The map says what should happen, the
+  trace says what did, and a gap between them is the most valuable thing this whole feature can
+  show. It should never be presented as a guarantee of behaviour.
+- **This rewrites 43 live souls.** Structuring the routing is a prompt change on every agent
+  that has specialists, and a prompt change is a behaviour change. `regenerate_specialists_section`
+  is deliberately NOT automatic today for exactly this reason (operator, on `depends_on`: "too
+  disruptive to rewrite a parent's real prompt on every tweak"). Rolling this out needs to be
+  something the operator does per agent and can see the before and after of — not a boot-time
+  pass over every profile.
+- **The write path into a soul has a history.** `BUG-092` and `BUG-093` were both losses in
+  that path, and publication is serialised on a lock because two passes raced and one block
+  went missing. A sixth block inherits all of it: byte-identical outside its own markers, and
+  the honesty rule that a reassembled soul is not evidence.
+- **The entry-point mapping may not be readable.** Whether the app can learn which WhatsApp
+  number reaches which agent depends on what Hermes exposes; if it cannot be read, it has to be
+  something the operator declares here, and a declared mapping that drifts from Hermes' real
+  configuration is its own kind of lie. Worth establishing before the map is designed around it.
+
+**Acceptance.** From one entry point the operator can see, on one screen: the agent that
+answers it, each routing condition and the agent it leads to, the Actions reachable at each
+step with what each one touches, and the Workflows with their ordered steps — every element
+read from a real record, nothing inferred from behaviour. Gaps are listed as gaps, not left to
+be spotted. Any Action can be switched off from that screen, and a blocked call is refused with
+a reason that reaches the agent and is recorded in the ledger. Two WhatsApp numbers reaching
+two different agents appear as two entry points that can be worked on independently. And every
+one of the 43 profiles is still reachable individually for debugging.
