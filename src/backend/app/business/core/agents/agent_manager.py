@@ -68,6 +68,7 @@ from app.business.core.agents.agent import Agent
 from app.business.core.sections.section_manager import SectionManager
 from app.business.core.skills.skill_manager import SkillManager, SkillPreconditionError
 from app.business.hermes.client import HermesAgent, get_client
+from app.data_access import routing_conditions as routing_conditions_data
 from app.data_access.registry import loader as registry_loader
 from app.data_access.registry import writer as registry_writer
 from app.data_access.registry.schemas import Agent as RegistryAgent
@@ -523,6 +524,9 @@ class AgentManager:
             skill_ids=[skill.id for skill in hermes_agent.skills],
             declared_skill_ids=list(getattr(getattr(registry_agent, "config", None), "skill_ids", None) or []),
             depends_on=registry_agent.config.depends_on if registry_agent is not None else [],
+            # The edge is Hermes'; the  on it is this app's own
+            # annotation and lives in our config folder (REQ-SB-102).
+            routing_conditions=routing_conditions_data.read_all().get(hermes_agent.id, {}),
             preferred_index_ids=registry_agent.config.preferred_index_ids if registry_agent is not None else [],
             tools=tools,
             primary_routing_snippet=registry_agent.config.primary_routing_snippet if registry_agent is not None else None,
@@ -620,17 +624,37 @@ class AgentManager:
             (a for a in self.get_all() if agent_id in a.depends_on), key=lambda a: a.id,
         )
         current_prompt = agent.prompt or f"You are {agent.name}."
-        new_prompt = self._apply_specialists_block(current_prompt, children)
+        new_prompt = self._apply_specialists_block(
+            current_prompt, children, agent.routing_conditions)
         if new_prompt == current_prompt:
             return agent
         return self.update(agent_id, prompt=new_prompt)
 
-    def _specialists_block_text(self, children: list[Agent]) -> str | None:
+    def _specialists_block_text(
+        self, children: list[Agent], routing_conditions: dict[str, str] | None = None,
+    ) -> str | None:
+        """The `when` is written as its own line under the specialist,
+        not folded into its description: a description says what that
+        agent IS, a condition says when to go there, and an agent
+        reading one run-on line has to work out which half is the
+        instruction (`REQ-SB-102`).
+
+        A specialist with no condition still appears with its
+        description alone, exactly as before this field existed. That is
+        what lets the operator add conditions one agent at a time rather
+        than all 43 at once.
+        """
         if not children:
             return None
-        bullets = "\n".join(
-            f"- **`{child.id}`** -- {child.description or child.name}" for child in children
-        )
+        conditions = routing_conditions or {}
+        lines = []
+        for child in children:
+            line = f"- **`{child.id}`** -- {child.description or child.name}"
+            when = (conditions.get(child.id) or "").strip()
+            if when:
+                line += f"\n  - **Go here when:** {when}"
+            lines.append(line)
+        bullets = "\n".join(lines)
         return (
             f"{_SPECIALISTS_BEGIN}\n"
             "## Your own specialists\n\n"
@@ -645,8 +669,11 @@ class AgentManager:
             f"{_SPECIALISTS_END}"
         )
 
-    def _apply_specialists_block(self, prompt: str, children: list[Agent]) -> str:
-        block = self._specialists_block_text(children)
+    def _apply_specialists_block(
+        self, prompt: str, children: list[Agent],
+        routing_conditions: dict[str, str] | None = None,
+    ) -> str:
+        block = self._specialists_block_text(children, routing_conditions)
         start = prompt.find(_SPECIALISTS_BEGIN)
         end = prompt.find(_SPECIALISTS_END)
         has_existing_block = start != -1 and end != -1

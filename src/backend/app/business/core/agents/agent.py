@@ -39,6 +39,20 @@ class Agent:
     # read by the mirror, so it could never be compared against reality.
     declared_skill_ids: list[str] = field(default_factory=list)
     depends_on: list[str] = field(default_factory=list)
+    # WHEN to hand an ask to each of those specialists, keyed by the
+    # child's agent id (`REQ-SB-102`; operator: "Tell The Soul File that
+    # if the Operator is Asking for Entity, Look for the Entities
+    # Agent"). Published into the parent's soul beside the specialist it
+    # belongs to, so the same text instructs the agent AND draws the map
+    # -- a diagram built from anything else would drift from the prompt
+    # it claims to describe.
+    #
+    # Decorates `depends_on` rather than replacing it: every existing
+    # reader of that list keeps working, and a specialist with no
+    # condition is simply ABSENT from this dict. Absent means "nobody
+    # said when", which is a gap worth reporting -- an empty string
+    # would be a condition that says nothing and look deliberate.
+    routing_conditions: dict[str, str] = field(default_factory=dict)
     # Real Index ids (business/core/index/) this agent should consult
     # FIRST when looking for data in the vault -- pure association today
     # (2026-08-28, operator: "Just the association + prompt text"), no

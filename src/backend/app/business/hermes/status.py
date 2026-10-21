@@ -83,3 +83,35 @@ def set_entry_points(entries: list[dict]) -> dict:
     entry_points_data.write_entry_points(entries)
     return get_entry_points()
 
+
+def get_flow_map() -> dict:
+    """REQ-SB-102 -- the whole flow, from the outside doors inwards.
+
+    Each source is loaded by its own Manager and a failure in one is
+    reported as that source being unread rather than collapsing the
+    whole map: an install whose Hermes is down still has a real Action
+    catalogue worth seeing, and an empty diagram would claim otherwise.
+    """
+    from app.business.core.actions.action_manager import ActionManager
+    from app.business.core.agents.agent_manager import AgentManager
+    from app.business.core.workflows.workflow_manager import WorkflowManager
+    from app.business.logic import flow_map
+
+    unread: list[str] = []
+
+    def read(name, load, fallback):
+        try:
+            return load()
+        except Exception as exc:  # noqa: BLE001 -- reported, never swallowed
+            unread.append(f"{name}: {exc}")
+            return fallback
+
+    agents = read("agents", lambda: AgentManager().get_all(), [])
+    actions = read("actions", lambda: ActionManager().get_all(), [])
+    workflows = read("workflows", lambda: WorkflowManager().get_all(), [])
+    doors = read("entry points", lambda: get_entry_points()["entry_points"], [])
+
+    built = flow_map.build(agents, actions, workflows, doors)
+    built["unread"] = unread
+    return built
+

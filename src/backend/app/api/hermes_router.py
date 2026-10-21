@@ -52,6 +52,13 @@ def get_session_transcript(session_id: str, limit: int = 200, offset: int = 0) -
     return hermes_status.get_session_transcript(session_id, limit=limit, offset=offset)
 
 
+@router.get("/flow-map")
+def get_flow_map() -> dict:
+    """REQ-SB-102 -- entry points, the agents behind them, where each
+    routes, what each may call, and every gap found on the way."""
+    return hermes_status.get_flow_map()
+
+
 @router.get("/entry-points")
 def get_entry_points(scan: int = 400) -> dict:
     """REQ-SB-102 -- which outside doors reach which agent, as the
@@ -67,6 +74,28 @@ def set_entry_points(
     """Declaring which agent a door should reach is configuring the
     install, so it needs MANAGE_HERMES. Reading it does not."""
     return hermes_status.set_entry_points(body)
+
+
+@router.put("/agents/{agent_id}/routing-conditions")
+def set_routing_conditions(
+    agent_id: str,
+    body: dict[str, str],
+    _: object = Depends(requires(Capability.MANAGE_AGENTS)),
+) -> dict:
+    """The `when` on each of this agent's specialist edges.
+
+    Saved here only -- it does NOT rewrite the agent's soul. Publishing
+    is a separate, explicit act (`POST /agents/{id}/regenerate-specialists`,
+    which already exists and is deliberately manual) because a prompt
+    change is a behaviour change on a live agent, and 43 of them should
+    not move because someone typed in a form.
+    """
+    from app.data_access import routing_conditions as routing_conditions_data
+
+    everything = routing_conditions_data.read_all()
+    everything[agent_id] = {k: v for k, v in body.items() if (v or "").strip()}
+    routing_conditions_data.write_all(everything)
+    return everything.get(agent_id, {})
 
 
 @router.get("/cron/jobs")
