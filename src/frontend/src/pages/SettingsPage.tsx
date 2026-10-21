@@ -11,7 +11,25 @@ import { pluginSettingsPages } from '../pluginHost/registry';
 // 2026-08-28 (operator: the whole Providers UI/router was already dead
 // -- no backend route existed) -- Provider stays a real backend entity
 // (business/core/provider/), just with no Settings UI of its own yet.
-const SETTINGS_SECTIONS = [
+/** One Settings card. `needs` names the capability required to see it
+ * (REQ-SB-101) and is absent on a card anyone signed in may open.
+ *
+ * Declared explicitly rather than inferred from the literal: with
+ * `as const` alone the array's element type is a union in which only
+ * some members have `needs`, so reading `section.needs` in the filter
+ * below fails to compile. That broke `tsc -b` for the whole frontend --
+ * and therefore every plugin publish, since `publish_plugin.py` builds
+ * the screens inside this framework before it will publish anything. */
+interface SettingsSection {
+  key: string;
+  icon: string;
+  label: string;
+  desc: string;
+  href: string;
+  needs?: string;
+}
+
+const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { key: 'system', icon: 'tune', label: 'System', desc: 'Core app-level behaviour.', href: '/settings/system' },
   { key: 'operator', icon: 'badge', label: 'Operator Profile', desc: 'Who your agents act for — your name, your other mail addresses, your timezone, and your team as emails and roles.', href: '/settings/operator' },
   { key: 'users', icon: 'group', label: 'Users', desc: 'Who can sign in, and what each of them may do. Everyone shares the same vault and agents; a role decides what a person may change.', href: '/settings/users', needs: 'manage_users' },
@@ -26,7 +44,7 @@ const SETTINGS_SECTIONS = [
   { key: 'workflows', icon: 'account_tree', label: 'Workflows', desc: 'How a kind of request is handled — the ordered steps, which need your confirmation, and what is reported back.', href: '/settings/workflows' },
   { key: 'export-data', icon: 'ios_share', label: 'Export Data', desc: 'Browse your real vault and export a chosen slice of notes/files as a portable archive.', href: '/settings/export-data' },
   { key: 'backup', icon: 'backup', label: 'Backup & Restore', desc: 'Full Hermes structural backup — Agents/Profiles, Cron, Skills — for moving this deployment to a new machine.', href: '/settings/backup' },
-] as const;
+];
 
 export function SettingsPage() {
   // REQ-SB-101: a card whose `needs` the signed-in person does not have
