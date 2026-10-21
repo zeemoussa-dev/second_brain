@@ -921,9 +921,14 @@ class AgentManager:
             workflows = self._workflow_catalogue()
             catalogue = self._action_catalogue()
             republished: list[str] = []
+            # Read once for the whole pass, like the two catalogues
+            # above: an `agent` step is published only if the agent it
+            # names exists, and asking that per agent per workflow
+            # would re-read the whole roster 43 times over.
+            known_agent_ids = {known.id for known in agents}
             for agent in agents:
                 current_prompt, new_prompt = self._workflow_catalogue_prompts(
-                    agent, workflows, catalogue,
+                    agent, workflows, catalogue, known_agent_ids,
                 )
                 if new_prompt == current_prompt:
                     continue
@@ -966,24 +971,29 @@ class AgentManager:
 
     def _workflow_catalogue_prompts(
         self, agent: Agent, workflows: list, catalogue: list,
+        known_agent_ids: set[str] | None = None,
     ) -> tuple[str, str]:
         """(the agent's current core prompt, the same prompt carrying this
         agent's own regenerated Workflow block).
 
         A Workflow is published to an agent only when that agent could
-        really run it end to end: every step names a catalogued Action the
-        agent is permitted to call. The permission is the Action
-        catalogue's own, read through the same `is_callable_by` the gate
-        and the Action block use, so the three can never disagree about
-        what `["*"]` means. Telling an agent about handling that would be
-        refused at step one is the same fabricated capability the whole
-        requirement exists to close -- and the run would still be refused,
-        because this text decides nothing.
+        really run it end to end -- and since `REQ-SB-103` a step is not
+        necessarily an Action, so what "could really run it" means now
+        depends on the step's kind. The permission for an Action step is
+        the Action catalogue's own, read through the same
+        `is_callable_by` the gate and the Action block use, so the three
+        can never disagree about what `["*"]` means. Telling an agent
+        about handling that would be refused at step one is the same
+        fabricated capability the whole requirement exists to close --
+        and the run would still be refused, because this text decides
+        nothing.
         """
+        if known_agent_ids is None:
+            known_agent_ids = {known.id for known in self.get_all()}
         runnable = sorted(
             (
                 workflow for workflow in workflows
-                if self._is_runnable_by(workflow, agent.id, catalogue)
+                if self._is_runnable_by(workflow, agent.id, catalogue, known_agent_ids)
             ),
             key=lambda workflow: workflow.id,
         )
@@ -991,19 +1001,46 @@ class AgentManager:
         return current_prompt, self._apply_workflow_catalogue_block(current_prompt, runnable)
 
     @staticmethod
-    def _is_runnable_by(workflow, agent_id: str, catalogue: list) -> bool:
+    def _is_runnable_by(
+        workflow, agent_id: str, catalogue: list, known_agent_ids: set[str],
+    ) -> bool:
         """A Workflow with no steps is runnable by nobody -- `start_run()`
         refuses it (`ADR-034`), so publishing it would advertise a run
-        that cannot be started."""
+        that cannot be started.
+
+        Each kind of step asks a different question (`REQ-SB-103`), and
+        collapsing them into the Action question is what would hide
+        every Workflow that has an agent or a human step in it: those
+        steps name no Action, so "is its Action callable" is false for a
+        step that needs no Action at all.
+
+        - an `action` step: the Action is catalogued AND this agent may
+          call it -- unchanged;
+        - an `agent` step: the agent it names exists. The app does not
+          call that agent (Hermes owns the conversation), so there is no
+          permission to check; what there is to check is that the step
+          would not hand back the name of an agent nobody has;
+        - a `human` step: always. There is nothing to permit about
+          asking a person a question, and a Workflow that stops to ask
+          is exactly the handling `REQ-SB-103` added.
+        """
         from app.business.core.actions.action_manager import ActionManager
         if not workflow.steps:
             return False
         actions_by_id = {action.id: action for action in catalogue}
-        return all(
-            step.action_id in actions_by_id
-            and ActionManager.is_callable_by(actions_by_id[step.action_id], agent_id)
-            for step in workflow.steps
-        )
+
+        def step_is_runnable(step) -> bool:
+            kind = getattr(step, "kind", "action") or "action"
+            if kind == "human":
+                return True
+            if kind == "agent":
+                return getattr(step, "agent_id", "") in known_agent_ids
+            return (
+                step.action_id in actions_by_id
+                and ActionManager.is_callable_by(actions_by_id[step.action_id], agent_id)
+            )
+
+        return all(step_is_runnable(step) for step in workflow.steps)
 
     def _workflow_catalogue_block_text(self, workflows: list) -> str | None:
         """What the agent is told: which kinds of request have documented
@@ -1043,11 +1080,33 @@ class AgentManager:
             "happened, and ask for the next one:\n\n"
             "```\n"
             "POST /workflows/<workflow_id>/run\n"
-            '{"caller_agent_id": "<your own agent id>"}\n\n'
+            '{"caller_agent_id": "<your own agent id>", "request": {"<what the ask was '
+            'about>": "<the value>"}}\n\n'
             "POST /workflows/runs/<run_id>/next-step\n\n"
             "POST /workflows/runs/<run_id>/steps/<step_id>/outcome\n"
             '{"outcome": "done" or "failed", "detail": "<what really happened>"}\n'
             "```\n\n"
+            "A step is not always an action for you to perform. Look at the step's `kind`:\n\n"
+            "- `action` -- yours to do, and its outcome is yours to report, as above.\n"
+            "- `agent` -- the step names another agent in `agent_id` and what to ask it in "
+            "`resolved_ask`. Put that to them, then report what they came back with as this "
+            "step's outcome, with their answer in `result`. Report what they actually said, not "
+            "what you expected them to say.\n"
+            "- `human` -- the step is a question for the person you are talking to, in "
+            "`resolved_ask`. **Ask them and stop.** The run holds at `awaiting_person` and "
+            "nothing after this step runs until their answer is recorded. Do not answer on their "
+            "behalf, and do not report the step done: the outcome route refuses it, because an "
+            "approval nobody gave is the one thing this must never record.\n\n"
+            "Their answer is recorded as theirs:\n\n"
+            "```\n"
+            "POST /workflows/runs/<run_id>/steps/<step_id>/answer\n"
+            '{"decision": "approved" | "edited" | "declined", "said": "<their words, verbatim>", '
+            '"result": "<what should go on, when they changed it>"}\n'
+            "```\n\n"
+            "`edited` is only accepted where the step allows it, and only with the new value in "
+            "`result` -- that value, not what was proposed, is what the next steps are given. "
+            "`declined` is a real answer and not a failure: the run stops there and the record "
+            "says they said so.\n\n"
             "`run_workflow.py`, beside the `call-action` runner in your own skills, makes all "
             "three calls for you and relays the app's own report.\n\n"
             "The app decides the order, which step needs the operator's confirmation and what "

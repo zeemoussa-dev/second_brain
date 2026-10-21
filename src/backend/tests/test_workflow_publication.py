@@ -376,6 +376,53 @@ def test_a_workflow_an_agent_could_not_finish_is_never_published_to_it(
     assert "team-actions-by-mail" not in souls["note-taker"]
 
 
+def test_a_workflow_with_an_agent_or_human_step_is_still_published(
+    stored_actions, stored_workflows, souls, publication_is_explicit_only,
+) -> None:
+    """[REQ-SB-103] A step is not always an Action. "Is its Action
+    callable" is false for a step that needs no Action at all, so asking
+    the Action question of every step would hide every Workflow that
+    stops to ask a person or hands work to another agent -- which is the
+    handling this requirement added.
+
+    An `agent` step is published only if the agent it names exists: the
+    app does not call that agent, so there is no permission to check,
+    but handing back the name of an agent nobody has is a dead end the
+    operator should not be told about.
+    """
+    _two_actions(allowed_callers=["*"])
+    WorkflowManager().create(
+        "ask-me-before-it-goes",
+        request_kind="list my team's actions, let me see it, then send it",
+        steps=[
+            {"id": "gather", "action_id": "list-the-teams-actions"},
+            {"id": "draft", "kind": "agent", "agent_id": "note-taker",
+             "ask": "{{steps.gather.result}}"},
+            {"id": "approve", "kind": "human", "ask": "Shall I send this?",
+             "allows_edit": True},
+            {"id": "send", "action_id": "mail-it-to-me"},
+        ],
+        report={"description": "what I approved and whether it went"},
+    )
+    WorkflowManager().create(
+        "hand-it-to-nobody",
+        request_kind="something nobody can do",
+        steps=[{"id": "draft", "kind": "agent", "agent_id": "an-agent-this-install-does-not-have",
+                "ask": "do the thing"}],
+        report={"description": "nothing"},
+    )
+
+    _publish()
+
+    assert "`ask-me-before-it-goes`" in _block_of(souls["customer-expert"])
+    assert "hand-it-to-nobody" not in souls["customer-expert"]
+    # And the block tells the agent what to do with the two kinds of
+    # step it cannot simply perform.
+    block = _block_of(souls["customer-expert"])
+    assert "awaiting_person" in block
+    assert "/answer" in block
+
+
 def test_an_agent_with_no_runnable_workflow_carries_no_block_at_all(
     stored_actions, stored_workflows, souls, publication_is_explicit_only,
 ) -> None:
