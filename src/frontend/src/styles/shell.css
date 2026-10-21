@@ -2,13 +2,44 @@
 .app-shell {
   display: grid;
   grid-template-columns: 240px 1fr;
-  min-height: 100vh;
+  /* `height`, not `min-height`. With a minimum the grid row GROWS to
+     whichever column is taller, so the sidebar stretched to fit its own
+     links and never capped -- which meant its `overflow-y: auto` had
+     nothing to scroll and the foot was pushed past the bottom of the
+     window (REQ-SB-101, operator 2026-10-21). A fixed viewport height
+     bounds the row, which is what lets the sidebar scroll its links and
+     keep its foot. `.main` already scrolls itself, so the page content
+     is unaffected -- that was always the intended shape here. */
+  height: 100vh;
+  overflow: hidden;
 }
 
+/* A column: the nav links scroll, the foot stays at the bottom.
+   It was `display: block` with a fixed height and `overflow: visible`,
+   which worked only while the links happened to be shorter than the
+   window. Adding the signed-in block at the foot (REQ-SB-101) made the
+   content taller than the viewport on an install with several plugins,
+   and the overflow spilled OUT of the sidebar box instead of scrolling
+   -- the avatar rendering over the content beside it (operator,
+   2026-10-21). A column with one scrolling child is the shape that
+   holds however many nav items a plugin adds. */
 .sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   background: var(--color-surface);
   border-right: 1px solid var(--color-border);
   padding: var(--space-4);
+}
+
+/* The links take the space that is left and scroll inside it. `min-height: 0`
+   is load-bearing on both: without it a flex child refuses to shrink below
+   its content, the column grows instead of scrolling, and the overflow comes
+   straight back. */
+.sidebar-links {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .sidebar-version {

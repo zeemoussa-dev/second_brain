@@ -49,6 +49,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         </button>
         <h2>Second Brain</h2>
       </div>
+      <div className="sidebar-links">
       <NavLink
         to="/"
         end
@@ -118,6 +119,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         <span className="nav-icon">&#128279;</span>
         <span className="nav-label">The Vault</span>
       </NavLink>
+      </div>
       {/* REQ-SB-101 -- who is signed in, then the version, at the foot of
           the panel. The user sits ABOVE the version because it is the line
           someone actually comes here to read; the version stays the last
