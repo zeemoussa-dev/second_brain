@@ -4114,3 +4114,135 @@ Read directly against the code, not taken from the story:
   new `MAX_PATH` exposure, and a profile path already over 260 characters
   surfaces through the honest per-region failure above. A third copy of the
   helper is not to be added here; that is its own decision if it is ever needed.
+
+## ADR-061: A Workflow step has a kind, a person's answer is not a step outcome, and an unresolvable reference refuses the step
+
+**Status:** Accepted
+**Date:** 2026-10-21
+
+**Context:** `ADR-034` fixed a Workflow as an ordered list of Action calls, each
+with literal inputs, dispatched one at a time through the Action gate. Two of
+the operator's own asks do not fit that shape (`REQ-SB-103`, 2026-10-21):
+
+- *"Generate the Actions assigned to my team and send it to me by mail"* — the
+  Primary agent finds the Actions, a mail agent formats and addresses them. That
+  is not a dependency between agents, it is one handing work to the next.
+- *"Tell me what is happening for a certain customer"* — which customer is not
+  knowable when the Workflow is written. The handling is fixed; one value in it
+  is not.
+
+And the operator's framing of the step that matters most: *"Here is the list you
+want me to send it to you by mail?"* with *"Edit, so the human can change it
+before it goes — and remember this happens through WhatsApp."*
+
+Three decisions follow, and they are recorded together because each one is only
+safe because of the others.
+
+**Decision 1 — a step has a `kind`: `action`, `agent` or `human`.**
+
+| kind | what the app does | what the record may claim |
+|---|---|---|
+| `action` | dispatches it through the gate | what the gate itself reported |
+| `agent` | hands the step BACK, naming the agent and the question | "the agent reported this" |
+| `human` | holds the run at `awaiting_person` | "this person decided this" |
+
+The app does not call the agent and does not reach the person. Hermes owns the
+conversation and the agent running the Workflow is already in it, so both are
+relayed — exactly as a `pointed_at` Action already is. `performed_by` is written
+on the step and carried into the report, because a report that read the same
+whether the app performed a step, an agent claimed it, or a person approved it
+is the fabricated certainty this family of requirements exists against.
+
+`kind` defaults to `action`, so every Workflow written before this keeps meaning
+what it meant, with no migration.
+
+`awaiting_person` is a step status and a run status of its own, deliberately not
+folded into either neighbour: `running` reads as "something is happening" and
+`blocked` reads as "something went wrong", and a run waiting on a person is
+neither. "What is waiting on me" is built by looking for exactly this state.
+
+**Decision 2 — a person's answer is recorded through its own route, and is not
+a step outcome.**
+
+`POST /workflows/runs/{id}/steps/{step_id}/answer`, guarded by
+`CONFIRM_ACTIONS`, beside but never merged with the existing
+`.../outcome`. The outcome route refuses an `awaiting_person` step by name.
+
+A caller reporting an outcome asserts something about work it did. A caller
+recording an answer relays a decision somebody else made. Collapsing them would
+mean the agent running a Workflow could write "the person approved it" by
+reporting its own step `done` — which is precisely the claim the whole
+requirement exists to make unforgeable. Who answered is taken from the
+signed-in session and never from the body, for the same reason `ADR-033`'s
+confirmations are: a route that accepted a name is a route that accepts a
+forged one.
+
+Three decisions, not two: `approved`, `edited`, `declined`. An edit is accepted
+only where the Workflow says `allows_edit` and only with a replacement value,
+and that value — not what was proposed — is what the steps referencing it are
+called with. A decline is a 200 and a real answer; the run blocks at that step
+carrying the person's own words as the reason.
+
+Whose question it is comes from the entry point the run came in through
+(`owner_user_id` on the declared door, `REQ-SB-102`'s own file). A reference on
+the declaration, a snapshot on the run: renaming a person fixes every door at
+once, while a run that re-read its owner would quietly change who it had been
+waiting on all along. A run through an unowned door is for anybody and is shown
+on every person's list — leaving it off each list is how it would be waited on
+by nobody, and naming whoever asked would invent a decision-maker.
+
+**Decision 3 — a step input, and what an agent or person is asked, may be a
+reference; an unresolvable one refuses the step.**
+
+`{{request.<name>}}` is what the ask was about, supplied by the agent that
+recognised the request because only a model can take it out of natural
+language, and recorded as given — the app has no way to check that the agent
+read the ask correctly, and a record implying otherwise would be the same
+fabrication. `{{steps.<id>.result}}` is what an earlier step came back with.
+
+Three constraints make this safe rather than convenient:
+
+- **Resolution produces a value or a refusal, never a passthrough.** A literal
+  `{{steps.find.result}}` in an email body is the failure that actually sends,
+  and the one no test catches, because the call succeeded.
+- **"Produced nothing" is not "has not produced".** A step still waiting,
+  refused or failed cannot supply a value and the run stops saying which; a step
+  that genuinely returned an empty answer supplied one. Collapsing those two is
+  how a pipeline quietly mails an empty list and reports success.
+- **Whole-value substitution only.** A reference is the entire input, never a
+  fragment inside a longer string. Interpolating a result into prose means
+  deciding how to render a dict as text, which is a formatting judgement — and
+  this ADR gives that to an `agent` step, where it is visible, rather than
+  burying it in a template engine nobody reads.
+
+Nothing is half-resolved: the first bad reference refuses the whole set, so no
+Action is ever called with a customer name and no body. `resolved_inputs` is
+stored beside the written ones, because debugging a run needs both what the step
+was told to send and what it sent.
+
+**Consequences:**
+
+- A run can now wait indefinitely. That is a real state, not a leak, and it is
+  why `GET /workflows/runs/waiting-on-a-person` and the "Waiting on You" screen
+  exist. The list is derived from the runs at every read and is never a second
+  copy, so answering is the only thing that clears it; a run whose record cannot
+  be read is reported as unreadable rather than dropped.
+- Publication asks a different question per kind. "Is its Action catalogued and
+  callable" is **false** for a step that needs no Action, so the old rule hid
+  every Workflow with an agent or human step from all 43 agents. An agent step
+  is published if the agent it names exists — the app does not call it, so there
+  is no permission to check, but handing back the name of an agent nobody has is
+  a dead end. A human step always.
+- The published block is now load-bearing in one new way: an agent has to know
+  to ask and STOP at a human step. It still decides nothing — an agent that
+  ignored every word could only reach a Workflow through the run routes, which
+  refuse an outcome for a step waiting on a person.
+- How a Hermes worker authenticates to the answer route is **not settled here**
+  (the open `ESC-081` follow-on). Until it is, an answer relayed from WhatsApp
+  is attributed to whatever account the worker signs in as. That is a visible
+  failure, not a silent mis-attribution: the route refuses an unattributed
+  answer outright.
+- A reference engine is a thing that will be asked to grow — filters, defaults,
+  string interpolation. Each of those is a new way for a step to be dispatched
+  with something nobody wrote down, and each needs its own decision rather than
+  an extension of this one.
