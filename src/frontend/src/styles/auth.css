@@ -322,3 +322,147 @@
 .sidebar-foot .signed-in-as {
   margin-top: var(--space-2);
 }
+
+/* -- Session transcript (REQ-SB-100) ---------------------------------- */
+
+.transcript-route-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.transcript-route-list li {
+  padding: var(--space-1) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.transcript-route-list li::before {
+  counter-increment: step;
+  content: counter(step) ". ";
+  color: var(--color-text-muted);
+}
+
+.transcript-turns {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.transcript-turn {
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+/* The operator's own words get the accent edge: in a long transcript
+   the question is the landmark you scroll to find. */
+.transcript-turn-user {
+  border-left: 3px solid var(--color-accent);
+}
+
+.transcript-role {
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.transcript-said {
+  margin: var(--space-2) 0 0;
+  white-space: pre-wrap;
+  color: var(--color-text);
+}
+
+.transcript-thinking button,
+.transcript-tool-head {
+  margin-top: var(--space-3);
+  padding: var(--space-1) var(--space-3);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.transcript-thinking pre,
+.transcript-tool-body pre {
+  max-height: 22rem;
+  overflow: auto;
+  padding: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--color-surface-sunken);
+  border-radius: var(--radius-sm);
+}
+
+/* A tool call is where a session touches the world, so it is given more
+   room than the prose around it, not less. */
+.transcript-tool {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.transcript-tool-dead-end {
+  border-color: var(--color-warning);
+}
+
+.transcript-tool-unreadable {
+  border-color: var(--color-danger);
+}
+
+.transcript-tool-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  margin-top: 0;
+  text-align: left;
+}
+
+.transcript-tool-name {
+  flex: 1 1 auto;
+  font-family: var(--font-mono);
+}
+
+.transcript-tool-toggle {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.transcript-tool-body h4 {
+  margin: var(--space-3) 0 var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.entry-point-declare {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.entry-point-declare input {
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}

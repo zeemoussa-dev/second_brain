@@ -99,3 +99,100 @@ export function fetchHermesSessions(limit = 50, offset = 0, profile?: string): P
   const query = `limit=${limit}&offset=${offset}${profile ? `&profile=${encodeURIComponent(profile)}` : ''}`;
   return apiFetch<HermesSessionsResponse>(`/hermes/sessions?${query}`);
 }
+
+// ---- one session, read as a conversation (REQ-SB-100) -----------------
+
+/** A tool call lifted out of the message it rode in on and paired with
+ * the `tool` message that answered it. Hermes stores those as two rows
+ * joined by `tool_call_id`, so without this join a call and its result
+ * sit far apart in the raw list. */
+export interface TranscriptToolCall {
+  id: string | null;
+  name: string | null;
+  arguments: unknown;
+  answered: boolean;
+  answer: string | null;
+  answered_by_tool: string | null;
+  unreadable?: string;
+}
+
+export interface TranscriptTurn {
+  id: number | null;
+  role: string;
+  said: string | null;
+  /** The model's own account of why, when it recorded one. */
+  thinking: string | null;
+  tool_calls: TranscriptToolCall[];
+  at: number | null;
+  tokens: number | null;
+  finish_reason: string | null;
+  effect_disposition: string | null;
+  raw: Record<string, unknown>;
+}
+
+export interface SessionTranscript {
+  reachable: boolean;
+  error?: string;
+  session_id: string;
+  session?: Record<string, unknown>;
+  pagination?: { limit: number; offset: number; order: string; returned: number } | null;
+  turns: TranscriptTurn[];
+  what_happened: {
+    turns_by_role: Record<string, number>;
+    /** The sequence of tools IS the route the session actually took. */
+    tools_in_order: string[];
+    distinct_tools: string[];
+    tool_calls_without_an_answer: number;
+  };
+  counts: { messages_in: number; turns_out: number; tool_answers_folded_in: number };
+}
+
+export function fetchSessionTranscript(
+  sessionId: string, limit = 200, offset = 0,
+): Promise<SessionTranscript> {
+  return apiFetch<SessionTranscript>(
+    `/hermes/sessions/${encodeURIComponent(sessionId)}/transcript?limit=${limit}&offset=${offset}`,
+  );
+}
+
+// ---- the outside doors (REQ-SB-102) -----------------------------------
+
+export interface EntryPointObservation {
+  source: string;
+  chat_id: string;
+  chat_name: string | null;
+  chat_type: string | null;
+  answered_by: string[];
+  session_count: number;
+  last_seen: string | null;
+  last_session_id: string | null;
+}
+
+export interface EntryPoint {
+  label?: string;
+  source: string;
+  chat_id: string;
+  agent_id: string | null;
+  status: 'agrees' | 'drifted' | 'declared_only' | 'observed_only';
+  observed: EntryPointObservation | null;
+  answered_by: string[];
+}
+
+export interface EntryPointsView {
+  reachable: boolean;
+  error?: string;
+  entry_points: EntryPoint[];
+  summary: { by_status: Record<string, number>; needs_attention: EntryPoint[] };
+  scanned: { sessions_read: number; window: number; internal_sources_excluded: string[] } | null;
+}
+
+export function fetchEntryPoints(): Promise<EntryPointsView> {
+  return apiFetch<EntryPointsView>('/hermes/entry-points');
+}
+
+export function saveEntryPoints(entries: Array<Partial<EntryPoint>>): Promise<EntryPointsView> {
+  return apiFetch<EntryPointsView>('/hermes/entry-points', {
+    method: 'PUT',
+    body: JSON.stringify(entries),
+  });
+}

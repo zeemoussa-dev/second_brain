@@ -17,6 +17,8 @@ import { SettingsUsersPage } from './pages/SettingsUsersPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { SettingsBrandingPage } from './pages/SettingsBrandingPage';
 import { AdminCenterPage } from './pages/AdminCenterPage';
+import { SessionTranscriptPage } from './pages/SessionTranscriptPage';
+import { EntryPointsPage } from './pages/EntryPointsPage';
 import { SettingsSectionsPage } from './pages/SettingsSectionsPage';
 import { SettingsVaultPage } from './pages/SettingsVaultPage';
 import { SettingsVaultTemplatesPage } from './pages/SettingsVaultTemplatesPage';
@@ -74,6 +76,10 @@ function App() {
           <Route path="/settings/backup" element={<SettingsBackupPage />} />
           <Route path="/system-health" element={<SystemHealthPage />} />
           <Route path="/agent-activity" element={<AgentActivityPage />} />
+          {/* REQ-SB-100 / REQ-SB-102 -- one session read as a
+              conversation, and the outside doors into this install. */}
+          <Route path="/agent-activity/:sessionId" element={<SessionTranscriptPage />} />
+          <Route path="/entry-points" element={<EntryPointsPage />} />
           <Route path="/browse" element={<VaultBrowserPage />} />
           <Route path="/browse/:stem" element={<NoteDetailPage />} />
           <Route path="/vault" element={<VaultGraphPage />} />

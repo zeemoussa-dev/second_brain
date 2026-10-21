@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router';
 import { fetchHermesSessions, type HermesSession } from '../features/hermes-ops/client';
 import { fetchAgentList } from '../features/agents-map/agentsApiClient';
 
@@ -50,6 +51,13 @@ export function AgentActivityPage() {
   return (
     <>
       <h1>Agent Activity</h1>
+      {/* The doors are the other half of this page's question: a session
+          list says what ran, entry points say where it came in from. */}
+      <p className="auth-note">
+        Click a session to read what the agent decided, which tools it called and what each
+        answered. <Link to="/entry-points">Entry points</Link> shows which outside door reaches
+        which agent.
+      </p>
       <p className="text-muted">
         A real, chronological log of every session Hermes has actually run
         — cron jobs and interactive chats alike — pulled directly from
@@ -102,7 +110,9 @@ export function AgentActivityPage() {
                   <span className="badge">{SOURCE_LABELS[session.source] ?? session.source}</span>{' '}
                   <strong>{(session.profile && agentNames.get(session.profile)) ?? session.profile ?? 'Unknown agent'}</strong>
                   {' — '}
-                  {session.title || '(untitled session)'}
+                  <Link to={`/agent-activity/${encodeURIComponent(session.id)}`}>
+                    {session.title || '(untitled session)'}
+                  </Link>
                   {' — '}
                   {session.message_count} message{session.message_count === 1 ? '' : 's'}
                   {session.ended_at !== null && ` — ${formatDuration(session.started_at, session.ended_at)}`}
