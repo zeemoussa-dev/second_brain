@@ -462,7 +462,9 @@ def test_the_shipped_starter_records_an_unmet_request_and_it_is_retrievable(
     once. Nothing is performed: an unmet request is a record, and the
     runner says exactly that."""
     seeding = ActionManager().seed_shipped_starters()
-    assert seeding["seeded"] == [THE_UNMET_REQUEST_STARTER], seeding
+    assert THE_UNMET_REQUEST_STARTER in seeding["seeded"], (
+        f"membership, not equality: the shipped set grows (`ESC-080`). Seeded {seeding}"
+    )
 
     their_own_words = "book the Tuesday refinery meeting into my calendar"
     code, said = drive(
@@ -535,12 +537,18 @@ def test_seeding_a_starter_twice_never_overwrites_the_operators_own_copy(
     the same reason: the seed runs on every boot, so overwriting would
     silently revert the operator's edit on every restart."""
     manager = ActionManager()
-    assert manager.seed_shipped_starters()["seeded"] == [THE_UNMET_REQUEST_STARTER]
+    first_pass = manager.seed_shipped_starters()
+    assert THE_UNMET_REQUEST_STARTER in first_pass["seeded"], (
+        f"membership, not equality: the shipped set grows (`ESC-080`). Seeded {first_pass}"
+    )
     stored_actions[THE_UNMET_REQUEST_STARTER]["description"] = "my own words for it"
 
     again = manager.seed_shipped_starters()
 
-    assert again == {"seeded": [], "kept": [THE_UNMET_REQUEST_STARTER]}
+    assert again["seeded"] == [], f"a second pass installs nothing at all: {again}"
+    assert THE_UNMET_REQUEST_STARTER in again["kept"], (
+        f"the operator's own copy is kept, not overwritten: {again}"
+    )
     assert stored_actions[THE_UNMET_REQUEST_STARTER]["description"] == "my own words for it"
 
 
@@ -549,7 +557,10 @@ def test_the_shipped_starter_is_a_real_definition_this_catalogue_can_hold() -> N
     build defect, and it would only show up on a fresh install's first
     boot. Checked here against the real shipped bytes, with nothing
     patched."""
-    assert shipped_starters.list_shipped_starter_ids() == [THE_UNMET_REQUEST_STARTER]
+    shipped = shipped_starters.list_shipped_starter_ids()
+    assert THE_UNMET_REQUEST_STARTER in shipped, (
+        f"membership, not equality: the shipped set grows (`ESC-080`). Shipped {shipped}"
+    )
     definition = shipped_starters.read_shipped_starter_json(THE_UNMET_REQUEST_STARTER)
 
     action = ActionManager()._to_action(THE_UNMET_REQUEST_STARTER, definition)
