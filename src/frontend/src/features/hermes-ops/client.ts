@@ -196,3 +196,24 @@ export function saveEntryPoints(entries: Array<Partial<EntryPoint>>): Promise<En
     body: JSON.stringify(entries),
   });
 }
+
+/** The `when` on each of one agent's specialist edges (`REQ-SB-102`).
+ * Saving does NOT rewrite the soul — publishing is the separate,
+ * deliberate `publishSpecialists` call, because a prompt change is a
+ * behaviour change on a live agent. */
+export function saveRoutingConditions(
+  agentId: string, conditions: Record<string, string>,
+): Promise<Record<string, string>> {
+  return apiFetch<Record<string, string>>(
+    `/hermes/agents/${encodeURIComponent(agentId)}/routing-conditions`,
+    { method: 'PUT', body: JSON.stringify(conditions) },
+  );
+}
+
+/** Writes this agent's specialist block, conditions included, into its
+ * real SOUL.md. One agent, explicitly, never a sweep. */
+export function publishSpecialists(agentId: string): Promise<unknown> {
+  return apiFetch<unknown>(
+    `/agents/${encodeURIComponent(agentId)}/specialists/regenerate`, { method: 'POST' },
+  );
+}

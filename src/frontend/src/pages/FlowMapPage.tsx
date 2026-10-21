@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { apiFetch } from '../api/client';
 import { refusalText } from '../features/auth/SignInScreen';
+import { useAuth } from '../features/auth/AuthGate';
+import { RoutingEditor } from '../features/settings/RoutingEditor';
+import type { EdgeTarget } from '../features/settings/RoutingEditor';
 
 interface Gap { kind: string; subject: string; says: string }
 interface Door {
@@ -41,13 +44,28 @@ interface FlowMap {
  * the footnote, which is backwards.
  */
 export function FlowMapPage() {
+  const { may } = useAuth();
+  const canEditRouting = may('manage_agents');
   const [map, setMap] = useState<FlowMap | null>(null);
+  const [targets, setTargets] = useState<Map<string, EdgeTarget>>(new Map());
   const [failure, setFailure] = useState<string | null>(null);
+  const [reloads, setReloads] = useState(0);
 
   useEffect(() => {
     apiFetch<FlowMap>('/hermes/flow-map')
       .then(setMap)
       .catch((error) => setFailure(refusalText(error)));
+  }, [reloads]);
+
+  // The specialists' own descriptions, so the operator writes each
+  // condition with what that agent says about itself in front of them.
+  useEffect(() => {
+    apiFetch<{ agents?: EdgeTarget[] } | EdgeTarget[]>('/agents')
+      .then((answer) => {
+        const list = Array.isArray(answer) ? answer : (answer.agents ?? []);
+        setTargets(new Map(list.map((a) => [a.id, a])));
+      })
+      .catch(() => setTargets(new Map()));
   }, []);
 
   if (failure) return <><h1>The flow</h1><p className="auth-refusal" role="alert">{failure}</p></>;
@@ -150,6 +168,25 @@ export function FlowMapPage() {
           </ul>
         )}
       </section>
+
+      {canEditRouting && map.edges.length > 0 && (
+        <section>
+          <h2>Say when to take each route</h2>
+          <p className="auth-note">
+            Saving records what you meant. Publishing writes it into that one agent's
+            SOUL.md — a live prompt change, one agent at a time, never a sweep.
+          </p>
+          {[...new Set(map.edges.map((edge) => edge.from))].map((parent) => (
+            <RoutingEditor
+              key={parent}
+              parent={parent}
+              edges={map.edges.filter((edge) => edge.from === parent)}
+              targets={targets}
+              onSaved={() => setReloads((n) => n + 1)}
+            />
+          ))}
+        </section>
+      )}
 
       <section>
         <h2>What can be done ({map.actions.length})</h2>
