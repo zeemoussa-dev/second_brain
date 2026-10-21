@@ -4246,3 +4246,124 @@ was told to send and what it sent.
   string interpolation. Each of those is a new way for a step to be dispatched
   with something nobody wrote down, and each needs its own decision rather than
   an extension of this one.
+
+## ADR-062: A Hermes worker authenticates as an agent, never as a person, and names a door rather than a name
+
+**Status:** Accepted
+**Date:** 2026-10-21
+
+**Context:** `ADR-061` left one thing open, and `ESC-081` had already
+pointed at it: how does a Hermes worker authenticate to this app, so
+that an answer relayed from WhatsApp is attributed to the right person?
+
+Measuring first changed the question. `call_action.py` sends no
+credential at all — `Content-Type` and `Accept` and nothing else. So
+since `REQ-SB-101` made every route default-deny, **every Hermes worker
+call to an install with an account has answered 401**: the Action gate,
+the Workflow runner, all of it. The problem was not that attribution
+was imprecise. There was no authenticated worker to attribute anything
+to.
+
+Two decisions, and the second only works because of the first.
+
+**Decision 1 — a worker holds a token bound to one agent, and that
+token can never produce a person.**
+
+| | a person | a worker |
+|---|---|---|
+| credential | session cookie, or the same token as a bearer | `sba_…` bearer token |
+| resolves to | `Identity` (a `User` and a `Role`) | `AgentCaller` (an agent id, no role) |
+| `requires(capability)` | checked against the role | always refused |
+| may read | per capability | anything a signed-in caller may read |
+| may write | per capability | five named routes, and nothing else |
+
+`AgentCaller` is a separate type, and nothing converts one into an
+`Identity`. Given a `User`, a worker would be a person as far as every
+capability check, every ledger record and every attribution block is
+concerned, and "the WhatsApp agent approved this" would be the same
+sentence as "the Admin approved this". `request.state.identity` stays
+`None` for a worker, so the refusal of every `requires()` route is
+structural rather than remembered.
+
+**Writes are five exact route patterns, not prefixes, and that is
+load-bearing.** `POST /actions` and `PUT /actions/{action_id}` carry no
+`requires()` today, so a `/actions/` prefix would have handed every
+worker the ability to author the very catalogue that bounds it.
+Confirming an Action call is absent by not being listed, which is the
+point of listing what is allowed: an agent that could confirm its own
+pending call would be `ADR-033`'s gate undone.
+
+**The agent id is now authenticated, where it was previously claimed.**
+`ADR-033` authorises an Action call against `caller_agent_id`, and
+`call_action.py`'s own help text said it plainly — "the app believes the
+id it is given". A body naming a different agent than the token is
+refused rather than silently corrected: a caller that asked to act as
+somebody else has either a bug or an intention, and quietly doing
+something else hides both.
+
+**No expiry, unlike a session.** A browser session should lapse because
+the person walked away. A worker is a running install, and its token
+lapsing means every agent silently stops reaching the app in the middle
+of the night — the failure this whole thing exists to end. Revocation is
+explicit and dated instead, and a revoked row stays on the list: after a
+key has leaked, "was it revoked, and when" is the question that matters,
+and a row that vanished answers it for nobody.
+
+**Decision 2 — an agent relaying an answer names the DOOR; the app
+resolves the person.**
+
+The answer route (`ADR-061`) now serves both callers and takes a name
+from neither:
+
+- a signed-in person → attribution from their session, `how:
+  "in_person"`;
+- an agent → it sends `entry_point` (`source`, `chat_id`, optionally
+  `sender_id`), the app resolves the owner the operator declared, and
+  the attribution says `how: "relayed"` with `relayed_by_agent`.
+
+The two are kept apart because they are different evidence. "They
+clicked it here" is the app watching a person. "An agent says the owner
+of this number approved it" is the app watching an *agent*, which is a
+weaker claim, and a record that read identically for both would be
+exactly the fabricated certainty `REQ-SB-103` exists against.
+
+The asymmetry is the whole design. A worker that could put a name in
+the field could put any name in the field, so it names the door and
+nothing else; who that door belongs to is an Admin's declaration on the
+Entry points screen. **A door with no declared owner is refused**, not
+guessed at: an unattributable approval reads as authority it never had,
+which is worse than no approval, and the question is still waiting on
+everybody's "Waiting on You" for a person to answer in the app.
+
+**The sender is looked up before the chat**, per the operator's framing
+that the link is per sender. In a direct message the chat *is* the
+person and the two answers agree. In a group they do not, and
+attributing a group member's "yes" to whoever owns the group would put
+one person's name on another's decision.
+
+**Consequences:**
+
+- Provisioning a worker now has a step it did not have: an Admin mints a
+  key in Admin Center → Agent Access and puts it in that worker's
+  environment as `SECOND_BRAIN_AGENT_TOKEN`. A worker without one is
+  refused, and the runner Skills say so in those words rather than
+  reporting "HTTP 401".
+- A relayed approval is only as good as the entry-point declaration
+  behind it. That is a real dependency and it is visible: the door is
+  named in the record, and an undeclared one refuses rather than
+  defaulting.
+- An agent can read anything a signed-in caller can read. That is
+  deliberate — serving what this install knows is what the agents are
+  for — and it is the broadest thing this decision grants. Narrowing it
+  later means deciding what an agent may *not* know, which is a
+  different question from what it may do.
+- **`REQ-SB-101`'s default-deny had no tests.** The suite's conftest
+  signs every request in as a synthetic Admin, and the
+  `test_authentication.py` its docstring names does not exist — nor do
+  the `test_route_capabilities.py` / `test_user_roles.py` that
+  `user.py` and `auth_guard.py` cite as holding the capability matrix
+  honest. `tests/test_agent_authentication.py` restores the real reader
+  for the agent half. The person half is still untested, and several
+  authoring routes (`POST /actions`, the Workflow CRUD) carry no
+  capability guard at all despite `AUTHOR_AUTOMATIONS` being settled as
+  Admin-only. That is its own piece of work.
