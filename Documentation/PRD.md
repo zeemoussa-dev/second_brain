@@ -5807,3 +5807,109 @@ be spotted. Any Action can be switched off from that screen, and a blocked call 
 a reason that reaches the agent and is recorded in the ledger. Two WhatsApp numbers reaching
 two different agents appear as two entry points that can be worked on independently. And every
 one of the 43 profiles is still reachable individually for debugging.
+
+---
+
+### REQ-SB-103: A Workflow That Is Not a Fixed Script — Agent Steps, Human Steps, and Values That Flow
+
+Raised 2026-10-21 by the operator, working through a real example rather than a feature
+request: "Generate the Actions Assigned to my team and Send it to me by Mail" — then, when
+asked whether a step could be an agent, "Step can be an Agent or a Human Input, for example
+Here is the list, do you want me to send it to you by Mail?" — and finally the constraint that
+decides the shape of the whole thing: "remember this happens through WhatsApp".
+
+**Finding 1 — a Workflow today is a fixed script, and the data it needs is already there.**
+`start_run(workflow_id, caller_agent_id)` takes no request payload, so there is nowhere to put
+"which customer". A step's inputs are `dict(step.inputs or {})`, frozen when the Workflow was
+authored. Meanwhile each step's result IS recorded on the run and reaches the composed report.
+So the values exist and simply never flow: a Workflow can say *do A then B*, never *do B with
+what A returned*. `REQ-SB-95-US-04` made that an explicit non-goal — "no branching, loop or
+condition: order is the only control flow this kind has" — which was right for the first
+version and is what this requirement revisits.
+
+**Finding 2 — the operator's example needs three kinds of step, and only one of them is a
+fact.** Finding the team's tasks is deterministic: an Action, performed by the app, and the
+call gate saw it happen. Formatting a report and knowing who to send it to is judgement: an
+agent. Approving it is a person. These are not three sizes of the same thing — they differ in
+what the run record may honestly claim:
+
+| Step | Performed by | The record may claim |
+|---|---|---|
+| Action | this app | **it happened** — the gate recorded the outcome |
+| Agent | an agent's judgement | **an agent reported it happened** |
+| Human | a person | **this person decided** |
+
+An Action step is checkable. An agent step is a claim: the app cannot know whether an agent
+really formatted and sent anything, only what it says. `REQ-SB-95-US-03` already keeps
+`pointed_at` / `performed` / `authorised` verbatim so a step the operator was merely *shown*
+cannot come to read as *done* — agent steps need that discipline from the first line, or a run
+record quietly becomes a story about itself.
+
+**Finding 3 — over WhatsApp, this app never speaks to the human.** In the web UI a human step
+could be a form. Over a channel the app has no reach: Hermes owns the conversation and the
+agent is in it. The app can only hand the agent the question and trust the reply it reports —
+which puts the human step, the one step that exists to make a person the check, back into the
+unverifiable class.
+
+**Finding 4 — the transcript bridge, built 2026-10-21, is what rescues it.**
+`GET /hermes/sessions/{id}/transcript` returns every turn with its tool calls and the model's
+own reasoning. If a human step records the **session id and the message id** of the exchange,
+the claim stops being the agent's word and becomes checkable against what was actually said.
+This requirement makes that mandatory for human steps rather than optional: a human step whose
+answer cannot be pointed at in a transcript is a human step that did not happen.
+
+**Finding 5 — there is no way to know WHICH human approved over a channel.** `REQ-SB-101` gave
+this install users, roles, and `decided_by` naming the person who confirmed — all of it
+assuming the web app. A WhatsApp approval arrives from a chat id (`151471081435270@lid`).
+Nothing maps that to a user, so the honest record today would be "the owner of this chat
+approved", not "Mahmoud approved". `REQ-SB-102`'s entry points already map chat → agent; the
+missing half is chat → person.
+
+**Finding 6 — and it has to be per sender, not per chat.** A session carries `chat_id` AND a
+separate `user_id`/`user_name`. In a direct message they coincide; in a group they do not.
+Mapping at chat level means anyone in a group approves as the chat's owner. The operator's own
+data shows `chat_type: "dm"` today, which is exactly when this mistake is invisible.
+
+**What is wanted.**
+
+1. **A request payload on a run.** `start_run` accepts what the ask was about — "which
+   customer" — supplied by the agent that recognised the request. The app records it and
+   cannot verify it, and says so.
+2. **Step inputs that reference, not just hold.** A step input may name the request or a prior
+   step's result. **An unresolvable reference refuses the step** — never passes the literal
+   `{{steps.find.result}}` into an email body, which is the failure that actually sends.
+3. **Three step kinds.** `action` (today's), `agent` (ask a named agent, prose in and out), and
+   `human` (show content, ask a question, take an answer).
+4. **Human steps carry content and return an edit**, not only yes/no — "send it, but drop
+   Ahmed". The run records **three things separately**: what the human wrote, what the agent
+   made of it, and the session and message that prove it was said. Collapsing the first two
+   permanently destroys the ability to tell *they said that* from *the agent understood that*,
+   which is the first question asked when something goes out wrong.
+5. **An entry point names the person it belongs to**, resolved per sender, so an approval over
+   WhatsApp lands in the same ledger with the same attribution as one made in the app.
+6. **A place that answers "what is waiting on me".** `/actions/calls/pending` is the seed; a
+   run paused on a human step must appear somewhere, or "here is the list, shall I send it?"
+   asked at 6pm on a Friday is a run open until someone happens to notice.
+
+**Worth knowing before choosing.**
+
+- **This changes what the seventh artifact kind IS.** A Workflow stops being a documented
+  sequence of app operations and becomes a pipeline mixing app, judgement and people. Every
+  existing Workflow stays valid — an `action` step with literal inputs is exactly today's
+  behaviour — but the entity, the run record, the publication rule and the screens all widen.
+- **The publication rule needs rethinking.** A Workflow is published to an agent only when it
+  can call every step's Action. With agent and human steps, "can run it end to end" has to
+  account for an agent that may not be reachable and a human who may never answer.
+- **A run can now wait forever.** Nothing expires today. Human steps make that a real state
+  rather than a theoretical one.
+- **Two of the three step kinds are unverifiable by construction**, and that is not a flaw to
+  be engineered away — it is the honest shape of delegating work to a model and to a person.
+  The requirement is that the record says which is which, every time.
+
+**Acceptance.** The operator can author a Workflow whose first step finds something using a
+value from the request, whose second step hands the result to a named agent, and whose third
+step shows the outcome to a person over WhatsApp and takes their edited answer — and the run
+record afterwards distinguishes what the app performed from what an agent claimed from what a
+person decided, names the person by their Second Brain user rather than their chat, and carries
+the session and message id that let any of it be checked against the real conversation. A step
+whose input cannot be resolved is refused, naming the reference, and nothing downstream runs.
