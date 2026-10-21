@@ -216,13 +216,22 @@ class WorkflowRunStartBody(BaseModel):
     run is dispatched as -- the Action gate refuses a call that names no
     caller (`ADR-033`), and defaulting one here would record a run
     nobody started.
-
-    There is no `inputs` field. A step's inputs are the operator's, part
-    of the documented handling, and stored on the step; letting the
-    starter of a run supply or override them would make the Workflow a
-    suggestion rather than the handling that was decided on.
+    There is no `inputs` field, and `request` is NOT one. A step's
+    inputs are the operator's, part of the documented handling, and
+    stored on the step; letting the starter of a run supply or override
+    them would make the Workflow a suggestion rather than the handling
+    that was decided on. `request` is a different thing: what the ask
+    was ABOUT -- "which customer" -- which a step may reference but
+    cannot be overridden by, because the reference is written in the
+    Workflow and only the value comes from here (`REQ-SB-103`).
     """
     caller_agent_id: str
+    # Supplied by the agent that recognised the request, because only a
+    # model can take it out of natural language. An open dict, not a
+    # typed model: which values a Workflow references is authoring data
+    # that changes without a deploy, and typing it here would silently
+    # drop a key the Workflow was written to use.
+    request: dict[str, Any] = {}
 
 
 class WorkflowStepOutcomeBody(BaseModel):
@@ -261,7 +270,7 @@ def start_workflow_run(workflow_id: str, body: WorkflowRunStartBody) -> dict:
     The caller then asks for the next step, which is where the first
     step -- like every later one -- goes through the Action gate."""
     try:
-        return workflow_run.start_run(workflow_id, body.caller_agent_id)
+        return workflow_run.start_run(workflow_id, body.caller_agent_id, body.request)
     except workflow_run.WorkflowRunNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except workflow_run.WorkflowRunRefusedError as exc:

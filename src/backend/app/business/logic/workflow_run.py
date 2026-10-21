@@ -73,7 +73,7 @@ from uuid import uuid4
 from app.business.core.actions.action_manager import ActionManager
 from app.business.core.workflows.workflow import Workflow, WorkflowStep
 from app.business.core.workflows.workflow_manager import WorkflowManager
-from app.business.logic import action_invocation
+from app.business.logic import action_invocation, step_references
 from app.data_access import action_calls as action_calls_data
 from app.data_access import workflow_runs as workflow_runs_data
 
@@ -174,6 +174,8 @@ def _snapshot_step(position: int, step: WorkflowStep) -> dict:
         "description": step.description,
         "needs_confirmation": bool(step.needs_confirmation),
         "inputs": dict(step.inputs or {}),
+        # Filled at dispatch, once references are resolved.
+        "resolved_inputs": None,
         "status": STEP_NOT_REACHED,
         # The gate's own word for what it did, kept verbatim and never
         # overwritten by what a caller later reports: a step reported
@@ -194,7 +196,10 @@ def _snapshot_step(position: int, step: WorkflowStep) -> dict:
     }
 
 
-def _new_run_record(run_id: str, workflow: Workflow, caller_agent_id: str) -> dict:
+def _new_run_record(
+    run_id: str, workflow: Workflow, caller_agent_id: str,
+    request: dict | None = None,
+) -> dict:
     return {
         "run_id": run_id,
         "workflow_id": workflow.id,
@@ -203,6 +208,14 @@ def _new_run_record(run_id: str, workflow: Workflow, caller_agent_id: str) -> di
         "status": RUN_RUNNING,
         "started_at": _now(),
         "updated_at": _now(),
+        # What the ask was about -- "which customer" (`REQ-SB-103`).
+        # Supplied by the agent that recognised the request, because only
+        # a model can take it out of natural language. Recorded as given
+        # and NOT verified: the app has no way to check that the agent
+        # read the ask correctly, and a record that implied otherwise
+        # would be the fabricated certainty this whole family of
+        # requirements exists to avoid.
+        "request": dict(request or {}),
         # Every documented step, in the documented order, from the very
         # first write -- "the run record holds every documented step and
         # no step that is not in the Workflow" is then a property of the
@@ -319,9 +332,30 @@ def _apply_verdict(step: dict, verdict: action_invocation.ActionCallVerdict) -> 
 
 
 def _dispatch(run: dict, step: dict, confirmed_call_id: str | None = None) -> None:
+    """Resolves this step's inputs against the run, then calls the gate.
+
+    A reference that cannot be resolved refuses the step HERE, before
+    the Action is called at all -- the whole point is that the Action
+    never sees a literal `{{steps.x.result}}`, and calling it to find
+    out would be exactly the send this guards against.
+    """
+    try:
+        inputs = step_references.resolve_inputs(step.get("inputs") or {}, run)
+    except step_references.ReferenceError as exc:
+        step["status"] = STEP_REFUSED
+        step["dispatch_outcome"] = None
+        step["awaiting_call_id"] = None
+        step["refusal"] = (
+            f"step {step.get('step_id')!r} was not run: {exc}"
+        )
+        step["resolved_inputs"] = None
+        return
+    # Kept beside the authored inputs, never replacing them: an operator
+    # debugging a run needs to see BOTH what the step was written to
+    # send and what it actually sent.
+    step["resolved_inputs"] = inputs
     verdict = action_invocation.call_action(
-        step["action_id"], run["caller_agent_id"], step.get("inputs") or {},
-        confirmed_call_id,
+        step["action_id"], run["caller_agent_id"], inputs, confirmed_call_id,
     )
     _apply_verdict(step, verdict)
 
@@ -401,7 +435,9 @@ def _advance_awaiting_step(run: dict, step: dict) -> None:
     # identical pending decisions about one step.
 
 
-def start_run(workflow_id: str, caller_agent_id: str) -> dict:
+def start_run(
+    workflow_id: str, caller_agent_id: str, request: dict | None = None,
+) -> dict:
     """Open a run of one Workflow. Nothing is dispatched and nothing is
     performed here: a run starts as a record of what is to be done, with
     every documented step at `not_reached`.
@@ -427,7 +463,7 @@ def start_run(workflow_id: str, caller_agent_id: str) -> dict:
             "was started"
         )
 
-    run = _new_run_record(uuid4().hex, workflow, caller_agent_id)
+    run = _new_run_record(uuid4().hex, workflow, caller_agent_id, request)
     workflow_runs_data.write_run_json(run["run_id"], run)
     return run
 
