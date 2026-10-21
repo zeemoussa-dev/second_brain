@@ -5571,3 +5571,127 @@ export and share by accident, which is worth a deliberate decision rather than a
 prompt, every turn and every tool call with its output; and the 2026-10-16
 `apply_thread_review.py` failure would have been diagnosable from that screen without
 reading a file on the machine.
+
+---
+
+### REQ-SB-101: Sign In, and Three Levels of What a Person May Do
+
+Raised 2026-10-21 by the operator: "After the Latest Plugins the System is Highly Needed so I
+am Thinking of Introducing Login with 3 Users Powers Admin, Power User and User, The Admin Can
+Add Users from an Admin Center". Clarified the same day: one shared vault with personal
+identity per user; local username-and-password accounts in a standalone SQLite store;
+"I will Be Deploying Everything to Azure at Some Point, But for now I need Users To Access The
+System with Username and Password".
+
+**Finding 1 - there is no authentication anywhere, and every route is open.** Grepping the
+backend for a current-user dependency, a session, a login or a token finds nothing outside
+`app/hermes/` (that is the Hermes client's own session with the runtime) and the Graph/Outlook
+capture Skills (that is Microsoft's token for reading mail). All 26 routers under `app/api/`
+answer any caller that can reach the port, including `settings_system_router`, `setup_router`,
+`marketplace_router` and `hermes_router` - install a plugin, rewrite the vault path, re-run
+the setup wizard. This is not a gap to close around the edges; it is the whole surface.
+
+**Finding 2 - the product is built around one operator, deliberately.** `REQ-SB-95-US-01`
+made the Operator Profile a singleton on purpose: no id, a Manager whose public surface is
+exactly `get` and `save`, and a test asserting there is only ever one file. `SELF_EMAIL` is a
+single setting that decides which mail is the operator's own. There is one `VAULT_PATH`. Every
+agent's `SOUL.md` carries a published block naming who the agent acts for - one person. The
+chosen shape (shared vault, personal identity) keeps all of that intact, and that is the
+reason it was chosen: the alternative turns each of those singletons into a per-user thing and
+is a re-architecture rather than a feature.
+
+**Finding 3 - identity is the missing half of work the framework already does.** `REQ-SB-95`
+built an Action-call ledger that records every call, its outcome and its single-use grant, and
+a confirmation gate where something waits for a human's say-so. Both currently record *that* a
+human confirmed, not *which* human - because there has only ever been one. The same is true of
+a Workflow run's steps and of a capture. Adding identity makes those records answer "who", and
+that is worth more than the login screen itself.
+
+**Finding 4 - SQLite is a new kind of storage for this codebase.** Everything today is files:
+the vault is markdown, artifacts are JSON under the data path, settings are `.env`. A user
+store is the first thing that genuinely wants a database - accounts, password hashes, roles,
+sessions - and `ADR-003`'s layering (`api -> business -> data_access`) has no SQL in it yet.
+This needs an ADR, not an improvisation.
+
+**Finding 5 - Azure is coming, so the auth seam matters more than the auth.** Local
+username-and-password is the starting point, not the destination. If the route guards depend
+on *a verified identity and its role* rather than on *a password having been checked*, then
+Entra or any other provider replaces one module later. If they depend on the local store, the
+move to Azure rewrites every guard. The install already holds Microsoft Graph credentials, so
+Entra is the probable successor.
+
+**What is wanted.**
+
+1. A login screen. No route and no screen answers without a verified identity, except login
+   itself, the health check, and whatever the boot/setup flow genuinely needs before any user
+   can exist.
+2. Three roles - **Admin**, **Power User**, **User** - gating what each person may see and do.
+3. An **Admin Center** where an Admin creates users, sets and changes roles, resets a
+   password, and disables an account. Reachable by Admins only.
+4. A standalone **SQLite** store for accounts, hashes, roles and sessions, separate from the
+   vault and from the artifact data path, so a user store is never something an export or a
+   bundle can carry.
+5. **Attribution**: the Action-call ledger, confirmation grants and Workflow run records name
+   the signed-in person, not just "the operator".
+6. The first Admin exists before anyone can sign in - a first-run bootstrap, not a default
+   password.
+
+**The capability matrix - DRAFT, for the operator to correct before anything is built.**
+
+The operator asked to define the role split after seeing a draft. This is that draft, and it
+is a proposal, not a decision. Every row is a real router or screen that exists today.
+
+| Surface | User | Power User | Admin |
+|---|---|---|---|
+| Vault: browse, read, search (`vault`, `vault_search`, `browse`) | read | read | read |
+| Cockpit / Chat with agents (`cockpit`, `/chat`) | yes | yes | yes |
+| My Day, Action Center, and other plugin screens | yes | yes | yes |
+| Entity read / scoped entity resolution | yes | yes | yes |
+| Agents Map, Agent Activity - viewing (`agents`, `hermes_agents`) | view | view | view |
+| Hermes session transcripts (`REQ-SB-100`) | no | view | view |
+| Call an Action (`POST /actions/{id}/call`) | no | yes | yes |
+| Confirm an Action that is waiting on a human | no | yes | yes |
+| Run a Workflow, advance a step | no | yes | yes |
+| Author/edit Actions and Workflows (`actions`, `workflows`) | no | **?** | yes |
+| Vault index rebuild (`vault_index`) | no | yes | yes |
+| Create or edit an Agent, edit a soul | no | no | yes |
+| Install / uninstall plugins (`marketplace`, `plugin_host`) | no | no | yes |
+| Settings, including System settings (`settings_system`, `setup`) | no | no | yes |
+| Hermes configuration, cron jobs (`hermes`) | no | no | yes |
+| Backup, artifact export/import (`backup`, `artifacts`) | no | no | yes |
+| Operator Profile - the one record of who the agents act for | no | no | yes |
+| Admin Center - users, roles, passwords | no | no | yes |
+
+Two rows the operator should look at hardest. **Authoring Actions and Workflows** is the row
+that decides what "Power User" means - marked `?` because the operator's two candidate
+definitions differ exactly there. And **Operator Profile** is Admin-only in this draft because
+it is the shared record of who every agent acts for; a Power User changing it changes what
+every agent believes about the whole install.
+
+**Worth knowing before choosing.**
+
+- **This is the first real security surface in the codebase.** Password hashing, session
+  lifetime, lockout, reset, and a route guard that cannot be forgotten on the 27th router are
+  all new. The framework's own history is relevant: the plugin host gates on an exact version
+  match *at load time, before a line runs*, because a check that runs later is a check that
+  can be skipped. Route guards want the same property - default-deny at the router, not a
+  decorator each new route must remember.
+- **A guard that is opt-in will be forgotten.** 26 routers exist today and the pipeline adds
+  more most weeks; four escalations in the last week were caused by a new thing needing a line
+  in a file nobody's task listed.
+- **Attribution changes what the ledger means.** Today a confirmation says a human approved.
+  Afterwards it says which human - and the records written before this lands cannot say that.
+  Whether old records are left honestly blank or back-filled with the operator is a decision,
+  and leaving them blank is the honest one.
+- **The vault is shared; identity is not vault-level.** A User who can read the vault can read
+  everything in it. If some notes should be invisible to some people, that is a different and
+  much larger requirement, and it is not this one.
+
+**Acceptance.** No screen and no route answers an unauthenticated caller except login, health
+and first-run bootstrap; an Admin can create a user, assign one of the three roles, reset its
+password and disable it from an Admin Center; a Power User is refused an Admin-only route with
+a refusal that names what was required; a User is refused a Power User route the same way; the
+Action-call ledger and confirmation records name the signed-in person; the user store is a
+SQLite database outside the vault and outside the artifact data path, and no export or bundle
+contains it; and the route guard is default-deny, so a router added tomorrow is protected
+without its author remembering to protect it.
