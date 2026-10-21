@@ -1220,4 +1220,14 @@ what is known.* Carried in `REVIEW-QUEUE.md` for the compaction pass.
 
 **Resolving artefact:** — (Open)
 
-**Status:** Open
+**Resolution (2026-10-21):** authorised. `src/backend/tests/test_action_runner_skill.py` is added to `REQ-SB-95-US-05-T05`'s `## Files to Modify`, scoped to the three assertions that pin the shipped-starter set as a literal one-element list. They become membership checks over the live set, exactly as `ESC-077` authorised for `_MANAGER_BY_KIND` one sprint earlier; what each test MEANS is unchanged, and only "and nothing else is shipped" goes.
+
+**The coder was right to stop**, and measured rather than predicted it: 3 failed, 9 passed with the folder in place, and it never committed the folder, so master stayed green throughout.
+
+**What is new here, and why it earned a seventh decomposer rule.** `ESC-077` already recorded this exact lesson, and the rule has been in `.claude/agents/decomposer.md` since. It did not help, because a decomposer rule governs the file lists written *from now on* and does nothing about hand-maintained literals already sitting in tests -- those surface one at a time, as each new member of a family is added. The new rule says to grep the test tree for a family's existing members before writing the list. One grep against four blocked tasks.
+
+**MEMORY.md candidate, still not appended** (86 KB against the 40 KB budget its own rule 1 sets): *a test that enumerates a family exhaustively is a scheduled failure for whoever adds the next member; assert membership, not equality.* Held for the compaction pass, which is now blocking its twelfth task.
+
+**Resolving artefact:** `REQ-SB-95-US-05-T05` scope extension + decomposer rule, 2026-10-21
+
+**Status:** Resolved

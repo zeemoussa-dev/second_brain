@@ -152,3 +152,32 @@ this task is the one that waits.
 ## Implementation Log
 
 _(Filled in by the coder.)_
+
+---
+
+## Scope extension — 2026-10-21 (unblocks `ESC-080`)
+
+**Added to `## Files to Modify`:** `src/backend/tests/test_action_runner_skill.py`,
+scoped to **the three assertions that pin the shipped-starter set as a literal
+one-element list** and nothing else in the file.
+
+Your diagnosis is right and measured: the folder is additive, the product does not
+notice it, and three tests do because they say
+`list_shipped_starter_ids() == [THE_UNMET_REQUEST_STARTER]`. Those are
+`REQ-SB-95-US-03-T05`'s and that task is `Done`, so you were right to stop.
+
+**Make them assert over the live set rather than re-pinning it.** `ESC-077`
+authorised the identical change one sprint ago for `_MANAGER_BY_KIND`, and the
+reason holds here: a hand-maintained list has to be edited by every future
+starter's author, which is the omission this whole family of escalations is about.
+Concretely — assert the unmet-request starter is **present**, and that seeding
+reports it among the seeded, rather than that it is the only one. The two
+`kept`/`seeded` assertions become membership checks of the same shape.
+
+Do not weaken what the tests mean: each still has to prove that seeding is
+idempotent, that a second pass keeps the operator's own edited copy, and that a
+shipped definition really loads. Only "and nothing else is shipped" goes.
+
+Then finish `T05`: the starter Action folder, the verification, `Done`, and
+**close `SPRINT-090`** — `status: Done`, `completed: 2026-10-21`, a drafted
+retrospective. It is the last task of the last open sprint.

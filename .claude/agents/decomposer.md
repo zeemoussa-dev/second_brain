@@ -155,6 +155,22 @@ constraint for everyone belongs in `MEMORY.md`, a sprint heuristic belongs in
 `Implementation/Learnings.md`. Writing it in the escalation entry alone is filing it
 where only historians look.
 
+### A rule for new file lists does not fix the literals already written
+
+**Seventh variant, and the first that is about this file's own limits.**
+`ESC-077` landed "assert over the live collection rather than a hand-maintained
+tuple" after a negative test named a kind that then shipped. One sprint later
+`ESC-080` was the same thing again, in a different test file, written before
+that rule existed. A rule here governs the lists a decomposer writes **from now
+on**; it does nothing about the frozen literals already sitting in tests, and
+those surface one at a time as each new member of a family is added.
+
+So when a task adds a member to any family -- an artifact kind, a shipped
+starter, a role, a capability, a settings field -- grep the test tree for the
+family's existing members **before** writing the file list, and put the files
+that enumerate them in scope. The cost of looking is one grep; the cost of not
+looking has now been four blocked tasks.
+
 ### Structural ACs for screen / frontend stories
 
 For any story that builds or changes a screen, the **durable design layer** — which
