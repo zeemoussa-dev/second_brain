@@ -1012,3 +1012,112 @@ def test_an_unknown_workflow_is_the_apps_own_refusal_relayed(
     assert "there is no workflow 'no-such-workflow' in this install's catalogue" in said
     assert "Do not handle the request step by step yourself" in said
     assert list(run_store.glob("*.json")) == []
+
+
+def test_the_runner_stops_at_a_step_for_another_agent_and_claims_nothing(
+    stored_actions, stored_workflows, run_store, loopback, deployed_runner, capsys,
+) -> None:
+    """[REQ-SB-103] The app does not call the other agent and neither
+    does this script -- the agent reading its output is the one who can.
+    So it stops, says who to ask and what to ask them, and reports no
+    outcome: an outcome nobody observed is the one thing it may not
+    assert."""
+    _two_actions(allowed_callers=["*"])
+    WorkflowManager().create(
+        "draft-it-with-the-mail-agent",
+        request_kind="list my team's actions and have the mail agent format them",
+        steps=[
+            {"id": "gather", "action_id": "list-the-teams-actions"},
+            {"id": "draft", "kind": "agent", "agent_id": "note-taker",
+             "ask": "{{steps.gather.result}}"},
+        ],
+    )
+
+    code, said = drive(deployed_runner, capsys, "draft-it-with-the-mail-agent")
+
+    assert code == 2, said
+    assert "THIS STEP IS FOR ANOTHER AGENT" in said
+    assert "'note-taker'" in said
+    assert "report what they ACTUALLY came back with" in said
+    record = json.loads(sorted(run_store.glob("*.json"))[0].read_text(encoding="utf-8"))
+    assert record["steps"][1]["status"] == "running"
+    assert record["steps"][1]["performed_by"] == "agent"
+    # `gather` is a `ui` Action and the runner reports no `result` for
+    # one, so `{{steps.gather.result}}` resolves to None -- a step that
+    # produced nothing, which is NOT a step that has not produced. It is
+    # handed out, not refused. Reading those two as the same thing left
+    # the step neither dispatched nor refused and the run advancing no
+    # further, silently, and this assertion is why that is noticed.
+    assert record["steps"][1]["resolved_ask"] is None
+    assert record["steps"][1]["refusal"] is None
+    assert f"--resume {record['run_id']}" in said
+    # The first step's outcome was reported; the second one's was not.
+    assert [entry["path"].split("/")[-1] for entry in loopback].count("outcome") == 1
+
+
+def test_the_runner_stops_at_a_question_and_never_answers_for_the_person(
+    stored_actions, stored_workflows, run_store, loopback, deployed_runner, capsys,
+) -> None:
+    """[REQ-SB-103] The operator's own framing -- this happens over
+    WhatsApp, where the agent is in the conversation and the app is not.
+    The script prints the question and how their answer is recorded as
+    THEIRS; there is deliberately no branch in it that answers for
+    them, and the run is left holding."""
+    WorkflowManager().create(
+        "ask-me-first",
+        request_kind="ask me before you send anything",
+        steps=[{"id": "approve", "kind": "human", "ask": "Shall I send the team list?",
+                "allows_edit": True}],
+    )
+
+    code, said = drive(deployed_runner, capsys, "ask-me-first")
+
+    assert code == 2, said
+    assert "WAITING ON A PERSON" in said
+    assert "Shall I send the team list?" in said
+    assert "/answer" in said
+    assert "allows an edit" in said
+    assert "do not guess what they would say" in said.lower()
+    assert [entry["path"].split("/")[-1] for entry in loopback] == ["run", "next-step"], (
+        "it recorded nothing -- a person's decision is not the runner's to report"
+    )
+    record = json.loads(sorted(run_store.glob("*.json"))[0].read_text(encoding="utf-8"))
+    assert record["status"] == "awaiting_person"
+    assert record["steps"][0]["human_decision"] is None
+
+
+def test_the_runner_passes_on_what_the_ask_was_about(
+    stored_actions, stored_workflows, run_store, loopback, deployed_runner, capsys,
+) -> None:
+    """[REQ-SB-103] "Tell me what is happening for a certain customer" --
+    which customer only a model can take out of natural language, so it
+    comes from the agent as `--about` and is recorded as given. A step
+    naming one that was not supplied refuses, naming it, rather than
+    running with a hole in it."""
+    _two_actions(allowed_callers=["*"])
+    WorkflowManager().create(
+        "tell-me-about-one",
+        request_kind="tell me what is happening for a certain customer",
+        steps=[{"id": "look", "kind": "human", "ask": "{{request.customer}}"}],
+    )
+
+    code, said = drive(
+        deployed_runner, capsys, "tell-me-about-one", "--about", "customer=a-named-customer",
+    )
+
+    assert code == 2, said
+    assert "a-named-customer" in said, "the question reached the person with the value in it"
+    record = json.loads(sorted(run_store.glob("*.json"))[0].read_text(encoding="utf-8"))
+    assert record["request"] == {"customer": "a-named-customer"}
+
+    # And without it, nobody is asked anything.
+    code, said = drive(deployed_runner, capsys, "tell-me-about-one")
+    assert code != 0, said
+    assert "customer" in said
+    unasked = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(run_store.glob("*.json"))
+    ]
+    refused = [run for run in unasked if run["status"] == "blocked"]
+    assert len(refused) == 1
+    assert refused[0]["steps"][0]["asked_at"] is None, "nobody was asked"

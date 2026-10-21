@@ -12,7 +12,24 @@ says, reports what really happened, and asks for the next -- until the
 app says there is no next step. A step the operator must confirm stops
 it there, naming the run to come back to with `--resume`: a second
 `run_workflow.py <workflow id>` would open a NEW run and perform the
-earlier steps all over again. The order, which step needs the
+earlier steps all over again.
+
+**A step is not always yours to perform** (`REQ-SB-103`, `ADR-061`).
+Three kinds exist, and this script performs exactly one of them:
+
+- `action` -- run through the app's Action gate, here, as it always was;
+- `agent` -- handed to another agent. The app does not call them and
+  neither does this script, because YOU are the one who can. It stops,
+  prints who to ask and what to ask them, and tells you to report what
+  they actually came back with;
+- `human` -- a question for the person you are talking to. It stops,
+  prints the question, and tells you to record their answer as THEIRS.
+  There is deliberately no branch in this file that answers for them.
+
+Both stop with exit code 2 and no outcome reported: an outcome nobody
+observed is the one thing neither this script nor an agent may assert.
+
+The order, which step needs the
 operator's confirmation, which steps are skipped (none) and what is
 reported back are all decided by the app against the run record at
 `<DATA_PATH>/data/WorkflowRuns/<run_id>.json`. This script could not run
@@ -37,9 +54,10 @@ Exit codes, so a caller can branch without reading prose:
   0  the run ran every documented step and finished
   1  nothing can be claimed -- the app is unreachable, it answered
      something this script will not interpret, or a step really failed
-  2  the run is paused waiting for the operator, or the app refused
-     something. This is a first-class answer, not a crash: relay it as
-     it is written.
+  2  the run is paused -- waiting for the operator to confirm, waiting
+     on a person to answer, or stopped at a step for another agent --
+     or the app refused something. This is a first-class answer, not a
+     crash: relay it as it is written and act on what it asks for.
 """
 from __future__ import annotations
 
@@ -111,6 +129,45 @@ def what_to_do_with(run_id: str, step: dict, call_record: dict | None) -> tuple[
     that enumerated the ones it knew would read each new one as success.
     """
     status = step.get("status")
+    kind = step.get("kind") or "action"
+
+    if status == "awaiting_person":
+        # A question for the person you are talking to. This script
+        # cannot ask them -- you are the one in the conversation -- and
+        # it must never answer on their behalf, which is why there is no
+        # branch here that records anything.
+        return None, (
+            f"WAITING ON A PERSON at step {step.get('step_id')!r} (position "
+            f"{step.get('position')}). The run is paused there and NOTHING beyond it has run.\n\n"
+            f"ASK THEM, IN THEIR OWN CONVERSATION:\n{step.get('resolved_ask')}\n\n"
+            "Then record what they say -- as theirs, not as this step's outcome:\n"
+            f"  POST /workflows/runs/{run_id}/steps/{step.get('step_id')}/answer\n"
+            '  {"decision": "approved" | "edited" | "declined", "said": "<their words, '
+            'verbatim>", "result": "<what should go on, when they changed it>"}\n'
+            + ("  (this step allows an edit: `result` replaces what was proposed)\n"
+               if step.get("allows_edit") else
+               "  (this step allows no edit: approve it or decline it)\n")
+            + f"\nThen continue THIS run with --resume {run_id}. Starting a fresh run would run "
+            "the earlier steps a second time. Do not answer for them, do not guess what they "
+            "would say, and do not describe anything beyond this step as done."
+        ), 2
+
+    if kind == "agent":
+        # Handed back rather than performed: the app does not call that
+        # agent, and neither does this script. You put it to them and
+        # report what they actually came back with.
+        return None, (
+            f"THIS STEP IS FOR ANOTHER AGENT -- step {step.get('step_id')!r} (position "
+            f"{step.get('position')}) is handed to {step.get('agent_id')!r}.\n\n"
+            f"ASK THEM:\n{step.get('resolved_ask')}\n\n"
+            "Then report what they ACTUALLY came back with -- not what you expected them to "
+            "say, and not a summary you composed:\n"
+            f"  POST /workflows/runs/{run_id}/steps/{step.get('step_id')}/outcome\n"
+            '  {"outcome": "done" | "failed", "detail": "<what happened>", "result": '
+            "<their answer, which later steps are called with>}\n\n"
+            f"Then continue THIS run with --resume {run_id}."
+        ), 2
+
     if status == "awaiting_confirmation":
         return None, (
             f"WAITING FOR THE OPERATOR at step {step.get('step_id')!r} (position "
@@ -190,6 +247,17 @@ def main() -> int:
         "--caller", default=None,
         help="This agent's own id (its Hermes profile id). Defaults to the profile this script is deployed in.",
     )
+    parser.add_argument(
+        "--about", action="append", default=[], metavar="NAME=VALUE",
+        help=(
+            "What the ask was ABOUT, which a step may name as {{request.NAME}} -- for example "
+            "--about customer='the one they asked about'. Repeatable. Only a model can take "
+            "these out of natural language, which is why they come from you; the app records "
+            "them as given and cannot check that you read the ask correctly. A step naming one "
+            "you did not supply refuses, naming it, rather than running with a hole in it. "
+            "These are NOT a step's inputs: those are the operator's and are not yours to set."
+        ),
+    )
     parser.add_argument("--base-url", default=_DEFAULT_BASE_URL)
     args = parser.parse_args()
 
@@ -208,16 +276,43 @@ def main() -> int:
         )
         return 1
 
+    about: dict[str, str] = {}
+    for pair in args.about:
+        name, separator, value = pair.partition("=")
+        if not separator or not name.strip():
+            print(
+                f"NO RUN WAS STARTED: --about {pair!r} is not NAME=VALUE. Nothing was guessed "
+                "from it -- a request value this script invented would be recorded as something "
+                "you read out of the ask.",
+                file=sys.stderr,
+            )
+            return 1
+        about[name.strip()] = value
+
     if args.resume:
         # The run already exists and already holds its steps and their
-        # outcomes; the app is what remembers where it got to.
+        # outcomes -- including what it was started ABOUT, which is why
+        # --about is not accepted here: changing what a run is about
+        # halfway through would re-aim steps that have already run.
+        if about:
+            print(
+                "NOTHING WAS RUN: --about cannot be given with --resume. A run records what it "
+                "was started about, and changing that midway would re-aim steps that have "
+                "already run against a different request.",
+                file=sys.stderr,
+            )
+            return 1
         run_id = args.resume
         print(f"Continuing run {run_id} as {caller_agent_id!r}, from wherever the app left it.")
     else:
         try:
             status, body = post(
                 args.base_url, f"/workflows/{args.workflow_id}/run",
-                {"caller_agent_id": caller_agent_id},
+                # `request` is sent only when there is something to send:
+                # the runner names itself and what the ask was about, and
+                # an empty key claims the agent supplied a request shape
+                # when it supplied nothing.
+                {"caller_agent_id": caller_agent_id, **({"request": about} if about else {})},
             )
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             print(
@@ -269,7 +364,12 @@ def main() -> int:
             code = relay_the_apps_report(body)
             return code
 
-        print(f"\nStep {step.get('position')} ({step.get('step_id')}): action {step.get('action_id')!r}.")
+        kind = step.get("kind") or "action"
+        what_it_is = {
+            "agent": f"handed to agent {step.get('agent_id')!r}",
+            "human": "a question for a person",
+        }.get(kind, f"action {step.get('action_id')!r}")
+        print(f"\nStep {step.get('position')} ({step.get('step_id')}): {what_it_is}.")
         outcome, what_happened, code = what_to_do_with(run_id, step, body.get("call"))
         if outcome is None:
             print(what_happened, file=sys.stderr if code else sys.stdout)

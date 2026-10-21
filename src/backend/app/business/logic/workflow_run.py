@@ -425,8 +425,20 @@ def _dispatch(run: dict, step: dict, confirmed_call_id: str | None = None) -> No
     _apply_verdict(step, verdict)
 
 
-def _resolve_or_refuse(run: dict, step: dict, text: str) -> str | None:
-    """Resolves references inside a step's `ask`, or refuses the step.
+# Returned instead of a resolved question when the step was refused.
+# A distinct object rather than `None`, because `None` is a value a
+# reference can legitimately resolve TO -- a step that really returned
+# nothing -- and reading that as a refusal left the step neither
+# dispatched nor refused, so the run silently stopped advancing while
+# still handing the step back. The same "produced nothing is not
+# has-not-produced" distinction `step_references` is built around,
+# broken here first time out.
+_REFUSED = object()
+
+
+def _resolve_or_refuse(run: dict, step: dict, text: str) -> Any:
+    """Resolves references inside a step's `ask`, or refuses the step
+    and answers `_REFUSED`.
 
     An unresolved reference in a QUESTION is as bad as one in an email
     body: "here is {{steps.find.result}}, shall I send it?" is a
@@ -440,7 +452,9 @@ def _resolve_or_refuse(run: dict, step: dict, text: str) -> str | None:
     except step_references.ReferenceError as exc:
         step["status"] = STEP_REFUSED
         step["refusal"] = f"step {step.get('step_id')!r} was not asked: {exc}"
-        return None
+        step["detail"] = step["refusal"]
+        step["recorded_at"] = _now()
+        return _REFUSED
 
 
 def _hand_to_agent(run: dict, step: dict) -> None:
@@ -458,7 +472,7 @@ def _hand_to_agent(run: dict, step: dict) -> None:
     the record rather than leaving a reader to infer it from `kind`.
     """
     ask = _resolve_or_refuse(run, step, step.get("ask") or "")
-    if ask is None:
+    if ask is _REFUSED:
         return
     step["resolved_ask"] = ask
     step["status"] = STEP_RUNNING
@@ -476,7 +490,7 @@ def _ask_the_person(run: dict, step: dict) -> None:
     a real state and the reason "what is waiting on me" has to exist.
     """
     ask = _resolve_or_refuse(run, step, step.get("ask") or "")
-    if ask is None:
+    if ask is _REFUSED:
         return
     step["resolved_ask"] = ask
     step["status"] = STEP_AWAITING_PERSON
@@ -628,6 +642,29 @@ def next_step(run_id: str) -> dict:
                 _dispatch(run, step)
         # `running`: handed out already, outcome not yet recorded. The
         # same step comes back untouched.
+
+        if step.get("status") == STEP_NOT_REACHED:
+            # Unreachable, and refused rather than trusted. A handler
+            # that returned without reaching, refusing or dispatching
+            # its step leaves the run handing out a step nothing
+            # dispatched -- which reads to a caller as work to do, is
+            # retried on every pass, and advances nothing. That really
+            # happened once (an `ask` resolving to `None` read as a
+            # refusal), and it was silent. It is not silent now.
+            _logger.error(
+                "workflow run %s left step %r at %r after dispatch; refusing it rather than "
+                "handing out a step nothing ran",
+                run.get("run_id"), step.get("step_id"), STEP_NOT_REACHED,
+            )
+            step["status"] = STEP_REFUSED
+            step["refusal"] = (
+                f"step {step.get('step_id')!r} (position {step.get('position')}) was neither run "
+                "nor refused by this app, which is a fault in the app and not in the Workflow. "
+                "Nothing was performed. Tell whoever maintains this install; the run record is "
+                "the account of what did run."
+            )
+            step["detail"] = step["refusal"]
+            step["recorded_at"] = _now()
 
     run["status"] = _run_status_for(run)
     _save_run(run)
