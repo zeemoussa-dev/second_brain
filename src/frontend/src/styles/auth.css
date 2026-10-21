@@ -542,3 +542,63 @@
   gap: var(--space-3);
   margin-top: var(--space-3);
 }
+
+/* -- The map (REQ-SB-102) --------------------------------------------- */
+
+.flow-diagram-scroll {
+  overflow-x: auto;
+  padding: var(--space-3) 0;
+}
+
+.flow-link {
+  stroke: var(--color-border);
+  stroke-width: 1.5;
+}
+
+/* A route with no condition is the same line, visibly unexplained --
+   the route exists either way. */
+.flow-link-silent {
+  stroke-dasharray: 5 4;
+}
+
+.flow-link-door {
+  stroke: var(--color-accent);
+}
+
+.flow-link-lit {
+  stroke: var(--color-accent);
+  stroke-width: 2.5;
+}
+
+.flow-node rect {
+  fill: var(--color-surface-2);
+  stroke: var(--color-border);
+}
+
+.flow-node text {
+  fill: var(--color-text);
+  font-size: 12px;
+  font-family: var(--font-sans);
+}
+
+.flow-node-door rect {
+  fill: var(--color-surface-raised);
+  stroke: var(--color-accent);
+}
+
+.flow-node-agent {
+  cursor: pointer;
+}
+
+.flow-node-lit rect {
+  stroke: var(--color-accent);
+  stroke-width: 2;
+}
+
+.flow-focus {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}

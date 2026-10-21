@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { apiFetch } from '../api/client';
 import { refusalText } from '../features/auth/SignInScreen';
 import { useAuth } from '../features/auth/AuthGate';
+import { FlowDiagram } from '../features/settings/FlowDiagram';
 import { RoutingEditor } from '../features/settings/RoutingEditor';
 import type { EdgeTarget } from '../features/settings/RoutingEditor';
 
@@ -50,6 +51,7 @@ export function FlowMapPage() {
   const [targets, setTargets] = useState<Map<string, EdgeTarget>>(new Map());
   const [failure, setFailure] = useState<string | null>(null);
   const [reloads, setReloads] = useState(0);
+  const [focus, setFocus] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch<FlowMap>('/hermes/flow-map')
@@ -89,6 +91,32 @@ export function FlowMapPage() {
           {map.unread.join('; ')}
         </p>
       )}
+
+      {/* The picture comes before the lists: the operator asked to SEE
+          the flow, and a diagram under three sections of prose is a
+          diagram nobody scrolls to. */}
+      <section>
+        <h2>The map</h2>
+        <FlowDiagram
+          doors={map.entry_points}
+          agents={map.agents}
+          edges={map.edges}
+          onPick={(agentId) => setFocus(agentId === focus ? null : agentId)}
+        />
+        {focus && (
+          <div className="flow-focus" data-testid="flow-focus">
+            <strong>{focus}</strong>
+            <div className="auth-note">
+              routes to {agentsById.get(focus)?.routes_to.join(', ') || 'nobody'}
+              {' · may call '}
+              {agentsById.get(focus)?.may_call.join(', ') || 'nothing'}
+            </div>
+            <Link to={`/agents/${encodeURIComponent(focus)}/profile`}>
+              Read this profile as it really is
+            </Link>
+          </div>
+        )}
+      </section>
 
       <section>
         <h2>Gaps ({map.gaps.length})</h2>
