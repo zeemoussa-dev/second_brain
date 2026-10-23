@@ -4367,3 +4367,45 @@ one person's name on another's decision.
   authoring routes (`POST /actions`, the Workflow CRUD) carry no
   capability guard at all despite `AUTHOR_AUTOMATIONS` being settled as
   Admin-only. That is its own piece of work.
+
+## ADR-063: Plugins reach Compass through `api.llm`, optional under API 12
+
+**Status:** Accepted
+**Date:** 2026-10-23
+
+**Context:** The Azure Customer 360 plugin needs a model to write a one-click
+customer brief before a meeting (operator, 2026-10-23). The framework already
+calls Compass (`data_access/compass_client.py`, `ADR-011`), but a plugin may not
+import `app.*`, and the Plugin API had no way to reach it. Adding a capability
+normally moves `FRAMEWORK_API`, and the host loads only plugins built for that
+exact number -- so the move stops every installed plugin (five today) until each
+is republished, and kills a running sync. The operator chose not to take that
+move now.
+
+**Decision:** `PluginApi.llm` (`LlmApi`) is added **without** bumping
+`FRAMEWORK_API` from 12, as an **optional** capability:
+
+- `available()` -- Compass is configured on this install;
+- `complete(messages, timeout=120)` -- one chat completion, the reply's text;
+- failures, including "not configured", reach the plugin as `LlmError`, never
+  as `CompassClientError`, so a plugin matches it by name without importing a
+  framework type.
+
+A plugin reaches it with `getattr(api, "llm", None)` and must work without it,
+saying plainly that the feature needs a newer framework. The call is logged
+against the calling plugin. The model's settings stay the install's (Settings >
+System > Compass); a plugin never sees the key.
+
+**Consequences:**
+
+- **The version no longer says everything a plugin may use.** That is the
+  price of not republishing five plugins today. It is bounded by the rule
+  above: an optional capability must be checked for, so an older framework
+  degrades a feature rather than failing a plugin's load.
+- **The next planned `FRAMEWORK_API` move takes `llm` in formally** (as
+  `REQ-SB-95` took its two capabilities in one move), after which plugins may
+  rely on it unchecked.
+- Data sent to Compass stays on Core42's platform; a plugin decides what it
+  sends and must ground the model on its own data (the brief sends figures it
+  computed, never asks the model for numbers).
+

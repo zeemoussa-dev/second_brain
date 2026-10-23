@@ -18,6 +18,8 @@ CHANGELOG.md`. Starting fresh alongside the backend redesign
 
 ## [Unreleased]
 
+- feat(plugins): **a plugin can ask Compass** -- `api.llm.complete(messages)` and `api.llm.available()` (`ADR-063`; operator, 2026-10-23: a one-click customer brief before a meeting). Added **optional under `FRAMEWORK_API` 12**, by the operator's choice, so no installed plugin had to be republished: a plugin reaches it with `getattr(api, "llm", None)` and degrades without it. Failures, including an install with no Compass configured, reach the plugin as `LlmError`; the key never leaves the framework. The next planned version move takes it in formally.
+
 - feat(flow): **build a Workflow by dragging it, and see what feeds what** (`REQ-SB-103`; operator, 2026-10-21: "I am a visual person, I love drag and drop, I need to see the workflow visually"). The step editor was a stack of form rows that said nothing about the shape of the thing; `/settings/workflows` now opens a canvas beside an inspector.
 
   **A chain, not a free canvas, because a Workflow IS a chain.** There is no branching and no repetition in one (`ADR-034`), so free placement would be drawing a shape it cannot have. What there is to see is the order, what each step is, and which steps feed which — so cards sit in documented order, the kind is a colour *and* an icon *and* a word, and each card carries its own wiring (`body ← step 3`, `customer ← the ask`). Dragging reorders; **Alt+Arrow does the same thing**, because a pointer gesture is unusable with a keyboard. A *move*, not a swap: dragging a card four places down takes it four places down. A step keeps its id when it moves, verified end to end — four steps kept `find`/`draft`/`approve`/`send` through a reorder and a save.
