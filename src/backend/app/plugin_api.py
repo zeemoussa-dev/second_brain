@@ -100,7 +100,8 @@ from app.business.core.sections.section_manager import SectionManager
 from app.business.core.vault import note_text
 from app.business.core.vault.vault_manager import VaultManager
 from app.business.hermes.client import get_client
-from app.data_access import seed_data, vault_writer
+from app.config import settings
+from app.data_access import compass_client, seed_data, vault_writer
 from app.obsidian import sections
 from app.obsidian.notes import long_path
 
@@ -290,6 +291,37 @@ class HermesApi:
         return get_client().cli.run_cron_job(job_name, profile_id)
 
 
+class LlmError(RuntimeError):
+    """Compass could not answer -- not configured, unreachable, or an answer of the
+    wrong shape. A plugin matches it by name (it may not import framework types)."""
+
+
+class LlmApi:
+    """Compass for a plugin that reasons over its own data (`ADR-063`, 2026-10-23:
+    a one-click customer brief). OPTIONAL under API 12: a plugin reaches it with
+    `getattr(api, "llm", None)` and says "needs a newer framework" when absent, so
+    adding it moved no plugin off its version; the formal bump waits for a planned
+    republish sitting."""
+
+    def __init__(self, plugin_id: str) -> None:
+        self._plugin_id = plugin_id
+
+    def available(self) -> bool:
+        """Compass is configured on this install (URL, key and model)."""
+        return bool(settings.compass_base_url and settings.compass_api_key and settings.compass_model)
+
+    def complete(self, messages: list[dict[str, str]], *, timeout: float = 120.0) -> str:
+        """One chat completion -- `messages` as `[{"role": "system"|"user"|"assistant",
+        "content": ...}]` -- and the reply's text. Raises `LlmError`."""
+        if not self.available():
+            raise LlmError("Compass is not configured on this install: Settings > System > Compass")
+        try:
+            return compass_client.request_chat_completion(messages, timeout=timeout)
+        except compass_client.CompassClientError as exc:
+            _logger.warning("plugin api: %s's Compass call failed: %s", self._plugin_id, exc)
+            raise LlmError(str(exc)) from exc
+
+
 class PluginApi:
     """What a plugin's `register(api)` receives. One instance per plugin, so
     everything a plugin registers is attributable to that plugin."""
@@ -301,6 +333,7 @@ class PluginApi:
         self.hermes = HermesApi()
         self.agents = AgentsApi()
         self.sections = SectionsApi()
+        self.llm = LlmApi(plugin_id)
         self.routers: list[APIRouter] = []
         self.subject_enrichers: list[SubjectEnricher] = []
         self.agent_matchers: list[AgentMatcher] = []
