@@ -12,6 +12,35 @@
   src: url("/fonts/PlusJakartaSans-Variable.woff2") format("woff2");
 }
 
+/* The three fonts Branding offers (2026-10-24). All variable (one file, a
+   weight range), all SIL Open Font License with the licence text beside them
+   in public/fonts/licences/ -- bundling a font means shipping its licence.
+   Inter is the project's own full file; the other two are the Latin subsets,
+   which is why they are an order of magnitude smaller. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/InterVariable.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: swap;
+  src: url("/fonts/IBMPlexSans-Variable.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Source Sans 3";
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("/fonts/SourceSans3-Variable.woff2") format("woff2");
+}
+
 @font-face {
   font-family: "Marcellus";
   font-style: normal;
