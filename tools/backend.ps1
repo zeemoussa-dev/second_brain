@@ -49,9 +49,31 @@ function Get-SpawnParentId($Process) {
 }
 
 function Test-IsBackendRoot($Process) {
+    <#  A backend root belonging to THIS checkout.
+
+        The scope matters now that more than one install can share a machine:
+        every string this matches on -- run-backend.cmd, uvicorn, app.main:app --
+        is identical in a sibling install, so without it `backend.cmd stop` here
+        would find and kill the other one's backend.
+
+        Matched on the COMMAND LINE rather than the executable path, which is the
+        non-obvious half: a virtualenv built by uv runs the uv-managed
+        interpreter, so a worker's ExecutablePath is
+        AppData\Roaming\uv\python\... and never inside this repo's .venv at all.
+        The command line does name this repo, because that is how the launcher
+        invoked it.
+
+        Only ROOTS are identified here. A --reload worker's command line says
+        `spawn_main(parent_pid=...)` and names neither the repo nor the app;
+        those are found through their parent below. #>
     $line = [string]$Process.CommandLine
-    if ($Process.Name -eq 'cmd.exe' -and $line -match 'run-backend\.cmd') { return $true }
-    if ($Process.Name -in @('python.exe', 'uvicorn.exe') -and $line -match 'uvicorn' -and $line -match 'app\.main:app') { return $true }
+    $exe = [string]$Process.ExecutablePath
+    if (-not ($line -like "*$RepoRoot*" -or $exe -like "*$RepoRoot*")) { return $false }
+
+    if ($Process.Name -eq 'cmd.exe') { return $line -match 'run-backend\.cmd' }
+    if ($Process.Name -in @('python.exe', 'uvicorn.exe')) {
+        return ($line -match 'uvicorn') -and ($line -match 'app\.main:app')
+    }
     return $false
 }
 
