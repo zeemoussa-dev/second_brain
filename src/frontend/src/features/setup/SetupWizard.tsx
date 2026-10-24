@@ -532,9 +532,14 @@ export function SetupWizard({ onDismiss }: { onDismiss?: () => void }) {
 
         {!canAdvance && (
           <p className="setup-hint">
-            {blocking.length > 0
-              ? `Still needed: ${blocking.map((field) => field.label).join(', ')}`
-              : `Fix before continuing: ${failed.map((field) => field.label).join(', ')}`}
+            {/* The admin step's fields are not the server's, so neither list
+                describes it -- without this it rendered "Fix before
+                continuing:" followed by nothing at all. */}
+            {onAdminStep
+              ? 'Still needed: a username, and a password of at least 8 characters'
+              : blocking.length > 0
+                ? `Still needed: ${blocking.map((field) => field.label).join(', ')}`
+                : `Fix before continuing: ${failed.map((field) => field.label).join(', ')}`}
           </p>
         )}
       </div>
