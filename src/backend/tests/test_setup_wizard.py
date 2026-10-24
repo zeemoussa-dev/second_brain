@@ -58,6 +58,44 @@ def test_setup_status_is_served_while_unconfigured(unconfigured) -> None:
     assert set(REQUIRED_FOR_STARTUP) <= offered
 
 
+def test_an_install_with_nowhere_to_keep_users_has_none(monkeypatch) -> None:
+    """The real fresh-install state: no App Database Folder yet.
+
+    Resolving the user store then raises instead of answering "no users", and
+    the guard's fail-closed branch turned that into "this install is
+    bootstrapped" -- which refused `/setup`, the one route a fresh install must
+    reach. The boot screen read that 401 as "setup not needed" and polled
+    forever for a boot that setup mode had deliberately not started, so a new
+    install never got to a usable screen (found live, 2026-10-24).
+
+    Asserted against the reader rather than through `client`: the app's
+    middleware binds its UserManager at import, when the data path is still the
+    sandbox conftest gave it, so a request would never see this state.
+    """
+    from app.api import auth_guard
+
+    monkeypatch.setattr(settings, "second_brain_data_path", None)
+
+    assert auth_guard._AuthenticationReader().has_any_user() is False
+
+
+def test_an_unreadable_user_store_still_fails_closed(monkeypatch, tmp_path: Path) -> None:
+    """The fix must not widen into "any failure opens setup".
+
+    A CONFIGURED install whose user store cannot be read is a different case:
+    it may well have users, so the setup routes stay shut.
+    """
+    from app.api import auth_guard
+
+    monkeypatch.setattr(settings, "second_brain_data_path", tmp_path)
+    reader = auth_guard._AuthenticationReader()
+    monkeypatch.setattr(
+        reader._users, "has_any_user", lambda: (_ for _ in ()).throw(OSError("store unreadable"))
+    )
+
+    assert reader.has_any_user() is True
+
+
 def test_other_routes_are_refused_while_unconfigured(unconfigured) -> None:
     response = client.get("/vault/notes")
 

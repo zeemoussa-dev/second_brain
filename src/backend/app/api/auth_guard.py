@@ -45,6 +45,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 from app.business.core.users.agent_token import AgentCaller, looks_like_an_agent_token
+from app.config import settings
 from app.business.core.users.agent_token_manager import AgentTokenManager
 from app.business.core.users.user import Capability, Identity
 from app.business.core.users.user_manager import UserManager
@@ -207,6 +208,20 @@ class _AuthenticationReader:
         return self._agent_tokens.caller_for_token(token)
 
     def has_any_user(self) -> bool:
+        # An install with nowhere to keep users cannot have any. Until the
+        # wizard runs there is no App Database Folder, so resolving the user
+        # store raises `AttributeError: 'NoneType' has no attribute 'joinpath'`
+        # -- and failing closed on THAT shuts the door on the very wizard that
+        # would open it. Found on a fresh install, 2026-10-24: `/setup` answered
+        # 401, the boot screen read that as "setup not needed", and it then
+        # polled forever for a boot that setup mode had deliberately not
+        # started. The install never reached a usable screen.
+        #
+        # Narrower than `settings.setup_required` on purpose: that is also true
+        # when only a model provider is missing, and such an install can have
+        # real users whose setup routes must stay shut.
+        if settings.second_brain_data_path is None:
+            return False
         try:
             return self._users.has_any_user()
         except Exception:
