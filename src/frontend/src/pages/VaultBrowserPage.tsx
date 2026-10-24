@@ -371,9 +371,7 @@ export function VaultBrowserPage() {
               {browse.notes.map((note) => (
                 <Link className="note-row" to={`/browse/${note.stem}`} key={note.stem}>
                   <span className="note-row-kind">{note.kind}</span>
-                  <span className="note-row-title" title={note.title}>
-                    {note.title}
-                  </span>
+                  <NoteRowName name={note.stem} subject={note.title} />
                   <NoteRowTags tags={note.tags} />
                   <span className="note-row-when">{whenInWords(note.modified_at)}</span>
                 </Link>
@@ -475,6 +473,31 @@ function SearchBox({
         </button>
       )}
     </div>
+  );
+}
+
+/** What a note is called, and what it is about (operator, 2026-10-24: "Show
+ *  the file name as primary, subject as context").
+ *
+ * The row used to show `subject` alone, which made four different notes read
+ * as four copies of the same one: `01 Mandate`, `02 Operating Week` and
+ * `03 Decision Reconstruction` all carry `subject: "Sherif Tawfik"`, and the
+ * part that tells them apart — their own name — appeared nowhere.
+ *
+ * The subject is shown only when it says something the name does not. Measured
+ * across 75 notes of this vault, 55 have a subject identical to their name, so
+ * printing both by default would add a redundant half to three rows in four.
+ */
+function NoteRowName({ name, subject }: { name: string; subject: string }) {
+  const saysSomethingElse = subject.trim().toLowerCase() !== name.trim().toLowerCase();
+
+  return (
+    <span className="note-row-name" title={saysSomethingElse ? `${name} — ${subject}` : name}>
+      <span className="note-row-title">{name}</span>
+      {saysSomethingElse && subject.trim() && (
+        <span className="note-row-subject">{subject}</span>
+      )}
+    </span>
   );
 }
 

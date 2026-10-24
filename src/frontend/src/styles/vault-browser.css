@@ -798,7 +798,12 @@ button.item-row:hover {
   display: grid;
   /* kind · title · tags · when. The title takes what is left, so the columns
      either side stay put and the list reads as a table. */
-  grid-template-columns: 7rem minmax(0, 1fr) auto 4.5rem;
+  /* The name column has a FLOOR. `minmax(0, 1fr)` let it collapse to zero
+     whenever the content-sized tags column wanted the room -- and beside the
+     260px navigator it always does, so every row rendered its tags and its
+     date with no name at all (2026-10-24). The name is the one thing a row
+     exists to show; it is the last thing that may be given up. */
+  grid-template-columns: 7rem minmax(9rem, 1fr) auto 4.5rem;
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
@@ -837,6 +842,11 @@ button.item-row:hover {
   display: flex;
   gap: var(--space-1);
   justify-content: flex-end;
+  /* Clips rather than pushes: chips keep their own width (so none of them
+     becomes "c…"), and when there is not room for all of them the row drops
+     the ones furthest from the date instead of squeezing the name. */
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* `flex-shrink: 0` is the whole trick: inside a column sized to its content,
@@ -868,8 +878,47 @@ button.item-row:hover {
 
 /* Narrow: the tags and the date are the first things to go. The title and
    what kind of note it is are what the row is for. */
+/* 1040, not 760: the list does not get the window, it gets what is left after
+   a 260px navigator and the app's own sidebar. Measured at a 800px window,
+   the row had about 460px to work with -- enough for a name and a date, not
+   for two tag chips as well. */
+@media (max-width: 1040px) {
+  .note-row { grid-template-columns: 6rem minmax(0, 1fr) 4.5rem; }
+  .note-row-tags { display: none; }
+}
+
 @media (max-width: 760px) {
   .note-row { grid-template-columns: 5rem minmax(0, 1fr); }
-  .note-row-tags,
   .note-row-when { display: none; }
+}
+
+/* The note's own name, then what it is about (2026-10-24). One line: the
+   subject is context for the name beside it, not a second line of its own --
+   a two-line row would undo the density the list was rebuilt for. */
+.note-row-name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* The name holds its width and the subject yields: when the row is tight it
+   is the context that should be clipped, never the thing being named. */
+.note-row-name .note-row-title { flex: 0 1 auto; }
+
+.note-row-subject {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* What the note is about, under what it is called. Muted and smaller: it is
+   context for the heading, not a second heading. */
+.note-subject {
+  margin: calc(var(--space-1) * -1) 0 var(--space-2);
+  color: var(--color-text-muted);
 }

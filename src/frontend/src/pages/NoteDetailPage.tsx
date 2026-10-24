@@ -132,10 +132,18 @@ export function NoteDetailPage() {
 
   return (
     <>
-      <Breadcrumbs items={[BROWSE_CRUMB, { label: detail.title }]} />
+      {/* The note's own name, like the list it was opened from (operator,
+          2026-10-24: "Show the file name as primary, subject as context").
+          Clicking a row called "01 Mandate" and landing on a page headed
+          "Sherif Tawfik" -- its shared `subject` -- reads as having opened the
+          wrong note. */}
+      <Breadcrumbs items={[BROWSE_CRUMB, { label: detail.stem }]} />
       <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
         <span className="badge" style={{ marginBottom: 'var(--space-2)', display: 'inline-block' }}>{detail.kind}</span>
-        <h1 style={{ marginTop: 0 }}>{detail.title}</h1>
+        <h1 style={{ marginTop: 0 }}>{detail.stem}</h1>
+        {detail.title.trim().toLowerCase() !== detail.stem.trim().toLowerCase() && detail.title.trim() && (
+          <p className="note-subject">{detail.title}</p>
+        )}
         <div>
           {detail.tags.map((tag) => (
             <Link
