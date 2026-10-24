@@ -775,3 +775,27 @@
   font-family: var(--font-mono);
   text-transform: lowercase;
 }
+
+/* A card on a settings PAGE is a section of that page, not the sign-in box
+   .auth-card was sized for (operator, 2026-10-24: "make sure that the Boxes
+   not Render in half the Screen it looks Bad"). 400px inside a 1200px column
+   reads as a form stranded in the corner, with the right half of every screen
+   empty. Capped rather than edge-to-edge: a form field three feet wide is its
+   own kind of bad, and 1100px is where these pages stop gaining from more. */
+.settings-page {
+  max-width: 1100px;
+}
+
+.settings-page .auth-card {
+  width: 100%;
+}
+
+/* With the room to do it, the theme's three colour rows sit side by side
+   instead of stacking into a tall column of near-identical widgets. */
+@media (min-width: 900px) {
+  .settings-page .branding-colour-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+    gap: var(--space-6);
+  }
+}

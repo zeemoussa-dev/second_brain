@@ -66,6 +66,16 @@ DEFAULT_FONT = "inter"
 #: answers it to callers that never load the stylesheet.
 DEFAULT_ACCENT = "#c58b5f"
 
+#: The three colours an install may set, and what each one is FOR. One colour
+#: was doing all three jobs and they pull apart: an action colour wants to be
+#: loud, a surface colour has to stay quiet across a whole side panel (which
+#: is why the sidebar mixes it down to 7-10% before it is bearable), and a
+#: highlight has to be distinguishable from both or "you are here" stops
+#: reading. Each is a key here, a token in tokens.css, and a swatch in
+#: Settings > Branding -- a fourth would be the same three edits.
+ACCENT_ROLES = ("accent_color", "surface_color", "highlight_color")
+
+
 
 @dataclass(frozen=True)
 class Branding:
@@ -74,7 +84,12 @@ class Branding:
     is_customised: bool
     theme_mode: str
     font: str
+    #: Buttons, links, focus rings -- the things you click.
     accent_color: str
+    #: The side panel's tint and other large quiet areas.
+    surface_color: str
+    #: "You are here": the active nav item, selected rows, active tabs.
+    highlight_color: str
 
 
 class BrandingManager:
@@ -88,6 +103,7 @@ class BrandingManager:
         name = DEFAULT_APP_NAME
         customised = False
         record = self._record()
+        accent = self._accent_or_default(record.get("accent_color"))
         stored = str(record.get("app_name") or "").strip()
         if stored:
             name = stored
@@ -101,7 +117,14 @@ class BrandingManager:
             # complete, renderable theme rather than a half of one.
             theme_mode=self._one_of(record.get("theme_mode"), THEME_MODES, DEFAULT_THEME_MODE),
             font=self._one_of(record.get("font"), FONT_CHOICES, DEFAULT_FONT),
-            accent_color=self._accent_or_default(record.get("accent_color")),
+            accent_color=accent,
+            # Unset, each follows the accent rather than the shipped copper:
+            # an install that rebranded to blue before these existed would
+            # otherwise get a copper sidebar back on upgrade. Following it
+            # means nothing changes until someone chooses, and the sidebar
+            # mixes its colour down to a tint anyway.
+            surface_color=self._accent_or_default(record.get("surface_color"), accent),
+            highlight_color=self._accent_or_default(record.get("highlight_color"), accent),
         )
 
     def set_app_name(self, app_name: str) -> Branding:
@@ -122,6 +145,8 @@ class BrandingManager:
         theme_mode: str | None = None,
         font: str | None = None,
         accent_color: str | None = None,
+        surface_color: str | None = None,
+        highlight_color: str | None = None,
     ) -> Branding:
         """Each part is optional, and only what is passed is written: the
         Branding page saves one control at a time, and a PUT carrying three
@@ -142,8 +167,13 @@ class BrandingManager:
                     f"{', '.join(FONT_CHOICES)}. Nothing was changed."
                 )
             patch["font"] = font
-        if accent_color is not None:
-            patch["accent_color"] = self._valid_accent(accent_color)
+        for role, value in (
+            ("accent_color", accent_color),
+            ("surface_color", surface_color),
+            ("highlight_color", highlight_color),
+        ):
+            if value is not None:
+                patch[role] = self._valid_accent(value)
         if patch:
             self._merge(patch)
         return self.get()
@@ -174,11 +204,11 @@ class BrandingManager:
         return text if text in allowed else fallback
 
     @classmethod
-    def _accent_or_default(cls, value: object) -> str:
+    def _accent_or_default(cls, value: object, fallback: str = DEFAULT_ACCENT) -> str:
         try:
             return cls._valid_accent(str(value or ""))
         except BrandingError:
-            return DEFAULT_ACCENT
+            return fallback
 
     @staticmethod
     def _valid_accent(value: str) -> str:

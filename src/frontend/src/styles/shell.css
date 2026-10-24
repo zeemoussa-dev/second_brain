@@ -85,9 +85,11 @@ html {
   color: var(--color-text);
 }
 
+/* The highlight colour's own job: this is the "you are here" marker, which is
+   why it is not the accent. An install may now set the two apart. */
 .nav-item.active {
-  background: var(--color-accent-muted);
-  color: var(--color-accent);
+  background: var(--color-highlight-muted);
+  color: var(--color-highlight);
   font-weight: 600;
 }
 

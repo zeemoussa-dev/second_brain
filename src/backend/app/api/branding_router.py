@@ -44,6 +44,8 @@ class ThemeBody(BaseModel):
     theme_mode: str | None = None
     font: str | None = None
     accent_color: str | None = None
+    surface_color: str | None = None
+    highlight_color: str | None = None
 
 
 def _as_dict(manager: BrandingManager) -> dict:
@@ -56,6 +58,8 @@ def _as_dict(manager: BrandingManager) -> dict:
         "theme_mode": branding.theme_mode,
         "font": branding.font,
         "accent_color": branding.accent_color,
+        "surface_color": branding.surface_color,
+        "highlight_color": branding.highlight_color,
         # What the picker may offer, from the one place that decides it, so a
         # fourth font is a backend change and not two.
         "theme_modes": list(THEME_MODES),
@@ -106,6 +110,8 @@ def set_theme(body: ThemeBody) -> dict:
             theme_mode=body.theme_mode,
             font=body.font,
             accent_color=body.accent_color,
+            surface_color=body.surface_color,
+            highlight_color=body.highlight_color,
         )
     except BrandingError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

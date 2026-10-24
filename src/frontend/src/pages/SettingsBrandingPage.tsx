@@ -28,6 +28,29 @@ const FONTS: Record<string, { name: string; stack: string; note: string }> = {
 
 const DEFAULT_ACCENT = '#c58b5f';
 
+/** The three branded colours, and the job each one does — the labels say what
+ *  changes on screen, because "accent" and "highlight" mean nothing until you
+ *  know which of them moves the sidebar. */
+type ColourRole = 'accent_color' | 'surface_color' | 'highlight_color';
+
+const COLOUR_ROLES: { key: ColourRole; label: string; note: string }[] = [
+  {
+    key: 'accent_color',
+    label: 'Action',
+    note: 'The things you click: buttons, links, focus rings. This one may be loud.',
+  },
+  {
+    key: 'surface_color',
+    label: 'Surface',
+    note: 'The side panel and other large quiet areas. Used as a faint tint, not a fill — a colour strong enough for a button covers a whole sidebar badly.',
+  },
+  {
+    key: 'highlight_color',
+    label: 'Highlight',
+    note: '"You are here": the active item in the side panel, selected rows, active tabs. Keep it distinguishable from the other two or the marker stops reading as one.',
+  },
+];
+
 /** This install's own name, logo and theme (operator, 2026-10-21, 2026-10-24).
  *
  * Admin-only, by `MANAGE_SETTINGS` on the routes — this is what
@@ -43,9 +66,17 @@ const DEFAULT_ACCENT = '#c58b5f';
 export function SettingsBrandingPage() {
   const branding = useBranding();
   const [name, setName] = useState(branding.is_customised ? branding.app_name : '');
-  // Held locally so the colour picker can be dragged without a PUT per frame;
-  // the saved value is still branding.accent_color until Save is pressed.
-  const [accent, setAccent] = useState(branding.accent_color);
+  // Held locally so a colour picker can be dragged without a PUT per frame;
+  // the saved values are still the ones on `branding` until Save is pressed.
+  const [colours, setColours] = useState<Record<ColourRole, string>>({
+    accent_color: branding.accent_color,
+    surface_color: branding.surface_color,
+    highlight_color: branding.highlight_color,
+  });
+
+  function setColour(role: ColourRole, value: string) {
+    setColours((previous) => ({ ...previous, [role]: value }));
+  }
   const [refusal, setRefusal] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -186,55 +217,78 @@ export function SettingsBrandingPage() {
             </div>
           </div>
 
-          <div className="branding-choice-group">
-            <span className="branding-choice-label">Accent</span>
-            <div className="branding-accent-row">
-              <input
-                type="color"
-                className="branding-accent-swatch"
-                data-testid="branding-accent-picker"
-                value={accent}
-                disabled={busy}
-                onChange={(event) => setAccent(event.target.value)}
-                aria-label="Accent colour"
-              />
-              <input
-                className="input branding-accent-hex"
-                data-testid="branding-accent-hex"
-                value={accent}
-                maxLength={7}
-                spellCheck={false}
-                disabled={busy}
-                onChange={(event) => setAccent(event.target.value)}
-              />
-              <button
-                type="button"
-                className="auth-primary"
-                data-testid="branding-accent-save"
-                disabled={busy || accent.toLowerCase() === branding.accent_color.toLowerCase()}
-                onClick={() => handleTheme({ accent_color: accent }, 'Accent saved.')}
-              >
-                Save accent
-              </button>
-              {branding.accent_color.toLowerCase() !== DEFAULT_ACCENT && (
+          <div className="branding-colour-grid">
+          {COLOUR_ROLES.map((role) => (
+            <div className="branding-choice-group" key={role.key}>
+              <span className="branding-choice-label">{role.label}</span>
+              <div className="branding-accent-row">
+                <input
+                  type="color"
+                  className="branding-accent-swatch"
+                  data-testid={`branding-${role.key}-picker`}
+                  value={colours[role.key]}
+                  disabled={busy}
+                  onChange={(event) => setColour(role.key, event.target.value)}
+                  aria-label={role.label}
+                />
+                <input
+                  className="input branding-accent-hex"
+                  data-testid={`branding-${role.key}-hex`}
+                  value={colours[role.key]}
+                  maxLength={7}
+                  spellCheck={false}
+                  disabled={busy}
+                  onChange={(event) => setColour(role.key, event.target.value)}
+                />
                 <button
                   type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    setAccent(DEFAULT_ACCENT);
-                    handleTheme({ accent_color: DEFAULT_ACCENT }, 'Back to the default accent.');
-                  }}
+                  className="auth-primary"
+                  data-testid={`branding-${role.key}-save`}
+                  disabled={busy || colours[role.key].toLowerCase() === branding[role.key].toLowerCase()}
+                  onClick={() => handleTheme({ [role.key]: colours[role.key] }, `${role.label} saved.`)}
                 >
-                  Reset
+                  Save
                 </button>
-              )}
+                {/* Back to following the Action colour, which is what an
+                    install that never set this one already does. */}
+                {role.key !== 'accent_color' &&
+                  branding[role.key].toLowerCase() !== branding.accent_color.toLowerCase() && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setColour(role.key, branding.accent_color);
+                        handleTheme(
+                          { [role.key]: branding.accent_color },
+                          `${role.label} follows the action colour again.`,
+                        );
+                      }}
+                    >
+                      Match action
+                    </button>
+                  )}
+                {role.key === 'accent_color' && branding.accent_color.toLowerCase() !== DEFAULT_ACCENT && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setColour('accent_color', DEFAULT_ACCENT);
+                      handleTheme({ accent_color: DEFAULT_ACCENT }, 'Back to the default colour.');
+                    }}
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+              <small className="auth-hint">{role.note}</small>
             </div>
-            <small className="auth-hint">
-              Drives the side panel's tint, buttons, links, focus rings and every other
-              accented surface. The text colour on top of it is worked out from the colour
-              you pick, so a pale accent gets dark text rather than white on white.
-            </small>
+          ))}
           </div>
+          <p className="auth-hint">
+            The text colour on top of each is worked out from the colour you pick, so a
+            pale one gets dark text rather than white on white. Set them all the same and
+            the app looks exactly as it does with one colour.
+          </p>
         </div>
       </section>
 

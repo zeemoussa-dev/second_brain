@@ -16,7 +16,12 @@
 export interface ThemeChoice {
   theme_mode: string;
   font: string;
+  /** Buttons, links, focus rings — the things you click. */
   accent_color: string;
+  /** The side panel's tint and other large quiet areas. */
+  surface_color: string;
+  /** "You are here": the active nav item, selected rows, active tabs. */
+  highlight_color: string;
 }
 
 /** What the inline boot script in index.html reads. Pre-computed, so that
@@ -25,8 +30,11 @@ export interface ThemeChoice {
 export interface CachedTheme {
   mode: string;
   font: string;
-  accent: string;
-  onAccent: string;
+  /** `[cssCustomProperty, value]` pairs, already computed — including each
+   *  colour's readable ink. A list rather than named fields so the boot script
+   *  in index.html stays a loop and a fourth branded colour never needs a
+   *  second edit there. */
+  properties: [string, string][];
 }
 
 export const THEME_CACHE_KEY = 'second-brain.theme';
@@ -59,12 +67,33 @@ export function readableInkOn(accent: string): string {
   return onDark >= onLight ? dark : light;
 }
 
+const DEFAULT_ACCENT = '#c58b5f';
+
+/** The three branded colours and the custom property each one feeds. Adding a
+ *  fourth is an entry here, a token in tokens.css and a swatch in Branding —
+ *  nothing else, and never a second copy of the ink maths. */
+const BRANDED_COLOURS: { from: keyof ThemeChoice; property: string; ink: string }[] = [
+  { from: 'accent_color', property: '--color-accent', ink: '--color-on-accent' },
+  { from: 'surface_color', property: '--color-brand-surface', ink: '--color-on-brand-surface' },
+  { from: 'highlight_color', property: '--color-highlight', ink: '--color-on-highlight' },
+];
+
 export function applyTheme(choice: ThemeChoice): CachedTheme {
   const root = document.documentElement;
-  const accent = /^#[0-9a-f]{6}$/i.test(choice.accent_color)
-    ? choice.accent_color.toLowerCase()
-    : '#c58b5f';
-  const onAccent = readableInkOn(accent);
+  const properties: [string, string][] = [];
+
+  for (const { from, property, ink } of BRANDED_COLOURS) {
+    const chosen = String(choice[from] ?? '');
+    // An install that never set this one follows the accent, which is what
+    // keeps an upgrade from repainting a rebranded sidebar in the shipped
+    // copper. The backend answers the same way; this is the client-side half
+    // for a response that predates the field.
+    const fallback = /^#[0-9a-f]{6}$/i.test(choice.accent_color)
+      ? choice.accent_color.toLowerCase()
+      : DEFAULT_ACCENT;
+    const colour = /^#[0-9a-f]{6}$/i.test(chosen) ? chosen.toLowerCase() : fallback;
+    properties.push([property, colour], [ink, readableInkOn(colour)]);
+  }
 
   // Dark is the stylesheet's own :root, so it is the ABSENCE of the attribute
   // rather than a value — one source of truth for "no theme chosen".
@@ -72,10 +101,9 @@ export function applyTheme(choice: ThemeChoice): CachedTheme {
   else root.removeAttribute('data-theme');
 
   root.setAttribute('data-font', choice.font);
-  root.style.setProperty('--color-accent', accent);
-  root.style.setProperty('--color-on-accent', onAccent);
+  for (const [property, value] of properties) root.style.setProperty(property, value);
 
-  return { mode: choice.theme_mode, font: choice.font, accent, onAccent };
+  return { mode: choice.theme_mode, font: choice.font, properties };
 }
 
 /** Remembers the theme for the next load, so the app does not paint in the

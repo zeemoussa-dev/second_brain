@@ -15,6 +15,8 @@ export interface Branding {
   theme_mode: string;
   font: string;
   accent_color: string;
+  surface_color: string;
+  highlight_color: string;
   theme_modes: string[];
   fonts: string[];
 }
@@ -39,6 +41,8 @@ const FALLBACK: Branding = {
   theme_mode: 'dark',
   font: 'inter',
   accent_color: '#c58b5f',
+  surface_color: '#c58b5f',
+  highlight_color: '#c58b5f',
   theme_modes: ['dark', 'light'],
   fonts: ['inter', 'plex', 'source'],
 };
@@ -101,9 +105,17 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
         theme_mode: branding.theme_mode,
         font: branding.font,
         accent_color: branding.accent_color,
+        surface_color: branding.surface_color,
+        highlight_color: branding.highlight_color,
       }),
     );
-  }, [branding.theme_mode, branding.font, branding.accent_color]);
+  }, [
+    branding.theme_mode,
+    branding.font,
+    branding.accent_color,
+    branding.surface_color,
+    branding.highlight_color,
+  ]);
 
   const value: BrandingContextValue = {
     ...branding,

@@ -20,8 +20,10 @@
           var root = document.documentElement;
           if (cached.mode === 'light') root.setAttribute('data-theme', 'light');
           if (cached.font) root.setAttribute('data-font', cached.font);
-          if (cached.accent) root.style.setProperty('--color-accent', cached.accent);
-          if (cached.onAccent) root.style.setProperty('--color-on-accent', cached.onAccent);
+          var properties = cached.properties || [];
+          for (var i = 0; i < properties.length; i++) {
+            root.style.setProperty(properties[i][0], properties[i][1]);
+          }
         }
       } catch (error) {
         /* A blocked or corrupt store just means one frame of the default. */

@@ -39,6 +39,38 @@ def test_an_install_that_never_chose_has_a_complete_theme(branding) -> None:
     assert current.accent_color == DEFAULT_ACCENT
 
 
+def test_the_other_two_colours_follow_the_accent_until_chosen(branding) -> None:
+    """An install that rebranded to blue before Surface and Highlight existed
+    must not get a copper sidebar back on upgrade. Following the accent means
+    nothing changes until someone chooses -- and the sidebar mixes its colour
+    down to a tint anyway, so one colour still looks like one colour."""
+    branding.set_theme(accent_color="#1d4ed8")
+
+    current = branding.get()
+    assert current.surface_color == "#1d4ed8"
+    assert current.highlight_color == "#1d4ed8"
+
+
+def test_each_colour_is_set_and_kept_on_its_own(branding) -> None:
+    branding.set_theme(accent_color="#1d4ed8")
+    branding.set_theme(surface_color="#0f172a")
+
+    current = branding.get()
+    assert current.accent_color == "#1d4ed8"
+    assert current.surface_color == "#0f172a"
+    # Still unset, so still following the accent rather than the new surface.
+    assert current.highlight_color == "#1d4ed8"
+
+
+def test_a_bad_colour_is_refused_for_every_role(branding) -> None:
+    """The same guard on all three: each lands in a CSS custom property."""
+    for role in ("accent_color", "surface_color", "highlight_color"):
+        with pytest.raises(BrandingError):
+            branding.set_theme(**{role: "red; background: url(https://example.test/x)"})
+
+    assert branding.get().surface_color == DEFAULT_ACCENT
+
+
 def test_renaming_the_install_keeps_its_theme(branding) -> None:
     """The record is one JSON object. A plain write would drop every key it
     did not carry, so renaming would have silently reset the theme."""

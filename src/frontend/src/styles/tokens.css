@@ -100,11 +100,29 @@
      accent's luminance and sets it inline; this value is the default for the
      shipped copper and for any load that happens before branding is read. */
   --color-on-accent: #0e1118;
-  /* The side panel, tinted by the accent (operator, 2026-10-24: the accent
-     "will Affect the Side Panel Color"). A tint of the surface, not the accent
-     itself: the sidebar is a large area and a saturated one fights every
-     screen it frames. */
-  --color-sidebar: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+  /* Three branded colours, because one was doing three jobs that pull apart
+     (operator, 2026-10-24: "May be we need more than 1 Color as Accent?").
+     Each is set at runtime by Branding and has its own computed ink:
+
+     - accent    the things you CLICK: buttons, links, focus rings. May be loud.
+     - surface   large QUIET areas: the side panel's tint. A colour strong
+                 enough for a button covers a whole sidebar badly, which is
+                 why this one is mixed down to a tint rather than used flat.
+     - highlight "you are HERE": the active nav item, selected rows, active
+                 tabs. Has to be distinguishable from the other two or the
+                 marker stops reading as a marker.
+
+     Unset, surface and highlight follow the accent, so an install that chose
+     one colour looks exactly as it did until someone picks the others. */
+  --color-brand-surface: var(--color-accent);
+  --color-highlight: var(--color-accent);
+  --color-on-highlight: var(--color-on-accent);
+  --color-highlight-muted: color-mix(in srgb, var(--color-highlight) 16%, transparent);
+
+  /* The side panel (operator, 2026-10-24: the accent "will Affect the Side
+     Panel Color"). A tint of the surface, not the colour itself: the sidebar
+     is a large area and a saturated one fights every screen it frames. */
+  --color-sidebar: color-mix(in srgb, var(--color-brand-surface) 10%, var(--color-surface));
   --color-success: #16a34a;
   --color-warning: #b45309;
   --color-danger: #b91c1c;
@@ -236,7 +254,7 @@
   --color-on-accent: #ffffff;
   /* Less tint than dark: the same 10% over white is far more saturated than
      over #171a22, and the sidebar would shout. */
-  --color-sidebar: color-mix(in srgb, var(--color-accent) 7%, var(--color-surface));
+  --color-sidebar: color-mix(in srgb, var(--color-brand-surface) 7%, var(--color-surface));
 }
 
 * { box-sizing: border-box; }
