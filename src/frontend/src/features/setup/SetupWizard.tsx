@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ApiError } from '../../api/client';
 import { bootstrapFirstAdmin, fetchAuthState } from '../auth/authApiClient';
 import type { CheckResult, HermesHealth, SaveResult, SetupField, SetupStatus } from './setupApiClient';
 import {
@@ -121,6 +122,7 @@ export function SetupWizard({ onDismiss }: { onDismiss?: () => void }) {
   const [admin, setAdmin] = useState({ username: '', password: '', displayName: '' });
   const [bootstrapState, setBootstrapState] = useState<'idle' | 'waiting' | 'done' | 'failed'>('idle');
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+  const [restartError, setRestartError] = useState<string | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [checks, setChecks] = useState<Record<string, CheckResult>>({});
   const [checking, setChecking] = useState<Record<string, boolean>>({});
@@ -280,12 +282,22 @@ export function SetupWizard({ onDismiss }: { onDismiss?: () => void }) {
   }
 
   async function handleRestart() {
+    setRestartError(null);
     try {
       await restartBackend();
-    } catch {
-      // The backend going away mid-request IS the success case here -- the
-      // shutdown it just accepted is what kills the response. Treat a
-      // failed fetch as done, not as an error worth alarming about.
+    } catch (error) {
+      // A request that never gets an answer IS the success case: the shutdown
+      // the backend just accepted is what kills the response. An answer that
+      // says no is the exact opposite -- and swallowing both alike is what hid
+      // a restart that never happened (the route answered 500) behind a wizard
+      // that looked like it had worked, so the operator saw their settings
+      // ignored and reported the SAVE as broken (2026-10-24).
+      if (error instanceof ApiError) {
+        setRestartError(
+          `The backend refused to restart (HTTP ${error.status}) and is still running with its old settings. Restart it yourself — ${error.message || 'no detail given'}`,
+        );
+        return;
+      }
     }
     // The admin asked for on step 1 is created HERE, which is the first moment
     // it can be: the account lives under second_brain_data_path, which this
@@ -362,6 +374,7 @@ export function SetupWizard({ onDismiss }: { onDismiss?: () => void }) {
             </p>
           )}
           {bootstrapState === 'failed' && <p className="error-text">{bootstrapError}</p>}
+          {restartError && <p className="error-text">{restartError}</p>}
 
           <div className="setup-actions">
             <button

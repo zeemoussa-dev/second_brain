@@ -266,6 +266,12 @@ Where a rule does not belong here:
 
 - **A missing or invalid `.env` must never crash the backend.** The five required settings carry safe defaults so import succeeds, and the app boots into setup mode serving the first-run wizard. A config error the UI cannot reach is a config error nobody can fix.
 
+- **A plain `def` route has no event loop.** FastAPI serves it from the threadpool, so `asyncio.create_task`/`get_running_loop` inside anything it calls raises `RuntimeError` and the route answers 500. Background work reachable from a sync route schedules itself with a thread (`threading.Timer`), or the route is `async def`. This cost a whole afternoon as "the setup wizard didn't save" (2026-10-24).
+
+- **Nothing supervises the backend process.** `--reload` restarts a *worker* on a file change; a SIGTERM ends the process for good. An in-app "Restart" therefore writes `.restart-requested` and stops, and `run-backend.cmd` relaunches on that sentinel alone -- never unconditionally, or a failed startup becomes a spin.
+
+- **A failed request to a route that kills the server is ambiguous, and the two halves mean opposite things.** No answer = it worked. An answer with an error status = it refused and is still running. A client that treats them alike will show success for a restart that never happened.
+
 - **The first-run wizard is read-only on the Hermes side.** It reports install, gateway, profile count and Skill deployment, and provisions nothing. Applying config to a real Hermes install stays the operator's own action.
 
 - **Never write a bare `KEY=` into `.env` for a Path setting.** pydantic parses an empty string into `Path(".")`, not `None` - so an empty `SECOND_BRAIN_DATA_PATH` relocates the whole state folder to the backend's working directory AND suppresses the validator that would have defaulted it. Remove the line instead of blanking it.

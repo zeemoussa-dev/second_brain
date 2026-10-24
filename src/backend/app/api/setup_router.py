@@ -92,8 +92,11 @@ def save(body: SaveSetupBody) -> dict:
 
 @router.post("/restart")
 def restart() -> dict:
-    """Graceful shutdown so the operator's own launcher brings the app back
-    up reading the .env just written. Same mechanism Settings > System
-    already uses."""
-    system_settings.request_shutdown()
+    """Graceful shutdown, then the launcher starts the app again -- reading the
+    .env just written, which is the only way those values take effect.
+
+    Not the same call as Settings > System's Shut down: that one is meant to
+    leave the app down, this one must bring it back, and nothing supervises the
+    backend by itself (see `request_restart`)."""
+    system_settings.request_restart()
     return {"ok": True}

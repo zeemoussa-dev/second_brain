@@ -5,6 +5,7 @@ a fresh install with no .env must still IMPORT, still serve, and still be
 able to describe what it is missing. Before this, `app.config` raised a
 pydantic ValidationError at module scope and nothing below ever ran.
 """
+import threading
 from pathlib import Path
 
 import pytest
@@ -397,3 +398,46 @@ def test_the_data_folder_says_what_leaving_it_blank_does(unconfigured) -> None:
 
     assert "BLANK" in field["description"]
     assert ".second-brain" in field["description"]
+
+
+def test_a_restart_can_be_asked_for_from_a_plain_sync_route(monkeypatch, tmp_path) -> None:
+    """The wizard's "Restart now", from the thread FastAPI actually runs it on.
+
+    `/setup/restart` is a plain `def`, so it is served from the threadpool,
+    where there is no running event loop. The old implementation scheduled the
+    SIGTERM with `asyncio.create_task`, which raises there -- the route
+    answered 500, the frontend read the failure as the backend going away, and
+    the operator saw a save that never took effect and reported the SAVE as
+    broken (2026-10-24).
+    """
+    monkeypatch.chdir(tmp_path)
+    terminated = threading.Event()
+    monkeypatch.setattr(system_settings, "_raise_terminate", terminated.set)
+
+    response = client.post("/setup/restart")
+
+    assert response.status_code == 200
+    assert terminated.wait(timeout=5), "the shutdown was accepted but never scheduled"
+
+
+def test_a_restart_leaves_the_launcher_something_to_act_on(monkeypatch, tmp_path) -> None:
+    """A shutdown alone is where the app STAYS: `--reload` restarts a worker on
+    a file change, never the process a SIGTERM ends, and nothing supervises the
+    backend. run-backend.cmd relaunches only on this sentinel, so a crash
+    cannot become a spin."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(system_settings, "_raise_terminate", lambda: None)
+
+    system_settings.request_restart()
+
+    assert (tmp_path / ".restart-requested").exists()
+
+
+def test_shutting_down_is_not_a_restart(monkeypatch, tmp_path) -> None:
+    """Settings > System's Shut down is meant to leave the app down."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(system_settings, "_raise_terminate", lambda: None)
+
+    system_settings.request_shutdown()
+
+    assert not (tmp_path / ".restart-requested").exists()

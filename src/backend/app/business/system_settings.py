@@ -16,9 +16,9 @@ that path as the single source of truth for Second Brain's own state
 """
 from __future__ import annotations
 
-import asyncio
 import shutil
 import signal
+import threading
 from pathlib import Path
 
 import httpx
@@ -409,8 +409,12 @@ def update_system_settings(patch: dict[str, str]) -> dict:
     return {"ok": True, "restart_required": True}
 
 
-async def _delayed_shutdown() -> None:
-    await asyncio.sleep(0.3)
+# Long enough for the response to reach the caller before the server stops,
+# short enough that nobody watches a dead page.
+_SHUTDOWN_DELAY_SECONDS = 0.3
+
+
+def _raise_terminate() -> None:
     # os.kill(pid, SIGTERM) on Windows calls TerminateProcess() directly and
     # does NOT invoke any registered Python signal handler (a real CPython/
     # Windows gap) -- signal.raise_signal() properly triggers uvicorn's own
@@ -420,4 +424,42 @@ async def _delayed_shutdown() -> None:
 
 
 def request_shutdown() -> None:
-    asyncio.create_task(_delayed_shutdown())
+    """Stops this server, shortly.
+
+    A THREAD timer, not `asyncio.create_task`. Both callers of this
+    (`POST /setup/restart`, `POST /settings/system/shutdown`) are plain `def`
+    routes, which FastAPI runs in its threadpool, where there is no running
+    event loop -- so `create_task` raised `RuntimeError` and the route answered
+    500 without ever scheduling anything.
+
+    Nothing noticed, because the frontend treats a failed request here as the
+    success case: the server going away mid-response looks exactly like that.
+    So "Restart now" in the setup wizard reliably did nothing, the process kept
+    serving the settings it started with, and the wizard reappeared after a save
+    that had in fact written every value correctly (found 2026-10-24).
+    """
+    threading.Timer(_SHUTDOWN_DELAY_SECONDS, _raise_terminate).start()
+
+
+# Read by run-backend.cmd AFTER uvicorn exits, relative to the backend folder
+# the launcher cd's into (same base as _ENV_PATH).
+_RESTART_SENTINEL_PATH = Path(".restart-requested")
+
+
+def request_restart() -> None:
+    """Stops this server and has the launcher start it again.
+
+    Nothing supervises the backend: run-backend.cmd runs uvicorn in the
+    foreground, and `--reload` restarts a WORKER on a file change, never the
+    process a SIGTERM ends. So a plain shutdown is where the app stays -- which
+    is not what "Restart now" promises the operator after a save they cannot
+    see take effect without one.
+
+    The launcher therefore loops, and relaunches only when it finds this
+    sentinel: a crash or a Ctrl-C leaves none and stays down, so the loop
+    cannot turn a startup failure into a spin. A backend started some other way
+    (bare uvicorn, a service) ignores the file and simply stops, which is the
+    old behaviour.
+    """
+    _RESTART_SENTINEL_PATH.write_text("", encoding="utf-8")
+    request_shutdown()
