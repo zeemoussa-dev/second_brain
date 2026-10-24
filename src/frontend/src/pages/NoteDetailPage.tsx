@@ -15,6 +15,46 @@ import type { TocHeading } from '../features/vault-browser/tableOfContents';
  *  correctly hides because there is no history to go back through. */
 const BROWSE_CRUMB = { label: 'The Vault', to: '/browse' } as const;
 
+/** One side of a note's links, as a reference rather than a destination.
+ *
+ * An empty side still renders its heading and says so: "no backlinks" is a
+ * fact about the note worth reading, and a section that disappears when empty
+ * makes the rail's shape change from note to note.
+ */
+function LinkList({
+  title,
+  hint,
+  arrow,
+  links,
+}: {
+  title: string;
+  hint: string;
+  arrow: string;
+  links: NoteDetail['forward_links'];
+}) {
+  return (
+    <section className="note-rail-section">
+      <h3 className="note-rail-title" title={hint}>
+        {title} <span className="note-rail-count">{links.length}</span>
+      </h3>
+      {links.length === 0 ? (
+        <p className="note-rail-empty">None</p>
+      ) : (
+        <ul className="note-rail-links">
+          {links.map((link) => (
+            <li key={link.stem}>
+              <Link to={`/browse/${link.stem}`} title={`${link.title} — ${link.kind}`}>
+                <span className="note-rail-arrow" aria-hidden="true">{arrow}</span>
+                {link.title}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 export function NoteDetailPage() {
   const { stem } = useParams<{ stem: string }>();
   const [detail, setDetail] = useState<NoteDetail | null>(null);
@@ -59,6 +99,11 @@ export function NoteDetailPage() {
     );
   }
 
+  // Without the rail the layout is one column: an empty 240px track beside
+  // the note is a margin nobody asked for.
+  const hasRail =
+    headings.length > 1 || detail.forward_links.length > 0 || detail.backlinks.length > 0;
+
   return (
     <>
       <Breadcrumbs items={[BROWSE_CRUMB, { label: detail.title }]} />
@@ -79,7 +124,7 @@ export function NoteDetailPage() {
         </div>
       </div>
 
-      <div className="note-detail-layout">
+      <div className={`note-detail-layout ${hasRail ? '' : 'has-no-rail'}`}>
         <div className="note-detail-main">
           <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
             <h2>Note</h2>
@@ -93,54 +138,44 @@ export function NoteDetailPage() {
             </div>
           </div>
 
-          <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
-            <h2>Forward links <span className="text-muted" style={{ fontWeight: 400, fontSize: 'var(--font-size-sm)' }}>— notes this one links to</span></h2>
-            {detail.forward_links.length > 0 ? (
-              <div className="item-list">
-                {detail.forward_links.map((link) => (
-                  <Link className="item-row" to={`/browse/${link.stem}`} key={link.stem}>
-                    <div className="item-row-main">
-                      <span className="item-row-title">&#8594; {link.title}</span>
-                      <span className="item-row-meta">{link.kind}</span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <p className="text-muted" style={{ margin: 0 }}>No outgoing links.</p>
-            )}
-          </div>
-
-          <div className="card">
-            <h2>Backlinks <span className="text-muted" style={{ fontWeight: 400, fontSize: 'var(--font-size-sm)' }}>— notes that link to this one</span></h2>
-            {detail.backlinks.length > 0 ? (
-              <div className="item-list">
-                {detail.backlinks.map((link) => (
-                  <Link className="item-row" to={`/browse/${link.stem}`} key={link.stem}>
-                    <div className="item-row-main">
-                      <span className="item-row-title">&#8592; {link.title}</span>
-                      <span className="item-row-meta">{link.kind}</span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <p className="text-muted" style={{ margin: 0 }}>No notes link to this one yet.</p>
-            )}
-          </div>
         </div>
 
-        {headings.length > 1 && (
-          <aside className="note-detail-toc" aria-label="Jump to section">
-            <ul className="note-detail-toc-list">
-              {headings.map((heading) => (
-                <li key={heading.slug}>
-                  <a href={`#${heading.slug}`} data-level={heading.level}>
-                    {heading.text}
-                  </a>
-                </li>
-              ))}
-            </ul>
+        {/* Everything ABOUT the note, beside the note (operator, 2026-10-24:
+            the links "Looks Really Bad And Take alot of Space while they can
+            be on the Side Panel ... and be Much Smaller in size"). They were
+            two full-width cards below the body, so reading a note meant
+            scrolling past its own text to find what it connects to, and a
+            note with 30 backlinks buried itself. Sections, one list each, at
+            the size of a reference rather than a destination. */}
+        {hasRail && (
+          <aside className="note-rail" aria-label="About this note">
+            {headings.length > 1 && (
+              <section className="note-rail-section">
+                <h3 className="note-rail-title">On this page</h3>
+                <ul className="note-detail-toc-list">
+                  {headings.map((heading) => (
+                    <li key={heading.slug}>
+                      <a href={`#${heading.slug}`} data-level={heading.level}>
+                        {heading.text}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            <LinkList
+              title="Links out"
+              hint="Notes this one links to"
+              arrow="→"
+              links={detail.forward_links}
+            />
+            <LinkList
+              title="Links in"
+              hint="Notes that link to this one"
+              arrow="←"
+              links={detail.backlinks}
+            />
           </aside>
         )}
       </div>

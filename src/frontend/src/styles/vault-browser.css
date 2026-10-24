@@ -115,8 +115,11 @@ button.item-row:hover {
 
 .note-detail-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 240px;
-  gap: var(--space-4);
+  /* 260 rather than 240: the rail carries note titles now, not just heading
+     text, and twenty more pixels is roughly three more characters before the
+     ellipsis. */
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: var(--space-6);
   align-items: start;
   /* The measure is bounded here, for the page as a whole, instead of inside
      the note body: the text fills its column and the column itself stops
@@ -128,11 +131,8 @@ button.item-row:hover {
 
 .note-detail-main { min-width: 0; }
 
-.note-detail-toc {
-  position: sticky;
-  top: var(--space-4);
-}
-
+/* The table of contents is one section of the rail now, so the rail owns the
+   sticking and the scrolling; this list just sits inside it. */
 .note-detail-toc-list {
   list-style: none;
   margin: 0;
@@ -140,8 +140,6 @@ button.item-row:hover {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  max-height: calc(100vh - 120px);
-  overflow-y: auto;
 }
 
 .note-detail-toc-list a {
@@ -169,12 +167,14 @@ button.item-row:hover {
   .note-detail-layout {
     grid-template-columns: 1fr;
   }
-  .note-detail-toc {
+  /* One column: the rail goes back under the note rather than squeezing
+     beside it, and stops sticking, since there is nothing left to stick
+     against. */
+  .note-rail {
     position: static;
-    order: -1;
+    max-height: none;
   }
   .note-detail-toc-list {
-    max-height: none;
     flex-direction: row;
     flex-wrap: wrap;
   }
@@ -506,4 +506,94 @@ button.item-row:hover {
 @media (max-width: 900px) {
   .vault-layout { grid-template-columns: 1fr; }
   .vault-navigator { position: static; max-height: 18rem; }
+}
+
+/* The note's context rail (2026-10-24): the table of contents and both sides
+   of its links, beside the note instead of below it. Everything here is a
+   REFERENCE -- something you glance at while reading -- so it is set at the
+   small size throughout and truncated to one line per entry. The full title
+   is on the hover, and the note itself is one click away. */
+.note-rail {
+  position: sticky;
+  top: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+}
+
+.note-rail-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.note-rail-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.note-rail-count {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--color-surface-raised);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.note-rail-empty {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.note-rail-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.note-rail-links a {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: var(--font-size-sm);
+  line-height: 1.35;
+  /* One line each: a meeting title runs to sixty characters and a rail that
+     wraps them is the full-width card again, only narrower. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.note-rail-links a:hover {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+.note-rail-arrow {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+  opacity: 0.7;
+}
+
+/* No rail, no track for it. */
+.note-detail-layout.has-no-rail {
+  grid-template-columns: minmax(0, 1fr);
 }
