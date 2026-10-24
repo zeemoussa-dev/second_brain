@@ -68,7 +68,10 @@ export function RoutingEditor({
   }
 
   return (
-    <div className="routing-editor" data-testid={`routing-editor-${parent}`}>
+    // The id is how the diagram's "say when" reaches this exact editor: on a
+    // map of 42 agents, scrolling to the right one is the difference between
+    // a control that exists and one that can be found.
+    <div className="routing-editor" id={`routing-${parent}`} data-testid={`routing-editor-${parent}`}>
       <h3>
         <code>{parent}</code>{' '}
         <span className="auth-note">

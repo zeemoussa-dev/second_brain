@@ -106,6 +106,20 @@ export function FlowMapPage() {
           // looked like it did nothing at all (operator, 2026-10-21) --
           // a detail view you cannot see is worse than no detail view.
           onPick={(agentId) => navigate(`/flow/${encodeURIComponent(agentId)}`)}
+          // "say when" on an unexplained line scrolls to the editor for that
+          // exact parent. The control was always on this page; with one block
+          // per agent under a single heading it was findable only by knowing
+          // it was there (operator, 2026-10-24).
+          onSayWhen={(parentId, childId) => {
+            const editor = document.getElementById(`routing-${parentId}`);
+            editor?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Focus the field for THAT route, not just the block: a scrolled-to
+            // form still leaves you hunting the row.
+            const field = document.querySelector<HTMLInputElement>(
+              `[data-testid="routing-when-${parentId}-${childId}"]`,
+            );
+            field?.focus({ preventScroll: true });
+          }}
         />
       </section>
 

@@ -553,6 +553,10 @@
 .flow-link {
   stroke: var(--color-border);
   stroke-width: 1.5;
+  /* The links became <path> curves when the layout turned vertical, and an
+     unfilled path is not the default: without this every edge paints as a
+     solid wedge between its two nodes. */
+  fill: none;
 }
 
 /* A route with no condition is the same line, visibly unexplained --
@@ -581,6 +585,13 @@
   font-family: var(--font-sans);
 }
 
+/* Three sizes inside one node, because the node now carries three different
+   kinds of fact (2026-10-24): what it is called, what it is, and what it
+   holds. One size for all three would be a paragraph in a box. */
+.flow-node-name { font-size: 13px; font-weight: 600; }
+.flow-node-sub { fill: var(--color-text-muted); font-size: 11px; }
+.flow-node-counts { fill: var(--color-text-muted); font-size: 10.5px; }
+
 .flow-node-door rect {
   fill: var(--color-surface-raised);
   stroke: var(--color-accent);
@@ -593,6 +604,59 @@
 .flow-node-lit rect {
   stroke: var(--color-accent);
   stroke-width: 2;
+}
+
+/* An agent with a route nobody explained. Warning, not danger: the route
+   works, it is just undocumented, and colouring it like a failure would put
+   every new install permanently in the red. */
+.flow-node-incomplete rect {
+  stroke: var(--color-warning);
+  stroke-dasharray: 4 3;
+}
+
+.flow-arrow-head {
+  fill: var(--color-border);
+}
+
+/* The condition, written on the line it belongs to. */
+.flow-when rect {
+  fill: var(--color-surface);
+  stroke: var(--color-border);
+}
+
+.flow-when text {
+  fill: var(--color-text-muted);
+  font-size: 10.5px;
+  text-anchor: middle;
+  font-family: var(--font-sans);
+}
+
+/* Its absence, as a control rather than a silence: this is the answer to "I
+   cannot find where to set the When" -- it is on the line that lacks one. */
+.flow-when-missing {
+  cursor: pointer;
+}
+
+.flow-when-missing rect {
+  fill: color-mix(in srgb, var(--color-warning) 18%, var(--color-surface));
+  stroke: var(--color-warning);
+  stroke-dasharray: 3 2;
+}
+
+.flow-when-missing text {
+  fill: var(--color-warning);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-anchor: middle;
+  font-family: var(--font-sans);
+}
+
+.flow-when-missing:hover rect {
+  fill: var(--color-warning);
+}
+
+.flow-when-missing:hover text {
+  fill: var(--color-on-accent);
 }
 
 .flow-focus {

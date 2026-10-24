@@ -8,6 +8,8 @@ import {
   SkillsEditor,
   SpecialistsEditor,
 } from '../features/settings/AgentFlowEditors';
+import { RoutingEditor } from '../features/settings/RoutingEditor';
+import type { EdgeTarget } from '../features/settings/RoutingEditor';
 
 interface Edge { from: string; to: string; when: string | null; declared: boolean }
 interface AgentNode { id: string; name: string; routes_to: string[]; may_call: string[]; is_entry: boolean }
@@ -37,6 +39,7 @@ export function AgentFlowPage() {
   const { may } = useAuth();
   const canEdit = may('manage_agents');
   const [map, setMap] = useState<FlowMap | null>(null);
+  const [targets, setTargets] = useState<Map<string, EdgeTarget>>(new Map());
   const [failure, setFailure] = useState<string | null>(null);
   const [reloads, setReloads] = useState(0);
 
@@ -45,6 +48,18 @@ export function AgentFlowPage() {
       .then(setMap)
       .catch((error) => setFailure(refusalText(error)));
   }, [agentId, reloads]);
+
+  // Each specialist's own description, so a condition is written with what
+  // that agent says about itself in front of the operator rather than from
+  // memory. A failure here costs the hint, never the editor.
+  useEffect(() => {
+    apiFetch<{ agents?: EdgeTarget[] } | EdgeTarget[]>('/agents')
+      .then((answer) => {
+        const list = Array.isArray(answer) ? answer : (answer.agents ?? []);
+        setTargets(new Map(list.map((candidate) => [candidate.id, candidate])));
+      })
+      .catch(() => setTargets(new Map()));
+  }, []);
 
   if (failure) return <><h1>{agentId}</h1><p className="auth-refusal" role="alert">{failure}</p></>;
   if (!map) return <><h1>{agentId}</h1><p>Reading the flow…</p></>;
@@ -120,7 +135,31 @@ export function AgentFlowPage() {
               <li key={edge.to} className={edge.declared ? '' : 'flow-edge-silent'}>
                 <Link to={`/flow/${encodeURIComponent(edge.to)}`}><code>{edge.to}</code></Link>
                 <div className="auth-note">
-                  {edge.when ? `When: ${edge.when}` : 'No condition said — nothing records why an ask should go here.'}
+                  {edge.when ? (
+                    `When: ${edge.when}`
+                  ) : (
+                    <>
+                      No condition said — nothing records why an ask should go here.{' '}
+                      {canEdit && (
+                        <button
+                          type="button"
+                          className="routing-use"
+                          onClick={() => {
+                            document
+                              .getElementById(`routing-${agent.id}`)
+                              ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            document
+                              .querySelector<HTMLInputElement>(
+                                `[data-testid="routing-when-${agent.id}-${edge.to}"]`,
+                              )
+                              ?.focus({ preventScroll: true });
+                          }}
+                        >
+                          say when
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
               </li>
             ))}
@@ -180,9 +219,8 @@ export function AgentFlowPage() {
         <section>
           <h2>Change this agent's flow</h2>
           <p className="auth-note">
-            Routes and Action assignment take effect at once. The <em>when</em> on a route is
-            written on <Link to="/flow">The Flow</Link> and only reaches the agent's prompt
-            when you publish there.
+            Routes and Action assignment take effect at once. A route's <em>when</em> is saved
+            here and only reaches the agent's prompt when you publish it.
           </p>
           <SpecialistsEditor
             agentId={agent.id}
@@ -190,6 +228,24 @@ export function AgentFlowPage() {
             candidates={map.agents.map((other) => other.id)}
             onChanged={() => setReloads((n) => n + 1)}
           />
+
+          {/* The condition, on the page where the route was just created
+              (operator, 2026-10-24: "I can't find When I change Primary to
+              Call Specialist where to set the When"). Adding a specialist
+              here used to leave a route with no condition and a sentence
+              pointing at another page, where this agent's editor is one of
+              dozens stacked under a single heading. Keyed by the edge set so
+              a specialist added a second ago gets its own empty field rather
+              than waiting for a remount. */}
+          {sendsTo.length > 0 && (
+            <RoutingEditor
+              key={sendsTo.map((edge) => edge.to).join('|')}
+              parent={agent.id}
+              edges={sendsTo}
+              targets={targets}
+              onSaved={() => setReloads((n) => n + 1)}
+            />
+          )}
           <ActionAssignmentEditor
             agentId={agent.id}
             actions={map.actions}
