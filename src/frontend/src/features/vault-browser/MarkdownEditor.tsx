@@ -63,9 +63,18 @@ export function MarkdownEditor({
   // (which would lose the caret, the selection and the undo history).
   const handlers = useRef({ onChange, onSave, onCancel, onBlur });
   handlers.current = { onChange, onSave, onCancel, onBlur };
+  // Destroying a FOCUSED editor fires a blur, and the blur handler means "the
+  // operator clicked away", which closes the section. React StrictMode mounts
+  // every effect, tears it down and mounts it again, so in development the
+  // editor opened and vanished instantly -- a flicker and nothing else
+  // (operator, 2026-10-24: "the Screen Flicker to show something but It
+  // Disappear Straight away"). Reset on each mount, because the ref outlives
+  // the double invocation that sets it.
+  const tearingDown = useRef(false);
 
   useEffect(() => {
     if (!host.current) return;
+    tearingDown.current = false;
 
     const state = EditorState.create({
       doc: value,
@@ -100,7 +109,9 @@ export function MarkdownEditor({
         }),
         EditorView.domEventHandlers({
           blur: () => {
-            handlers.current.onBlur();
+            // A blur caused by this editor being torn down is not the
+            // operator leaving it.
+            if (!tearingDown.current) handlers.current.onBlur();
             return false;
           },
         }),
@@ -114,6 +125,7 @@ export function MarkdownEditor({
     editor.focus();
 
     return () => {
+      tearingDown.current = true;
       editor.destroy();
       view.current = null;
     };
