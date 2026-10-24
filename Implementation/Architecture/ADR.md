@@ -4409,3 +4409,96 @@ System > Compass); a plugin never sees the key.
   sends and must ground the model on its own data (the brief sends figures it
   computed, never asks the model for numbers).
 
+
+---
+
+## ADR-064: A theme is token values, three branded colours, and ink computed from each
+
+**Status:** Accepted
+**Date:** 2026-10-24
+
+**Context:** Branding could set this install's name and logo; the operator asked
+for the rest of its identity (2026-10-24): light and dark, a font from three,
+and an accent colour affecting the side panel — then, having seen it, "May be we
+need more than 1 Color as Accent?" and the constraint that it "will affect a lot
+the lines and the whole Agents Map".
+
+That last point was the real risk, so it was measured before anything was
+written: **14 colour literals in the whole stylesheet tree outside
+`tokens.css`, and zero inline colours in TSX.** The app was already fully
+tokenised — including the Map, whose connector strokes are `var(--color-text)`
+and `var(--color-accent)` rather than hexes. What a light theme actually
+threatens is therefore not values but **relationships**: the Map's lines, the
+body's dot grid and the worker node colour are all the text colour, near-white
+in dark and near-black in light.
+
+Two existing bugs said the same thing from the other side. `--color-surface-2`
+was referenced by five rules and defined by none, so `settings.css`'s
+light-theme hex fallback put near-white text on a near-white box at 1.1:1 —
+every plugin install's result, unreadable. `--color-surface-sunken` was
+referenced eight times and defined nowhere, seven without a fallback, so those
+backgrounds had never painted at all.
+
+**Decision:**
+
+1. **Dark stays on `:root`; light is `:root[data-theme="light"]` overriding
+   colour tokens only.** No screen has a second version of itself, and an
+   install that never chose a theme is byte-identical to before. A new colour
+   belongs in both blocks or in neither.
+
+2. **A colour token never carries a hard-coded hex fallback.** `var(--x)` with
+   no fallback fails visibly; `var(--x, #f6f7f9)` paints a light box in a dark
+   app the day the token is missing or renamed. Theme-agnostic fallbacks
+   (`rgba(127,127,127,0.08)`) are acceptable where one is genuinely wanted.
+
+3. **Three branded colours, one job each**, because one colour was doing all
+   three and they pull apart — an action colour wants to be loud, a surface
+   colour must stay quiet across a whole side panel, and a highlight has to be
+   distinguishable from both or "you are here" stops reading:
+
+   | Role | Token | Drives |
+   |---|---|---|
+   | Action | `--color-accent` | buttons, links, focus rings |
+   | Surface | `--color-brand-surface` | `--color-sidebar`, large quiet areas |
+   | Highlight | `--color-highlight` | active nav item, selected rows, tabs |
+
+   Surface and Highlight **follow the Action colour until set**, so an install
+   that rebranded before they existed does not get a copper sidebar back.
+
+4. **Everything derived from a branded colour is derived in CSS**
+   (`--color-accent-muted`, `--color-highlight-muted`, `--color-sidebar` are
+   `color-mix`), never stored as a second hex — a stored `rgba()` of the copper
+   stays copper under a custom accent, which is the "we changed our colour and
+   half the app disagreed" failure.
+
+5. **The readable ink on each branded colour is computed from its luminance**
+   (`theme.ts`, WCAG relative luminance, the better of near-black and white),
+   not fixed per theme. This app has shipped white-on-white twice — the Map's
+   filled worker node and the Marketplace install result — and both were a
+   foreground pinned while its background moved.
+
+6. **The theme is install-wide, Admin-only, and stored with branding**, not a
+   per-user preference (the operator's own choice). It is applied before first
+   paint from a `localStorage` cache in `index.html`; the server's record is the
+   truth and corrects it a frame later.
+
+7. **Fonts are real local files.** These installs sit in closed networks where a
+   CDN webfont fetch fails silently and the page renders in something else. Each
+   shipped family carries its licence in `public/fonts/licences/`, and every
+   stack keeps Plus Jakarta Sans behind the chosen family so a missing file
+   degrades to the app's own typeface.
+
+**Consequences:**
+
+- Adding a branded colour is three edits — a token, an entry in
+  `BRANDED_COLOURS` in `theme.ts`, and a swatch in Branding — and never a
+  second copy of the ink maths.
+- Adding a font is a `.woff2`, its licence, a `@font-face`, a
+  `:root[data-font="…"]` rule and one id in `FONT_CHOICES`.
+- **Node colours on the Agents Map stay out of branding** (operator, 2026-10-24:
+  "Node Colors are IN the MAP Settings ... Just the lines are not"). The Map's
+  *lines* follow the theme because they are `--color-text`; its nodes are the
+  Map's own setting and are not repainted by an accent.
+- A screen that hard-codes a colour, or sets `data-theme` itself, breaks this
+  contract. The sweep that proved it possible — 14 literals, zero inline — is
+  the number to re-measure if light mode ever starts looking wrong.
