@@ -58,6 +58,10 @@ def test_compass(body: TestCompassBody) -> dict:
 
 class SaveSetupBody(BaseModel):
     values: dict[str, str]
+    #: "Yes, this install owns that Hermes." Off by default and never inferred:
+    #: the whole point of the conflict is that the second install cannot tell
+    #: it is the second one (2026-10-24).
+    repoint_hermes: bool = False
 
 
 @router.post("/save")
@@ -83,6 +87,7 @@ def save(body: SaveSetupBody) -> dict:
             vault_path,
             body.values.get('second_brain_data_path', ''),
             body.values.get('self_email', ''),
+            repoint=body.repoint_hermes,
         )
         if vault_path
         else {"ok": False, "detail": "No vault path in this save — Hermes left untouched", "files_written": 0}

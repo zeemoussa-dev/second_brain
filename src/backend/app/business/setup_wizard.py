@@ -191,7 +191,15 @@ def _check_vault_path_agrees(home: Path | None, candidate_vault_path: str = "") 
             theirs = _normalized_vault_path(line.split("=", 1)[1].strip())
             if theirs == ours:
                 return {"ok": True, "detail": "Same vault"}
-            return {"ok": False, "detail": f"Hermes points at {theirs} — saving will update it"}
+            # NOT "saving will update it" any more, which is what it used to
+            # say and what it used to do -- see `hermes_belongs_to_another_install`.
+            return {
+                "ok": False,
+                "detail": (
+                    f"This Hermes is serving another vault ({theirs}). Saving will NOT "
+                    "repoint it unless you say so."
+                ),
+            }
     return {"ok": False, "detail": "Not set in Hermes — saving will add it"}
 
 
@@ -334,7 +342,28 @@ def _hermes_env_files_holding_the_vault_path(home: Path) -> list[Path]:
 _PYTHONPATH_ENV_KEY = "PYTHONPATH"
 
 
-def sync_settings_to_hermes(vault_path: str, data_path: str = "", self_email: str = "") -> dict:
+def hermes_vault_in_use(home: Path) -> str:
+    """The vault this Hermes install is currently serving, normalised, or "".
+
+    Read from the HOME `.env` rather than a profile's: that is the file a
+    second install would have overwritten first, and the one `sync_settings_
+    to_hermes` writes before it fans out to the profiles.
+    """
+    env_file = home / ".env"
+    if not env_file.is_file():
+        return ""
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        if line.strip().startswith(f"{_OBSIDIAN_VAULT_ENV_KEY}="):
+            return _normalized_vault_path(line.split("=", 1)[1].strip())
+    return ""
+
+
+def sync_settings_to_hermes(
+    vault_path: str,
+    data_path: str = "",
+    self_email: str = "",
+    repoint: bool = False,
+) -> dict:
     """Writes the vault path into Hermes' own `.env` (operator-directed,
     2026-09-04: "When I set the Vault URL it need to reflect in Hermes
     Obsedian COnfig data").
@@ -348,6 +377,17 @@ def sync_settings_to_hermes(vault_path: str, data_path: str = "", self_email: st
     creates a profile, deploys a Skill, or touches a cron job, and it never
     restarts anything -- a running gateway will not re-read `.env`, so the
     caller is told a restart is needed rather than one being performed.
+
+    **It refuses a Hermes that is already serving another vault**, unless
+    `repoint` says that is the intention. More than one install can share a
+    machine, and nothing stops two of them naming the same HERMES_HOME_PATH --
+    at which point the second one's save silently repoints the first one's
+    agents. That is not theoretical: on 2026-10-24 a plugin-host install
+    being set up took over the home `.env` and all 40 profiles of a live
+    install, and for two hours every capture wrote into the new install's
+    empty test vault -- 7 meetings and 76 people landed in the wrong place
+    before anyone noticed. The config was recoverable; nobody could have told
+    from the UI that it had happened.
     """
     normalized = _normalized_vault_path(vault_path)
     if not normalized:
@@ -376,6 +416,32 @@ def sync_settings_to_hermes(vault_path: str, data_path: str = "", self_email: st
             "detail": "No Hermes install found — nothing to sync to",
             "files_written": 0,
         }
+
+    in_use = hermes_vault_in_use(home)
+    # The install that OWNS this Hermes is the one whose saved vault path it is
+    # already serving, and that install moving its own vault is an ordinary
+    # save. Only a third value is a conflict: Hermes pointing somewhere that is
+    # neither where this install was nor where it is going means somebody else
+    # put it there. A guard that also fired on the owner would be clicked
+    # through without being read, which is no guard at all.
+    ours_before = _normalized_vault_path(str(settings.vault_path or ""))
+    if in_use and in_use != normalized and in_use != ours_before and not repoint:
+        # Refused, not merged: there is no "both" here. Every agent in that
+        # install reads one vault path, so saving would hand all of them to
+        # this install and take them from the other one.
+        return {
+            "ok": False,
+            "conflict": True,
+            "vault_in_use": in_use,
+            "detail": (
+                f"This Hermes is already serving another vault ({in_use}). Its agents were "
+                "left pointing there and nothing was changed. If this install is meant to own "
+                "Hermes, say so explicitly and save again; otherwise clear the Hermes fields — "
+                "an install without an agent runtime is a complete install."
+            ),
+            "files_written": 0,
+        }
+
     # Put the shared Skill managers on PYTHONPATH, and install them. Skills
     # sibling-import vault_manager rather than carrying a copy; Hermes
     # APPENDS a configured PYTHONPATH to its own instead of replacing it,

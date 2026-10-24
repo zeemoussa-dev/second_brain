@@ -187,6 +187,10 @@ def _fake_hermes_home(tmp_path: Path, *, vault: str | None, profiles: dict[str, 
 def test_vault_path_is_written_into_hermes_env(monkeypatch, tmp_path: Path) -> None:
     home = _fake_hermes_home(tmp_path, vault=r"C:\old\vault")
     monkeypatch.setattr(settings, "hermes_home_path", home)
+    # This install is the one Hermes is already serving -- it is moving its own
+    # vault, which is an ordinary save and not a takeover of somebody else's
+    # agents. Without this the conflict guard cannot tell the two apart.
+    monkeypatch.setattr(settings, "vault_path", Path(r"C:\old\vault"))
 
     result = setup_wizard.sync_settings_to_hermes(r"C:\new\vault")
 
@@ -216,6 +220,7 @@ def test_existing_profiles_are_not_left_pinned_to_the_old_vault(monkeypatch, tmp
         tmp_path, vault=r"C:\old\vault", profiles={"opp-manager": r"C:\old\vault", "research-agent": r"C:\old\vault"}
     )
     monkeypatch.setattr(settings, "hermes_home_path", home)
+    monkeypatch.setattr(settings, "vault_path", Path(r"C:\old\vault"))
 
     result = setup_wizard.sync_settings_to_hermes(r"C:\new\vault")
 
@@ -265,6 +270,7 @@ def test_data_path_is_synced_alongside_the_vault_path(monkeypatch, tmp_path: Pat
     the operator split config out of the vault."""
     home = _fake_hermes_home(tmp_path, vault=r"C:\old\vault")
     monkeypatch.setattr(settings, "hermes_home_path", home)
+    monkeypatch.setattr(settings, "vault_path", Path(r"C:\old\vault"))
 
     setup_wizard.sync_settings_to_hermes(r"C:\new\vault", r"C:\somewhere\config")
 
@@ -277,6 +283,7 @@ def test_data_path_falls_back_to_the_configured_setting(monkeypatch, tmp_path: P
     home = _fake_hermes_home(tmp_path, vault=r"C:\old\vault")
     monkeypatch.setattr(settings, "hermes_home_path", home)
     monkeypatch.setattr(settings, "second_brain_data_path", Path(r"C:\configured\data"))
+    monkeypatch.setattr(settings, "vault_path", Path(r"C:\old\vault"))
 
     setup_wizard.sync_settings_to_hermes(r"C:\new\vault")
 
@@ -526,3 +533,62 @@ def test_a_configured_hermes_folder_that_is_missing_is_still_an_error(monkeypatc
 
     assert result["ok"] is False
     assert not result.get("skipped")
+
+
+def test_a_hermes_already_serving_another_vault_is_not_taken_over(monkeypatch, tmp_path) -> None:
+    """The 2026-10-24 incident, as a test.
+
+    Two installs on one machine may name the same HERMES_HOME_PATH, and
+    nothing stopped the second one's save from repointing the first one's
+    agents: the home .env and all 40 profiles were rewritten, and for two
+    hours every capture wrote into the new install's empty test vault.
+    """
+    home = tmp_path / "hermes"
+    (home / "bin").mkdir(parents=True)
+    live_vault = str(tmp_path / "LiveVault")
+    (home / ".env").write_text(f"OBSIDIAN_VAULT_PATH={live_vault}\n", encoding="utf-8")
+    monkeypatch.setattr(settings, "hermes_home_path", home)
+
+    result = setup_wizard.sync_settings_to_hermes(str(tmp_path / "TestVault"))
+
+    assert result["ok"] is False
+    assert result["conflict"] is True
+    assert result["files_written"] == 0
+    assert result["vault_in_use"] == live_vault
+    # Untouched on disk, not just reported as refused.
+    assert live_vault in (home / ".env").read_text(encoding="utf-8")
+
+
+def test_an_install_that_really_owns_hermes_can_say_so(monkeypatch, tmp_path) -> None:
+    """The refusal has a way through, or the only route left is editing 41
+    files by hand -- which is how people end up doing it blind."""
+    home = tmp_path / "hermes"
+    (home / "bin").mkdir(parents=True)
+    (home / ".env").write_text(
+        f"OBSIDIAN_VAULT_PATH={tmp_path / 'OldVault'}\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(settings, "hermes_home_path", home)
+    new_vault = str(tmp_path / "NewVault")
+
+    result = setup_wizard.sync_settings_to_hermes(new_vault, repoint=True)
+
+    assert result["ok"] is True
+    assert new_vault in (home / ".env").read_text(encoding="utf-8")
+
+
+def test_the_same_vault_is_never_a_conflict(monkeypatch, tmp_path) -> None:
+    """Re-running the wizard on the install that owns Hermes must stay a
+    no-question save -- a guard that fires on the normal case gets clicked
+    through without being read."""
+    home = tmp_path / "hermes"
+    (home / "bin").mkdir(parents=True)
+    live_vault = str(tmp_path / "LiveVault")
+    (home / ".env").write_text(f"OBSIDIAN_VAULT_PATH={live_vault}\n", encoding="utf-8")
+    monkeypatch.setattr(settings, "hermes_home_path", home)
+
+    # Saved with a trailing separator, which is how a folder picker hands it
+    # over -- and must still be the same vault, not a conflict with itself.
+    result = setup_wizard.sync_settings_to_hermes(live_vault + "\\")
+
+    assert result["ok"] is True
+    assert not result.get("conflict")
