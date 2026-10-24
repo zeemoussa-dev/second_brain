@@ -5,6 +5,7 @@ already-resolved note `path`; none of them need to know where the vault
 root is."""
 from __future__ import annotations
 
+import hashlib
 import re
 from pathlib import Path
 
@@ -38,6 +39,36 @@ def parse_frontmatter_value(raw: str):
             for match in _LIST_ITEM_PATTERN.finditer(inner)
         ]
     return raw
+
+
+def replace_body(path, new_body: str) -> None:
+    """Rewrites a note's body and leaves its frontmatter block byte for byte.
+
+    Deliberately textual. Re-serialising the parsed frontmatter would reorder
+    keys, requote values and drop anything this parser does not understand --
+    on notes that agents write and then read back, which is a way to break a
+    pipeline with a typo fix.
+    """
+    real = Path(long_path(path))
+    text = real.read_text(encoding="utf-8")
+    if text.startswith("---\n"):
+        end = text.find("\n---\n", 4)
+        if end != -1:
+            real.write_text(text[: end + 5] + new_body, encoding="utf-8")
+            return
+    # No frontmatter to preserve: the body IS the file.
+    real.write_text(new_body, encoding="utf-8")
+
+
+def version_of(path) -> str:
+    """A short fingerprint of the file as it is on disk right now.
+
+    Content, not mtime: a vault sitting in OneDrive gets its timestamps
+    rewritten by the sync client, and a version that changes when nothing was
+    edited refuses saves nobody conflicted on.
+    """
+    text = Path(long_path(path)).read_bytes()
+    return hashlib.sha256(text).hexdigest()[:16]
 
 
 def read_note(path) -> tuple[dict, str]:

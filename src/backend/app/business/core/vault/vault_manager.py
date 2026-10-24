@@ -77,6 +77,15 @@ _logger = logging.getLogger(__name__)
 # singleton state, see the module docstring for why.
 # ---------------------------------------------------------------------------
 
+class NoteChangedError(Exception):
+    """Somebody else wrote this note while it was open. The vault has other
+    writers -- the agents -- so this is an ordinary event, not a fault."""
+
+
+class NoteNotEditableError(Exception):
+    """What the API shows for this note is not what is in the file."""
+
+
 _vault_index: dict[str, dict] = {}
 # Every indexed note, including ones whose name another note also has. The map
 # above can only hold one per name; this is what "all the notes" means.
@@ -784,9 +793,65 @@ class VaultManager:
             "stem": entry["stem"], "title": _title_for(entry), "kind": _kind_for(entry),
             "frontmatter": entry["frontmatter"], "tags": entry["tags"],
             "body": note_text.readable_body(frontmatter, body), "body_type": kind,
+            # What the editor holds and sends back, so a save can tell "nobody
+            # touched this" from "an agent rewrote it while you typed".
+            "version": vault_writer.note_version(Path(entry["path"])),
+            # An HTML body is shown converted, so what is on screen is not what
+            # is in the file and must not be written back over it.
+            "editable": kind != "html",
             "forward_links": _resolve_forward_links(entry, index),
             "backlinks": _resolve_backlinks(entry, index),
         }
+
+    def update_note_body(self, stem: str, body: str, expected_version: str) -> dict:
+        """Writes a note's body back to its own file, if nobody moved it first.
+
+        **The vault has other writers.** Hermes captures and enriches these
+        same notes continuously -- on 2026-10-24 it wrote 230 of them in one
+        burst -- so a save that simply overwrote would destroy an agent's
+        enrichment, or be destroyed by it, with nothing on screen either way.
+        The caller sends the version it opened, and a file that has moved on
+        since refuses the save and keeps the operator's text (`NoteChangedError`).
+
+        **An HTML note is not editable here.** A captured email keeps the
+        original HTML on disk and the API converts it to readable markdown on
+        the way out, so the text on screen is not the text in the file:
+        writing it back would replace the original with a rendering of itself.
+        """
+        entry = self.get_index().get(stem)
+        if entry is None:
+            return {"ok": False, "detail": f"No indexed note with stem '{stem}'"}
+        path = Path(entry["path"])
+
+        frontmatter, current_body = vault_writer.read_note(path)
+        if note_text.body_kind(frontmatter, current_body) == "html":
+            raise NoteNotEditableError(
+                "This note's body is the original HTML of a captured message. What you see "
+                "is a rendering of it, so saving would replace the original with the "
+                "rendering. Edit it in the vault if you need to change it."
+            )
+
+        actual_version = vault_writer.note_version(path)
+        if actual_version != expected_version:
+            raise NoteChangedError(
+                "This note changed on disk since you opened it -- an agent writes these "
+                "files too. Nothing was saved, and your text is still here. Reload to see "
+                "what it says now."
+            )
+
+        vault_writer.replace_note_body(path, body)
+
+        # The note's OWN entry is rebuilt at once, so its tags and the links it
+        # points at are right immediately. Backlinks on other notes still come
+        # from the full rebuild: inverting every note's wikilinks on each
+        # keystroke-save would read the whole vault to record one new link.
+        rebuilt = _build_entry(path)
+        _vault_index[stem] = rebuilt
+        for position, existing in enumerate(_vault_entries):
+            if existing["path"] == entry["path"]:
+                _vault_entries[position] = rebuilt
+                break
+        return {"ok": True, "version": vault_writer.note_version(path)}
 
     def resolve_asset_path(self, stem: str, filename: str) -> Path | None:
         """Resolves a real, co-located asset file (image, etc.) sitting

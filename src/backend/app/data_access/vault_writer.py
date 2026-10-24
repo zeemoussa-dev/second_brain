@@ -37,6 +37,8 @@ from app.obsidian.frontmatter import (
     read_note,
     remove_frontmatter_key_if_present,
     rename_frontmatter_key,
+    replace_body as replace_note_body,
+    version_of as note_version,
     write_frontmatter_note as _write_frontmatter_note,
 )
 from app.obsidian.notes import WIKILINK_PATTERN, extract_wikilink_targets

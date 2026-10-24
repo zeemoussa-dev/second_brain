@@ -145,6 +145,35 @@ export interface NoteDetail extends NoteSummary {
   body: string;
   forward_links: NoteSummary[];
   backlinks: NoteSummary[];
+  /** The note's content as it was when this was read. Sent back on save so a
+   *  file an agent rewrote in the meantime refuses rather than loses one of
+   *  the two versions. */
+  version: string;
+  /** False for a captured message, whose body is HTML on disk and markdown
+   *  here: saving what is on screen would replace the original with a
+   *  rendering of itself. */
+  editable: boolean;
+}
+
+/** Compass fixes the typing in a draft. Takes the TEXT, not the note's name:
+ *  what wants tidying is what is in the editor, which is the whole point of
+ *  tidying before it is saved. */
+export function tidyText(text: string): Promise<{ text: string; changed: boolean }> {
+  return apiFetch<{ text: string; changed: boolean }>('/vault-search/tidy', {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  });
+}
+
+export function saveNoteBody(
+  stem: string,
+  body: string,
+  version: string,
+): Promise<{ ok: boolean; version: string }> {
+  return apiFetch<{ ok: boolean; version: string }>(
+    `/vault-search/notes/${encodeURIComponent(stem)}/body`,
+    { method: 'PUT', body: JSON.stringify({ body, version }) },
+  );
 }
 
 export function fetchNoteDetail(stem: string): Promise<NoteDetail> {

@@ -597,3 +597,99 @@ button.item-row:hover {
 .note-detail-layout.has-no-rail {
   grid-template-columns: minmax(0, 1fr);
 }
+
+/* Editing a note where it sits (2026-10-24). The editor and the rendered note
+   share `.note-body`, so the text does not move, change size or change width
+   when you click into it -- the only honest way to call it "in place". */
+.note-reading.is-editable {
+  cursor: text;
+  border-radius: var(--radius-md);
+}
+
+/* Shown, not hidden until hover: an affordance you have to discover by
+   waving the mouse at the page is one nobody finds. Quiet enough to read as
+   the page's own chrome rather than as content. */
+.note-reading.is-editable:hover {
+  background: color-mix(in srgb, var(--color-text) 3%, transparent);
+}
+
+.note-editor-field {
+  display: block;
+  width: 100%;
+  min-height: 12rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: 1.7;
+  resize: none;
+  outline: none;
+}
+
+/* Monospace while editing, proportional while reading: what is on screen in
+   edit mode is markdown source, and source lines up or it does not. */
+.note-editing {
+  position: relative;
+}
+
+.note-save-state {
+  margin: var(--space-2) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.note-save-state.is-saved {
+  color: var(--color-success);
+}
+
+.note-save-refusal {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+  border: 1px solid var(--color-warning);
+  font-size: var(--font-size-sm);
+}
+
+/* An empty section's own line. A button, because it does something, and
+   italic muted text because it is the absence of content rather than content.
+   Block-level so it occupies the space the missing paragraph would. */
+.note-section-empty {
+  display: block;
+  width: 100%;
+  margin: 0 0 var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  font-style: italic;
+  text-align: left;
+  cursor: pointer;
+}
+
+.note-section-empty:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+/* The editing bar: what you can do to the draft, under the draft. */
+.note-editor-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.note-editor-hint {
+  margin-left: auto;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}

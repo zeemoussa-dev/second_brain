@@ -15,6 +15,8 @@ from app.business.core.semantic.semantic_manager import (
     SemanticIndexUnavailableError,
     SemanticManager,
 )
+from app.business.core.vault import text_tidy
+from app.business.core.vault import vault_manager as vault_manager_module
 from app.business.core.vault.vault_manager import VaultManager
 from app.business.logic import hybrid_search, scoped_entity_read
 from app.data_access.compass_client import CompassClientError
@@ -63,6 +65,56 @@ def get_note(stem: str) -> dict:
     if detail is None:
         raise HTTPException(status_code=404, detail=f"No indexed note with stem '{stem}'")
     return detail
+
+
+class NoteBodyUpdate(BaseModel):
+    body: str
+    #: The version the editor opened. Required, never optional: a save with no
+    #: version is a save that cannot notice it is overwriting somebody.
+    version: str
+
+
+@router.put("/notes/{stem}/body")
+def put_note_body(stem: str, update: NoteBodyUpdate) -> dict:
+    """Edit a note in place (operator, 2026-10-24).
+
+    409, not 500, when the file moved on: another writer got there first,
+    which is an ordinary event in a vault that agents also write, and the
+    frontend shows it as a refusal with the operator's text still in hand.
+    """
+    try:
+        result = _vault_manager.update_note_body(stem, update.body, update.version)
+    except vault_manager_module.NoteChangedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except vault_manager_module.NoteNotEditableError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"The note could not be written: {exc}") from exc
+    if not result.get("ok"):
+        raise HTTPException(status_code=404, detail=result.get("detail", "No such note"))
+    return result
+
+
+class TidyRequest(BaseModel):
+    text: str
+
+
+@router.post("/tidy")
+def post_tidy(request: TidyRequest) -> dict:
+    """Fix the typing in a draft, through Compass (operator, 2026-10-24).
+
+    Takes the TEXT rather than a stem: what wants tidying is what is in the
+    editor right now, which is not what is on disk -- that is the whole point
+    of tidying before saving.
+
+    422 for a refusal, because a refusal here is about the content and is
+    written to be read: "Compass changed a link" tells the operator both what
+    happened and why nothing was applied.
+    """
+    try:
+        return text_tidy.tidy(request.text)
+    except text_tidy.TidyRefused as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/notes/{stem}/assets/{filename}")

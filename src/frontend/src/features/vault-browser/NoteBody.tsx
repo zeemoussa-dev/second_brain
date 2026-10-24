@@ -1,9 +1,9 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeSlug from 'rehype-slug';
 import { Link } from 'react-router';
 import type { NoteSummary } from './client';
-import { extractHeadings, type TocHeading } from './tableOfContents';
+import { extractHeadings, type EmptySection, type TocHeading } from './tableOfContents';
 import { wikilinksToMarkdown } from './wikilinks';
 import { MarkdownPre, NOTE_MARKDOWN_PLUGINS } from '../../components/markdownBlocks';
 
@@ -11,6 +11,10 @@ interface NoteBodyProps {
   stem: string;
   body: string;
   forwardLinks: NoteSummary[];
+  /** Headings with nothing under them, to be offered rather than left blank. */
+  emptySections?: EmptySection[];
+  /** Where in the source the caret should land when one of those is clicked. */
+  onAddToSection?: (offset: number) => void;
   // NoteDetailPage.tsx renders the jump-to-section list; it's fed from
   // here (not re-derived separately) so the ids the list links to and
   // the ids the actual rendered headings carry can never drift apart.
@@ -18,6 +22,34 @@ interface NoteBodyProps {
 }
 
 const EMBED_PATTERN = /!\[\[([^\]]+)\]\]/g;
+
+/** A heading, plus the offer to fill it when there is nothing beneath it. */
+function EmptyAware({
+  id,
+  empty,
+  onAdd,
+  children,
+}: {
+  id?: string;
+  empty: Map<string, EmptySection>;
+  onAdd?: (offset: number) => void;
+  children: ReactNode;
+}) {
+  const section = id ? empty.get(id) : undefined;
+  if (!section || !onAdd) return <>{children}</>;
+  return (
+    <>
+      {children}
+      <button
+        type="button"
+        className="note-section-empty"
+        onClick={() => onAdd(section.offset)}
+      >
+        No {section.text.toLowerCase()} yet — click to add
+      </button>
+    </>
+  );
+}
 
 // Duplicated from agentsApiClient.ts's own identical `ATTACHMENT_BASE_URL`
 // convention -- client.ts doesn't export its BASE_URL, so any call site
@@ -69,9 +101,20 @@ function resolveEmbedsAndWikilinks(body: string, forwardLinks: NoteSummary[], st
  * own `extractHeadings` (NoteDetailPage.tsx's ToC list) uses the exact
  * same underlying `github-slugger` library `rehype-slug` wraps, so the
  * two independently-computed id sets can never disagree. */
-export function NoteBody({ stem, body, forwardLinks, onHeadingsExtracted }: NoteBodyProps) {
+export function NoteBody({
+  stem,
+  body,
+  forwardLinks,
+  onHeadingsExtracted,
+  emptySections = [],
+  onAddToSection,
+}: NoteBodyProps) {
   const markdown = useMemo(() => resolveEmbedsAndWikilinks(body, forwardLinks, stem), [body, forwardLinks, stem]);
   const headings = useMemo(() => extractHeadings(body), [body]);
+  const emptyBySlug = useMemo(
+    () => new Map(emptySections.map((section) => [section.slug, section])),
+    [emptySections],
+  );
 
   useEffect(() => {
     onHeadingsExtracted?.(headings);
@@ -84,6 +127,22 @@ export function NoteBody({ stem, body, forwardLinks, onHeadingsExtracted }: Note
       rehypePlugins={[rehypeSlug]}
       components={{
         pre: MarkdownPre,
+        // A heading with nothing under it says so, and the saying is the
+        // control: "No summary yet" beats a heading floating above the next
+        // heading, which reads as a glitch rather than as work to do
+        // (operator, 2026-10-24). Matched to its section by the id
+        // rehype-slug gives it, which is the same slug findEmptySections
+        // computes -- one library, so they cannot disagree.
+        h2: ({ id, children }) => (
+          <EmptyAware id={id} empty={emptyBySlug} onAdd={onAddToSection}>
+            <h2 id={id}>{children}</h2>
+          </EmptyAware>
+        ),
+        h3: ({ id, children }) => (
+          <EmptyAware id={id} empty={emptyBySlug} onAdd={onAddToSection}>
+            <h3 id={id}>{children}</h3>
+          </EmptyAware>
+        ),
         img: ({ src, alt }) => (typeof src === 'string' ? <img className="note-body-image" src={src} alt={alt ?? ''} loading="lazy" /> : null),
         a: ({ href, children }) => {
           if (href && href.startsWith('/browse/')) {

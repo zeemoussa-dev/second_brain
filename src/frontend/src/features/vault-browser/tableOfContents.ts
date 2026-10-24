@@ -35,3 +35,36 @@ export function extractHeadings(body: string): TocHeading[] {
   }
   return headings;
 }
+
+export interface EmptySection {
+  slug: string;
+  text: string;
+  /** Where the caret goes when the operator clicks "add": the character after
+   *  this heading's own line, which is where the missing content belongs. */
+  offset: number;
+}
+
+/** The headings with nothing under them (operator, 2026-10-24: "When a Section
+ *  is Empty like Summary for example (Show No Summary and I can Click to edit
+ *  it)").
+ *
+ * A template puts the headings in and an agent fills them, so an empty one is
+ * the normal state of a note nobody has got to yet -- and it renders as a
+ * heading floating above the next heading, which reads like a glitch rather
+ * than like work to do. Slugged with the SAME library as the headings
+ * themselves, so a placeholder can be matched to its rendered heading by id.
+ */
+export function findEmptySections(body: string): EmptySection[] {
+  const slugger = new GithubSlugger();
+  const empty: EmptySection[] = [];
+  const matches = [...body.matchAll(HEADING_LINE_PATTERN)];
+  matches.forEach((match, position) => {
+    const slug = slugger.slug(match[2].trim());
+    const from = (match.index ?? 0) + match[0].length;
+    const to = position + 1 < matches.length ? matches[position + 1].index ?? body.length : body.length;
+    if (body.slice(from, to).trim().length === 0) {
+      empty.push({ slug, text: match[2].trim(), offset: from });
+    }
+  });
+  return empty;
+}

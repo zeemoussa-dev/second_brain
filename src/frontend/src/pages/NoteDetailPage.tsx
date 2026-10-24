@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router';
 import { ApiError } from '../api/client';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { fetchNoteDetail, type NoteDetail } from '../features/vault-browser/client';
-import { NoteBody } from '../features/vault-browser/NoteBody';
+import { NoteEditor } from '../features/vault-browser/NoteEditor';
 import type { TocHeading } from '../features/vault-browser/tableOfContents';
 
 /** This page had its own hand-rolled "← Browse & Search" paragraph, in all
@@ -127,15 +127,20 @@ export function NoteDetailPage() {
       <div className={`note-detail-layout ${hasRail ? '' : 'has-no-rail'}`}>
         <div className="note-detail-main">
           <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
-            <h2>Note</h2>
-            <div className="note-body">
-              <NoteBody
-                stem={detail.stem}
-                body={detail.body}
-                forwardLinks={detail.forward_links}
-                onHeadingsExtracted={setHeadings}
-              />
-            </div>
+            <NoteEditor
+              stem={detail.stem}
+              body={detail.body}
+              version={detail.version}
+              editable={detail.editable}
+              forwardLinks={detail.forward_links}
+              onHeadingsExtracted={setHeadings}
+              // Kept in state rather than re-fetched: a re-fetch would replace
+              // the text under the cursor with the server's copy of what was
+              // just typed, which is how an editor eats a keystroke.
+              onSaved={({ body, version }) =>
+                setDetail((current) => (current ? { ...current, body, version } : current))
+              }
+            />
           </div>
 
         </div>
