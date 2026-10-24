@@ -102,6 +102,6 @@ def restart() -> dict:
     `restarting` is false when this install has no launcher to restart through:
     the app still stops, but someone has to start it, and the UI should say
     that rather than wait for a return that is not coming."""
-    restarting = system_settings.can_restart_itself()
+    restarting = system_settings.launcher_is_available()
     system_settings.request_restart()
     return {"ok": True, "restarting": restarting}

@@ -79,7 +79,17 @@ export function SettingsSystemPage() {
               <div className="item-row-main" style={{ flex: 1 }}>
                 <span className="item-row-title">
                   {field.label}{' '}
-                  <span className={`badge ${field.status.ok ? 'badge-success' : 'badge-danger'}`}>
+                  {/* A blank optional setting is neither verified nor broken:
+                      a green badge would claim a check that never ran. */}
+                  <span
+                    className={`badge ${
+                      field.status.optional
+                        ? ''
+                        : field.status.ok
+                          ? 'badge-success'
+                          : 'badge-danger'
+                    }`}
+                  >
                     {field.status.detail}
                   </span>
                 </span>

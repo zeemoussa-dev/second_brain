@@ -9,6 +9,10 @@ export type { SectionSummary };
 export interface SystemSettingFieldStatus {
   ok: boolean;
   detail: string;
+  /** Set when the setting is optional and blank — nothing was checked, and
+   *  nothing is wrong. Hermes is the case: an install without an agent
+   *  runtime is complete, not broken. */
+  optional?: boolean;
 }
 
 export interface SystemSettingField {

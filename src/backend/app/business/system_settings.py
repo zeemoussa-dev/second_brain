@@ -190,11 +190,24 @@ def _check_cors_origins(value: str) -> dict:
     return {"ok": True, "detail": f"{len(origins)} origin(s) configured"}
 
 
+# Settings this app runs perfectly well without. Left blank they are not a
+# problem to report: an install with no Hermes is a complete install, not a
+# broken one -- the plugin host ships without an agent runtime at all. Checking
+# a blank one anyway is what made `Path("")` "Folder does not exist" and an
+# empty URL "Unreachable", two permanent red rows on a correct install, and in
+# the wizard a failed check blocks Next, so blank was not actually allowed.
+_OPTIONAL_FIELDS = ("hermes_base_url", "hermes_home_path")
+
+
 def _run_check(field: str, value: str | None = None) -> dict:
     """Checks `value` if given (an unsaved candidate the wizard is offering),
     otherwise whatever is configured right now."""
     if value is None:
         value = _current_value(field)
+    if field in _OPTIONAL_FIELDS and not (value or "").strip():
+        # `ok`, because it IS ok -- `optional` lets the UI say "not configured"
+        # rather than claim something was verified.
+        return {"ok": True, "optional": True, "detail": "Not configured — this install runs without it"}
     try:
         if field == "self_email":
             return _check_email(value)
@@ -425,73 +438,81 @@ def _raise_terminate() -> None:
     signal.raise_signal(signal.SIGTERM)
 
 
-def request_shutdown() -> None:
-    """Stops this server, shortly.
-
-    A THREAD timer, not `asyncio.create_task`. Both callers of this
-    (`POST /setup/restart`, `POST /settings/system/shutdown`) are plain `def`
-    routes, which FastAPI runs in its threadpool, where there is no running
-    event loop -- so `create_task` raised `RuntimeError` and the route answered
-    500 without ever scheduling anything.
-
-    Nothing noticed, because the frontend treats a failed request here as the
-    success case: the server going away mid-response looks exactly like that.
-    So "Restart now" in the setup wizard reliably did nothing, the process kept
-    serving the settings it started with, and the wizard reappeared after a save
-    that had in fact written every value correctly (found 2026-10-24).
-    """
-    threading.Timer(_SHUTDOWN_DELAY_SECONDS, _raise_terminate).start()
-
-
-_RESTART_SCRIPT_PATH = Path(__file__).resolve().parents[4] / "tools" / "backend.ps1"
+_LAUNCHER_SCRIPT_PATH = Path(__file__).resolve().parents[4] / "tools" / "backend.ps1"
 
 # Long enough for this request's response to reach the browser before the
 # helper starts killing the process that owes it.
-_RESTART_DELAY_SECONDS = "0.6"
+_LAUNCHER_DELAY_SECONDS = "0.6"
 
 
-def request_restart() -> None:
-    """Restarts this install, through the operator's own `backend.ps1 restart`.
+def _ask_the_launcher(action: str) -> bool:
+    """Runs `backend.ps1 <action>` on this install, detached. False if there is
+    no launcher here to run.
 
-    NOT a self-shutdown, which is what this used to do and could never work:
-    under `--reload` the app runs in a multiprocessing WORKER, so a SIGTERM it
-    raises on itself ends the worker while the reloader parent lives on holding
-    the port -- the exact half-dead tree of `BUG-068`, with `/health` dead and
-    nothing able to bind. Verified on 2026-10-24: the worker exited, the
-    reloader and the launcher shell stayed, the app never came back. Nothing
-    supervises the backend either (`--reload` restarts a worker on a file
-    change, never the process a signal ends), so even a clean exit of the whole
-    tree would just leave the app down.
+    This indirection is the whole mechanism, because THE APP CANNOT SIGNAL
+    ITSELF. Under `--reload` it runs in a multiprocessing worker, so a SIGTERM
+    it raises on itself ends the worker while the reloader parent lives on
+    holding the port -- the half-dead tree of `BUG-068`, `/health` dead and
+    nothing able to bind. Verified on 2026-10-24 by pressing the wizard's own
+    Restart button: the worker exited, the reloader and the launcher shell
+    stayed, the app never came back.
 
-    `backend.ps1` already knows how to stop every member of the tree, wait for
-    the port, start a new launcher and verify /health -- so it does it, rather
-    than a second mechanism re-deriving the same hard-won process arithmetic.
+    `backend.ps1` already knows how to find every member of that tree, stop it,
+    wait for the port and (on restart) start a new launcher and verify /health.
+    So it does it, rather than a second mechanism re-deriving the same hard-won
+    process arithmetic.
 
     The helper must OUTLIVE the stop that kills us, so it is spawned through
     `cmd /c start`, whose own shell exits at once and leaves it parented to a
-    dead pid: `backend.ps1` collects every child of a backend process, and a
-    direct child of ours would be collected and killed mid-restart.
+    dead pid: `backend.ps1` collects every child of a backend process -- that is
+    how it finds reload workers -- and a direct child of ours would be collected
+    and killed halfway through its own stop.
     """
-    if os.name != "nt" or not _RESTART_SCRIPT_PATH.is_file():
-        # No launcher to restart through: stop, and let whatever started this
-        # process start it again. Reported so the UI can say so.
-        request_shutdown()
-        return
+    if not launcher_is_available():
+        return False
 
     subprocess.Popen(  # noqa: S603 -- fixed argv, no shell string, no caller input
         [
             "cmd", "/c", "start", "/b", "", "powershell", "-NoProfile",
             "-ExecutionPolicy", "Bypass", "-Command",
-            f"Start-Sleep -Seconds {_RESTART_DELAY_SECONDS}; "
-            f"& '{_RESTART_SCRIPT_PATH}' restart",
+            f"Start-Sleep -Seconds {_LAUNCHER_DELAY_SECONDS}; "
+            f"& '{_LAUNCHER_SCRIPT_PATH}' {action}",
         ],
-        cwd=str(_RESTART_SCRIPT_PATH.parent),
+        cwd=str(_LAUNCHER_SCRIPT_PATH.parent),
         creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
         close_fds=True,
     )
+    return True
 
 
-def can_restart_itself() -> bool:
-    """Whether `request_restart` will actually bring the app back, so the UI can
-    promise a restart or ask for one instead of guessing."""
-    return os.name == "nt" and _RESTART_SCRIPT_PATH.is_file()
+def launcher_is_available() -> bool:
+    """Whether this install can stop and start itself, so the UI can promise
+    that or ask the operator to do it instead of guessing."""
+    return os.name == "nt" and _LAUNCHER_SCRIPT_PATH.is_file()
+
+
+def request_shutdown() -> None:
+    """Stops this install -- all of it, not just the process serving this call.
+
+    A self-raised SIGTERM leaves the reloader holding the port with nothing
+    serving, which is neither up nor down and is exactly what Shut down must
+    not produce (see `_ask_the_launcher`). Where there is no launcher to stop
+    through, the self-signal is still the best this can do: a thread timer, not
+    `asyncio.create_task`, because the routes that call this are plain `def`
+    and the threadpool they run on has no event loop -- that raised, the route
+    answered 500, and the frontend read the failure as the backend going away.
+    """
+    if not _ask_the_launcher("stop"):
+        threading.Timer(_SHUTDOWN_DELAY_SECONDS, _raise_terminate).start()
+
+
+def request_restart() -> None:
+    """Stops this install and starts it again, reading the .env as it stands.
+
+    Nothing supervises the backend -- `--reload` restarts a worker on a file
+    change, never the process a signal ends -- so without the launcher this
+    degrades to a stop, and the caller is told so rather than promised a return
+    that is not coming.
+    """
+    if not _ask_the_launcher("restart"):
+        request_shutdown()

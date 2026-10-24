@@ -38,6 +38,11 @@ export interface HermesCheck extends CheckResult {
 
 export interface HermesHealth {
   home_path: string;
+  /** False when no Hermes folder is configured at all — not a failure, just an
+   *  install that doesn't use one. `checks` is empty then: there is nothing to
+   *  report on, and seven red rows about something nobody asked for read as a
+   *  broken install. */
+  configured: boolean;
   checks: HermesCheck[];
   all_ok: boolean;
   read_only: boolean;
@@ -77,7 +82,7 @@ export interface SaveResult {
   /** Whether the vault path also reached Hermes' own .env as
    *  OBSIDIAN_VAULT_PATH. Reported separately because the app's settings
    *  save fine even when Hermes isn't installed. */
-  hermes_vault_sync: { ok: boolean; detail: string; files_written: number };
+  hermes_vault_sync: { ok: boolean; detail: string; files_written: number; skipped?: boolean };
 }
 
 export function saveSetup(values: Record<string, string>): Promise<SaveResult> {

@@ -421,7 +421,7 @@ def test_a_restart_can_be_asked_for_from_a_plain_sync_route(monkeypatch, tmp_pat
     response = client.post("/setup/restart")
 
     assert response.status_code == 200
-    assert response.json()["restarting"] is system_settings.can_restart_itself()
+    assert response.json()["restarting"] is system_settings.launcher_is_available()
     assert spawned, "the restart was accepted but nothing was ever started"
 
 
@@ -446,16 +446,83 @@ def test_the_restart_helper_outlives_the_app_it_restarts(monkeypatch, tmp_path) 
     assert "Start-Sleep" in argv[-1], "the response must get out before we are killed"
 
 
-def test_shutting_down_is_not_a_restart(monkeypatch) -> None:
-    """Settings > System's Shut down is meant to leave the app down, so it
-    starts nothing -- and a restart must not be quietly reduced to one."""
-    def refuse(*args, **kwargs):
-        raise AssertionError("a shutdown started something")
+def test_shutting_down_stops_the_whole_tree_not_just_this_process(monkeypatch) -> None:
+    """Settings > System's Shut down had the same defect as Restart.
 
-    monkeypatch.setattr(system_settings.subprocess, "Popen", refuse)
+    A self-raised SIGTERM ends the --reload WORKER and leaves the reloader
+    holding the port with nothing serving: neither up nor down, and the exact
+    state Shut down exists to avoid. It goes through the launcher's `stop` --
+    and `stop`, not `restart`: this one is meant to leave the app down.
+    """
+    spawned: list[list[str]] = []
+    monkeypatch.setattr(
+        system_settings.subprocess, "Popen", lambda argv, **kwargs: spawned.append(argv)
+    )
+
+    system_settings.request_shutdown()
+
+    assert "backend.ps1' stop" in spawned[0][-1]
+
+
+def test_an_install_with_no_launcher_still_stops(monkeypatch) -> None:
+    """All a bare `uvicorn app.main:app` can do is end itself, so that is what
+    it does -- on a thread, because the routes calling this are plain `def` and
+    the threadpool they run on has no event loop to schedule on."""
+    monkeypatch.setattr(system_settings, "launcher_is_available", lambda: False)
     terminated = threading.Event()
     monkeypatch.setattr(system_settings, "_raise_terminate", terminated.set)
 
     system_settings.request_shutdown()
 
     assert terminated.wait(timeout=5), "the shutdown was accepted but never scheduled"
+
+
+def test_hermes_left_blank_is_not_a_failure(unconfigured, monkeypatch) -> None:
+    """An install with no agent runtime is complete, not broken.
+
+    Checking a blank setting anyway made `Path("")` "Folder does not exist" and
+    an empty URL "Unreachable" -- two permanent red rows on a correct install,
+    and in the wizard a failed check blocks Next, so "optional" was not
+    actually optional.
+    """
+    monkeypatch.setattr(settings, "hermes_home_path", "")
+    monkeypatch.setattr(settings, "hermes_base_url", "")
+
+    for field in ("hermes_home_path", "hermes_base_url"):
+        status = system_settings._run_check(field)
+        assert status["ok"] is True, f"{field} blank reads as broken: {status['detail']}"
+        assert status["optional"] is True
+
+
+def test_no_hermes_configured_means_nothing_to_report(monkeypatch) -> None:
+    """Rather than seven red rows about something nobody asked for."""
+    monkeypatch.setattr(settings, "hermes_home_path", "")
+
+    health = setup_wizard.get_hermes_health()
+
+    assert health["configured"] is False
+    assert health["checks"] == []
+    assert health["all_ok"] is True
+
+
+def test_saving_without_hermes_reports_skipped_not_failed(monkeypatch, tmp_path) -> None:
+    """The Saved screen shows this line. "No Hermes install found" in red, on
+    an install that deliberately has none, reads as a save that went wrong."""
+    monkeypatch.setattr(settings, "hermes_home_path", "")
+
+    result = setup_wizard.sync_settings_to_hermes(str(tmp_path))
+
+    assert result["skipped"] is True
+    assert result["ok"] is True
+    assert result["files_written"] == 0
+
+
+def test_a_configured_hermes_folder_that_is_missing_is_still_an_error(monkeypatch, tmp_path) -> None:
+    """Optional means "may be left blank", not "never wrong". A path that was
+    typed and does not exist is a mistake worth showing."""
+    monkeypatch.setattr(settings, "hermes_home_path", str(tmp_path / "not-here"))
+
+    result = setup_wizard.sync_settings_to_hermes(str(tmp_path))
+
+    assert result["ok"] is False
+    assert not result.get("skipped")

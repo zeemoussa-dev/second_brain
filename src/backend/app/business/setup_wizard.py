@@ -58,8 +58,8 @@ _STEPS: tuple[dict, ...] = (
     },
     {
         "id": "hermes",
-        "title": "Hermes",
-        "blurb": "The agent runtime that does the live capture and runs the scheduled jobs. Second Brain reads it -- provisioning it stays your own step.",
+        "title": "Hermes (optional)",
+        "blurb": "The agent runtime that does the live capture and runs the scheduled jobs. Optional: leave both blank if you don't use it — everything else works without it. Second Brain only reads Hermes; provisioning it stays your own step.",
         "fields": ("hermes_base_url", "hermes_home_path"),
     },
     {
@@ -252,6 +252,12 @@ def get_hermes_health(candidate_vault_path: str = "") -> dict:
     Reads only. The one value it will later WRITE (OBSIDIAN_VAULT_PATH) is
     reported here first, so the change is visible before it happens."""
     home = _hermes_home()
+    if home is None:
+        # Seven red rows is how this used to answer an install that simply
+        # does not use Hermes -- a wall of failures about something nobody
+        # asked for. Nothing has been configured, so there is nothing to
+        # report on, and `configured` lets the step say that in one line.
+        return {"home_path": "", "configured": False, "checks": [], "all_ok": True, "read_only": True}
     checks = [
         {"key": "installed", "label": "Hermes installed", **_check_installed(home)},
         {"key": "gateway", "label": "Gateway (scheduler) running", **_check_gateway(home)},
@@ -267,6 +273,7 @@ def get_hermes_health(candidate_vault_path: str = "") -> dict:
     ]
     return {
         "home_path": str(home) if home else "",
+        "configured": True,
         "checks": checks,
         "all_ok": all(check["ok"] for check in checks),
         # The wizard never fixes any of this itself -- say so, so a red row
@@ -353,7 +360,17 @@ def sync_settings_to_hermes(vault_path: str, data_path: str = "", self_email: st
     if resolved_email:
         updates[_SELF_EMAIL_ENV_KEY] = resolved_email
     home = _hermes_home()
-    if home is None or not home.is_dir():
+    if home is None:
+        # Nobody asked for Hermes, so nothing is wrong. Distinct from the case
+        # below, where a folder WAS configured and isn't there -- that one is a
+        # real mistake and still reads as a failure.
+        return {
+            "ok": True,
+            "skipped": True,
+            "detail": "No Hermes configured — nothing to sync",
+            "files_written": 0,
+        }
+    if not home.is_dir():
         return {
             "ok": False,
             "detail": "No Hermes install found — nothing to sync to",

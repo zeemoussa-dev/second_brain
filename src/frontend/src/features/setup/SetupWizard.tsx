@@ -85,6 +85,19 @@ function FieldRow({
 function HermesHealthPanel({ health, loading }: { health: HermesHealth | null; loading: boolean }) {
   if (loading) return <p className="setup-hermes-loading">Looking at your Hermes install…</p>;
   if (!health) return null;
+  // Nothing configured is not a verdict about anything, so there is nothing to
+  // list. Said in one line instead, because an operator who left the fields
+  // blank on purpose should see that it worked, not a panel of red rows.
+  if (!health.configured) {
+    return (
+      <p className="setup-hermes-note">
+        No Hermes folder configured — nothing to check. Leave both fields blank if you don't use an
+        agent runtime: capture and scheduled jobs are then yours to run, and every other part of
+        this install works as it is. Fill them in later from Settings &rsaquo; System if that
+        changes.
+      </p>
+    );
+  }
   return (
     <div className="setup-hermes">
       <ul className="setup-hermes-list">
@@ -349,13 +362,25 @@ export function SetupWizard({ onDismiss }: { onDismiss?: () => void }) {
           {/* Stated outright, pass or fail: this is the one thing the wizard
               changes outside its own .env, so it should never be a silent
               side effect of pressing Save. */}
-          <p className={`setup-check ${saved.hermes_vault_sync.ok ? 'setup-check-ok' : 'setup-check-bad'}`}>
+          <p
+            className={`setup-check ${
+              saved.hermes_vault_sync.skipped
+                ? ''
+                : saved.hermes_vault_sync.ok
+                  ? 'setup-check-ok'
+                  : 'setup-check-bad'
+            }`}
+          >
             <span className="material-symbols-outlined setup-check-icon">
-              {saved.hermes_vault_sync.ok ? 'check_circle' : 'error'}
+              {saved.hermes_vault_sync.skipped
+                ? 'info'
+                : saved.hermes_vault_sync.ok
+                  ? 'check_circle'
+                  : 'error'}
             </span>
             {saved.hermes_vault_sync.detail}
           </p>
-          {saved.hermes_vault_sync.ok && (
+          {saved.hermes_vault_sync.ok && !saved.hermes_vault_sync.skipped && (
             <p className="setup-hint">
               Hermes won't re-read its <code>.env</code> while it's running — restart Hermes too, or
               its agents keep using the old vault path.
