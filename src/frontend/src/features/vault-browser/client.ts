@@ -24,14 +24,25 @@ export interface BrowseResponse {
 }
 
 export function fetchNotes(
-  params: { tag?: string; page?: number; page_size?: number } = {},
+  params: { tag?: string; kind?: string; sort?: string; page?: number; page_size?: number } = {},
 ): Promise<BrowseResponse> {
   const query = new URLSearchParams();
   if (params.tag) query.set('tag', params.tag);
+  if (params.kind) query.set('kind', params.kind);
+  if (params.sort) query.set('sort', params.sort);
   if (params.page) query.set('page', String(params.page));
   if (params.page_size) query.set('page_size', String(params.page_size));
   const qs = query.toString();
   return apiFetch<BrowseResponse>(`/vault-search/notes${qs ? `?${qs}` : ''}`);
+}
+
+export interface KindCount {
+  kind: string;
+  count: number;
+}
+
+export function fetchKinds(): Promise<{ kinds: KindCount[] }> {
+  return apiFetch<{ kinds: KindCount[] }>('/vault-search/kinds');
 }
 
 export interface TagCount {
@@ -46,16 +57,36 @@ export function fetchTags(): Promise<{ tags: TagCount[] }> {
 export interface SearchResult extends NoteSummary {
   rank: number;
   score: number;
+  /** The window of the note's text the match sits in — plain text, so the
+   *  highlight is this app's job and not the API's. Empty when the note has
+   *  nothing to quote. */
+  snippet?: string;
+  /** Which ranker found it, and at what rank: `{keyword: 3, semantic: 1}`.
+   *  Only the hybrid endpoint reports this. */
+  matched_by?: { keyword?: number; semantic?: number };
 }
 
 export interface SearchResponse {
   query: string;
   results: SearchResult[];
+  /** Hybrid only. False means the meaning half could not run — the index was
+   *  never built, or this subscription cannot call the embedding model — and
+   *  these results are keyword-only. */
+  semantic_available?: boolean;
+  semantic_error?: string | null;
 }
 
+/** Keyword and meaning, fused.
+ *
+ * `/hybrid` rather than `/search`, which is keyword alone: this one degrades
+ * to exactly that when the semantic half is unavailable, and says so in
+ * `semantic_available`, so it is never the worse answer. The screen spent
+ * months calling the weaker endpoint while the semantic index sat unused
+ * (found 2026-10-24).
+ */
 export function search(query: string, limit = 20): Promise<SearchResponse> {
   return apiFetch<SearchResponse>(
-    `/vault-search/search?q=${encodeURIComponent(query)}&limit=${limit}`,
+    `/vault-search/hybrid?q=${encodeURIComponent(query)}&limit=${limit}`,
   );
 }
 

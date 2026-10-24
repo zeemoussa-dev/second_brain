@@ -32,6 +32,9 @@ import operator
 from array import array
 from datetime import datetime, timezone
 
+from pathlib import Path
+
+from app.business.core.vault import snippets
 from app.business.core.vault.vault_manager import VaultManager
 from app.config import settings
 from app.data_access import semantic_store
@@ -245,8 +248,27 @@ class SemanticManager:
                 "tags": (indexed or {}).get("tags", []),
                 "rank": rank,
                 "score": round(score, 4),
+                "snippet": self._snippet_for(indexed, query),
             })
         return {"query": query, "results": results}
+
+    @staticmethod
+    def _snippet_for(indexed: dict | None, query: str) -> str:
+        """The note's own words, for a row that would otherwise be a title and
+        a number. Read here rather than in the ranking loop above: the whole
+        corpus is scored, and only the handful being returned is worth a disk
+        read. A meaning match usually has no query term in it at all, which is
+        the point -- `make_snippet` falls back to the note's opening, and that
+        still answers "what is this note about"."""
+        path = (indexed or {}).get("path")
+        if not path:
+            return ""
+        try:
+            return snippets.make_snippet(vault_writer.read_note(Path(path))[1], query)
+        except OSError:
+            # A note that vanished between indexing and now still belongs in
+            # the results; it just has nothing to quote.
+            return ""
 
     # -- status ------------------------------------------------------------
 

@@ -39,9 +39,19 @@ def get_status() -> dict:
 
 
 @router.get("/notes")
-def get_notes(tag: str | None = None, page: int = 1, page_size: int = 20) -> dict:
-    """Scenarios 1, 2, 6 -- tag omitted = all notes."""
-    return _vault_manager.list_notes(page=page, page_size=page_size, tag=tag)
+def get_notes(
+    tag: str | None = None,
+    kind: str | None = None,
+    sort: str = "name",
+    page: int = 1,
+    page_size: int = 20,
+) -> dict:
+    """Scenarios 1, 2, 6 -- tag omitted = all notes. `kind` and `sort`
+    (name | recent) added 2026-10-24: the screen shows a kind on every row and
+    had no way to filter on one, and "what changed lately" was unanswerable."""
+    return _vault_manager.list_notes(
+        page=page, page_size=page_size, tag=tag, kind=kind, sort=sort
+    )
 
 
 @router.get("/notes/{stem}")
@@ -108,6 +118,13 @@ def post_semantic_rebuild(force: bool = False) -> dict:
         return _semantic_manager.build(force=force)
     except CompassClientError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/kinds")
+def get_kinds() -> dict:
+    """Feeds the browse screen's kind filter, the same way /tags feeds its
+    tag chips."""
+    return _vault_manager.list_kinds()
 
 
 @router.get("/tags")

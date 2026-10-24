@@ -62,6 +62,7 @@ from pathlib import Path
 
 from app.business.core.templates.template import Template
 from app.business.core.templates.template_manager import TemplateManager
+from app.business.core.vault import snippets
 from app.business.core.vault.vault import Vault
 from app.config import settings
 from app.data_access import vault_index_config as vault_index_config_data
@@ -193,6 +194,16 @@ def _title_for(entry: dict) -> str:
 
 def _kind_for(entry: dict) -> str:
     return entry["frontmatter"].get("type", "Unknown")
+
+
+def _modified_at(entry: dict) -> float:
+    """The note file's own modified time, or 0 for one that has gone missing
+    since it was indexed -- which sorts it last rather than failing the whole
+    listing for everything else."""
+    try:
+        return Path(entry["path"]).stat().st_mtime
+    except OSError:
+        return 0.0
 
 
 def _summary(entry: dict) -> dict:
@@ -478,17 +489,35 @@ class VaultManager:
 
     # -- Browse/search (folded in from vault_search.py) ----------------
 
-    def list_notes(self, page: int = 1, page_size: int = _DEFAULT_PAGE_SIZE, tag: str | None = None) -> dict:
+    def list_notes(
+        self,
+        page: int = 1,
+        page_size: int = _DEFAULT_PAGE_SIZE,
+        tag: str | None = None,
+        kind: str | None = None,
+        sort: str = "name",
+    ) -> dict:
         """Browse all notes, or narrow to one exact tag (case-sensitive
         match against the tag strings this project's own capture
-        pipelines already write, e.g. "customer/masdar", "kind/email").
-        Sorted by stem -- the one field every entry always has. An empty
-        result (no notes at all, or a real tag with zero matches)
-        returns "notes": [] honestly."""
+        pipelines already write) and/or one kind. An empty result (no notes
+        at all, or a real filter with zero matches) returns "notes": []
+        honestly.
+
+        `sort` is "name" (by stem, the one field every entry always has) or
+        "recent", which is the file's own modified time: a note's dates live in
+        whatever frontmatter its Template happens to define, so the filesystem
+        is the only answer that exists for every note. It costs one stat per
+        note and is therefore only paid when asked for.
+        """
         entries = list(self.get_entries())
         if tag is not None:
             entries = [entry for entry in entries if tag in entry["tags"]]
-        entries.sort(key=lambda entry: entry["stem"])
+        if kind is not None:
+            entries = [entry for entry in entries if _kind_for(entry) == kind]
+        if sort == "recent":
+            entries.sort(key=lambda entry: (-_modified_at(entry), entry["stem"]))
+        else:
+            entries.sort(key=lambda entry: entry["stem"])
 
         total = len(entries)
         start = (page - 1) * page_size
@@ -497,6 +526,18 @@ class VaultManager:
             "total": total, "page": page, "page_size": page_size,
             "notes": [_summary(entry) for entry in page_entries],
         }
+
+    def list_kinds(self) -> dict:
+        """The note types that actually exist in the index, with counts --
+        the same shape as `list_tags`, and for the same reason: the browse
+        screen shows a kind on every row, so it should be able to filter on
+        one, and the only honest list of kinds is the one the vault has."""
+        counts: dict[str, int] = {}
+        for entry in self.get_entries():
+            kind = _kind_for(entry)
+            counts[kind] = counts.get(kind, 0) + 1
+        kinds = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+        return {"kinds": [{"kind": kind, "count": count} for kind, count in kinds]}
 
     def list_tags(self) -> dict:
         """The real, current list of tags that actually exist in the
@@ -656,7 +697,13 @@ class VaultManager:
             key=lambda stem: (-scores[stem], stem),
         )[:limit]
         results = [
-            {**_summary(index[stem]), "rank": rank, "score": round(scores[stem], 4)}
+            {
+                **_summary(index[stem]),
+                "rank": rank,
+                "score": round(scores[stem], 4),
+                # Free here: every body was already read above to score it.
+                "snippet": snippets.make_snippet(body_by_stem[stem], query),
+            }
             for rank, stem in enumerate(ranked_stems, start=1)
         ]
         return {"query": query, "results": results}

@@ -74,6 +74,11 @@ def search(query: str, limit: int = _DEFAULT_SEARCH_LIMIT) -> dict:
                 "title": result.get("title", stem),
                 "kind": result.get("kind", "Unknown"),
                 "tags": result.get("tags", []),
+                # Carried through deliberately: this dict is built key by key,
+                # so anything a ranker adds and this forgets is dropped on the
+                # floor. Keyword runs first, so a note found by both quotes the
+                # window its term actually sits in.
+                "snippet": result.get("snippet", ""),
             })
             contributions.setdefault(stem, {})[source_name] = rank
 
