@@ -30,10 +30,14 @@ export function fetchAuthState(): Promise<AuthState> {
   return apiFetch<AuthState>('/auth/state');
 }
 
-export function signIn(username: string, password: string): Promise<{ user: SignedInUser }> {
+export function signIn(
+  username: string,
+  password: string,
+  remember = false,
+): Promise<{ user: SignedInUser }> {
   return apiFetch<{ user: SignedInUser }>('/auth/sign-in', {
     method: 'POST',
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, password, remember }),
   });
 }
 

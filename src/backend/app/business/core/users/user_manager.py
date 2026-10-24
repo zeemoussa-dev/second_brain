@@ -48,6 +48,14 @@ _logger = logging.getLogger(__name__)
 # written here rather than discovered -- add a `created_at + N` ceiling in
 # `identity_for_token` if it ever stops being acceptable.
 SESSION_IDLE_TIMEOUT = timedelta(hours=8)
+
+# "Remember me" (operator, 2026-10-24: "It Expires alot and No Remember
+# Password so I need to Enter Everything everytime"). A month of inactivity,
+# rolling like the default -- so on a machine used weekly it never expires in
+# practice. This is a deliberate trade the operator made for an app that runs
+# inside a closed network on their own machine; signing out still ends it
+# immediately, everywhere.
+REMEMBERED_IDLE_TIMEOUT = timedelta(days=30)
 _TOKEN_BYTES = 32
 
 _UNKNOWN_USER_DIGEST, _UNKNOWN_USER_SALT, _UNKNOWN_USER_PARAMETERS = (
@@ -257,11 +265,16 @@ class UserManager:
 
     # -- signing in -------------------------------------------------------
 
-    def authenticate(self, username: str, password: str) -> tuple[User, str]:
-        """Returns the user and a fresh session token. Raises `UserError`
-        with ONE message for every failure -- wrong name, wrong password,
-        disabled account -- because distinguishing them tells an attacker
-        which half they got right."""
+    def authenticate(
+        self, username: str, password: str, remember: bool = False
+    ) -> tuple[User, str, timedelta]:
+        """Returns the user, a fresh session token, and how long that session
+        survives inactivity -- which the caller needs for the cookie, or the
+        browser drops it long before the session is gone.
+
+        Raises `UserError` with ONE message for every failure -- wrong name,
+        wrong password, disabled account -- because distinguishing them tells
+        an attacker which half they got right."""
         self.initialise()
         row = users_db.read_user_by_username(username.strip())
         if row is None:
@@ -288,16 +301,17 @@ class UserManager:
         moment = datetime.now(timezone.utc)
         users_db.update_user_fields(row["id"], {"last_login_at": moment.isoformat()})
         token = secrets.token_urlsafe(_TOKEN_BYTES)
+        window = REMEMBERED_IDLE_TIMEOUT if remember else SESSION_IDLE_TIMEOUT
         users_db.insert_session(
             {
                 "token_sha256": _sha256(token),
                 "user_id": row["id"],
                 "created_at": moment.isoformat(),
-                "expires_at": (moment + SESSION_IDLE_TIMEOUT).isoformat(),
+                "expires_at": (moment + window).isoformat(),
                 "last_seen_at": moment.isoformat(),
             }
         )
-        return self._require(row["id"]), token
+        return self._require(row["id"]), token, window
 
     def identity_for_token(self, token: str) -> Identity | None:
         """None for absent, unknown, expired, or belonging to a user who
@@ -318,10 +332,20 @@ class UserManager:
         if row is None or row["is_disabled"]:
             users_db.delete_session(token_sha256)
             return None
+        # Each session keeps its OWN window, so a remembered one is not
+        # quietly demoted to eight hours by its next request. The window is
+        # read back from the row rather than stored in a column of its own:
+        # `expires_at - last_seen_at` IS the window, by construction, at
+        # every point in the session's life.
+        window = datetime.fromisoformat(session["expires_at"]) - datetime.fromisoformat(
+            session["last_seen_at"]
+        )
+        if window <= timedelta(0):
+            window = SESSION_IDLE_TIMEOUT
         users_db.touch_session(
             token_sha256,
             moment.isoformat(),
-            (moment + SESSION_IDLE_TIMEOUT).isoformat(),
+            (moment + window).isoformat(),
         )
         return Identity(user=_user_from_row(row), session_token_sha256=token_sha256)
 

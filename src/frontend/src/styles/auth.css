@@ -863,3 +863,16 @@
     gap: var(--space-6);
   }
 }
+
+/* "Keep me signed in" (2026-10-24). A row, not a stacked field: it is a
+   qualifier on the button below it, not a third thing to fill in. */
+.auth-remember {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.auth-remember input { cursor: pointer; }

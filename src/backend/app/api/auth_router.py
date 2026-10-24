@@ -34,6 +34,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 class SignInBody(BaseModel):
     username: str = Field(min_length=1)
     password: str = Field(min_length=1)
+    #: Keep me signed in — a month of inactivity rather than eight hours.
+    #: Defaults to off, so a caller that does not ask gets what it always got.
+    remember: bool = False
 
 
 class BootstrapBody(BaseModel):
@@ -54,7 +57,17 @@ def _user_response(identity: Identity) -> dict:
     }
 
 
-def _set_session_cookie(response: Response, request: Request, token: str) -> None:
+def _set_session_cookie(
+    response: Response, request: Request, token: str, max_age_seconds: int
+) -> None:
+    """`max_age` is the whole point of this helper (operator, 2026-10-24: the
+    login "Expires alot").
+
+    Without it this is a SESSION cookie: the browser throws it away when it
+    closes, so the server's rolling eight-hour session was never what decided
+    how long anyone stayed signed in -- closing the window did, every time.
+    The cookie now lives exactly as long as the session it carries.
+    """
     response.set_cookie(
         SESSION_COOKIE,
         token,
@@ -62,6 +75,7 @@ def _set_session_cookie(response: Response, request: Request, token: str) -> Non
         samesite="lax",
         secure=request.url.scheme == "https",
         path="/",
+        max_age=max_age_seconds,
     )
 
 
@@ -110,10 +124,12 @@ def bootstrap_first_admin(body: BootstrapBody, request: Request, response: Respo
         )
     try:
         users.create_user(body.username, body.password, Role.ADMIN, body.display_name)
-        user, token = users.authenticate(body.username, body.password)
+        # Remembered: the person who just set this install up is the one least
+        # served by being asked again in eight hours.
+        user, token, window = users.authenticate(body.username, body.password, remember=True)
     except UserError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    _set_session_cookie(response, request, token)
+    _set_session_cookie(response, request, token, int(window.total_seconds()))
     return {
         "user": {
             "id": user.id,
@@ -128,14 +144,14 @@ def bootstrap_first_admin(body: BootstrapBody, request: Request, response: Respo
 def sign_in(body: SignInBody, request: Request, response: Response) -> dict:
     users = UserManager()
     try:
-        user, token = users.authenticate(body.username, body.password)
+        user, token, window = users.authenticate(body.username, body.password, body.remember)
     except UserError as exc:
         # 401, and the Manager's single sentence verbatim: it says the
         # same thing for a wrong name, a wrong password and a disabled
         # account on purpose, and rewording it here per case would undo
         # that.
         raise HTTPException(status_code=401, detail=str(exc)) from exc
-    _set_session_cookie(response, request, token)
+    _set_session_cookie(response, request, token, int(window.total_seconds()))
     return {
         "user": {
             "id": user.id,

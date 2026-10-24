@@ -17,6 +17,11 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: () => void }) {
   const { app_name: appName, logoUrl } = useBranding();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  // Defaults ON (operator, 2026-10-24: "It Expires alot and No Remember
+  // Password so I need to Enter Everything everytime"). This app runs on the
+  // operator's own machine inside a closed network; being asked again every
+  // morning costs them daily, and signing out still ends it everywhere.
+  const [remember, setRemember] = useState(true);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -25,7 +30,7 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: () => void }) {
     setRefusal(null);
     setSubmitting(true);
     try {
-      await signIn(username, password);
+      await signIn(username, password, remember);
       onSignedIn();
     } catch (error) {
       setRefusal(refusalText(error));
@@ -41,9 +46,15 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: () => void }) {
       </div>
         <h1>Sign in to {appName}</h1>
 
-        <label className="auth-field">
+        {/* `name` and `id` are not decoration here: a password manager
+            identifies a field by them, and Chrome will not offer to save a
+            login whose inputs have neither -- which is why this screen had
+            the right autoComplete hints and still never prompted. */}
+        <label className="auth-field" htmlFor="sign-in-username">
           <span>Username</span>
           <input
+            id="sign-in-username"
+            name="username"
             data-testid="sign-in-username"
             autoFocus
             autoComplete="username"
@@ -52,15 +63,28 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: () => void }) {
           />
         </label>
 
-        <label className="auth-field">
+        <label className="auth-field" htmlFor="sign-in-password">
           <span>Password</span>
           <input
+            id="sign-in-password"
+            name="password"
             data-testid="sign-in-password"
             type="password"
             autoComplete="current-password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
+        </label>
+
+        <label className="auth-remember">
+          <input
+            type="checkbox"
+            name="remember"
+            data-testid="sign-in-remember"
+            checked={remember}
+            onChange={(event) => setRemember(event.target.checked)}
+          />
+          <span>Keep me signed in on this computer</span>
         </label>
 
         {refusal && (
