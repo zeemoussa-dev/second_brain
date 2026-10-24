@@ -77,7 +77,16 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      setBranding(await apiFetch<Branding>('/branding'));
+      // Merged over FALLBACK, never assigned straight: a backend that answers
+      // WITHOUT a field this build expects would otherwise put `undefined`
+      // into it, and the Branding page -- which maps over `fonts` and lowers
+      // each colour -- crashed the whole screen through the error boundary.
+      // That is not hypothetical: the frontend reloads on a file change while
+      // the backend restarts on its own schedule, so "newer page, older API"
+      // is the normal state for a few seconds of every upgrade (seen
+      // 2026-10-24). Branding is decoration; it must never take a screen down.
+      const answered = await apiFetch<Partial<Branding>>('/branding');
+      setBranding({ ...FALLBACK, ...answered });
     } catch {
       setBranding(FALLBACK);
     } finally {

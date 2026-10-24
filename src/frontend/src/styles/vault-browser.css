@@ -28,7 +28,12 @@ button.item-row:hover {
    code visually consistent with the rest of the UI, matching REQ-SB-02's
    "nice HTML formatting" framing. */
 .note-body {
-  max-width: 72ch;
+  /* Fills its column (operator, 2026-10-24: "The Text Don't fill The
+     Screen"). It was capped at 72ch -- the classic reading measure -- inside a
+     column that is often twice that, so a note sat in the left half of its own
+     card with the rest blank. The cap moves up to the LAYOUT below, which
+     bounds the whole page rather than stranding the text inside it. */
+  max-width: 100%;
   line-height: 1.6;
 }
 
@@ -113,6 +118,12 @@ button.item-row:hover {
   grid-template-columns: minmax(0, 1fr) 240px;
   gap: var(--space-4);
   align-items: start;
+  /* The measure is bounded here, for the page as a whole, instead of inside
+     the note body: the text fills its column and the column itself stops
+     growing somewhere a line is still readable. Past roughly this width a
+     line of prose is long enough that the eye loses its place returning to
+     the next one, which is the real reason the 72ch cap existed. */
+  max-width: 1400px;
 }
 
 .note-detail-main { min-width: 0; }

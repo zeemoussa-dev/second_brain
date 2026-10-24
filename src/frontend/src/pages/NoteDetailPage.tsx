@@ -1,9 +1,19 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { ApiError } from '../api/client';
+import { Breadcrumbs } from '../components/Breadcrumbs';
 import { fetchNoteDetail, type NoteDetail } from '../features/vault-browser/client';
 import { NoteBody } from '../features/vault-browser/NoteBody';
 import type { TocHeading } from '../features/vault-browser/tableOfContents';
+
+/** This page had its own hand-rolled "← Browse & Search" paragraph, in all
+ *  three of its states, while the shell already renders a BackControl saying
+ *  the same thing (operator, 2026-10-24: "it has its own bread crumbs"). Two
+ *  ways back, stacked, in two different styles. The framework component
+ *  (`ADR-060`) replaces it: it names where this note sits rather than only
+ *  pointing backwards, and it still works on a cold load, where BackControl
+ *  correctly hides because there is no history to go back through. */
+const BROWSE_CRUMB = { label: 'Browse & Search', to: '/browse' } as const;
 
 export function NoteDetailPage() {
   const { stem } = useParams<{ stem: string }>();
@@ -28,7 +38,7 @@ export function NoteDetailPage() {
   if (notFound) {
     return (
       <>
-        <p className="text-muted"><Link className="text-muted" to="/browse">&larr; Browse &amp; Search</Link></p>
+        <Breadcrumbs items={[BROWSE_CRUMB, { label: stem ?? 'Note' }]} />
         <div className="card">
           <div className="empty-state">
             <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)' }}>
@@ -43,7 +53,7 @@ export function NoteDetailPage() {
   if (!detail) {
     return (
       <>
-        <p className="text-muted"><Link className="text-muted" to="/browse">&larr; Browse &amp; Search</Link></p>
+        <Breadcrumbs items={[BROWSE_CRUMB, { label: stem ?? 'Note' }]} />
         <p className="text-muted">Loading...</p>
       </>
     );
@@ -51,7 +61,7 @@ export function NoteDetailPage() {
 
   return (
     <>
-      <p className="text-muted"><Link className="text-muted" to="/browse">&larr; Browse &amp; Search</Link></p>
+      <Breadcrumbs items={[BROWSE_CRUMB, { label: detail.title }]} />
       <div className="card" style={{ marginBottom: 'var(--space-4)' }}>
         <span className="badge" style={{ marginBottom: 'var(--space-2)', display: 'inline-block' }}>{detail.kind}</span>
         <h1 style={{ marginTop: 0 }}>{detail.title}</h1>
