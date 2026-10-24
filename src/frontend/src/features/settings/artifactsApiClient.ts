@@ -70,6 +70,7 @@ export async function commitExport(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ selection, secret_decisions: secretDecisions }),
+    credentials: 'include',
   });
   if (!response.ok) {
     throw new ApiError(response.status, await response.text());

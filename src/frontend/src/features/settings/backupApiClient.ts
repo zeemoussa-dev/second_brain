@@ -36,7 +36,7 @@ export interface RestoreFailedMidWay {
 }
 
 export async function exportBackup(): Promise<Blob> {
-  const response = await fetch(`${BACKUP_BASE_URL}/backup/export`, { method: 'POST' });
+  const response = await fetch(`${BACKUP_BASE_URL}/backup/export`, { method: 'POST', credentials: 'include' });
   if (!response.ok) {
     throw new ApiError(response.status, await response.text());
   }
@@ -47,7 +47,7 @@ export async function restoreBackup(file: File, force: boolean): Promise<Restore
   const formData = new FormData();
   formData.append('file', file);
   formData.append('force', force ? 'true' : 'false');
-  const response = await fetch(`${BACKUP_BASE_URL}/backup/restore`, { method: 'POST', body: formData });
+  const response = await fetch(`${BACKUP_BASE_URL}/backup/restore`, { method: 'POST', body: formData, credentials: 'include' });
   const body = await response.json();
   if (!response.ok) {
     // FastAPI wraps our own detail (either RestoreRefused/RestoreFailedMidWay

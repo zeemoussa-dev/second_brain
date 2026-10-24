@@ -108,6 +108,7 @@ export async function exportVaultData(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ selection, extraction }),
+    credentials: 'include',
   });
   if (!response.ok) {
     throw new ApiError(response.status, await response.text());

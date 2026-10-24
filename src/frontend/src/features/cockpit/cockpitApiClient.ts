@@ -165,6 +165,9 @@ export async function streamMessage(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(replyToMessageId ? { text, reply_to_message_id: replyToMessageId } : { text }),
       signal,
+      // See `apiFetch`: a cross-origin cookie is omitted unless asked for, and
+      // a raw fetch does not inherit that.
+      credentials: 'include',
     },
   );
   if (!response.ok || !response.body) {

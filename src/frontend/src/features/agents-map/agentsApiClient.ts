@@ -170,6 +170,13 @@ export async function streamChatMessage(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message }),
     signal,
+    // The session is an httponly cookie on a different origin (:8001 against
+    // this :5173), so `fetch` omits it unless asked. `apiFetch` sets this once
+    // for everything that goes through it; a raw fetch has to say it itself,
+    // and this one did not -- so every chat message since sign-in landed was
+    // sent anonymously and answered 401, which the panel showed as "Something
+    // went wrong sending that message" (operator hit it, 2026-10-24).
+    credentials: 'include',
   });
   if (!response.ok || !response.body) {
     throw new ApiError(response.status, await response.text());
@@ -240,6 +247,7 @@ export async function sendChatMessageWithAttachment(
   const response = await fetch(`${ATTACHMENT_BASE_URL}/agents/${agentId}/chat/attachment`, {
     method: 'POST',
     body: formData,
+    credentials: 'include',
   });
   if (!response.ok) {
     throw new ApiError(response.status, await response.text());
