@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { saveNoteBody, tidyText, type NoteSummary } from './client';
+import { MarkdownEditor } from './MarkdownEditor';
 import { NoteBody } from './NoteBody';
 import {
   extractHeadings,
@@ -224,18 +225,23 @@ export function NoteEditor({
         <p className="note-editing-which">
           Editing <strong>{section.text}</strong>
         </p>
-        <textarea
-          ref={textarea}
-          className="note-body note-editor-field"
+        {/* A textarea holds one font and cannot style its own contents, which
+            is why clicking into a note used to turn it into flat monospace
+            (operator, 2026-10-24). This one keeps the note's own type while
+            you edit, hides the markers on lines you are not standing on, and
+            draws a table as a table -- over the raw markdown, never a
+            document model, so nothing is rewritten behind you. */}
+        <MarkdownEditor
           value={draft}
-          spellCheck
-          aria-label="Note text"
-          onChange={(event) => {
-            setDraft(event.target.value);
+          autofocusAt={caretOnOpen.current ?? undefined}
+          onChange={(next) => {
+            setDraft(next);
             setState('dirty');
-            const field = event.target;
-            field.style.height = 'auto';
-            field.style.height = `${field.scrollHeight}px`;
+          }}
+          onSave={() => void save(draft)}
+          onCancel={() => {
+            setState('idle');
+            stopEditing();
           }}
           onBlur={() => {
             if (state === 'dirty') void save(draft);
@@ -243,16 +249,6 @@ export function NoteEditor({
             // operator's unsaved text behind a rendered copy of the version
             // that beat it.
             if (state !== 'conflict' && state !== 'failed') stopEditing();
-          }}
-          onKeyDown={(event) => {
-            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
-              event.preventDefault();
-              void save(draft);
-            }
-            if (event.key === 'Escape') {
-              setState('idle');
-              stopEditing();
-            }
           }}
         />
         <div className="note-editor-bar">
