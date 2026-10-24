@@ -169,15 +169,34 @@ export function VaultGraphCanvas({ nodes, edges }: VaultGraphCanvasProps) {
   // the only way to keep zero hardcoded color literals here while still
   // supporting the rotating 8-slot palette (AC-06).
   useEffect(() => {
-    const rootStyles = getComputedStyle(document.documentElement);
-    const cache = new Map<string, string>();
-    for (let slot = 1; slot <= KIND_COLOR_SLOT_COUNT; slot += 1) {
-      cache.set(`slot-${slot}`, rootStyles.getPropertyValue(`--graph-kind-color-${slot}`).trim());
+    function sampleTokens() {
+      const rootStyles = getComputedStyle(document.documentElement);
+      const cache = new Map<string, string>();
+      for (let slot = 1; slot <= KIND_COLOR_SLOT_COUNT; slot += 1) {
+        cache.set(`slot-${slot}`, rootStyles.getPropertyValue(`--graph-kind-color-${slot}`).trim());
+      }
+      kindColorCacheRef.current = cache;
+      edgeColorRef.current = rootStyles.getPropertyValue('--graph-edge-color').trim();
+      textColorRef.current = rootStyles.getPropertyValue('--color-text').trim();
+      accentColorRef.current = rootStyles.getPropertyValue('--color-accent').trim();
     }
-    kindColorCacheRef.current = cache;
-    edgeColorRef.current = rootStyles.getPropertyValue('--graph-edge-color').trim();
-    textColorRef.current = rootStyles.getPropertyValue('--color-text').trim();
-    accentColorRef.current = rootStyles.getPropertyValue('--color-accent').trim();
+
+    sampleTokens();
+
+    // Sampled ONCE was a bug the theme made visible: a <canvas> has no CSS
+    // cascade, so switching theme or accent repainted every other screen and
+    // left this one drawing the colours it read at mount -- near-white edges
+    // on a white canvas (operator, 2026-10-24). Branding applies a theme by
+    // writing `data-theme` and the accent custom properties onto <html>, so
+    // watching that element's attributes is exactly the signal. The draw loop
+    // runs every frame, so refreshing the refs is all that is needed; nothing
+    // has to force a repaint.
+    const observer = new MutationObserver(sampleTokens);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme', 'style', 'class'],
+    });
+    return () => observer.disconnect();
   }, []);
 
   function colorForKind(kind: string): string {

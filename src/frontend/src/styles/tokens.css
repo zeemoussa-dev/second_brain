@@ -228,6 +228,18 @@
   --graph-edge-color: rgb(233, 228, 214);
 }
 
+/* The graph edge colour, for light. It has to be stated twice because it is
+   a LITERAL rather than a reference: the dark value is this theme's cream,
+   and on a light canvas that is a white line on a white background -- which
+   is how the knowledge graph drew its edges the moment light mode existed
+   (operator, 2026-10-24: "The Lines that Connects the Nodes are not Affected
+   by the Theme Renders as white"). Kept opaque for the reason above: the
+   canvas sets edge alpha per frame, and a second baked-in alpha would
+   multiply against it. */
+:root[data-theme="light"] {
+  --graph-edge-color: rgb(27, 26, 23);
+}
+
 /* The three fonts Branding offers (operator, 2026-10-24: "the Option to choose
    the fonts from a Set of Predefined ones 3 Options is fine"). An attribute
    rather than an inline style: the choice is one of three known values, so it
