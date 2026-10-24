@@ -1,51 +1,64 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
+import { VaultGraphCanvas } from '../features/vault-graph/VaultGraphCanvas';
 import { SnippetText } from '../features/vault-browser/SnippetText';
+import { TagClusters } from '../features/vault-browser/TagClusters';
+import { VaultNavigator } from '../features/vault-browser/VaultNavigator';
 import {
   fetchVaultSearchStatus,
+  fetchFolders,
   fetchKinds,
   fetchNotes,
-  fetchTags,
+  fetchScopedGraph,
+  fetchTagTree,
   search,
   type VaultSearchStatus,
   type BrowseResponse,
   type KindCount,
-  type TagCount,
+  type ScopedGraph,
+  type TreeNode,
   type SearchResponse,
 } from '../features/vault-browser/client';
 
 const PAGE_SIZE = 20;
 
-/** How many tag chips before the row becomes a wall. A real vault has hundreds
- *  of tags; rendering all of them put the note list below a screenful of
- *  chips. The rest are one click away. */
-const TAGS_SHOWN = 12;
+/** Nodes the graph will draw before it stops being readable. Past this it is a
+ *  cloud: the backend returns the most connected ones and says it truncated,
+ *  so the screen can say "narrow it down" instead of hanging. */
+const GRAPH_NODE_LIMIT = 300;
 
-/** Browse & Search over the indexed vault.
+/** The Vault — everything indexed, in one screen (operator, 2026-10-24: "Need
+ *  to Merge the Vault with the Search").
  *
- * **One result area, not two.** Search and tag-browse used to be separate
- * cards, so after a search the page showed the matches AND an unrelated page
- * of all notes underneath — two answers at once, neither obviously the one you
- * asked for. A query now replaces the list, and clearing it brings the list
- * back.
+ * Search, the note list and the knowledge graph were three ways of looking at
+ * one vault, on two screens, with a different idea of "what you are looking
+ * at" each. Now there is one scope — a tag branch, a folder, a kind, a query —
+ * and two ways to read it: **List** or **Graph**.
  *
- * **The URL is the state.** Query, tag, kind, sort and page all live in it, so
- * a filtered view can be linked, bookmarked and reached with Back. Filters are
- * written with `replace` (`ADR-041`): changing a filter is not a journey, and
- * Back should leave the screen rather than undo a click.
+ * **Where a note is, as something you can walk.** 312 tags across 15
+ * categories and folders eight deep do not fit in a chip row, so the
+ * navigator is a tree of either, and a tag means the branch under it.
+ *
+ * **The URL is the state.** Query, tag, folder, kind, sort, page and view all
+ * live in it, so any view can be linked and reached with Back. Filters are
+ * written with `replace` (`ADR-041`): changing a filter is not a journey.
  */
 export function VaultBrowserPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get('q') ?? '';
   const activeTag = searchParams.get('tag');
+  const activeFolder = searchParams.get('folder');
   const activeKind = searchParams.get('kind');
   const sort = searchParams.get('sort') ?? 'name';
+  const view = searchParams.get('view') === 'graph' ? 'graph' : 'list';
+  const navigateBy = searchParams.get('by') === 'folders' ? 'folders' : 'tags';
   const page = Math.max(1, Number(searchParams.get('page') ?? 1) || 1);
 
   const [status, setStatus] = useState<VaultSearchStatus | null>(null);
-  const [tags, setTags] = useState<TagCount[]>([]);
+  const [tagTree, setTagTree] = useState<TreeNode[]>([]);
+  const [folderTree, setFolderTree] = useState<TreeNode[]>([]);
   const [kinds, setKinds] = useState<KindCount[]>([]);
-  const [allTagsShown, setAllTagsShown] = useState(false);
+  const [graph, setGraph] = useState<ScopedGraph | null>(null);
   const [browse, setBrowse] = useState<BrowseResponse | null>(null);
   const [searchResult, setSearchResult] = useState<SearchResponse | null>(null);
   const [searching, setSearching] = useState(false);
@@ -59,7 +72,8 @@ export function VaultBrowserPage() {
 
   useEffect(() => {
     if (!status?.indexed) return;
-    fetchTags().then((response) => setTags(response.tags));
+    fetchTagTree().then((response) => setTagTree(response.tags));
+    fetchFolders().then((response) => setFolderTree(response.folders));
     fetchKinds().then((response) => setKinds(response.kinds));
   }, [status]);
 
@@ -68,16 +82,34 @@ export function VaultBrowserPage() {
   }, [query]);
 
   useEffect(() => {
-    if (!status?.indexed || query) return;
+    if (!status?.indexed || query || view === 'graph') return;
     setBrowse(null);
     fetchNotes({
       tag: activeTag ?? undefined,
+      folder: activeFolder ?? undefined,
       kind: activeKind ?? undefined,
       sort,
       page,
       page_size: PAGE_SIZE,
     }).then(setBrowse);
-  }, [status, activeTag, activeKind, sort, page, query]);
+  }, [status, activeTag, activeFolder, activeKind, sort, page, query, view]);
+
+  // The graph is fetched for the SCOPE, never for the whole vault: unscoped it
+  // is 4,300 nodes, which is a cloud. With nothing selected the graph view
+  // shows tag clusters instead and no fetch happens at all.
+  useEffect(() => {
+    const scoped = Boolean(activeTag || activeFolder || activeKind);
+    if (!status?.indexed || view !== 'graph' || !scoped) {
+      setGraph(null);
+      return;
+    }
+    fetchScopedGraph({
+      tag: activeTag ?? undefined,
+      folder: activeFolder ?? undefined,
+      kind: activeKind ?? undefined,
+      limit: GRAPH_NODE_LIMIT,
+    }).then(setGraph);
+  }, [status, view, activeTag, activeFolder, activeKind]);
 
   useEffect(() => {
     if (!status?.indexed || !query) {
@@ -109,7 +141,7 @@ export function VaultBrowserPage() {
   if (!status) {
     return (
       <>
-        <h1>Browse &amp; Search</h1>
+        <h1>The Vault</h1>
         <p className="text-muted">Loading…</p>
       </>
     );
@@ -118,7 +150,7 @@ export function VaultBrowserPage() {
   if (!status.indexed) {
     return (
       <>
-        <h1>Browse &amp; Search</h1>
+        <h1>The Vault</h1>
         <div className="card">
           <div className="empty-state">
             <span className="material-symbols-outlined empty-state-icon" aria-hidden="true">
@@ -139,13 +171,15 @@ export function VaultBrowserPage() {
   const showingSearch = Boolean(query);
   const results = searchResult?.results ?? [];
   const totalPages = browse ? Math.max(1, Math.ceil(browse.total / browse.page_size)) : 1;
-  const visibleTags = allTagsShown ? tags : tags.slice(0, TAGS_SHOWN);
+  const scopeSelected = activeTag ?? activeFolder;
+  const scopeLabel = activeTag ?? (activeFolder ? `📁 ${activeFolder}` : null);
 
   return (
     <>
-      <h1>Browse &amp; Search</h1>
+      <h1>The Vault</h1>
       <p className="text-muted">
-        Everything indexed from your vault, searchable by wording and by meaning.
+        Everything indexed from your vault — searchable by wording and by meaning, walkable
+        by tag or by folder.
       </p>
 
       <div className="card browse-card">
@@ -193,36 +227,6 @@ export function VaultBrowserPage() {
             the list, and hiding them would make the screen change shape. */}
         <div className="browse-filters">
           <div className="browse-filter-row">
-            <span className="browse-filter-label">Tags</span>
-            <button
-              type="button"
-              className={`btn tag-chip ${activeTag === null ? 'btn-primary' : ''}`}
-              onClick={() => updateParams({ tag: null, q: null }, 'replace')}
-            >
-              All
-            </button>
-            {visibleTags.map((tagCount) => (
-              <button
-                type="button"
-                key={tagCount.tag}
-                className={`btn tag-chip ${activeTag === tagCount.tag ? 'btn-primary' : ''}`}
-                onClick={() => updateParams({ tag: tagCount.tag, q: null }, 'replace')}
-              >
-                {tagCount.tag} <span className="tag-chip-count">{tagCount.count}</span>
-              </button>
-            ))}
-            {tags.length > TAGS_SHOWN && (
-              <button
-                type="button"
-                className="btn tag-chip"
-                onClick={() => setAllTagsShown((shown) => !shown)}
-              >
-                {allTagsShown ? 'Show fewer' : `+${tags.length - TAGS_SHOWN} more`}
-              </button>
-            )}
-          </div>
-
-          <div className="browse-filter-row">
             <span className="browse-filter-label">Kind</span>
             <select
               className="input kv-select"
@@ -250,10 +254,91 @@ export function VaultBrowserPage() {
               <option value="name">By name</option>
               <option value="recent">Recently changed</option>
             </select>
+
+            {/* List or Graph: two readings of the SAME scope, which is the
+                whole point of merging the two screens. The toggle is here
+                rather than in the navigator because it changes how the
+                results are drawn, not what they are. */}
+            <span className="browse-view-toggle">
+              {(['list', 'graph'] as const).map((candidate) => (
+                <button
+                  key={candidate}
+                  type="button"
+                  className={`btn btn-compact ${view === candidate ? 'btn-primary' : ''}`}
+                  aria-pressed={view === candidate}
+                  onClick={() => updateParams({ view: candidate === 'list' ? null : candidate }, 'replace')}
+                >
+                  <span className="material-symbols-outlined" aria-hidden="true">
+                    {candidate === 'list' ? 'list' : 'hub'}
+                  </span>
+                  {candidate === 'list' ? 'List' : 'Graph'}
+                </button>
+              ))}
+            </span>
           </div>
         </div>
 
-        {showingSearch ? (
+        <div className="vault-layout">
+          <aside className="vault-navigator">
+            <div className="vault-navigator-switch">
+              {(['tags', 'folders'] as const).map((candidate) => (
+                <button
+                  key={candidate}
+                  type="button"
+                  className={`btn btn-compact ${navigateBy === candidate ? 'btn-primary' : ''}`}
+                  aria-pressed={navigateBy === candidate}
+                  // Switching how you navigate drops the other axis's
+                  // selection: a folder filter left behind while you browse
+                  // tags is an invisible reason the list is short.
+                  onClick={() =>
+                    updateParams(
+                      { by: candidate === 'tags' ? null : candidate, tag: null, folder: null },
+                      'replace',
+                    )
+                  }
+                >
+                  {candidate === 'tags' ? 'Tags' : 'Folders'}
+                </button>
+              ))}
+            </div>
+            <VaultNavigator
+              nodes={navigateBy === 'tags' ? tagTree : folderTree}
+              selected={navigateBy === 'tags' ? activeTag : activeFolder}
+              emptyLabel={
+                navigateBy === 'tags' ? 'No tags in the index yet.' : 'Every note sits at the vault root.'
+              }
+              onSelect={(path) =>
+                updateParams(
+                  navigateBy === 'tags' ? { tag: path, folder: null } : { folder: path, tag: null },
+                  'replace',
+                )
+              }
+            />
+          </aside>
+
+          <div className="vault-results">
+        {scopeLabel && (
+          <p className="vault-scope">
+            Showing <strong>{scopeLabel}</strong>
+            <button
+              type="button"
+              className="btn-link"
+              onClick={() => updateParams({ tag: null, folder: null }, 'replace')}
+            >
+              clear
+            </button>
+          </p>
+        )}
+
+        {view === 'graph' ? (
+          <GraphView
+            graph={graph}
+            scopeSelected={scopeSelected}
+            tagTree={tagTree}
+            activeTag={activeTag}
+            onDrillDown={(path) => updateParams({ tag: path, by: null, folder: null }, 'replace')}
+          />
+        ) : showingSearch ? (
           <SearchResults
             query={query}
             searching={searching}
@@ -292,18 +377,18 @@ export function VaultBrowserPage() {
         ) : (
           <div className="empty-state">
             <p className="empty-state-title">
-              {activeTag || activeKind ? 'Nothing matches these filters' : 'No notes indexed'}
+              {scopeSelected || activeKind ? 'Nothing matches these filters' : 'No notes indexed'}
             </p>
-            {(activeTag || activeKind) && (
+            {(scopeSelected || activeKind) && (
               <p style={{ margin: 'var(--space-1) 0 0' }}>
-                The index has notes, just none carrying{' '}
-                {activeTag ? <strong>{activeTag}</strong> : null}
-                {activeTag && activeKind ? ' and ' : null}
+                The index has notes, just none in{' '}
+                {scopeLabel ? <strong>{scopeLabel}</strong> : null}
+                {scopeLabel && activeKind ? ' of kind ' : null}
                 {activeKind ? <strong>{activeKind}</strong> : null}.{' '}
                 <button
                   type="button"
                   className="btn-link"
-                  onClick={() => updateParams({ tag: null, kind: null }, 'replace')}
+                  onClick={() => updateParams({ tag: null, folder: null, kind: null }, 'replace')}
                 >
                   Clear the filters
                 </button>
@@ -311,7 +396,81 @@ export function VaultBrowserPage() {
             )}
           </div>
         )}
+          </div>
+        </div>
       </div>
+    </>
+  );
+}
+
+/** The same scope as the list, drawn as a graph.
+ *
+ * With nothing selected it is the tag CLUSTERS, not the vault: 4,300 nodes at
+ * once is a cloud nobody can read, and the top of the tag tree is fifteen
+ * bubbles you can actually aim at (operator, 2026-10-24). Choosing one drills
+ * into its children; once a branch holds notes rather than more tags, the real
+ * force graph takes over.
+ */
+function GraphView({
+  graph,
+  scopeSelected,
+  tagTree,
+  activeTag,
+  onDrillDown,
+}: {
+  graph: ScopedGraph | null;
+  scopeSelected: string | null;
+  tagTree: TreeNode[];
+  activeTag: string | null;
+  onDrillDown: (path: string) => void;
+}) {
+  // The children of whatever is selected, so the clusters keep drilling
+  // rather than jumping straight to notes at the second level.
+  const childrenOfSelection = useMemo(() => {
+    if (!activeTag) return tagTree;
+    const find = (nodes: TreeNode[]): TreeNode | null => {
+      for (const node of nodes) {
+        if (node.path === activeTag) return node;
+        const inside = find(node.children);
+        if (inside) return inside;
+      }
+      return null;
+    };
+    return find(tagTree)?.children ?? [];
+  }, [tagTree, activeTag]);
+
+  if (!scopeSelected) {
+    return (
+      <TagClusters
+        nodes={tagTree}
+        onDrillDown={onDrillDown}
+        heading="Your vault by tag — pick one to go inside. Sized by how much is in it."
+      />
+    );
+  }
+
+  if (!graph) return <p className="text-muted">Drawing the graph…</p>;
+
+  return (
+    <>
+      {childrenOfSelection.length > 0 && (
+        <TagClusters
+          nodes={childrenOfSelection}
+          onDrillDown={onDrillDown}
+          heading={`Inside ${activeTag} — go deeper, or read the notes below.`}
+        />
+      )}
+      {graph.truncated && (
+        <p className="text-muted vault-graph-truncated">
+          This branch holds {graph.total} notes; showing the {graph.nodes.length} most linked.
+          Narrow it down to see all of them.
+        </p>
+      )}
+      {graph.nodes.length > 0 ? (
+        <VaultGraphCanvas nodes={graph.nodes} edges={graph.edges} />
+      ) : (
+        <p className="text-muted">Nothing in this branch to draw.</p>
+      )}
     </>
   );
 }

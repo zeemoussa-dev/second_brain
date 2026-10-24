@@ -24,16 +24,62 @@ export interface BrowseResponse {
 }
 
 export function fetchNotes(
-  params: { tag?: string; kind?: string; sort?: string; page?: number; page_size?: number } = {},
+  params: {
+    tag?: string;
+    kind?: string;
+    folder?: string;
+    sort?: string;
+    page?: number;
+    page_size?: number;
+  } = {},
 ): Promise<BrowseResponse> {
   const query = new URLSearchParams();
   if (params.tag) query.set('tag', params.tag);
   if (params.kind) query.set('kind', params.kind);
+  if (params.folder) query.set('folder', params.folder);
   if (params.sort) query.set('sort', params.sort);
   if (params.page) query.set('page', String(params.page));
   if (params.page_size) query.set('page_size', String(params.page_size));
   const qs = query.toString();
   return apiFetch<BrowseResponse>(`/vault-search/notes${qs ? `?${qs}` : ''}`);
+}
+
+/** A tag category or a folder, with everything beneath it counted.
+ *  The same shape for both, because they are the same thing to navigate:
+ *  a path, a name, how much is under it, and what is under it. */
+export interface TreeNode {
+  path: string;
+  name: string;
+  count: number;
+  children: TreeNode[];
+}
+
+export function fetchTagTree(): Promise<{ tags: TreeNode[] }> {
+  return apiFetch<{ tags: TreeNode[] }>('/vault-search/tag-tree');
+}
+
+export function fetchFolders(): Promise<{ folders: TreeNode[] }> {
+  return apiFetch<{ folders: TreeNode[] }>('/vault-search/folders');
+}
+
+export interface ScopedGraph {
+  nodes: { stem: string; title: string; kind: string; tags: string[] }[];
+  edges: { source: string; target: string }[];
+  /** How many notes the scope really holds — `nodes` may be capped. */
+  total: number;
+  truncated: boolean;
+}
+
+export function fetchScopedGraph(
+  params: { tag?: string; kind?: string; folder?: string; limit?: number } = {},
+): Promise<ScopedGraph> {
+  const query = new URLSearchParams();
+  if (params.tag) query.set('tag', params.tag);
+  if (params.kind) query.set('kind', params.kind);
+  if (params.folder) query.set('folder', params.folder);
+  if (params.limit) query.set('limit', String(params.limit));
+  const qs = query.toString();
+  return apiFetch<ScopedGraph>(`/vault-search/graph${qs ? `?${qs}` : ''}`);
 }
 
 export interface KindCount {

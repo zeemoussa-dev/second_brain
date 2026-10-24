@@ -42,15 +42,17 @@ def get_status() -> dict:
 def get_notes(
     tag: str | None = None,
     kind: str | None = None,
+    folder: str | None = None,
     sort: str = "name",
     page: int = 1,
     page_size: int = 20,
 ) -> dict:
-    """Scenarios 1, 2, 6 -- tag omitted = all notes. `kind` and `sort`
-    (name | recent) added 2026-10-24: the screen shows a kind on every row and
-    had no way to filter on one, and "what changed lately" was unanswerable."""
+    """Scenarios 1, 2, 6 -- every filter omitted = all notes. `kind`, `folder`
+    and `sort` (name | recent) added 2026-10-24. `tag` matches the tag and
+    everything under it: these tags are paths, so "azure" has to mean the
+    branch."""
     return _vault_manager.list_notes(
-        page=page, page_size=page_size, tag=tag, kind=kind, sort=sort
+        page=page, page_size=page_size, tag=tag, kind=kind, folder=folder, sort=sort
     )
 
 
@@ -118,6 +120,21 @@ def post_semantic_rebuild(force: bool = False) -> dict:
         return _semantic_manager.build(force=force)
     except CompassClientError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/tag-tree")
+def get_tag_tree() -> dict:
+    """Tags as the tree they already are. This vault has 312 of them across 15
+    top-level categories, so the flat chip row was a screenful of chips before
+    the notes started (operator, 2026-10-24)."""
+    return _vault_manager.list_tag_tree()
+
+
+@router.get("/folders")
+def get_folders() -> dict:
+    """The vault's own folder tree, the other way people know where a note
+    is."""
+    return _vault_manager.list_folders()
 
 
 @router.get("/kinds")
@@ -207,10 +224,16 @@ def get_entity_read(
 
 
 @router.get("/graph")
-def get_graph() -> dict:
-    """REQ-SB-75-US-01-T01 -- The Vault knowledge graph screen's own
-    {"nodes", "edges"} snapshot. No query parameters -- the frontend
-    fetches the full current graph once and filters/searches client-side
-    (the story's own "large-corpus performance work out of scope at
-    ~680 notes" Constraint)."""
-    return _vault_manager.get_graph()
+def get_graph(
+    tag: str | None = None,
+    kind: str | None = None,
+    folder: str | None = None,
+    limit: int | None = None,
+) -> dict:
+    """The knowledge graph's {"nodes", "edges"} snapshot for a scope.
+
+    The story this came from (`REQ-SB-75-US-01-T01`) deliberately took no
+    parameters and filtered client-side, at ~680 notes. This vault is at 4,300
+    and the screen became a cloud, so the same tag/kind/folder the browse list
+    uses now scopes the graph, and `limit` caps what is drawn."""
+    return _vault_manager.get_graph(tag=tag, kind=kind, folder=folder, limit=limit)

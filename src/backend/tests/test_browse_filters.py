@@ -112,3 +112,109 @@ def test_paging_survives_a_filter(vault) -> None:
     assert listed["total"] == 2
     assert listed["page"] == 2
     assert len(listed["notes"]) == 1
+
+
+def test_a_tag_means_the_branch_under_it(vault) -> None:
+    """These tags are paths -- `azure/services/compute` -- 312 of them across
+    15 categories. "Show me customer" has to mean the branch, or a category is
+    a filter that matches nothing."""
+    listed = VaultManager().list_notes(tag="customer")
+
+    assert listed["total"] == 3
+    assert {note["title"] for note in listed["notes"]} == {
+        "Masdar renewal", "Acme kickoff", "Beta kickoff"
+    }
+
+
+def test_the_boundary_is_a_separator_not_a_character_count(vault) -> None:
+    """`customer/mas` must not match `customer/masdar`: a prefix that cuts a
+    segment in half is a typo, and matching it would quietly widen a filter."""
+    assert VaultManager().list_notes(tag="customer/mas")["total"] == 0
+    assert VaultManager().list_notes(tag="customer/masdar")["total"] == 1
+
+
+def test_the_tag_tree_counts_everything_beneath_a_category(vault) -> None:
+    tree = VaultManager().list_tag_tree()["tags"]
+    by_path = {node["path"]: node for node in tree}
+
+    assert by_path["customer"]["count"] == 3
+    assert {child["name"] for child in by_path["customer"]["children"]} == {
+        "masdar", "acme", "beta"
+    }
+    # The branch with the most in it sorts first: it is the one worth opening.
+    assert tree[0]["path"] == "customer"
+
+
+def test_a_note_tagged_twice_in_one_branch_counts_once_for_it(vault, tmp_path, monkeypatch) -> None:
+    """Otherwise a category's count exceeds the number of notes it can show,
+    and the first thing an operator does is notice."""
+    path = tmp_path / "Two tags.md"
+    path.write_text(
+        '---\ntype: "Note"\nsubject: "Two tags"\ntags: ["azure/services/compute", '
+        '"azure/services/analytics"]\n---\n\nBody.\n',
+        encoding="utf-8",
+    )
+    existing = list(module.vault_writer.list_all_note_paths())
+    monkeypatch.setattr(module.vault_writer, "list_all_note_paths", lambda: [*existing, path])
+    VaultManager().rebuild_index()
+
+    by_path = {node["path"]: node for node in VaultManager().list_tag_tree()["tags"]}
+
+    assert by_path["azure"]["count"] == 1
+
+
+def test_the_folder_tree_is_relative_to_the_vault(vault, tmp_path, monkeypatch) -> None:
+    """Never the absolute path: that is this machine's business, it changes
+    when the vault moves, and no screen should show it."""
+    nested = tmp_path / "Work" / "Customers" / "Filed.md"
+    nested.parent.mkdir(parents=True, exist_ok=True)
+    nested.write_text('---\ntype: "Note"\nsubject: "Filed"\ntags: []\n---\n\nBody.\n', encoding="utf-8")
+    existing = list(module.vault_writer.list_all_note_paths())
+    monkeypatch.setattr(module.vault_writer, "list_all_note_paths", lambda: [*existing, nested])
+    VaultManager().rebuild_index()
+
+    folders = VaultManager().list_folders()["folders"]
+    work = next(node for node in folders if node["path"] == "Work")
+
+    assert work["count"] == 1
+    assert [child["path"] for child in work["children"]] == ["Work/Customers"]
+    assert str(tmp_path) not in str(folders)
+
+
+def test_filtering_by_folder_narrows_to_it(vault, tmp_path, monkeypatch) -> None:
+    nested = tmp_path / "Work" / "Filed.md"
+    nested.parent.mkdir(parents=True, exist_ok=True)
+    nested.write_text('---\ntype: "Note"\nsubject: "Filed"\ntags: []\n---\n\nBody.\n', encoding="utf-8")
+    existing = list(module.vault_writer.list_all_note_paths())
+    monkeypatch.setattr(module.vault_writer, "list_all_note_paths", lambda: [*existing, nested])
+    VaultManager().rebuild_index()
+
+    listed = VaultManager().list_notes(folder="Work")
+
+    assert [note["title"] for note in listed["notes"]] == ["Filed"]
+
+
+def test_the_graph_is_scoped_by_the_same_filters_as_the_list(vault) -> None:
+    """One filter, two views. A graph showing a different set than the list
+    beside it is two screens that disagree."""
+    graph = VaultManager().get_graph(kind="Meeting")
+
+    assert graph["total"] == 2
+    assert {node["kind"] for node in graph["nodes"]} == {"Meeting"}
+
+
+def test_the_graph_caps_what_it_draws_and_says_so(vault) -> None:
+    """4,300 nodes at once is a cloud, not a graph. The cap has to be
+    reported, or a partial graph reads as the whole vault."""
+    graph = VaultManager().get_graph(limit=2)
+
+    assert len(graph["nodes"]) == 2
+    assert graph["total"] == len(_NOTES)
+    assert graph["truncated"] is True
+
+
+def test_an_unscoped_graph_is_still_the_whole_vault(vault) -> None:
+    graph = VaultManager().get_graph()
+
+    assert graph["total"] == len(_NOTES)
+    assert graph["truncated"] is False

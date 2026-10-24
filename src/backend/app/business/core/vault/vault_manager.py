@@ -196,6 +196,53 @@ def _kind_for(entry: dict) -> str:
     return entry["frontmatter"].get("type", "Unknown")
 
 
+def _carries_tag(entry: dict, tag: str) -> bool:
+    """The tag itself, or anything under it. `customer` matches
+    `customer/masdar`; `customer/mas` matches neither, because the boundary is
+    a path separator and not a character count."""
+    return any(existing == tag or existing.startswith(tag + "/") for existing in entry["tags"])
+
+
+def _folder_of(entry: dict) -> str:
+    """The note's folder, relative to the vault root, with forward slashes.
+
+    Relative because the absolute path is this machine's business: it changes
+    when the vault moves, and no screen should show it.
+    """
+    try:
+        relative = Path(entry["path"]).resolve().relative_to(Path(settings.vault_path).resolve())
+    except (ValueError, OSError, TypeError):
+        return ""
+    return relative.parent.as_posix().strip(".")
+
+
+def _as_tree(counts: dict[str, int], separator: str) -> list[dict]:
+    """`{"a": 3, "a/b": 2}` -> a nested list of `{path, name, count, children}`.
+
+    Sorted by count then name at every level, like the tag chips were: the
+    branch worth opening first is the one with the most in it.
+    """
+    children_by_parent: dict[str, list[str]] = {}
+    for path in counts:
+        parent = path.rsplit(separator, 1)[0] if separator in path else ""
+        children_by_parent.setdefault(parent, []).append(path)
+
+    def build(parent: str) -> list[dict]:
+        return [
+            {
+                "path": path,
+                "name": path.rsplit(separator, 1)[-1],
+                "count": counts[path],
+                "children": build(path),
+            }
+            for path in sorted(
+                children_by_parent.get(parent, []), key=lambda path: (-counts[path], path)
+            )
+        ]
+
+    return build("")
+
+
 def _modified_at(entry: dict) -> float:
     """The note file's own modified time, or 0 for one that has gone missing
     since it was indexed -- which sorts it last rather than failing the whole
@@ -496,12 +543,16 @@ class VaultManager:
         tag: str | None = None,
         kind: str | None = None,
         sort: str = "name",
+        folder: str | None = None,
     ) -> dict:
-        """Browse all notes, or narrow to one exact tag (case-sensitive
-        match against the tag strings this project's own capture
-        pipelines already write) and/or one kind. An empty result (no notes
-        at all, or a real filter with zero matches) returns "notes": []
-        honestly.
+        """Browse all notes, or narrow by tag, kind and/or folder. An empty
+        result (no notes at all, or a real filter with zero matches) returns
+        "notes": [] honestly.
+
+        `tag` matches the tag itself AND everything under it: this vault's
+        tags are paths (`azure/services/compute`), 312 of them across 15
+        top-level categories, so "show me azure" has to mean the branch and
+        not one leaf nobody would guess the name of.
 
         `sort` is "name" (by stem, the one field every entry always has) or
         "recent", which is the file's own modified time: a note's dates live in
@@ -509,11 +560,7 @@ class VaultManager:
         is the only answer that exists for every note. It costs one stat per
         note and is therefore only paid when asked for.
         """
-        entries = list(self.get_entries())
-        if tag is not None:
-            entries = [entry for entry in entries if tag in entry["tags"]]
-        if kind is not None:
-            entries = [entry for entry in entries if _kind_for(entry) == kind]
+        entries = self._filtered_entries(tag=tag, kind=kind, folder=folder)
         if sort == "recent":
             entries.sort(key=lambda entry: (-_modified_at(entry), entry["stem"]))
         else:
@@ -526,6 +573,66 @@ class VaultManager:
             "total": total, "page": page, "page_size": page_size,
             "notes": [_summary(entry) for entry in page_entries],
         }
+
+    def _filtered_entries(
+        self,
+        tag: str | None = None,
+        kind: str | None = None,
+        folder: str | None = None,
+    ) -> list[dict]:
+        """The one place the three filters are applied, so the list, the graph
+        and every count agree about what "filtered" means. Two screens deriving
+        the same filter separately is how a count stops matching its own
+        list."""
+        entries = list(self.get_entries())
+        if tag is not None:
+            entries = [entry for entry in entries if _carries_tag(entry, tag)]
+        if kind is not None:
+            entries = [entry for entry in entries if _kind_for(entry) == kind]
+        if folder is not None:
+            entries = [entry for entry in entries if _folder_of(entry).startswith(folder)]
+        return entries
+
+    def list_tag_tree(self) -> dict:
+        """Tags as the tree they already are, not 312 flat chips.
+
+        Every tag in this vault is a path -- `customer/masdar`,
+        `azure/services/compute` -- so a flat row of every one of them was a
+        screenful of chips before the notes started. A category carries the
+        count of everything beneath it, which is the number that makes a
+        branch worth opening.
+        """
+        counts: dict[str, int] = {}
+        for entry in self.get_entries():
+            # A note tagged `azure/services/compute` counts once towards
+            # `azure`, once towards `azure/services` and once towards the leaf.
+            # Through a set, so a note carrying two tags in one branch is not
+            # counted twice for their shared ancestor.
+            for path in {
+                "/".join(tag.split("/")[: depth + 1])
+                for tag in entry["tags"]
+                for depth in range(tag.count("/") + 1)
+            }:
+                counts[path] = counts.get(path, 0) + 1
+        return {"tags": _as_tree(counts, separator="/")}
+
+    def list_folders(self) -> dict:
+        """The vault's own folder tree, with a count per folder.
+
+        The other way people know where a note is: `Work/Customers/Masdar`
+        says something no tag does, and an operator who filed it there looks
+        for it there.
+        """
+        counts: dict[str, int] = {}
+        for entry in self.get_entries():
+            folder = _folder_of(entry)
+            if not folder:
+                continue
+            segments = folder.split("/")
+            for depth in range(len(segments)):
+                path = "/".join(segments[: depth + 1])
+                counts[path] = counts.get(path, 0) + 1
+        return {"folders": _as_tree(counts, separator="/")}
 
     def list_kinds(self) -> dict:
         """The note types that actually exist in the index, with counts --
@@ -604,22 +711,61 @@ class VaultManager:
             "children": children,
         }
 
-    def get_graph(self) -> dict:
-        """The Vault knowledge graph screen's own {"nodes", "edges"}
-        snapshot, zero new indexing/caching. Nodes reuse _summary()
-        verbatim; edges reuse the same case-insensitive stem-matching
-        rule forward-link resolution already applies, dangling/self
-        targets silently omitted. No pagination/filter params -- kind-
-        filtering and name search are the frontend's own client-side
-        concern over this one fetched snapshot."""
+    def get_graph(
+        self,
+        tag: str | None = None,
+        kind: str | None = None,
+        folder: str | None = None,
+        limit: int | None = None,
+    ) -> dict:
+        """The knowledge graph's {"nodes", "edges"} snapshot, for a SCOPE.
+
+        Unscoped it is the whole vault, which is what it always was and what
+        made the screen unusable here: 4,300 nodes drawn at once is a cloud,
+        not a graph (operator, 2026-10-24: "The Vault Loads alot of nodes
+        Which make it not looking good"). The scope is the same tag / kind /
+        folder the browse list uses, so the graph shows what the screen is
+        already about rather than a separate world.
+
+        `limit` caps the nodes returned and reports what was left out, so a
+        branch with a thousand notes degrades to "the thousand are there, here
+        are the most connected" instead of hanging the browser. The edges are
+        resolved against the WHOLE index first and then narrowed, so a link
+        between two notes in scope survives even when the path between them
+        is not.
+        """
         index = self.get_index()
-        nodes = [_summary(entry) for entry in self.get_entries()]
+        entries = self._filtered_entries(tag=tag, kind=kind, folder=folder)
+        in_scope = {entry["stem"] for entry in entries}
+
         edges = [
             {"source": entry["stem"], "target": matched_stem}
             for entry in index.values()
+            if entry["stem"] in in_scope
             for matched_stem in _resolve_forward_link_stems(entry, index)
+            if matched_stem in in_scope
         ]
-        return {"nodes": nodes, "edges": edges}
+
+        total = len(entries)
+        truncated = False
+        if limit is not None and total > limit:
+            # The most connected survive: an isolated note tells you nothing
+            # about a graph, and the hubs are what a reader is looking for.
+            degree: dict[str, int] = {}
+            for edge in edges:
+                degree[edge["source"]] = degree.get(edge["source"], 0) + 1
+                degree[edge["target"]] = degree.get(edge["target"], 0) + 1
+            entries = sorted(entries, key=lambda entry: (-degree.get(entry["stem"], 0), entry["stem"]))[:limit]
+            kept = {entry["stem"] for entry in entries}
+            edges = [edge for edge in edges if edge["source"] in kept and edge["target"] in kept]
+            truncated = True
+
+        return {
+            "nodes": [_summary(entry) for entry in entries],
+            "edges": edges,
+            "total": total,
+            "truncated": truncated,
+        }
 
     def get_note_detail(self, stem: str) -> dict | None:
         """One note's frontmatter/tags/real body text plus its resolved
