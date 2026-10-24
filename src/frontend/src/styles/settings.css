@@ -548,7 +548,10 @@
   margin-top: var(--space-3, 0.75rem);
   padding: var(--space-3, 0.75rem);
   border-radius: var(--radius-2, 6px);
-  background: var(--color-surface-2, #f6f7f9);
+  /* No hex fallback: a hard-coded light value here is what made this box
+     unreadable while the token was missing, and it would do it again the day
+     the token is renamed rather than failing visibly. */
+  background: var(--color-surface-2);
 }
 .blueprint-result ul { margin: 0.25rem 0 0; padding-left: 1.1rem; }
 

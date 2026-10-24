@@ -320,6 +320,8 @@ Where a rule does not belong here:
 
 ## Frontend
 
+- **A colour token never gets a hard-coded hex fallback.** The palette is dark-only, so `var(--color-x, #f6f7f9)` paints a light box the moment the token is missing or renamed, and the text on it stays near-white -- `.blueprint-result` sat at ~1.1:1 contrast that way, invisible, for as long as `--color-surface-2` went undefined (2026-10-24). Write `var(--color-x)` and let it fail visibly, or fall back to something theme-agnostic (`rgba(127,127,127,0.08)`). Before using a token, check `tokens.css` actually defines it: four rules in `auth.css` referenced the same missing one with no fallback and silently painted nothing.
+
 - **`is_background_agent: true` is a hard visibility gate on the Agents Map, not a styling hint.** `layoutAgents.ts` excludes such agents from the ring entirely and their detail panel becomes unreachable. Never set it true for an agent that has no access point outside the map.
 
 - **Never render a stored `*.icon` field directly as a Material Symbols ligature.** The stored value can be a VisualPicker id rather than a ligature name; always resolve through `getVisualIconName()`, which handles both conventions.

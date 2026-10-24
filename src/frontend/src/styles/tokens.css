@@ -68,6 +68,15 @@
   --color-bg: #0e1118;
   --color-surface: #171a22;
   --color-surface-raised: #1f2430;
+  /* A second surface level, for a panel sitting INSIDE a card: the
+     Marketplace's install result, the auth screens' filled blocks. Five rules
+     referenced this and nothing ever defined it, so each took its own
+     fallback -- and settings.css's was a light-theme #f6f7f9, which put this
+     palette's near-white text on a near-white box at about 1.1:1. "Installed
+     into section ..." was invisible after every plugin install (operator,
+     2026-10-24). The four in auth.css had no fallback at all, so their
+     background silently never applied. */
+  --color-surface-2: #232834;
   --color-border: rgba(233, 228, 214, 0.1);
   --color-text: #e9e4d6;
   --color-text-muted: #b9b4a6;
