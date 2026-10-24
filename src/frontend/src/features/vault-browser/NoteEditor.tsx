@@ -42,6 +42,8 @@ export function NoteEditor({
   forwardLinks,
   onHeadingsExtracted,
   onSaved,
+  only,
+  offerTidy = true,
 }: {
   stem: string;
   body: string;
@@ -50,6 +52,21 @@ export function NoteEditor({
   forwardLinks: NoteSummary[];
   onHeadingsExtracted?: (headings: TocHeading[]) => void;
   onSaved: (saved: { body: string; version: string }) => void;
+  /** Show and edit only these `##` sections, by heading text. Undefined shows
+   *  the whole note, which is what the framework's own note page passes.
+   *
+   *  A plugin uses this to own one section of a note whose others belong to
+   *  someone else: Entities edits a Customer hub's "Personal Notes" while
+   *  Hermes writes the rest. The rest is not merely hidden -- it is never in
+   *  the editor, and a save splices this section back into the stored note, so
+   *  there is no path by which a plugin's screen rewrites a section it was
+   *  not given. */
+  only?: string[];
+  /** Whether to offer "Tidy the typing", which sends the open section to
+   *  Compass. Default on for the framework's own note page; a plugin asks for
+   *  it deliberately, because a screen quietly spending the install's model
+   *  budget is a different decision from a screen rendering an editor. */
+  offerTidy?: boolean;
 }) {
   // WHICH section is open, not merely whether one is: clicking a paragraph
   // used to open the entire note as one textarea, which loses the place you
@@ -87,7 +104,15 @@ export function NoteEditor({
   }, [stem, body]);
 
   const emptySections = useMemo(() => findEmptySections(body), [body]);
-  const sections = useMemo(() => sectionRanges(body), [body]);
+  const allSections = useMemo(() => sectionRanges(body), [body]);
+  // What this editor is allowed to show and to open. Matched on heading text
+  // rather than slug, because `only` is written by a plugin author reading the
+  // note, not reading `github-slugger`.
+  const sections = useMemo(() => {
+    if (!only) return allSections;
+    const wanted = new Set(only.map((heading) => heading.trim().toLowerCase()));
+    return allSections.filter((section) => wanted.has(section.text.trim().toLowerCase()));
+  }, [allSections, only]);
 
   // The ToC is the whole note's, always — while a section is open the body is
   // rendered as two fragments, and each would otherwise report only its own
@@ -224,7 +249,9 @@ export function NoteEditor({
         {/* The note either side of the open section stays rendered, so a
             section edit reads as a section edit rather than as the document
             being replaced by a box of markdown. */}
-        {section.start > 0 && (
+        {/* Never when `only` is set: a plugin given one section must not
+            render the ones it was not given. */}
+        {!only && section.start > 0 && (
           <div className="note-reading is-context">
             <NoteBody stem={stem} body={body.slice(0, section.start)} forwardLinks={forwardLinks} />
           </div>
@@ -259,18 +286,20 @@ export function NoteEditor({
           }}
         />
         <div className="note-editor-bar">
-          <button
-            type="button"
-            className="btn btn-compact"
-            disabled={tidying || !draft.trim()}
-            // onMouseDown, not onClick: the textarea's blur fires first and
-            // would close the editor out from under the button.
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => void tidy()}
-            title="Compass fixes spelling and punctuation only — links, headings and lists are checked and left alone"
-          >
-            {tidying ? 'Tidying…' : '✨ Tidy the typing'}
-          </button>
+          {offerTidy && (
+            <button
+              type="button"
+              className="btn btn-compact"
+              disabled={tidying || !draft.trim()}
+              // onMouseDown, not onClick: the textarea's blur fires first and
+              // would close the editor out from under the button.
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => void tidy()}
+              title="Compass fixes spelling and punctuation only — links, headings and lists are checked and left alone"
+            >
+              {tidying ? 'Tidying…' : '✨ Tidy the typing'}
+            </button>
+          )}
           {beforeTidy !== null && (
             <button
               type="button"
@@ -291,7 +320,7 @@ export function NoteEditor({
           </span>
         </div>
         <SaveStatus state={state} refusal={refusal} />
-        {section.end < body.length && (
+        {!only && section.end < body.length && (
           <div className="note-reading is-context">
             <NoteBody stem={stem} body={body.slice(section.end)} forwardLinks={forwardLinks} />
           </div>
@@ -314,7 +343,9 @@ export function NoteEditor({
     >
       <NoteBody
         stem={stem}
-        body={body}
+        // Only what this editor was given. The sections are contiguous ranges
+        // of the real note, so slicing and joining them keeps every one whole.
+        body={only ? sections.map((part) => body.slice(part.start, part.end)).join('\n') : body}
         forwardLinks={forwardLinks}
         emptySections={editable ? emptySections : []}
         onAddToSection={(offset) =>

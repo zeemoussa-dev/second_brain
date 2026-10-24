@@ -80,6 +80,22 @@ opening a customer's editor from a report left the operator there with nothing
 leading back -- the sidebar cannot help, because Settings is not where they
 were. One plugin had already hand-rolled all three (`ADR-060`).
 
+Added under 12 WITHOUT moving the version, the second time this has been done
+(`ADR-063` set the precedent with `api.llm`): `pluginHost/noteEditor` exports
+`VaultNoteEditor({ stem, sections?, editable?, offerTidy?, onSaved? })` -- the
+vault's own in-place editor, loading and saving the note itself. `sections`
+limits it to named `##` sections and is a BOUNDARY, not a filter: the sections
+not named are never loaded and never in a save, because a save splices the
+edited range back into the stored note, so a plugin can own one section of a
+note whose others belong to Hermes. Requested by Entities for a Customer hub's
+"Personal Notes" (2026-10-24); the operator chose the additive route over the
+bump so that no installed plugin had to be republished that day.
+
+Its cost, stated where the next person will look: a plugin built against this
+host and installed on an older one fails its BUILD on the missing module
+rather than being cleanly refused at load, which is exactly what the version
+gate exists to prevent. The next planned move takes it in formally.
+
 A new capability is added here when a plugin
 needs one. The host loads only
 plugins built for its exact `FRAMEWORK_API`, so a plugin that relies on a
