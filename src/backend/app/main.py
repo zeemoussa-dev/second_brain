@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from app.business.core.actions.action_manager import ActionManager
 from app.business.core.templates.template_manager import TemplateManager
 from app.business.core.plugins.plugin_manager import PluginManager
+from app.business.core.vault import vault_manager as vault_manager_module
 from app.business.core.vault.vault_manager import VaultManager
 from app.api.actions_router import router as actions_router
 from app.api.admin_users_router import router as admin_users_router
@@ -159,7 +160,15 @@ async def lifespan(app: FastAPI):
     # read-heavy full-vault scan (confirmed live: ~1,126 notes,
     # comfortably sub-second) that would otherwise tie up the event
     # loop for its own duration if awaited directly on it.
-    asyncio.create_task(asyncio.to_thread(_vault_manager.rebuild_index))
+    # Marked BEFORE the task is created, synchronously: a request arriving in
+    # the gap between scheduling and the thread's first instruction would
+    # otherwise be told that nothing is indexed and nothing is building, which
+    # is how a restarted server reported an empty vault (2026-10-24).
+    vault_manager_module.mark_rebuild_scheduled()
+    _boot_rebuild = asyncio.create_task(asyncio.to_thread(_vault_manager.rebuild_index))
+    # Reported settled whatever happened: a rebuild that raised would otherwise
+    # leave every reader waiting forever for an index that is never coming.
+    _boot_rebuild.add_done_callback(lambda _task: vault_manager_module.mark_rebuild_finished())
     yield
 
 

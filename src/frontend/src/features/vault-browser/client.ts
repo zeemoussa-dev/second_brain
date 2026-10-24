@@ -3,6 +3,11 @@ import { apiFetch } from '../../api/client';
 export interface VaultSearchStatus {
   indexed: boolean;
   last_rebuilt_at: string | null;
+  /** A rebuild is queued or running. The index lives in memory, so a restarted
+   *  server has none until the boot rebuild lands — "not finished" and
+   *  "nothing there" are opposite answers and the screen must not confuse
+   *  them. */
+  building?: boolean;
 }
 
 export function fetchVaultSearchStatus(): Promise<VaultSearchStatus> {

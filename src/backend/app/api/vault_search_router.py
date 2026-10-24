@@ -37,7 +37,15 @@ def get_status() -> dict:
     the honest "nothing indexed yet" state instead of any list/search
     UI."""
     last_rebuilt_at = _vault_manager.get_last_rebuilt_at()
-    return {"indexed": last_rebuilt_at is not None, "last_rebuilt_at": last_rebuilt_at}
+    return {
+        "indexed": last_rebuilt_at is not None,
+        "last_rebuilt_at": last_rebuilt_at,
+        # The index is in memory, so a restarted process has none until the
+        # boot rebuild lands. `indexed: false` alone made the screen say
+        # "Nothing indexed yet" for those seconds, which is a false statement
+        # about the vault rather than a true one about the server.
+        "building": _vault_manager.is_rebuilding(),
+    }
 
 
 @router.get("/notes")

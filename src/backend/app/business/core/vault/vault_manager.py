@@ -96,6 +96,41 @@ _vault_entries: list[dict] = []
 _vault_tag_index: dict[str, list[dict]] = {}
 _last_rebuilt_at: str | None = None
 
+#: Whether a rebuild has been queued and not yet reported as finished.
+#:
+#: The index lives in memory, so a restarted process has none until the boot
+#: rebuild lands -- and for those seconds every reader asked "is there an
+#: index?" and was told no. The Vault screen rendered that as "Nothing indexed
+#: yet", which is not slow, it is WRONG, and a note opened in that window
+#: answered 404 "no indexed note found" for a note that plainly exists
+#: (operator, 2026-10-24, twice). "Not finished" and "nothing there" are
+#: different answers and the API has to be able to give both.
+#:
+#: Owned by whoever SCHEDULES the rebuild, deliberately, rather than set and
+#: cleared inside `rebuild_index`: `REQ-SB-95-US-05-AC-04` reads this module's
+#: source and requires the tag projection to be rebound directly in that
+#: function's body, beside `_vault_entries`. Wrapping the body in a
+#: try/finally moved those statements a level deeper and broke the guard that
+#: stops the projection drifting from the notes it groups (`BUG-082`).
+_rebuild_scheduled: bool = False
+
+
+def mark_rebuild_scheduled() -> None:
+    """Called where a rebuild is QUEUED, synchronously, before the thread it
+    will run on gets a turn. Without it the first request after a restart can
+    arrive in the gap between scheduling and starting, and be told that
+    nothing is building either."""
+    global _rebuild_scheduled
+    _rebuild_scheduled = True
+
+
+def mark_rebuild_finished() -> None:
+    """Called when that queued rebuild settles, successfully or not. A rebuild
+    that raised would otherwise leave every reader waiting forever for an
+    index that is never coming."""
+    global _rebuild_scheduled
+    _rebuild_scheduled = False
+
 _TAG_NAMESPACE_SEPARATOR = "/"
 
 
@@ -479,6 +514,15 @@ class VaultManager:
             if stem is not None:
                 resolved[target] = stem
         return resolved
+
+    def is_rebuilding(self) -> bool:
+        """Whether an index is on its way. Lets a caller say "still building"
+        instead of "nothing here", which are opposite answers.
+
+        False the moment there IS an index, whatever the flag says: a rebuild
+        that finished has nothing left to wait for, so a caller that forgot to
+        report it cannot strand the screen on a spinner."""
+        return _rebuild_scheduled and _last_rebuilt_at is None
 
     def get_last_rebuilt_at(self) -> str | None:
         """ISO-8601 UTC timestamp of the most recent successful

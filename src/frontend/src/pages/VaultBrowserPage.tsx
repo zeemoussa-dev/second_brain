@@ -70,6 +70,17 @@ export function VaultBrowserPage() {
     fetchVaultSearchStatus().then(setStatus);
   }, []);
 
+  // While the server is still reading the vault, ask again rather than making
+  // the operator reload. Stops the moment there is an index, so a built vault
+  // costs one request as before.
+  useEffect(() => {
+    if (!status || status.indexed || !status.building) return;
+    const timer = setInterval(() => {
+      fetchVaultSearchStatus().then(setStatus).catch(() => {});
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [status]);
+
   useEffect(() => {
     if (!status?.indexed) return;
     fetchTagTree().then((response) => setTagTree(response.tags));
@@ -143,6 +154,32 @@ export function VaultBrowserPage() {
       <>
         <h1>The Vault</h1>
         <p className="text-muted">Loading…</p>
+      </>
+    );
+  }
+
+  // Two different answers that used to look the same. The index lives in the
+  // server's memory, so a restart has none until the boot rebuild lands, and
+  // for those seconds this screen told the operator their vault was empty
+  // (2026-10-24: "When I just Restart the Server Nothing Indexed Yet Appear
+  // Which is not true"). It waits and says so instead, and the poll above
+  // brings it back by itself.
+  if (!status.indexed && status.building) {
+    return (
+      <>
+        <h1>The Vault</h1>
+        <div className="card">
+          <div className="empty-state">
+            <span className="material-symbols-outlined empty-state-icon" aria-hidden="true">
+              hourglass_top
+            </span>
+            <p className="empty-state-title">Building the index…</p>
+            <p style={{ margin: 'var(--space-1) 0 0' }}>
+              The server reads the whole vault when it starts, and it is still reading. Your
+              notes are all there — this page opens on its own the moment it finishes.
+            </p>
+          </div>
+        </div>
       </>
     );
   }

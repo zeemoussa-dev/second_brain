@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { ApiError } from '../api/client';
 import { Breadcrumbs } from '../components/Breadcrumbs';
-import { fetchNoteDetail, type NoteDetail } from '../features/vault-browser/client';
+import { fetchNoteDetail, fetchVaultSearchStatus, type NoteDetail } from '../features/vault-browser/client';
 import { NoteEditor } from '../features/vault-browser/NoteEditor';
 import type { TocHeading } from '../features/vault-browser/tableOfContents';
 
@@ -59,6 +59,9 @@ export function NoteDetailPage() {
   const { stem } = useParams<{ stem: string }>();
   const [detail, setDetail] = useState<NoteDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
+  // Only asked when a lookup already failed: on the happy path this page
+  // costs exactly what it did before.
+  const [building, setBuilding] = useState(false);
   const [headings, setHeadings] = useState<TocHeading[]>([]);
 
   useEffect(() => {
@@ -69,6 +72,12 @@ export function NoteDetailPage() {
     fetchNoteDetail(stem).catch((error) => {
       if (error instanceof ApiError && error.status === 404) {
         setNotFound(true);
+        // Why it was not found: a vault that does not have it, or a server
+        // that has not finished reading the vault. Asked only now, so the
+        // ordinary path still costs one request.
+        void fetchVaultSearchStatus()
+          .then((status) => setBuilding(Boolean(status.building) && !status.indexed))
+          .catch(() => setBuilding(false));
         return null;
       }
       throw error;
@@ -81,9 +90,26 @@ export function NoteDetailPage() {
         <Breadcrumbs items={[BROWSE_CRUMB, { label: stem ?? 'Note' }]} />
         <div className="card">
           <div className="empty-state">
-            <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)' }}>
-              No indexed note found for "{stem}"
-            </p>
+            {/* A restarted server has no index until its boot rebuild lands,
+                and a note opened in that window answered "no indexed note
+                found" for a note that plainly exists (operator, 2026-10-24).
+                The lookup fails the same way either way; only the sentence
+                differs, and only one of them is true. */}
+            {building ? (
+              <>
+                <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)' }}>
+                  The index is still building
+                </p>
+                <p style={{ margin: 'var(--space-1) 0 0' }}>
+                  The server reads the whole vault when it starts. This note is almost
+                  certainly there — it opens on its own in a moment.
+                </p>
+              </>
+            ) : (
+              <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)' }}>
+                No indexed note found for "{stem}"
+              </p>
+            )}
           </div>
         </div>
       </>
