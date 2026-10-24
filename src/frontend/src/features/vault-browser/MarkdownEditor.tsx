@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language';
-import { EditorState, type Extension } from '@codemirror/state';
+import { EditorState, StateField, type Extension, type Text } from '@codemirror/state';
 import {
   Decoration,
   EditorView,
@@ -230,9 +230,9 @@ class TableWidget extends WidgetType {
   }
 }
 
-/** Markers hidden, tables drawn — recomputed as the document and the caret
- *  move, which is what makes it "live". */
-const livePreview: Extension = ViewPlugin.fromClass(
+/** Markers hidden — inline decorations, recomputed as the document and the
+ *  caret move, which is what makes it "live". */
+const markerHiding: Extension = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
 
@@ -250,6 +250,50 @@ const livePreview: Extension = ViewPlugin.fromClass(
   },
   { decorations: (plugin) => plugin.decorations },
 );
+
+/** Tables drawn — a STATE FIELD, not a view plugin.
+ *
+ * CodeMirror refuses block decorations from a plugin ("Block decorations may
+ * not be specified via plugins"), because a plugin only sees the viewport and
+ * a block widget changes the height of the document above it. A field sees the
+ * whole state, which is also simpler here: a section is small enough to scan
+ * end to end, so there is no viewport arithmetic to get wrong.
+ */
+const tableRendering: Extension = StateField.define<DecorationSet>({
+  create: (state) => tableDecorations(state),
+  update(value, transaction) {
+    // The selection matters as much as the text: entering a table is what
+    // turns it back into source.
+    if (transaction.docChanged || transaction.selection) return tableDecorations(transaction.state);
+    return value.map(transaction.changes);
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
+const livePreview: Extension = [markerHiding, tableRendering];
+
+function tableDecorations(state: EditorState): DecorationSet {
+  const caretLines = new Set(
+    state.selection.ranges.flatMap((range) => [
+      state.doc.lineAt(range.from).number,
+      state.doc.lineAt(range.to).number,
+    ]),
+  );
+  const decorations = [];
+  for (const table of tableBlocks(state.doc)) {
+    const touched = [...caretLines].some(
+      (line) => line >= table.firstLine && line <= table.lastLine,
+    );
+    if (touched) continue;
+    decorations.push(
+      Decoration.replace({ widget: new TableWidget(table.rows), block: true }).range(
+        table.from,
+        table.to,
+      ),
+    );
+  }
+  return Decoration.set(decorations);
+}
 
 function decorate(view: EditorView): DecorationSet {
   const builder: { from: number; to: number; value: Decoration }[] = [];
@@ -274,18 +318,6 @@ function decorate(view: EditorView): DecorationSet {
     });
   }
 
-  for (const table of tableBlocks(view)) {
-    const touched = [...caretLines].some(
-      (line) => line >= table.firstLine && line <= table.lastLine,
-    );
-    if (touched) continue;
-    builder.push({
-      from: table.from,
-      to: table.to,
-      value: Decoration.replace({ widget: new TableWidget(table.rows), block: true }),
-    });
-  }
-
   builder.sort((a, b) => a.from - b.from || a.to - b.to);
   return Decoration.set(builder.map(({ from, to, value }) => value.range(from, to)));
 }
@@ -297,7 +329,7 @@ function decorate(view: EditorView): DecorationSet {
  * present depending on the parser's extensions, and this stays true for the
  * half-typed table the operator is in the middle of writing.
  */
-function tableBlocks(view: EditorView) {
+function tableBlocks(doc: Text) {
   const blocks: {
     from: number;
     to: number;
@@ -305,7 +337,6 @@ function tableBlocks(view: EditorView) {
     lastLine: number;
     rows: string[][];
   }[] = [];
-  const doc = view.state.doc;
   let line = 1;
   while (line <= doc.lines) {
     if (!isTableLine(doc.line(line).text)) {

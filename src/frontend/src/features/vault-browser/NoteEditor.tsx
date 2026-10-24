@@ -125,7 +125,14 @@ export function NoteEditor({
     while (scan) {
       const id = scan instanceof HTMLElement ? scan.id : '';
       if (/^H[1-6]$/.test(scan.tagName) && id) {
-        return sections.find((candidate) => candidate.slug === id) ?? null;
+        // Falls through to the opening section rather than returning null: a
+        // heading the splitter did not produce a section for means a click
+        // that does nothing and explains nothing, which is exactly how the
+        // H1 case hid (2026-10-24). Editing the wrong-but-real section is
+        // recoverable; a dead click is not even noticeable as a bug.
+        const found = sections.find((candidate) => candidate.slug === id);
+        if (found) return found;
+        break;
       }
       scan = scan.previousElementSibling;
     }

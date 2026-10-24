@@ -19,7 +19,21 @@ export interface TocHeading {
   slug: string;
 }
 
+/** The table of contents lists H2 and H3 only: an H1 is the note's own title
+ *  and listing it under "on this page" says nothing. */
 const HEADING_LINE_PATTERN = /^(#{2,3})\s+(.+)$/gm;
+
+/** Splitting the note into editable sections is a different question, and it
+ *  takes EVERY heading level.
+ *
+ *  The two shared one pattern, and a note beginning with a single `#` -- which
+ *  is most of this vault's Insight notes -- could not be edited at all: the
+ *  click handler finds the rendered `<h1>` in the DOM, looks for the section
+ *  with that slug, finds none because the splitter never saw an H1, and
+ *  silently does nothing. Clicking the text did nothing whatsoever and said
+ *  nothing about why (found 2026-10-24, by clicking it).
+ */
+const ANY_HEADING_LINE_PATTERN = /^(#{1,6})\s+(.+)$/gm;
 
 // A real vault note can legitimately repeat the same heading text more
 // than once (e.g. two "## Related" sections in different parts of a
@@ -59,7 +73,7 @@ export interface SectionRange {
  */
 export function sectionRanges(body: string): SectionRange[] {
   const slugger = new GithubSlugger();
-  const matches = [...body.matchAll(HEADING_LINE_PATTERN)];
+  const matches = [...body.matchAll(ANY_HEADING_LINE_PATTERN)];
   const sections: SectionRange[] = [];
 
   const firstHeadingAt = matches.length ? matches[0].index ?? body.length : body.length;
@@ -100,7 +114,10 @@ export interface EmptySection {
 export function findEmptySections(body: string): EmptySection[] {
   const slugger = new GithubSlugger();
   const empty: EmptySection[] = [];
-  const matches = [...body.matchAll(HEADING_LINE_PATTERN)];
+  // Every level, for the same reason as sectionRanges: an empty `# Summary`
+  // is as empty as an empty `## Summary`, and the slug has to match the
+  // heading the renderer actually drew.
+  const matches = [...body.matchAll(ANY_HEADING_LINE_PATTERN)];
   matches.forEach((match, position) => {
     const slug = slugger.slug(match[2].trim());
     const from = (match.index ?? 0) + match[0].length;
