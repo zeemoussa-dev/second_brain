@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { bootstrapFirstAdmin, fetchAuthState } from '../auth/authApiClient';
 import type { CheckResult, HermesHealth, SaveResult, SetupField, SetupStatus } from './setupApiClient';
 import {
   getHermesHealth,
@@ -23,6 +24,11 @@ import {
  * use hours later. */
 
 const HERMES_STEP_ID = 'hermes';
+// Not one of the server's steps: /setup lists what goes into .env, and an
+// account is not a setting. It is prepended here so the operator is asked who
+// administers this install before anything else, even though the account can
+// only be created after the restart (see handleRestart).
+const ADMIN_STEP_ID = 'administrator';
 
 function CheckBadge({ result, pending }: { result?: CheckResult; pending?: boolean }) {
   if (pending) return <span className="setup-check setup-check-pending">Checking…</span>;
@@ -109,6 +115,12 @@ function HermesHealthPanel({ health, loading }: { health: HermesHealth | null; l
 export function SetupWizard({ onDismiss }: { onDismiss?: () => void }) {
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
+  // Held in memory only, for the length of this page's life. They are not
+  // settings and never go to /setup/save or into .env; they are posted to
+  // /auth/bootstrap once the restarted backend can store an account.
+  const [admin, setAdmin] = useState({ username: '', password: '', displayName: '' });
+  const [bootstrapState, setBootstrapState] = useState<'idle' | 'waiting' | 'done' | 'failed'>('idle');
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [checks, setChecks] = useState<Record<string, CheckResult>>({});
   const [checking, setChecking] = useState<Record<string, boolean>>({});
@@ -134,7 +146,12 @@ export function SetupWizard({ onDismiss }: { onDismiss?: () => void }) {
       .catch(() => setStatus(null));
   }, []);
 
-  const step = status?.steps[stepIndex];
+  // Step 0 is the administrator and is NOT one of the server's steps: the
+  // server lists what goes in .env, and a password is not that. Everything
+  // below therefore indexes the server's steps at stepIndex - 1.
+  const onAdminStep = stepIndex === 0;
+  const step = onAdminStep ? undefined : status?.steps[stepIndex - 1];
+  const adminReady = admin.username.trim().length > 0 && admin.password.length >= 8;
 
   const vaultPathValue = values.vault_path ?? '';
 
@@ -183,6 +200,12 @@ export function SetupWizard({ onDismiss }: { onDismiss?: () => void }) {
    *  Re-running here is cheap and makes "Next" mean "this step is really
    *  right", not "nothing had come back yet". */
   async function handleNext() {
+    // Nothing to check with the backend: these are not settings, and the
+    // account cannot exist until the restart.
+    if (onAdminStep) {
+      if (adminReady) setStepIndex((index) => index + 1);
+      return;
+    }
     if (!step) return;
     setAdvancing(true);
     try {
@@ -264,6 +287,41 @@ export function SetupWizard({ onDismiss }: { onDismiss?: () => void }) {
       // shutdown it just accepted is what kills the response. Treat a
       // failed fetch as done, not as an error worth alarming about.
     }
+    // The admin asked for on step 1 is created HERE, which is the first moment
+    // it can be: the account lives under second_brain_data_path, which this
+    // wizard just wrote and which the process only picks up on restart. The
+    // credentials waited in this page's memory, never on disk -- the backend
+    // restarts, the browser does not.
+    if (!admin.username.trim()) return;
+    setBootstrapState('waiting');
+    setBootstrapError(null);
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      try {
+        const state = await fetchAuthState();
+        if (!state.needs_bootstrap) {
+          // Somebody else got there first, or this ran twice. Not an error:
+          // the sign-in screen after the reload is the right next thing.
+          setBootstrapState('done');
+          window.location.reload();
+          return;
+        }
+        await bootstrapFirstAdmin(admin.username.trim(), admin.password, admin.displayName.trim());
+        setBootstrapState('done');
+        window.location.reload();
+        return;
+      } catch {
+        // Still down, or not ready. Keep waiting -- a backend that has to be
+        // restarted by hand can take as long as the operator takes.
+      }
+    }
+    // Out of patience, not out of options: the first-Admin screen still
+    // appears on its own once the backend is up, so say so rather than
+    // leaving a spinner that means nothing.
+    setBootstrapState('failed');
+    setBootstrapError(
+      "The backend hasn't come back yet. Start it, then reload this page — it will ask for the administrator again.",
+    );
   }
 
   if (saved) {
@@ -291,9 +349,28 @@ export function SetupWizard({ onDismiss }: { onDismiss?: () => void }) {
               its agents keep using the old vault path.
             </p>
           )}
+          {admin.username.trim() && bootstrapState === 'idle' && (
+            <p className="setup-hint">
+              Then <strong>{admin.username.trim()}</strong> is created as the Admin and signed in.
+              Keep this page open: the password you typed is held here, not written to{' '}
+              <code>.env</code>.
+            </p>
+          )}
+          {bootstrapState === 'waiting' && (
+            <p className="setup-hint">
+              Waiting for the backend, then creating <strong>{admin.username.trim()}</strong>…
+            </p>
+          )}
+          {bootstrapState === 'failed' && <p className="error-text">{bootstrapError}</p>}
+
           <div className="setup-actions">
-            <button type="button" className="setup-button setup-button-primary" onClick={handleRestart}>
-              Restart now
+            <button
+              type="button"
+              className="setup-button setup-button-primary"
+              onClick={handleRestart}
+              disabled={bootstrapState === 'waiting'}
+            >
+              {bootstrapState === 'waiting' ? 'Restarting…' : 'Restart now'}
             </button>
             {onDismiss && (
               <button type="button" className="setup-button" onClick={onDismiss}>
@@ -306,7 +383,7 @@ export function SetupWizard({ onDismiss }: { onDismiss?: () => void }) {
     );
   }
 
-  const isLastStep = stepIndex === status.steps.length - 1;
+  const isLastStep = stepIndex === status.steps.length;  // +1 for the admin step in front
   // Only fields this step is actually responsible for can block it. A
   // required field already carrying a real value (a re-run, or a secret
   // showing its mask) counts as answered.
@@ -314,7 +391,7 @@ export function SetupWizard({ onDismiss }: { onDismiss?: () => void }) {
     (field) => field.required && !(values[field.key] ?? '').trim(),
   );
   const failed = (step?.fields ?? []).filter((field) => checks[field.key]?.ok === false);
-  const canAdvance = blocking.length === 0 && failed.length === 0;
+  const canAdvance = onAdminStep ? adminReady : blocking.length === 0 && failed.length === 0;
 
   return (
     <div className="setup-screen">
@@ -327,7 +404,7 @@ export function SetupWizard({ onDismiss }: { onDismiss?: () => void }) {
         </p>
 
         <ol className="setup-steps">
-          {status.steps.map((candidate, index) => (
+          {[{ id: ADMIN_STEP_ID, title: 'Administrator' }, ...status.steps].map((candidate, index) => (
             <li
               key={candidate.id}
               className={`setup-step-pip ${index === stepIndex ? 'is-current' : ''} ${index < stepIndex ? 'is-done' : ''}`}
@@ -336,6 +413,45 @@ export function SetupWizard({ onDismiss }: { onDismiss?: () => void }) {
             </li>
           ))}
         </ol>
+
+        {onAdminStep && (
+          <section className="setup-step">
+            <h2 className="setup-step-title">Who administers this install</h2>
+            <p className="setup-step-blurb">
+              The first account, and an Admin. It is created once the settings below are saved
+              and the backend restarts &mdash; this install has nowhere to keep an account until
+              then. Keep this page open and it happens by itself.
+            </p>
+            <label className="setup-field">
+              <span className="setup-field-label">Username <em>required</em></span>
+              <input
+                className="setup-input"
+                autoComplete="username"
+                value={admin.username}
+                onChange={(event) => setAdmin((prev) => ({ ...prev, username: event.target.value }))}
+              />
+            </label>
+            <label className="setup-field">
+              <span className="setup-field-label">Password <em>required</em></span>
+              <input
+                className="setup-input"
+                type="password"
+                autoComplete="new-password"
+                value={admin.password}
+                onChange={(event) => setAdmin((prev) => ({ ...prev, password: event.target.value }))}
+              />
+              <span className="setup-field-hint">At least 8 characters.</span>
+            </label>
+            <label className="setup-field">
+              <span className="setup-field-label">Display name</span>
+              <input
+                className="setup-input"
+                value={admin.displayName}
+                onChange={(event) => setAdmin((prev) => ({ ...prev, displayName: event.target.value }))}
+              />
+            </label>
+          </section>
+        )}
 
         {step && (
           <div className="setup-step">
