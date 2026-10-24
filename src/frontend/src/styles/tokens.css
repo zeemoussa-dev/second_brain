@@ -130,7 +130,7 @@
   /* Type. --font-sans is chosen in Settings > Branding and applied as a
      `data-font` attribute on <html> (the three blocks below). The stack here
      is the default for an install that never chose. */
-  --font-sans: "Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-sans: "Inter", "Plus Jakarta Sans", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-serif: "Marcellus", Georgia, "Times New Roman", serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   --font-size-sm: 0.8125rem;
@@ -207,17 +207,22 @@
 
    Each family is a real local file, like the two already here -- no CDN, since
    these installs sit in closed networks where a webfont fetch simply fails and
-   the page silently falls back. */
+   the page silently falls back.
+
+   Plus Jakarta Sans sits behind each of the three: it is the font this app has
+   always shipped and the one file that is certainly present, so a chosen
+   family whose file is missing degrades to the app's own typeface instead of
+   to whatever Segoe UI the machine happens to have. */
 :root[data-font="inter"] {
-  --font-sans: "Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-sans: "Inter", "Plus Jakarta Sans", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 :root[data-font="plex"] {
-  --font-sans: "IBM Plex Sans", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-sans: "IBM Plex Sans", "Plus Jakarta Sans", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 :root[data-font="source"] {
-  --font-sans: "Source Sans 3", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-sans: "Source Sans 3", "Plus Jakarta Sans", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 /* Light theme (operator, 2026-10-24: a theme is part of Branding, light and
