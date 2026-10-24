@@ -343,3 +343,167 @@ button.item-row:hover {
   font-weight: 600;
   color: var(--color-text);
 }
+
+/* ==========================================================================
+   The Vault: navigator + results (2026-10-24). The knowledge graph used to be
+   its own screen with its own idea of what you were looking at; now one scope
+   is read two ways, with the tree that chose it still on screen.
+   ========================================================================== */
+
+.vault-layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.vault-navigator {
+  position: sticky;
+  top: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: calc(100vh - 220px);
+}
+
+.vault-navigator-switch { display: flex; gap: var(--space-1); }
+
+.vault-results { min-width: 0; }
+
+.vault-scope {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+/* The tree itself scrolls, not the page: the navigator must stay reachable
+   while a thousand-note branch is being read beside it. */
+.nav-tree {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-right: var(--space-1);
+}
+
+.nav-tree-empty { font-size: var(--font-size-sm); }
+
+.nav-tree-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+}
+
+.nav-tree-row:hover { background: var(--color-surface-raised); }
+
+.nav-tree-row.is-selected {
+  background: var(--color-highlight-muted);
+  color: var(--color-highlight);
+  font-weight: 600;
+}
+
+/* The chevron and the name are separate buttons on purpose: opening a branch
+   and filtering to it are different intentions, and merging them means you
+   cannot look inside a category without the list jumping. */
+.nav-tree-toggle,
+.nav-tree-name {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.nav-tree-toggle {
+  display: flex;
+  align-items: center;
+  color: var(--color-text-muted);
+}
+
+.nav-tree-toggle .material-symbols-outlined { font-size: 1.1rem; }
+
+.nav-tree-name {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-tree-spacer { width: 1.1rem; flex-shrink: 0; }
+
+.nav-tree-count {
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+  padding-right: var(--space-1);
+}
+
+.browse-view-toggle { display: flex; gap: var(--space-1); margin-left: auto; }
+.browse-view-toggle .material-symbols-outlined { font-size: 1rem; margin-right: 2px; }
+
+/* The vault by tag, before it is a graph of notes. */
+.tag-clusters { margin-bottom: var(--space-4); }
+.tag-clusters-heading { font-size: var(--font-size-sm); margin: 0 0 var(--space-3); }
+
+.tag-cluster-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: flex-end;
+}
+
+.tag-cluster {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 7.5rem;
+  padding: var(--space-2);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tag-cluster:hover {
+  border-color: var(--color-accent);
+  background: var(--color-surface-raised);
+}
+
+/* Area, not diameter, scales with the count (--cluster-scale is already the
+   square root): scaling the radius makes a 2,700-note group 140x the area of
+   a 19-note one, and the small one vanishes. */
+.tag-cluster-bubble {
+  width: calc(1.5rem + 2.5rem * var(--cluster-scale));
+  height: calc(1.5rem + 2.5rem * var(--cluster-scale));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  border: 1px solid var(--color-accent);
+}
+
+.tag-cluster-name {
+  font-weight: 600;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.tag-cluster-count { font-variant-numeric: tabular-nums; color: var(--color-text-muted); }
+.tag-cluster-children { font-size: var(--font-size-sm); color: var(--color-text-muted); }
+
+.vault-graph-truncated { font-size: var(--font-size-sm); margin: 0 0 var(--space-2); }
+
+/* The navigator stacks above the results when there is no room beside them —
+   still real, still useful, just not pinned. */
+@media (max-width: 900px) {
+  .vault-layout { grid-template-columns: 1fr; }
+  .vault-navigator { position: static; max-height: 18rem; }
+}

@@ -42,7 +42,9 @@ const FRAMEWORK_LABELS: ReadonlyArray<readonly [string, string]> = [
   ['/inbox-cockpit', 'Email'],
   ['/settings', 'Settings'],
   ['/crawlers', 'Crawlers'],
-  ['/browse', 'Browse & Search'],
+  // One screen since 2026-10-24; /vault stays only as a redirect into its
+  // graph view, and a back control should name where you actually land.
+  ['/browse', 'The Vault'],
   ['/vault', 'The Vault'],
   ['/chat', 'Chat'],
 ];

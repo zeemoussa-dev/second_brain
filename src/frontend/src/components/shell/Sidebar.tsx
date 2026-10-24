@@ -123,15 +123,12 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         <span className="nav-icon">&#128203;</span>
         <span className="nav-label">Agent Activity</span>
       </NavLink>
+      {/* One entry, because they are one screen now (operator, 2026-10-24:
+          "Need to Merge the Vault with the Search"). Search, the note list and
+          the knowledge graph were three ways of reading one vault behind two
+          nav items that each claimed to be the vault. */}
       <NavLink
         to="/browse"
-        className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
-      >
-        <span className="nav-icon">&#128269;</span>
-        <span className="nav-label">Browse &amp; Search</span>
-      </NavLink>
-      <NavLink
-        to="/vault"
         className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
       >
         <span className="nav-icon">&#128279;</span>

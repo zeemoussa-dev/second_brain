@@ -1,4 +1,11 @@
+import { useState } from 'react';
 import type { TreeNode } from './client';
+
+/** Bubbles before the grid is a wall again. Measured on the real vault:
+ *  80 top-level categories, and `customer` alone has 116 children — so a
+ *  cluster view with no cap repeats the problem it was built to solve, just
+ *  with bigger dots. The tail is almost always counts of one or two. */
+const CLUSTERS_SHOWN = 24;
 
 /** The vault as its tag groups, before it is a graph of notes.
  *
@@ -22,17 +29,23 @@ export function TagClusters({
   onDrillDown: (path: string) => void;
   heading: string;
 }) {
+  const [allShown, setAllShown] = useState(false);
+
   if (nodes.length === 0) {
     return <p className="text-muted">Nothing here carries a tag yet.</p>;
   }
 
-  const largest = Math.max(...nodes.map((node) => node.count));
+  // Against the largest SHOWN, not the largest overall: once the giants are
+  // hidden the remaining bubbles would otherwise all collapse to the minimum
+  // size and stop saying anything about each other.
+  const shown = allShown ? nodes : nodes.slice(0, CLUSTERS_SHOWN);
+  const largest = Math.max(...shown.map((node) => node.count));
 
   return (
     <div className="tag-clusters">
       <p className="text-muted tag-clusters-heading">{heading}</p>
       <div className="tag-cluster-grid">
-        {nodes.map((node) => (
+        {shown.map((node) => (
           <button
             type="button"
             key={node.path}
@@ -52,6 +65,13 @@ export function TagClusters({
           </button>
         ))}
       </div>
+      {nodes.length > CLUSTERS_SHOWN && (
+        <button type="button" className="btn-link" onClick={() => setAllShown((was) => !was)}>
+          {allShown
+            ? `Show the ${CLUSTERS_SHOWN} biggest only`
+            : `Show all ${nodes.length} — the other ${nodes.length - CLUSTERS_SHOWN} are smaller`}
+        </button>
+      )}
     </div>
   );
 }

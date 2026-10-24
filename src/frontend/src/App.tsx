@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { AppShell } from './components/shell/AppShell';
 import { SetupPage } from './pages/SetupPage';
 import { AgentsMapPage } from './pages/AgentsMapPage';
@@ -36,7 +36,6 @@ import { SettingsUIPage } from './pages/SettingsUIPage';
 import { SystemHealthPage } from './pages/SystemHealthPage';
 import { AgentActivityPage } from './pages/AgentActivityPage';
 import { VaultBrowserPage } from './pages/VaultBrowserPage';
-import { VaultGraphPage } from './pages/VaultGraphPage';
 import { NoteDetailPage } from './pages/NoteDetailPage';
 import { MeetingCockpitPage } from './pages/MeetingCockpitPage';
 import { InboxCockpitPage } from './pages/InboxCockpitPage';
@@ -95,7 +94,11 @@ function App() {
           <Route path="/settings/rules" element={<SettingsRulesPage />} />
           <Route path="/browse" element={<VaultBrowserPage />} />
           <Route path="/browse/:stem" element={<NoteDetailPage />} />
-          <Route path="/vault" element={<VaultGraphPage />} />
+          {/* The graph is a VIEW of the vault now, not a screen of its own
+              (operator, 2026-10-24: "Need to Merge the Vault with the
+              Search"). The old URL keeps working and lands on that view, so
+              a link pasted into a note still opens what it promised. */}
+          <Route path="/vault" element={<Navigate to="/browse?view=graph" replace />} />
           <Route path="/meeting-cockpit/:stem" element={<MeetingCockpitPage />} />
           <Route path="/inbox-cockpit/:stem" element={<InboxCockpitPage />} />
           {/* Installed plugins' screens (ADR-022), composed at build time. */}

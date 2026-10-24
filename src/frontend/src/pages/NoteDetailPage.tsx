@@ -13,7 +13,7 @@ import type { TocHeading } from '../features/vault-browser/tableOfContents';
  *  (`ADR-060`) replaces it: it names where this note sits rather than only
  *  pointing backwards, and it still works on a cold load, where BackControl
  *  correctly hides because there is no history to go back through. */
-const BROWSE_CRUMB = { label: 'Browse & Search', to: '/browse' } as const;
+const BROWSE_CRUMB = { label: 'The Vault', to: '/browse' } as const;
 
 export function NoteDetailPage() {
   const { stem } = useParams<{ stem: string }>();
