@@ -360,16 +360,15 @@ export function VaultBrowserPage() {
                 onGo={(next) => updateParams({ page: String(next) }, 'replace')}
               />
             </div>
-            <div className="item-list">
+            <div className="note-list">
               {browse.notes.map((note) => (
-                <Link className="item-row" to={`/browse/${note.stem}`} key={note.stem}>
-                  <div className="item-row-main">
-                    <span className="item-row-title">{note.title}</span>
-                    <span className="item-row-meta">
-                      <span className="badge">{note.kind}</span>
-                      {note.tags.length > 0 && <span>{note.tags.join(' · ')}</span>}
-                    </span>
-                  </div>
+                <Link className="note-row" to={`/browse/${note.stem}`} key={note.stem}>
+                  <span className="note-row-kind">{note.kind}</span>
+                  <span className="note-row-title" title={note.title}>
+                    {note.title}
+                  </span>
+                  <NoteRowTags tags={note.tags} />
+                  <span className="note-row-when">{whenInWords(note.modified_at)}</span>
                 </Link>
               ))}
             </div>
@@ -401,6 +400,54 @@ export function VaultBrowserPage() {
       </div>
     </>
   );
+}
+
+/** How many tag chips fit on a row before they are the row.
+ *
+ * Two is what a real note carries here, but a handful carry six, and a row
+ * that grows to fit them makes the whole list ragged. */
+const TAGS_PER_ROW = 2;
+
+/** A note's tags, as chips, by their LAST segment.
+ *
+ * The full path is the problem this solves: a real tag in this vault is
+ * `customer/abu-dhabi-agriculture-and-food-safety-authority` — 54 characters —
+ * and two of them joined into a meta line is longer than any title, in every
+ * row, wrapping. The leaf is the part that identifies the thing; the path is
+ * on hover for when it matters.
+ */
+function NoteRowTags({ tags }: { tags: string[] }) {
+  if (tags.length === 0) return <span className="note-row-tags" />;
+  const shown = tags.slice(0, TAGS_PER_ROW);
+
+  return (
+    <span className="note-row-tags">
+      {shown.map((tag) => (
+        <span className="note-tag" key={tag} title={tag}>
+          {tag.split('/').pop()}
+        </span>
+      ))}
+      {tags.length > shown.length && (
+        <span className="note-tag is-more" title={tags.slice(TAGS_PER_ROW).join('\n')}>
+          +{tags.length - shown.length}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** "3 days ago" rather than a timestamp: in a list you are judging recency,
+ *  not reading a date. The exact one is on hover. */
+function whenInWords(iso?: string | null): string {
+  if (!iso) return '';
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '';
+  const days = Math.floor((Date.now() - then) / 86_400_000);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 30) return `${days}d ago`;
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+  return `${Math.floor(days / 365)}y ago`;
 }
 
 /** The same scope as the list, drawn as a graph.

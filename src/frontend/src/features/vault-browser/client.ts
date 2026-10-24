@@ -14,6 +14,10 @@ export interface NoteSummary {
   title: string;
   kind: string;
   tags: string[];
+  /** When the note file last changed. Only the browse LIST carries it — it
+   *  costs a stat per note, and that is affordable for a page of twenty and
+   *  not for a graph of hundreds. */
+  modified_at?: string | null;
 }
 
 export interface BrowseResponse {

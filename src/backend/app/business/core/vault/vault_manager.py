@@ -262,6 +262,17 @@ def _modified_at(entry: dict) -> float:
         return 0.0
 
 
+def _modified_iso(entry: dict) -> str | None:
+    """When the note file last changed, ISO-8601, or None for one that has
+    gone missing since it was indexed. The file's own time, because a note's
+    dates live in whatever frontmatter its Template defines and this is the
+    only answer that exists for every note."""
+    moment = _modified_at(entry)
+    if moment <= 0:
+        return None
+    return datetime.fromtimestamp(moment, tz=timezone.utc).isoformat()
+
+
 def _summary(entry: dict) -> dict:
     return {
         "stem": entry["stem"],
@@ -580,7 +591,13 @@ class VaultManager:
         page_entries = entries[start:start + page_size]
         return {
             "total": total, "page": page, "page_size": page_size,
-            "notes": [_summary(entry) for entry in page_entries],
+            # `modified_at` only here, never in `_summary`: it costs a stat per
+            # note, and this is the one caller with a bounded page. The graph
+            # asks for hundreds of summaries at a time and has no use for it.
+            "notes": [
+                {**_summary(entry), "modified_at": _modified_iso(entry)}
+                for entry in page_entries
+            ],
         }
 
     def _filtered_entries(

@@ -218,3 +218,28 @@ def test_an_unscoped_graph_is_still_the_whole_vault(vault) -> None:
 
     assert graph["total"] == len(_NOTES)
     assert graph["truncated"] is False
+
+
+def test_the_list_says_when_each_note_last_changed(vault) -> None:
+    """The browse row shows "3d ago", so the list has to carry the date. Only
+    the LIST: it costs a stat per note, which is affordable for a page of
+    twenty and not for a graph of hundreds."""
+    listed = VaultManager().list_notes()
+
+    assert all(note["modified_at"] for note in listed["notes"])
+    assert "T" in listed["notes"][0]["modified_at"], "an ISO timestamp, not a formatted date"
+
+
+def test_the_graph_is_not_made_to_pay_for_the_date(vault) -> None:
+    graph = VaultManager().get_graph()
+
+    assert all("modified_at" not in node for node in graph["nodes"])
+
+
+def test_a_vanished_note_has_no_date_rather_than_a_fake_one(vault, tmp_path) -> None:
+    (tmp_path / "Acme kickoff.md").unlink()
+
+    listed = VaultManager().list_notes()
+    gone = next(note for note in listed["notes"] if note["title"] == "Acme kickoff")
+
+    assert gone["modified_at"] is None

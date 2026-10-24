@@ -763,3 +763,104 @@ button.item-row:hover {
   background: var(--color-surface-raised);
   font-weight: 600;
 }
+
+/* ==========================================================================
+   The notes list (2026-10-24, operator: "I need to fix the Notes LIst view it
+   Looks Really bad").
+
+   It was built from `.item-row`, which is a CARD: 12px padding, a raised
+   background, rounded corners, and a gap between each one. Twenty notes
+   rendered as twenty boxes, each holding a wrapped title and a meta line of
+   full tag paths -- and a real tag here is
+   `customer/abu-dhabi-agriculture-and-food-safety-authority`, longer than most
+   titles. A file list is not a dashboard: it wants density, one line per note,
+   and columns that line up so the eye can run down them.
+   ========================================================================== */
+
+.note-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.note-row {
+  display: grid;
+  /* kind · title · tags · when. The title takes what is left, so the columns
+     either side stay put and the list reads as a table. */
+  grid-template-columns: 7rem minmax(0, 1fr) auto 4.5rem;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--color-border);
+  text-decoration: none;
+  color: inherit;
+}
+
+/* A hairline BETWEEN rows, not around each: the first one would otherwise sit
+   under the list's own border and read as a double rule. */
+.note-row:first-child { border-top: none; }
+
+.note-row:hover { background: var(--color-surface-raised); }
+
+/* The note's own kind, as the Template spells it -- not lower-cased, which
+   made "Person" and "Capture" read as placeholder text rather than as the
+   thing the note IS. */
+.note-row-kind {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* One line, always. A wrapped title makes neighbouring rows different heights
+   and the column alignment stops being worth anything. */
+.note-row-title {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-row-tags {
+  display: flex;
+  gap: var(--space-1);
+  justify-content: flex-end;
+}
+
+/* `flex-shrink: 0` is the whole trick: inside a column sized to its content,
+   flex would otherwise squeeze three chips down to "c…" each, which is worse
+   than not showing them. They keep their width; the column grows, and the
+   title column -- the only one with `minmax(0, 1fr)` -- gives up the space. */
+.note-tag {
+  flex-shrink: 0;
+  max-width: 11rem;
+  padding: 1px var(--space-2);
+  border-radius: 999px;
+  background: var(--color-surface-sunken);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-tag.is-more { background: none; border: 1px solid var(--color-border); }
+
+.note-row-when {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Narrow: the tags and the date are the first things to go. The title and
+   what kind of note it is are what the row is for. */
+@media (max-width: 760px) {
+  .note-row { grid-template-columns: 5rem minmax(0, 1fr); }
+  .note-row-tags,
+  .note-row-when { display: none; }
+}
