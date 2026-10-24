@@ -36,6 +36,49 @@ export function extractHeadings(body: string): TocHeading[] {
   return headings;
 }
 
+export interface SectionRange {
+  /** The rendered heading's id, or null for the text above the first
+   *  heading — which is a real part of the note and must be editable too. */
+  slug: string | null;
+  text: string;
+  /** Where this section starts in the raw body: the heading line itself, so
+   *  editing a section lets you fix its title without leaving it. */
+  start: number;
+  /** The next heading's start, or the end of the note. */
+  end: number;
+}
+
+/** The note split at its headings (operator, 2026-10-24: clicking the text
+ *  "Turns into a Plain for the Whole Document and Its not anymore that Section
+ *  I am Clicking").
+ *
+ * Editing a 4,000-word capture as one textarea loses the place you clicked and
+ * puts every other section at risk of a stray keystroke. Splitting at heading
+ * boundaries is safe because a heading always starts its own line, so each
+ * slice is still whole markdown.
+ */
+export function sectionRanges(body: string): SectionRange[] {
+  const slugger = new GithubSlugger();
+  const matches = [...body.matchAll(HEADING_LINE_PATTERN)];
+  const sections: SectionRange[] = [];
+
+  const firstHeadingAt = matches.length ? matches[0].index ?? body.length : body.length;
+  if (body.slice(0, firstHeadingAt).trim().length > 0) {
+    sections.push({ slug: null, text: 'the opening', start: 0, end: firstHeadingAt });
+  }
+
+  matches.forEach((match, position) => {
+    const start = match.index ?? 0;
+    sections.push({
+      slug: slugger.slug(match[2].trim()),
+      text: match[2].trim(),
+      start,
+      end: position + 1 < matches.length ? matches[position + 1].index ?? body.length : body.length,
+    });
+  });
+  return sections;
+}
+
 export interface EmptySection {
   slug: string;
   text: string;

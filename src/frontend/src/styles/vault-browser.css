@@ -693,3 +693,30 @@ button.item-row:hover {
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);
 }
+
+/* Editing ONE section (2026-10-24, operator: clicking the text "Turns into a
+   Plain for the Whole Document and Its not anymore that Section I am
+   Clicking"). The rest of the note stays rendered above and below the open
+   section, dimmed, so the edit reads as happening inside the document rather
+   than as the document being replaced by a box of markdown. */
+.note-reading.is-context {
+  opacity: 0.55;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* The open section is bounded, because "which part am I editing" has to be
+   answerable at a glance once the page is three parts. */
+.note-editing-which {
+  margin: var(--space-3) 0 var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.note-editing .note-editor-field {
+  min-height: 6rem;
+  padding: var(--space-2);
+  border-left: 2px solid var(--color-accent);
+  background: var(--color-surface-raised);
+  border-radius: var(--radius-sm);
+}

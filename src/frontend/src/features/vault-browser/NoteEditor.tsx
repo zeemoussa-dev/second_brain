@@ -2,7 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
 import { saveNoteBody, tidyText, type NoteSummary } from './client';
 import { NoteBody } from './NoteBody';
-import { findEmptySections, type TocHeading } from './tableOfContents';
+import {
+  extractHeadings,
+  findEmptySections,
+  sectionRanges,
+  type SectionRange,
+  type TocHeading,
+} from './tableOfContents';
 
 /** How long after the last keystroke the note saves itself. Long enough that
  *  a sentence is one save rather than forty, short enough that walking away
@@ -44,8 +50,16 @@ export function NoteEditor({
   onHeadingsExtracted?: (headings: TocHeading[]) => void;
   onSaved: (saved: { body: string; version: string }) => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(body);
+  // WHICH section is open, not merely whether one is: clicking a paragraph
+  // used to open the entire note as one textarea, which loses the place you
+  // clicked and puts every other section one stray keystroke away from being
+  // rewritten (operator, 2026-10-24: "Its not anymore that Section I am
+  // Clicking"). `null` means nothing is being edited.
+  const [section, setSection] = useState<SectionRange | null>(null);
+  const editing = section !== null;
+  // Only the open section's text. The rest of the note is never in the
+  // textarea, so it cannot be touched by accident.
+  const [draft, setDraft] = useState('');
   const [state, setState] = useState<SaveState>('idle');
   const [refusal, setRefusal] = useState<string | null>(null);
   const textarea = useRef<HTMLTextAreaElement | null>(null);
@@ -65,19 +79,56 @@ export function NoteEditor({
   // A note replaced underneath the editor (navigating to another one) starts
   // clean rather than carrying the previous note's draft into it.
   useEffect(() => {
-    setEditing(false);
-    setDraft(body);
+    setSection(null);
+    setDraft('');
     setState('idle');
     setRefusal(null);
   }, [stem, body]);
 
   const emptySections = useMemo(() => findEmptySections(body), [body]);
+  const sections = useMemo(() => sectionRanges(body), [body]);
 
-  function beginEditing(offset?: number) {
-    if (!editable) return;
-    caretOnOpen.current = offset ?? null;
-    setDraft(body);
-    setEditing(true);
+  // The ToC is the whole note's, always — while a section is open the body is
+  // rendered as two fragments, and each would otherwise report only its own
+  // half of the headings.
+  const headings = useMemo(() => extractHeadings(body), [body]);
+  useEffect(() => {
+    onHeadingsExtracted?.(headings);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onHeadingsExtracted is a fresh closure each render; keying off headings avoids a notify loop.
+  }, [headings]);
+
+  /** Opens one section. `caretInBody` is an offset into the WHOLE note (what
+   *  an empty-section placeholder knows); it is translated to the section's
+   *  own coordinates, because that is what the textarea holds. */
+  function beginEditing(target: SectionRange | null, caretInBody?: number) {
+    if (!editable || !target) return;
+    caretOnOpen.current =
+      caretInBody === undefined ? null : Math.max(0, caretInBody - target.start);
+    setDraft(body.slice(target.start, target.end));
+    setSection(target);
+  }
+
+  function stopEditing() {
+    setSection(null);
+    setDraft('');
+  }
+
+  /** The section the click landed in: the nearest heading at or above the
+   *  clicked block, or the opening text when there is none above it. */
+  function sectionAtClick(target: HTMLElement, container: HTMLElement): SectionRange | null {
+    let block: HTMLElement | null = target;
+    while (block && block.parentElement && block.parentElement !== container) {
+      block = block.parentElement;
+    }
+    let scan: Element | null = block;
+    while (scan) {
+      const id = scan instanceof HTMLElement ? scan.id : '';
+      if (/^H[1-6]$/.test(scan.tagName) && id) {
+        return sections.find((candidate) => candidate.slug === id) ?? null;
+      }
+      scan = scan.previousElementSibling;
+    }
+    return sections.find((candidate) => candidate.slug === null) ?? sections[0] ?? null;
   }
 
   // Focus and caret have to wait for the textarea to exist, and the caret is
@@ -93,18 +144,28 @@ export function NoteEditor({
     field.setSelectionRange(at, at);
   }, [editing]);
 
+  /** The edited section put back where it came from. The file on disk is
+   *  always the whole note, so a section edit is still a whole-note save —
+   *  the difference is that everything outside `[start, end)` is carried
+   *  across untouched rather than round-tripped through a textarea. */
+  function composed(sectionText: string, target: SectionRange): string {
+    return body.slice(0, target.start) + sectionText + body.slice(target.end);
+  }
+
   async function save(text: string) {
-    if (text === body) {
+    if (!section) return;
+    const whole = composed(text, section);
+    if (whole === body) {
       setState('idle');
       return;
     }
     setState('saving');
     setRefusal(null);
     try {
-      const result = await saveNoteBody(stem, text, heldVersion.current);
+      const result = await saveNoteBody(stem, whole, heldVersion.current);
       heldVersion.current = result.version;
       setState('saved');
-      onSaved({ body: text, version: result.version });
+      onSaved({ body: whole, version: result.version });
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         setState('conflict');
@@ -149,9 +210,20 @@ export function NoteEditor({
     }
   }
 
-  if (editing) {
+  if (editing && section) {
     return (
       <div className="note-editing">
+        {/* The note either side of the open section stays rendered, so a
+            section edit reads as a section edit rather than as the document
+            being replaced by a box of markdown. */}
+        {section.start > 0 && (
+          <div className="note-reading is-context">
+            <NoteBody stem={stem} body={body.slice(0, section.start)} forwardLinks={forwardLinks} />
+          </div>
+        )}
+        <p className="note-editing-which">
+          Editing <strong>{section.text}</strong>
+        </p>
         <textarea
           ref={textarea}
           className="note-body note-editor-field"
@@ -170,7 +242,7 @@ export function NoteEditor({
             // A conflict keeps the editor open: closing it would put the
             // operator's unsaved text behind a rendered copy of the version
             // that beat it.
-            if (state !== 'conflict' && state !== 'failed') setEditing(false);
+            if (state !== 'conflict' && state !== 'failed') stopEditing();
           }}
           onKeyDown={(event) => {
             if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
@@ -178,9 +250,8 @@ export function NoteEditor({
               void save(draft);
             }
             if (event.key === 'Escape') {
-              setDraft(body);
               setState('idle');
-              setEditing(false);
+              stopEditing();
             }
           }}
         />
@@ -212,10 +283,16 @@ export function NoteEditor({
             </button>
           )}
           <span className="note-editor-hint">
-            Saves itself when you pause · Ctrl+S now · Esc to drop changes
+            Editing this section only · saves itself when you pause · Ctrl+S now · Esc to
+            drop changes
           </span>
         </div>
         <SaveStatus state={state} refusal={refusal} />
+        {section.end < body.length && (
+          <div className="note-reading is-context">
+            <NoteBody stem={stem} body={body.slice(section.end)} forwardLinks={forwardLinks} />
+          </div>
+        )}
       </div>
     );
   }
@@ -223,21 +300,28 @@ export function NoteEditor({
   return (
     <div
       className={`note-reading ${editable ? 'is-editable' : ''}`}
-      // A click anywhere in the text starts editing there-ish. Not on a link:
+      // A click opens the SECTION it landed in, not the note. Not on a link:
       // following a wikilink is the other thing a click in a note means, and
       // it is the one the operator asked for explicitly.
       onClick={(event) => {
-        if ((event.target as HTMLElement).closest('a, button')) return;
-        beginEditing();
+        const target = event.target as HTMLElement;
+        if (target.closest('a, button')) return;
+        beginEditing(sectionAtClick(target, event.currentTarget));
       }}
     >
       <NoteBody
         stem={stem}
         body={body}
         forwardLinks={forwardLinks}
-        onHeadingsExtracted={onHeadingsExtracted}
         emptySections={editable ? emptySections : []}
-        onAddToSection={(offset) => beginEditing(offset)}
+        onAddToSection={(offset) =>
+          beginEditing(
+            // The placeholder's offset is inside its own section by
+            // construction: it is the character after that heading's line.
+            sections.find((candidate) => offset > candidate.start && offset <= candidate.end) ?? null,
+            offset,
+          )
+        }
       />
       {state === 'saved' && <SaveStatus state={state} refusal={null} />}
     </div>
