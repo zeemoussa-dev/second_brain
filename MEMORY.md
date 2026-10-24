@@ -45,6 +45,12 @@ Where a rule does not belong here:
 
 ## Vault engine and templates
 
+- **The app is never the only writer of a note.** Hermes agents capture and enrich the same files continuously, so anything that writes a note from the app sends the version it read and is REFUSED if the file moved on (`update_note_body`). The version is a content hash, never mtime: the vault sits in OneDrive, whose sync client rewrites timestamps, and an mtime version refuses saves nobody conflicted on.
+
+- **What the API shows for a note is not always what is in the file.** A captured message keeps its original HTML on disk and is converted to markdown on the way out, so it reports `editable: false` and refuses a write -- saving the screen's text would replace the message with a rendering of itself. Frontmatter is rewritten TEXTUALLY, never re-serialised from the parsed dict, which would reorder keys and drop what the parser does not understand.
+
+- **A model's answer about a note is compared with the note, never trusted.** `text_tidy` asks Compass for spelling only and then refuses the result if a `[[wikilink]]`, a heading, a URL or the line structure moved, or the length wandered. The prompt is not the guard: a model told to improve text will improve it, and this vault is machine-read. A refusal costs a typo; a bad accept costs the note.
+
 - **`src/backend/app/vault/vault_manager.py` is an OLDER engine than the canonical copy at `app/business/core/skills/managers/vault_manager.py`.** It has no `create_dynamic_child()`, no `_section_allowed_callers` and no `data_root()`. Never assume a capability documented for the engine exists in the backend's copy - check the file you are actually importing.
 
 - **Never key a cross-directory collection by bare filename or stem.** Collisions are real wherever the same entity is legitimately linked from more than one folder: whichever note collides second silently wins, and the other becomes invisible to index, overview and search. Key by full path. `vault_indexing.py` still carries this defect.
