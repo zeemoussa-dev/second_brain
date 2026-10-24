@@ -16,8 +16,10 @@ that path as the single source of truth for Second Brain's own state
 """
 from __future__ import annotations
 
+import os
 import shutil
 import signal
+import subprocess
 import threading
 from pathlib import Path
 
@@ -441,25 +443,55 @@ def request_shutdown() -> None:
     threading.Timer(_SHUTDOWN_DELAY_SECONDS, _raise_terminate).start()
 
 
-# Read by run-backend.cmd AFTER uvicorn exits, relative to the backend folder
-# the launcher cd's into (same base as _ENV_PATH).
-_RESTART_SENTINEL_PATH = Path(".restart-requested")
+_RESTART_SCRIPT_PATH = Path(__file__).resolve().parents[4] / "tools" / "backend.ps1"
+
+# Long enough for this request's response to reach the browser before the
+# helper starts killing the process that owes it.
+_RESTART_DELAY_SECONDS = "0.6"
 
 
 def request_restart() -> None:
-    """Stops this server and has the launcher start it again.
+    """Restarts this install, through the operator's own `backend.ps1 restart`.
 
-    Nothing supervises the backend: run-backend.cmd runs uvicorn in the
-    foreground, and `--reload` restarts a WORKER on a file change, never the
-    process a SIGTERM ends. So a plain shutdown is where the app stays -- which
-    is not what "Restart now" promises the operator after a save they cannot
-    see take effect without one.
+    NOT a self-shutdown, which is what this used to do and could never work:
+    under `--reload` the app runs in a multiprocessing WORKER, so a SIGTERM it
+    raises on itself ends the worker while the reloader parent lives on holding
+    the port -- the exact half-dead tree of `BUG-068`, with `/health` dead and
+    nothing able to bind. Verified on 2026-10-24: the worker exited, the
+    reloader and the launcher shell stayed, the app never came back. Nothing
+    supervises the backend either (`--reload` restarts a worker on a file
+    change, never the process a signal ends), so even a clean exit of the whole
+    tree would just leave the app down.
 
-    The launcher therefore loops, and relaunches only when it finds this
-    sentinel: a crash or a Ctrl-C leaves none and stays down, so the loop
-    cannot turn a startup failure into a spin. A backend started some other way
-    (bare uvicorn, a service) ignores the file and simply stops, which is the
-    old behaviour.
+    `backend.ps1` already knows how to stop every member of the tree, wait for
+    the port, start a new launcher and verify /health -- so it does it, rather
+    than a second mechanism re-deriving the same hard-won process arithmetic.
+
+    The helper must OUTLIVE the stop that kills us, so it is spawned through
+    `cmd /c start`, whose own shell exits at once and leaves it parented to a
+    dead pid: `backend.ps1` collects every child of a backend process, and a
+    direct child of ours would be collected and killed mid-restart.
     """
-    _RESTART_SENTINEL_PATH.write_text("", encoding="utf-8")
-    request_shutdown()
+    if os.name != "nt" or not _RESTART_SCRIPT_PATH.is_file():
+        # No launcher to restart through: stop, and let whatever started this
+        # process start it again. Reported so the UI can say so.
+        request_shutdown()
+        return
+
+    subprocess.Popen(  # noqa: S603 -- fixed argv, no shell string, no caller input
+        [
+            "cmd", "/c", "start", "/b", "", "powershell", "-NoProfile",
+            "-ExecutionPolicy", "Bypass", "-Command",
+            f"Start-Sleep -Seconds {_RESTART_DELAY_SECONDS}; "
+            f"& '{_RESTART_SCRIPT_PATH}' restart",
+        ],
+        cwd=str(_RESTART_SCRIPT_PATH.parent),
+        creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
+        close_fds=True,
+    )
+
+
+def can_restart_itself() -> bool:
+    """Whether `request_restart` will actually bring the app back, so the UI can
+    promise a restart or ask for one instead of guessing."""
+    return os.name == "nt" and _RESTART_SCRIPT_PATH.is_file()

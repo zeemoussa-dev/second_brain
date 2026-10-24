@@ -268,7 +268,7 @@ Where a rule does not belong here:
 
 - **A plain `def` route has no event loop.** FastAPI serves it from the threadpool, so `asyncio.create_task`/`get_running_loop` inside anything it calls raises `RuntimeError` and the route answers 500. Background work reachable from a sync route schedules itself with a thread (`threading.Timer`), or the route is `async def`. This cost a whole afternoon as "the setup wizard didn't save" (2026-10-24).
 
-- **Nothing supervises the backend process.** `--reload` restarts a *worker* on a file change; a SIGTERM ends the process for good. An in-app "Restart" therefore writes `.restart-requested` and stops, and `run-backend.cmd` relaunches on that sentinel alone -- never unconditionally, or a failed startup becomes a spin.
+- **The app can never stop or restart itself with a signal.** Under `--reload` it runs in a multiprocessing worker, so a SIGTERM it raises on itself ends the worker and leaves the reloader holding the port with nothing serving -- `BUG-068`'s half-dead tree, caused deliberately. Restarting goes through `tools\backend.ps1 restart`, spawned via `cmd /c start` so the helper is parented to an exited shell: `backend.ps1` kills every child of a backend process, so a direct child dies halfway through its own stop.
 
 - **A failed request to a route that kills the server is ambiguous, and the two halves mean opposite things.** No answer = it worked. An answer with an error status = it refused and is still running. A client that treats them alike will show success for a restart that never happened.
 

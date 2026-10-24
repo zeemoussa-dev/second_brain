@@ -401,43 +401,61 @@ def test_the_data_folder_says_what_leaving_it_blank_does(unconfigured) -> None:
 
 
 def test_a_restart_can_be_asked_for_from_a_plain_sync_route(monkeypatch, tmp_path) -> None:
-    """The wizard's "Restart now", from the thread FastAPI actually runs it on.
+    """The wizard's "Restart now" is accepted, and acted on.
 
-    `/setup/restart` is a plain `def`, so it is served from the threadpool,
-    where there is no running event loop. The old implementation scheduled the
-    SIGTERM with `asyncio.create_task`, which raises there -- the route
-    answered 500, the frontend read the failure as the backend going away, and
-    the operator saw a save that never took effect and reported the SAVE as
-    broken (2026-10-24).
+    It used to answer 500, for a reason worth keeping a test for: the route is
+    a plain `def`, so FastAPI serves it from the threadpool where there is no
+    running event loop, and the old code scheduled its work with
+    `asyncio.create_task`, which raises there. Nothing noticed, because the
+    frontend read a failed restart request as the backend going away -- so the
+    operator's settings were ignored and they reported the SAVE as broken
+    (2026-10-24).
     """
     monkeypatch.chdir(tmp_path)
-    terminated = threading.Event()
-    monkeypatch.setattr(system_settings, "_raise_terminate", terminated.set)
+    spawned: list[list[str]] = []
+    monkeypatch.setattr(
+        system_settings.subprocess, "Popen", lambda argv, **kwargs: spawned.append(argv)
+    )
+    monkeypatch.setattr(system_settings, "_raise_terminate", lambda: None)
 
     response = client.post("/setup/restart")
 
     assert response.status_code == 200
-    assert terminated.wait(timeout=5), "the shutdown was accepted but never scheduled"
+    assert response.json()["restarting"] is system_settings.can_restart_itself()
+    assert spawned, "the restart was accepted but nothing was ever started"
 
 
-def test_a_restart_leaves_the_launcher_something_to_act_on(monkeypatch, tmp_path) -> None:
-    """A shutdown alone is where the app STAYS: `--reload` restarts a worker on
-    a file change, never the process a SIGTERM ends, and nothing supervises the
-    backend. run-backend.cmd relaunches only on this sentinel, so a crash
-    cannot become a spin."""
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(system_settings, "_raise_terminate", lambda: None)
+def test_the_restart_helper_outlives_the_app_it_restarts(monkeypatch, tmp_path) -> None:
+    """It restarts us by KILLING us, so it cannot be our own child.
+
+    `backend.ps1` collects every child of a backend process -- that is how it
+    finds reload workers -- so a helper spawned directly would be stopped
+    halfway through its own stop, leaving the app down. Going through
+    `cmd /c start` leaves it parented to a shell that has already exited.
+    """
+    spawned: list[list[str]] = []
+    monkeypatch.setattr(
+        system_settings.subprocess, "Popen", lambda argv, **kwargs: spawned.append(argv)
+    )
 
     system_settings.request_restart()
 
-    assert (tmp_path / ".restart-requested").exists()
+    argv = spawned[0]
+    assert argv[:3] == ["cmd", "/c", "start"]
+    assert "backend.ps1' restart" in argv[-1]
+    assert "Start-Sleep" in argv[-1], "the response must get out before we are killed"
 
 
-def test_shutting_down_is_not_a_restart(monkeypatch, tmp_path) -> None:
-    """Settings > System's Shut down is meant to leave the app down."""
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(system_settings, "_raise_terminate", lambda: None)
+def test_shutting_down_is_not_a_restart(monkeypatch) -> None:
+    """Settings > System's Shut down is meant to leave the app down, so it
+    starts nothing -- and a restart must not be quietly reduced to one."""
+    def refuse(*args, **kwargs):
+        raise AssertionError("a shutdown started something")
+
+    monkeypatch.setattr(system_settings.subprocess, "Popen", refuse)
+    terminated = threading.Event()
+    monkeypatch.setattr(system_settings, "_raise_terminate", terminated.set)
 
     system_settings.request_shutdown()
 
-    assert not (tmp_path / ".restart-requested").exists()
+    assert terminated.wait(timeout=5), "the shutdown was accepted but never scheduled"

@@ -97,6 +97,11 @@ def restart() -> dict:
 
     Not the same call as Settings > System's Shut down: that one is meant to
     leave the app down, this one must bring it back, and nothing supervises the
-    backend by itself (see `request_restart`)."""
+    backend by itself (see `request_restart`).
+
+    `restarting` is false when this install has no launcher to restart through:
+    the app still stops, but someone has to start it, and the UI should say
+    that rather than wait for a return that is not coming."""
+    restarting = system_settings.can_restart_itself()
     system_settings.request_restart()
-    return {"ok": True}
+    return {"ok": True, "restarting": restarting}

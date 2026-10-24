@@ -25,14 +25,4 @@ rem no worker serving anything: every route timed out, for every plugin, until
 rem someone found and killed the stuck child. Ten seconds drains a normal
 rem reload; past that the connections are dropped, which is always better than
 rem the whole app staying down.
-rem The loop is how "Restart now" in the setup wizard works: the backend writes
-rem .restart-requested, then stops itself: --reload restarts a worker on a file
-rem change, but nothing restarts the process a SIGTERM ends. Only the sentinel
-rem relaunches, so a crash or a Ctrl-C stays down instead of spinning.
-:run
 "%~dp0..\src\backend\.venv\Scripts\uvicorn.exe" app.main:app --reload --port 8001 --timeout-graceful-shutdown 10
-if not exist ".restart-requested" goto done
-del ".restart-requested" >nul 2>&1
-echo [Second Brain] The app asked for a restart -- starting again.
-goto run
-:done
