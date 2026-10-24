@@ -546,10 +546,23 @@
    so the thread scrolls internally instead of the whole page scrolling.
    ========================================================================== */
 
+/* Fills what is left of `.main`, rather than guessing it.
+   `height: calc(100vh - 48px)` assumed 48px of chrome above this page. Then
+   the shell grew a back control and a breadcrumb trail, the guess was wrong by
+   their height, and the whole page scrolled by exactly that much (operator,
+   2026-10-24: "now that we added the Breadcrumbs Its Scrolling down a bit").
+   `:has()` scopes the flex container to the one route that needs it, so no
+   other page's layout changes to fix this one. */
+.main:has(> .chat-page) {
+  display: flex;
+  flex-direction: column;
+}
+
 .chat-page {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 48px);
+  flex: 1;
+  min-height: 0;
 }
 
 .chat-page-panel {
@@ -947,4 +960,109 @@
   margin-left: var(--space-4);
   border-left: 1px solid var(--color-border);
   padding-left: var(--space-2);
+}
+
+/* ==========================================================================
+   Multiple chats (2026-10-24). A list beside the thread, each chat keeping its
+   own conversation, and a delete that asks in the row rather than in a dialog.
+   ========================================================================== */
+
+.chat-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.chat-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: var(--space-1);
+}
+
+.chat-new {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+
+.chat-new .material-symbols-outlined { font-size: 1.1rem; }
+
+.chat-list-note { font-size: var(--font-size-sm); }
+
+.chat-list-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  border-radius: var(--radius-sm);
+  padding-right: var(--space-1);
+}
+
+.chat-list-row:hover { background: var(--color-surface-raised); }
+
+.chat-list-row.is-open {
+  background: var(--color-highlight-muted);
+  color: var(--color-highlight);
+}
+
+/* The row's own button takes the width, so the whole row is the target and
+   the delete sits at its end rather than in the middle of the name. */
+.chat-list-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--space-2);
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-list-title {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-list-meta {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.chat-list-row.is-open .chat-list-meta { color: inherit; opacity: 0.8; }
+
+/* Shown on hover or focus, never hidden from the keyboard: an action that
+   only exists for a mouse does not exist for everyone. */
+.chat-list-delete {
+  opacity: 0;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+}
+
+.chat-list-row:hover .chat-list-delete,
+.chat-list-delete:focus-visible { opacity: 1; }
+.chat-list-delete:hover { color: var(--color-danger); }
+.chat-list-delete .material-symbols-outlined { font-size: 1.1rem; }
+
+.chat-list-confirm { display: flex; gap: var(--space-1); padding: 2px 0; }
+
+@media (max-width: 860px) {
+  .chat-layout { grid-template-columns: 1fr; }
+  .chat-list { max-height: 12rem; }
 }

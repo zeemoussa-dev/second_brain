@@ -59,9 +59,24 @@ interface AgentChatPanelProps {
   // landed so it can refresh; ChatPage has no History tab and omits
   // this entirely rather than being handed a no-op callback.
   onMessageSent?: () => void;
+  /** Which stored conversation this panel is showing. Changing it starts the
+   *  thread again from `initialMessages`, exactly as changing `agentId` does.
+   *  The side panel passes neither and keeps its in-memory-only behaviour. */
+  conversationId?: string;
+  initialMessages?: ChatMessage[];
+  /** Every change to the thread, for a caller that persists it. Called with
+   *  the whole list because that is what gets saved -- see `saveMessages`. */
+  onThreadChanged?: (messages: ChatMessage[]) => void;
 }
 
-export function AgentChatPanel({ agentId, agentName, onMessageSent }: AgentChatPanelProps) {
+export function AgentChatPanel({
+  agentId,
+  agentName,
+  onMessageSent,
+  conversationId,
+  initialMessages,
+  onThreadChanged,
+}: AgentChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
@@ -86,7 +101,10 @@ export function AgentChatPanel({ agentId, agentName, onMessageSent }: AgentChatP
   // ChatPage's own single Primary-pointed instance never does) starts a
   // clean thread rather than carrying over a previous agent's messages.
   useEffect(() => {
-    setMessages([]);
+    // Seeded from the stored thread when there is one, so switching
+    // conversations shows the conversation rather than an empty panel. The
+    // side panel passes none and still gets the clean slate it always had.
+    setMessages(initialMessages ?? []);
     setDraft('');
     setSending(false);
     setAttachedFile(null);
@@ -97,7 +115,17 @@ export function AgentChatPanel({ agentId, agentName, onMessageSent }: AgentChatP
     setReplyToLocalId(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (draftInputRef.current) draftInputRef.current.style.height = 'auto';
-  }, [agentId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `initialMessages` is the seed for THIS conversation, not a trigger: including it would reset the live thread every time the parent re-rendered.
+  }, [agentId, conversationId]);
+
+  // Persisted by whoever owns the conversation. Deliberately not on every
+  // streamed frame: `isStreaming` bubbles are half a sentence, and saving each
+  // one would write the file dozens of times per reply for no gain.
+  useEffect(() => {
+    if (!onThreadChanged || sending) return;
+    onThreadChanged(messages);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onThreadChanged is a fresh closure each parent render; keying off the thread itself avoids a save loop.
+  }, [messages, sending]);
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });

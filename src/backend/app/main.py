@@ -17,6 +17,7 @@ from app.api.agent_tokens_router import router as agent_tokens_router
 from app.api.agents_router import router as agents_router
 from app.api.auth_guard import AuthenticationMiddleware
 from app.api.auth_router import router as auth_router
+from app.api.chats_router import router as chats_router
 from app.api.branding_router import router as branding_router
 from app.api.artifacts_router import router as artifacts_router
 from app.api.backup_router import router as backup_router
@@ -289,6 +290,7 @@ app.include_router(blueprints_router)
 app.include_router(marketplace_router)
 app.include_router(boot_router)
 app.include_router(cockpit_router)
+app.include_router(chats_router)
 app.include_router(system_health_router)
 app.include_router(plugin_host_router)
 app.include_router(vault_index_router)
