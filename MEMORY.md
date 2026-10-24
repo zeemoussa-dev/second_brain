@@ -322,6 +322,8 @@ Where a rule does not belong here:
 
 ## Frontend
 
+- **The editor for a thing belongs where that thing is created.** A control on another page, reached by a sentence, is a control the operator cannot find -- and a page holding one block per agent under a single heading is findable only by already knowing it is there. The route condition on the Agents flow sat exactly like that (2026-10-24: "I can't find ... where to set the When"). Where a cross-page jump is genuinely right, the link scrolls to the specific block AND focuses the specific field: landing on the right page is not the same as finding the control.
+
 - **The theme is a block of token values in `tokens.css`, never a second version of a screen.** Dark lives on `:root`; light is `:root[data-theme="light"]` overriding colour tokens only, so an install that never chose looks exactly as it did. A new colour belongs in BOTH blocks or in neither. What breaks in light mode is never a value but a RELATIONSHIP: the Map's connector lines, the body dot grid and the worker node are all `--color-text`, which inverts correctly only while nothing in that chain is a literal.
 
 - **Anything accented derives from `--color-accent`,** which Branding sets at runtime -- `--color-accent-muted` and `--color-sidebar` are `color-mix` of it, never stored rgba() of the copper, and `--color-on-accent` is COMPUTED from the accent's luminance in `theme.ts`. A foreground pinned while its background moves is how this app shipped white-on-white twice.
