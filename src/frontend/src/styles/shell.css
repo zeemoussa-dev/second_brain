@@ -27,7 +27,10 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--color-surface);
+  /* Tinted by this install's accent, not plain surface (operator, 2026-10-24).
+     --color-sidebar does the mixing in tokens.css so both themes get a tint
+     weighted for their own background. */
+  background: var(--color-sidebar);
   border-right: 1px solid var(--color-border);
   padding: var(--space-4);
 }
@@ -272,7 +275,7 @@ html {
   margin: var(--space-4) 0;
   padding: var(--space-3);
   border-radius: var(--radius-md);
-  background: var(--color-surface-sunken, rgba(127, 127, 127, 0.12));
+  background: var(--color-surface-sunken);
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
   white-space: pre-wrap;

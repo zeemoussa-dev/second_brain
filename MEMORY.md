@@ -320,6 +320,10 @@ Where a rule does not belong here:
 
 ## Frontend
 
+- **The theme is a block of token values in `tokens.css`, never a second version of a screen.** Dark lives on `:root`; light is `:root[data-theme="light"]` overriding colour tokens only, so an install that never chose looks exactly as it did. A new colour belongs in BOTH blocks or in neither. What breaks in light mode is never a value but a RELATIONSHIP: the Map's connector lines, the body dot grid and the worker node are all `--color-text`, which inverts correctly only while nothing in that chain is a literal.
+
+- **Anything accented derives from `--color-accent`,** which Branding sets at runtime -- `--color-accent-muted` and `--color-sidebar` are `color-mix` of it, never stored rgba() of the copper, and `--color-on-accent` is COMPUTED from the accent's luminance in `theme.ts`. A foreground pinned while its background moves is how this app shipped white-on-white twice.
+
 - **A colour token never gets a hard-coded hex fallback.** The palette is dark-only, so `var(--color-x, #f6f7f9)` paints a light box the moment the token is missing or renamed, and the text on it stays near-white -- `.blueprint-result` sat at ~1.1:1 contrast that way, invisible, for as long as `--color-surface-2` went undefined (2026-10-24). Write `var(--color-x)` and let it fail visibly, or fall back to something theme-agnostic (`rgba(127,127,127,0.08)`). Before using a token, check `tokens.css` actually defines it: four rules in `auth.css` referenced the same missing one with no fallback and silently painted nothing.
 
 - **`is_background_agent: true` is a hard visibility gate on the Agents Map, not a styling hint.** `layoutAgents.ts` excludes such agents from the ring entirely and their detail panel becomes unreachable. Never set it true for an agent that has no access point outside the map.

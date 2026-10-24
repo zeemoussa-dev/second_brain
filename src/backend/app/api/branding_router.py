@@ -19,7 +19,9 @@ from pydantic import BaseModel
 
 from app.api.auth_guard import requires
 from app.business.core.branding.branding_manager import (
+    FONT_CHOICES,
     MAX_LOGO_BYTES,
+    THEME_MODES,
     BrandingError,
     BrandingManager,
 )
@@ -34,6 +36,16 @@ class AppNameBody(BaseModel):
     app_name: str
 
 
+class ThemeBody(BaseModel):
+    """All three optional: the page saves one control at a time, and a body
+    carrying every field would let a stale form put back what another admin
+    just changed."""
+
+    theme_mode: str | None = None
+    font: str | None = None
+    accent_color: str | None = None
+
+
 def _as_dict(manager: BrandingManager) -> dict:
     branding = manager.get()
     return {
@@ -41,6 +53,13 @@ def _as_dict(manager: BrandingManager) -> dict:
         "has_logo": branding.has_logo,
         "is_customised": branding.is_customised,
         "max_logo_bytes": MAX_LOGO_BYTES,
+        "theme_mode": branding.theme_mode,
+        "font": branding.font,
+        "accent_color": branding.accent_color,
+        # What the picker may offer, from the one place that decides it, so a
+        # fourth font is a backend change and not two.
+        "theme_modes": list(THEME_MODES),
+        "fonts": list(FONT_CHOICES),
     }
 
 
@@ -72,6 +91,22 @@ def set_app_name(body: AppNameBody) -> dict:
     manager = BrandingManager()
     try:
         manager.set_app_name(body.app_name)
+    except BrandingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _as_dict(manager)
+
+
+@router.put("/theme", dependencies=[_admin_only])
+def set_theme(body: ThemeBody) -> dict:
+    """Admin-only, like the name: a theme is what everyone on this install
+    sees, not a personal preference (operator's own choice, 2026-10-24)."""
+    manager = BrandingManager()
+    try:
+        manager.set_theme(
+            theme_mode=body.theme_mode,
+            font=body.font,
+            accent_color=body.accent_color,
+        )
     except BrandingError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _as_dict(manager)

@@ -50,11 +50,31 @@ class BrandingError(Exception):
     """A refusal the operator should read verbatim."""
 
 
+#: Theme modes an install may choose. No "system" option: branding is one look
+#: for the whole install (operator's own choice, 2026-10-24), and "whatever
+#: each visitor's OS happens to say" is the opposite of that.
+THEME_MODES = ("dark", "light")
+DEFAULT_THEME_MODE = "dark"
+
+#: The three fonts the picker offers. The id is what is stored and what the
+#: frontend puts in `data-font`; the stylesheet owns the actual stacks, so a
+#: font is added by adding a file, a rule and one entry here.
+FONT_CHOICES = ("inter", "plex", "source")
+DEFAULT_FONT = "inter"
+
+#: Shipped copper. The default lives here as well as in CSS because the API
+#: answers it to callers that never load the stylesheet.
+DEFAULT_ACCENT = "#c58b5f"
+
+
 @dataclass(frozen=True)
 class Branding:
     app_name: str
     has_logo: bool
     is_customised: bool
+    theme_mode: str
+    font: str
+    accent_color: str
 
 
 class BrandingManager:
@@ -67,19 +87,21 @@ class BrandingManager:
         self-reporting."""
         name = DEFAULT_APP_NAME
         customised = False
-        if branding_data.branding_exists():
-            try:
-                record = branding_data.read_branding_json()
-                stored = str(record.get("app_name") or "").strip()
-                if stored:
-                    name = stored
-                    customised = True
-            except (ValueError, OSError):
-                pass
+        record = self._record()
+        stored = str(record.get("app_name") or "").strip()
+        if stored:
+            name = stored
+            customised = True
         return Branding(
             app_name=name,
             has_logo=branding_data.find_logo() is not None,
             is_customised=customised,
+            # Each falls back on its own: a record written before the theme
+            # existed, or hand-edited with one key removed, still describes a
+            # complete, renderable theme rather than a half of one.
+            theme_mode=self._one_of(record.get("theme_mode"), THEME_MODES, DEFAULT_THEME_MODE),
+            font=self._one_of(record.get("font"), FONT_CHOICES, DEFAULT_FONT),
+            accent_color=self._accent_or_default(record.get("accent_color")),
         )
 
     def set_app_name(self, app_name: str) -> Branding:
@@ -92,8 +114,93 @@ class BrandingManager:
                 f"That name is {len(cleaned)} characters; it has to fit the sidebar and the "
                 "browser tab, so 60 is the limit. Nothing was changed."
             )
-        branding_data.write_branding_json({"app_name": cleaned})
+        self._merge({"app_name": cleaned})
         return self.get()
+
+    def set_theme(
+        self,
+        theme_mode: str | None = None,
+        font: str | None = None,
+        accent_color: str | None = None,
+    ) -> Branding:
+        """Each part is optional, and only what is passed is written: the
+        Branding page saves one control at a time, and a PUT carrying three
+        fields would let a stale form overwrite a colour somebody else just
+        changed with whatever it last read."""
+        patch: dict[str, str] = {}
+        if theme_mode is not None:
+            if theme_mode not in THEME_MODES:
+                raise BrandingError(
+                    f"{theme_mode!r} is not a theme. Choose one of: {', '.join(THEME_MODES)}. "
+                    "Nothing was changed."
+                )
+            patch["theme_mode"] = theme_mode
+        if font is not None:
+            if font not in FONT_CHOICES:
+                raise BrandingError(
+                    f"{font!r} is not one of this install's fonts. Choose one of: "
+                    f"{', '.join(FONT_CHOICES)}. Nothing was changed."
+                )
+            patch["font"] = font
+        if accent_color is not None:
+            patch["accent_color"] = self._valid_accent(accent_color)
+        if patch:
+            self._merge(patch)
+        return self.get()
+
+    @staticmethod
+    def _record() -> dict:
+        """The stored record, or an empty one. Never raises for an absent or
+        unreadable file: branding is rendered on the sign-in screen, before
+        anything else works, and an install whose branding file was
+        hand-edited into invalid JSON must still be reachable to fix it."""
+        if not branding_data.branding_exists():
+            return {}
+        try:
+            record = branding_data.read_branding_json()
+        except (ValueError, OSError):
+            return {}
+        return record if isinstance(record, dict) else {}
+
+    def _merge(self, patch: dict) -> None:
+        """Writes `patch` over what is stored. A plain write would drop every
+        other key -- renaming the install would have reset its theme, and
+        picking a font would have reset its name."""
+        branding_data.write_branding_json({**self._record(), **patch})
+
+    @staticmethod
+    def _one_of(value: object, allowed: tuple[str, ...], fallback: str) -> str:
+        text = str(value or "").strip().lower()
+        return text if text in allowed else fallback
+
+    @classmethod
+    def _accent_or_default(cls, value: object) -> str:
+        try:
+            return cls._valid_accent(str(value or ""))
+        except BrandingError:
+            return DEFAULT_ACCENT
+
+    @staticmethod
+    def _valid_accent(value: str) -> str:
+        """`#rgb` or `#rrggbb`, normalised to six lowercase digits.
+
+        Narrow on purpose. This string is written into a CSS custom property on
+        the document element, so anything accepted here is injected into the
+        page's styles -- `red; background: url(...)` would be a stylesheet
+        injection, not a colour."""
+        cleaned = value.strip().lower()
+        if len(cleaned) == 4 and cleaned.startswith("#"):
+            cleaned = "#" + "".join(character * 2 for character in cleaned[1:])
+        valid = (
+            len(cleaned) == 7
+            and cleaned.startswith("#")
+            and all(character in "0123456789abcdef" for character in cleaned[1:])
+        )
+        if not valid:
+            raise BrandingError(
+                f"{value!r} is not a colour. Give a hex value like #c58b5f. Nothing was changed."
+            )
+        return cleaned
 
     def set_logo(self, filename: str, content: bytes) -> Branding:
         suffix = ("." + filename.rsplit(".", 1)[-1].lower()) if "." in filename else ""

@@ -1,12 +1,22 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { apiFetch, apiUrl } from '../../api/client';
+import { applyTheme, cacheTheme } from './theme';
 
 export interface Branding {
   app_name: string;
   has_logo: boolean;
   is_customised: boolean;
   max_logo_bytes: number;
+  /** This install's theme — one look for everyone, set by an Admin in
+   *  Settings › Branding. Read here rather than anywhere else because
+   *  `/branding` is already public and already read before sign-in: the
+   *  sign-in screen has to be in the install's own colours too. */
+  theme_mode: string;
+  font: string;
+  accent_color: string;
+  theme_modes: string[];
+  fonts: string[];
 }
 
 export const PRODUCT_NAME = 'Second Brain';
@@ -26,6 +36,11 @@ const FALLBACK: Branding = {
   has_logo: false,
   is_customised: false,
   max_logo_bytes: 1024 * 1024,
+  theme_mode: 'dark',
+  font: 'inter',
+  accent_color: '#c58b5f',
+  theme_modes: ['dark', 'light'],
+  fonts: ['inter', 'plex', 'source'],
 };
 
 const BrandingContext = createContext<BrandingContextValue>({
@@ -75,6 +90,20 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.title = branding.app_name;
   }, [branding.app_name]);
+
+  // The theme is applied here and nowhere else: one place that writes
+  // data-theme/data-font/--color-accent means a screen can never set its own
+  // and disagree with the rest of the app. Caching it is what lets the next
+  // load paint in these colours instead of the shipped ones (index.html).
+  useEffect(() => {
+    cacheTheme(
+      applyTheme({
+        theme_mode: branding.theme_mode,
+        font: branding.font,
+        accent_color: branding.accent_color,
+      }),
+    );
+  }, [branding.theme_mode, branding.font, branding.accent_color]);
 
   const value: BrandingContextValue = {
     ...branding,

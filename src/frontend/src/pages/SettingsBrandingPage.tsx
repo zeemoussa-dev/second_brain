@@ -5,7 +5,30 @@ import { refusalText } from '../features/auth/SignInScreen';
 import { PRODUCT_NAME, useBranding } from '../features/branding/BrandingProvider';
 import type { Branding } from '../features/branding/BrandingProvider';
 
-/** This install's own name and logo (operator, 2026-10-21).
+/** The copy for each font the backend offers. Keyed by the id it stores; the
+ *  stylesheet owns the real stack, and `stack` here is only what renders this
+ *  one button in its own face. */
+const FONTS: Record<string, { name: string; stack: string; note: string }> = {
+  inter: {
+    name: 'Inter',
+    stack: '"Inter", "Segoe UI", sans-serif',
+    note: 'Neutral, dense, built for screens',
+  },
+  plex: {
+    name: 'IBM Plex Sans',
+    stack: '"IBM Plex Sans", "Segoe UI", sans-serif',
+    note: 'Technical, a little more formal',
+  },
+  source: {
+    name: 'Source Sans 3',
+    stack: '"Source Sans 3", "Segoe UI", sans-serif',
+    note: 'Open and plain, easy at small sizes',
+  },
+};
+
+const DEFAULT_ACCENT = '#c58b5f';
+
+/** This install's own name, logo and theme (operator, 2026-10-21, 2026-10-24).
  *
  * Admin-only, by `MANAGE_SETTINGS` on the routes — this is what
  * everyone else on the install sees, so it is closer to a setting than
@@ -20,6 +43,9 @@ import type { Branding } from '../features/branding/BrandingProvider';
 export function SettingsBrandingPage() {
   const branding = useBranding();
   const [name, setName] = useState(branding.is_customised ? branding.app_name : '');
+  // Held locally so the colour picker can be dragged without a PUT per frame;
+  // the saved value is still branding.accent_color until Save is pressed.
+  const [accent, setAccent] = useState(branding.accent_color);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -62,6 +88,13 @@ export function SettingsBrandingPage() {
     if (fileInput.current) fileInput.current.value = '';
   }
 
+  function handleTheme(patch: Record<string, string>, message: string) {
+    void run(
+      () => apiFetch<Branding>('/branding/theme', { method: 'PUT', body: JSON.stringify(patch) }),
+      message,
+    );
+  }
+
   const limitKb = Math.round(branding.max_logo_bytes / 1024);
 
   return (
@@ -97,6 +130,112 @@ export function SettingsBrandingPage() {
             {busy ? 'Saving…' : 'Save name'}
           </button>
         </form>
+      </section>
+
+      <section>
+        <h2>Theme</h2>
+        <p className="auth-note">
+          One look for the whole install, like the name and the logo — not a personal
+          setting. It applies the moment you save, on every screen and for everyone.
+        </p>
+        <div className="auth-card">
+          <div className="branding-choice-group" data-testid="branding-mode">
+            <span className="branding-choice-label">Mode</span>
+            <div className="branding-choices">
+              {branding.theme_modes.map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={`branding-choice ${branding.theme_mode === mode ? 'is-chosen' : ''}`}
+                  aria-pressed={branding.theme_mode === mode}
+                  disabled={busy}
+                  onClick={() => handleTheme({ theme_mode: mode }, `Switched to the ${mode} theme.`)}
+                >
+                  <span className="material-symbols-outlined" aria-hidden="true">
+                    {mode === 'light' ? 'light_mode' : 'dark_mode'}
+                  </span>
+                  {mode === 'light' ? 'Light' : 'Dark'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="branding-choice-group" data-testid="branding-font">
+            <span className="branding-choice-label">Font</span>
+            <div className="branding-choices">
+              {branding.fonts.map((font) => {
+                const face = FONTS[font];
+                if (!face) return null;
+                return (
+                  <button
+                    key={font}
+                    type="button"
+                    className={`branding-choice branding-font-choice ${branding.font === font ? 'is-chosen' : ''}`}
+                    aria-pressed={branding.font === font}
+                    disabled={busy}
+                    // Rendered in its own face: the only honest way to choose a
+                    // font is to read it.
+                    style={{ fontFamily: face.stack }}
+                    onClick={() => handleTheme({ font }, `Now set in ${face.name}.`)}
+                  >
+                    <strong>{face.name}</strong>
+                    <small>{face.note}</small>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="branding-choice-group">
+            <span className="branding-choice-label">Accent</span>
+            <div className="branding-accent-row">
+              <input
+                type="color"
+                className="branding-accent-swatch"
+                data-testid="branding-accent-picker"
+                value={accent}
+                disabled={busy}
+                onChange={(event) => setAccent(event.target.value)}
+                aria-label="Accent colour"
+              />
+              <input
+                className="input branding-accent-hex"
+                data-testid="branding-accent-hex"
+                value={accent}
+                maxLength={7}
+                spellCheck={false}
+                disabled={busy}
+                onChange={(event) => setAccent(event.target.value)}
+              />
+              <button
+                type="button"
+                className="auth-primary"
+                data-testid="branding-accent-save"
+                disabled={busy || accent.toLowerCase() === branding.accent_color.toLowerCase()}
+                onClick={() => handleTheme({ accent_color: accent }, 'Accent saved.')}
+              >
+                Save accent
+              </button>
+              {branding.accent_color.toLowerCase() !== DEFAULT_ACCENT && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    setAccent(DEFAULT_ACCENT);
+                    handleTheme({ accent_color: DEFAULT_ACCENT }, 'Back to the default accent.');
+                  }}
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+            <small className="auth-hint">
+              Drives the side panel's tint, buttons, links, focus rings and every other
+              accented surface. The text colour on top of it is worked out from the colour
+              you pick, so a pale accent gets dark text rather than white on white.
+            </small>
+          </div>
+        </div>
       </section>
 
       <section>

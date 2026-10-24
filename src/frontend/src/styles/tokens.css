@@ -77,18 +77,42 @@
      2026-10-24). The four in auth.css had no fallback at all, so their
      background silently never applied. */
   --color-surface-2: #232834;
+  /* A recessed well: the sign-in card's inner blocks, the logo preview, the
+     plugin host's empty states. Used eight times across auth.css and
+     shell.css and defined nowhere until the theme work gave the palette an
+     owner -- seven of those had no fallback, so they had simply never
+     painted a background at all (2026-10-24). */
+  --color-surface-sunken: #12151c;
   --color-border: rgba(233, 228, 214, 0.1);
   --color-text: #e9e4d6;
   --color-text-muted: #b9b4a6;
+  /* Branding sets this one at runtime (Settings > Branding). Everything
+     accent-coloured in the app derives from it below rather than repeating a
+     copper hex, so a custom accent reaches every surface at once and no rule
+     is left on the old colour. */
   --color-accent: #c58b5f;
-  --color-accent-muted: rgba(197, 139, 95, 0.16);
+  /* Derived, not a second hex: a stored rgba() of the copper would stay copper
+     under a custom accent -- the failure mode where an install "changed its
+     colour" and half the app disagreed. */
+  --color-accent-muted: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  /* The readable text colour ON the accent. A light accent needs dark text and
+     a dark one needs light, so BrandingProvider computes this from the chosen
+     accent's luminance and sets it inline; this value is the default for the
+     shipped copper and for any load that happens before branding is read. */
   --color-on-accent: #0e1118;
+  /* The side panel, tinted by the accent (operator, 2026-10-24: the accent
+     "will Affect the Side Panel Color"). A tint of the surface, not the accent
+     itself: the sidebar is a large area and a saturated one fights every
+     screen it frames. */
+  --color-sidebar: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
   --color-success: #16a34a;
   --color-warning: #b45309;
   --color-danger: #b91c1c;
 
-  /* Type */
-  --font-sans: "Plus Jakarta Sans", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  /* Type. --font-sans is chosen in Settings > Branding and applied as a
+     `data-font` attribute on <html> (the three blocks below). The stack here
+     is the default for an install that never chose. */
+  --font-sans: "Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-serif: "Marcellus", Georgia, "Times New Roman", serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   --font-size-sm: 0.8125rem;
@@ -155,6 +179,64 @@
   --graph-kind-color-7: #7c3aed;
   --graph-kind-color-8: #0891b2;
   --graph-edge-color: rgb(233, 228, 214);
+}
+
+/* The three fonts Branding offers (operator, 2026-10-24: "the Option to choose
+   the fonts from a Set of Predefined ones 3 Options is fine"). An attribute
+   rather than an inline style: the choice is one of three known values, so it
+   belongs in the stylesheet where the stacks can be read, and `data-font` on
+   <html> is one attribute to set before first paint.
+
+   Each family is a real local file, like the two already here -- no CDN, since
+   these installs sit in closed networks where a webfont fetch simply fails and
+   the page silently falls back. */
+:root[data-font="inter"] {
+  --font-sans: "Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+:root[data-font="plex"] {
+  --font-sans: "IBM Plex Sans", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+:root[data-font="source"] {
+  --font-sans: "Source Sans 3", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Light theme (operator, 2026-10-24: a theme is part of Branding, light and
+   dark). Values only -- every rule in the app already composes from the tokens
+   above, so this block is the whole palette swap and no screen needs a second
+   version of itself.
+
+   Dark stays on :root, so an install that never chose a theme, and any paint
+   that happens before branding is read, look exactly as they did.
+
+   Warm, not neutral grey: the accent is copper and the dark theme's text is
+   cream, so a blue-grey light theme would read as a different product rather
+   than the same one in daylight.
+
+   What this actually inverts is RELATIONSHIPS, which is the part worth
+   watching. The Agents Map's connector lines, the body's dot grid and the
+   worker node colour are all `--color-text` (near-white in dark) -- they
+   become near-black here, which is correct, and would be invisible if any of
+   them had been written as a literal instead. */
+:root[data-theme="light"] {
+  --color-bg: #faf8f5;
+  --color-surface: #ffffff;
+  --color-surface-raised: #f3f0ea;
+  --color-surface-2: #ebe7df;
+  --color-surface-sunken: #f0ece5;
+  --color-border: rgba(27, 26, 23, 0.14);
+  --color-text: #1b1a17;
+  --color-text-muted: #5f5a4f;
+  /* Darker than the dark theme's, because these sit on white: #16a34a on
+     #ffffff is 2.8:1 and unreadable as text. */
+  --color-success: #15803d;
+  --color-warning: #a16207;
+  --color-danger: #b91c1c;
+  --color-on-accent: #ffffff;
+  /* Less tint than dark: the same 10% over white is far more saturated than
+     over #171a22, and the sidebar would shout. */
+  --color-sidebar: color-mix(in srgb, var(--color-accent) 7%, var(--color-surface));
 }
 
 * { box-sizing: border-box; }
@@ -234,6 +316,13 @@ body {
    elsewhere and must stay unaffected. */
 :root {
   color-scheme: dark;
+}
+
+/* The same reasoning in reverse: tell the browser this page is light so its
+   own form-control chrome, scrollbar fallback and unchecked checkbox stop
+   assuming dark. Without it a light theme gets dark native widgets. */
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
 input[type="checkbox"],
