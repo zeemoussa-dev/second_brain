@@ -241,13 +241,22 @@ button.item-row:hover {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  /* The containing block for the icon below. Without it the icon is absolute
+     against the VIEWPORT, so it sits still while the page scrolls under it --
+     "the search icon moves with me when I scroll" (operator, 2026-10-24). */
+  position: relative;
 }
 
 /* Sits inside the field, against its left edge, so the row reads as one
    search box rather than an icon next to an input. */
+/* Anchored to the row (which is `position: relative` above), not floated at
+   its static position: `left`/`top` make it the field's own icon wherever the
+   row ends up, rather than something that happens to land there. */
 .browse-search-icon {
   position: absolute;
-  margin-left: var(--space-3);
+  left: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
   color: var(--color-text-muted);
   pointer-events: none;
 }

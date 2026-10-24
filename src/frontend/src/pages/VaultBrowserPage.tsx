@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { VaultGraphCanvas } from '../features/vault-graph/VaultGraphCanvas';
 import { SnippetText } from '../features/vault-browser/SnippetText';
@@ -62,9 +62,6 @@ export function VaultBrowserPage() {
   const [browse, setBrowse] = useState<BrowseResponse | null>(null);
   const [searchResult, setSearchResult] = useState<SearchResponse | null>(null);
   const [searching, setSearching] = useState(false);
-  // What is in the box, which is only the URL's `q` once Enter is pressed:
-  // searching on every keystroke would embed the whole vault per character.
-  const [queryInput, setQueryInput] = useState(query);
 
   useEffect(() => {
     fetchVaultSearchStatus().then(setStatus);
@@ -88,9 +85,6 @@ export function VaultBrowserPage() {
     fetchKinds().then((response) => setKinds(response.kinds));
   }, [status]);
 
-  useEffect(() => {
-    setQueryInput(query);
-  }, [query]);
 
   useEffect(() => {
     if (!status?.indexed || query || view === 'graph') return;
@@ -136,18 +130,33 @@ export function VaultBrowserPage() {
   /** Writes the URL, which every read above derives from. `replace` keeps a
    *  filter out of the history stack; a search is a real destination and gets
    *  a push, so Back returns to the list you searched from. */
-  function updateParams(changes: Record<string, string | null>, historyMode: 'push' | 'replace') {
-    const next = new URLSearchParams(searchParams);
-    for (const [key, value] of Object.entries(changes)) {
-      if (value === null || value === '') next.delete(key);
-      else next.set(key, value);
-    }
-    // Any filter change invalidates the page number: page 7 of a different
-    // filter is usually empty, which reads as "no notes" rather than "wrong
-    // page".
-    if (!('page' in changes)) next.delete('page');
-    setSearchParams(next, { replace: historyMode === 'replace' });
-  }
+  const updateParams = useCallback(
+    (changes: Record<string, string | null>, historyMode: 'push' | 'replace') => {
+      const next = new URLSearchParams(searchParams);
+      for (const [key, value] of Object.entries(changes)) {
+        if (value === null || value === '') next.delete(key);
+        else next.set(key, value);
+      }
+      // Any filter change invalidates the page number: page 7 of a different
+      // filter is usually empty, which reads as "no notes" rather than "wrong
+      // page".
+      if (!('page' in changes)) next.delete('page');
+      setSearchParams(next, { replace: historyMode === 'replace' });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  // Stable, so the memoised navigator can actually skip its 2,281 folder
+  // nodes: a fresh arrow every render would change the prop every time and
+  // make the memo pure overhead.
+  const selectScope = useCallback(
+    (path: string | null) =>
+      updateParams(
+        navigateBy === 'tags' ? { tag: path, folder: null } : { folder: path, tag: null },
+        'replace',
+      ),
+    [updateParams, navigateBy],
+  );
 
   if (!status) {
     return (
@@ -220,45 +229,11 @@ export function VaultBrowserPage() {
       </p>
 
       <div className="card browse-card">
-        <div className="browse-search-row">
-          <span className="material-symbols-outlined browse-search-icon" aria-hidden="true">
-            search
-          </span>
-          <input
-            className="input browse-search-input"
-            type="search"
-            value={queryInput}
-            placeholder="Search your notes…"
-            aria-label="Search your notes"
-            onChange={(event) => setQueryInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') updateParams({ q: queryInput.trim() }, 'push');
-              if (event.key === 'Escape') {
-                setQueryInput('');
-                updateParams({ q: null }, 'replace');
-              }
-            }}
-          />
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => updateParams({ q: queryInput.trim() }, 'push')}
-          >
-            Search
-          </button>
-          {showingSearch && (
-            <button
-              type="button"
-              className="btn"
-              onClick={() => {
-                setQueryInput('');
-                updateParams({ q: null }, 'push');
-              }}
-            >
-              Clear
-            </button>
-          )}
-        </div>
+        <SearchBox
+          query={query}
+          onSearch={(text) => updateParams({ q: text }, 'push')}
+          onClear={() => updateParams({ q: null }, 'push')}
+        />
 
         {/* Filters stay visible while searching: they are how you get back to
             the list, and hiding them would make the screen change shape. */}
@@ -344,12 +319,7 @@ export function VaultBrowserPage() {
               emptyLabel={
                 navigateBy === 'tags' ? 'No tags in the index yet.' : 'Every note sits at the vault root.'
               }
-              onSelect={(path) =>
-                updateParams(
-                  navigateBy === 'tags' ? { tag: path, folder: null } : { folder: path, tag: null },
-                  'replace',
-                )
-              }
+              onSelect={selectScope}
             />
           </aside>
 
@@ -436,6 +406,75 @@ export function VaultBrowserPage() {
         </div>
       </div>
     </>
+  );
+}
+
+/** The search field, owning its own draft.
+ *
+ * It lived on the page, which made every keystroke re-render the page — and
+ * the page renders the navigator: 312 tag nodes, or **2,281 folder nodes** on
+ * this vault, every one a component, doubled again by StrictMode in
+ * development. Typing was slower than typing (operator, 2026-10-24: "Search
+ * your notes is not entering text").
+ *
+ * Here the draft is local, so a keystroke re-renders this field and nothing
+ * else. The page still owns the committed query — it is in the URL — and this
+ * only owns what has been typed but not yet submitted.
+ */
+function SearchBox({
+  query,
+  onSearch,
+  onClear,
+}: {
+  query: string;
+  onSearch: (text: string) => void;
+  onClear: () => void;
+}) {
+  const [draft, setDraft] = useState(query);
+
+  // The committed query changing from outside (Back, a cleared filter, a
+  // pasted link) is the one time the box should be rewritten under the
+  // person typing in it.
+  useEffect(() => {
+    setDraft(query);
+  }, [query]);
+
+  return (
+    <div className="browse-search-row">
+      <span className="material-symbols-outlined browse-search-icon" aria-hidden="true">
+        search
+      </span>
+      <input
+        className="input browse-search-input"
+        type="search"
+        value={draft}
+        placeholder="Search your notes…"
+        aria-label="Search your notes"
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') onSearch(draft.trim());
+          if (event.key === 'Escape') {
+            setDraft('');
+            onClear();
+          }
+        }}
+      />
+      <button type="button" className="btn btn-primary" onClick={() => onSearch(draft.trim())}>
+        Search
+      </button>
+      {query && (
+        <button
+          type="button"
+          className="btn"
+          onClick={() => {
+            setDraft('');
+            onClear();
+          }}
+        >
+          Clear
+        </button>
+      )}
+    </div>
   );
 }
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import type { TreeNode } from './client';
 
 /** Where a note is, as something you can walk (operator, 2026-10-24: tags
@@ -48,7 +48,12 @@ export function VaultNavigator({
   );
 }
 
-function TreeBranch({
+/** Memoised, because this tree is big: 312 nodes of tags, or 2,281 of folders
+ *  on a real vault. Without it every page re-render walks all of them, and a
+ *  page re-renders whenever anything on it fetches. The props are a node from
+ *  a cached tree, a number, a string and a stable callback, so the comparison
+ *  is cheap and almost always says "nothing changed". */
+const TreeBranch = memo(function TreeBranch({
   node,
   depth,
   selected,
@@ -107,4 +112,4 @@ function TreeBranch({
         ))}
     </>
   );
-}
+});
