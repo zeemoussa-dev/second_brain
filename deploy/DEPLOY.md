@@ -15,6 +15,7 @@ Steps are marked:
 ```
 RELEASE.json          what this was built from, and when
 DEPLOY.md             this file
+TRANSFER.sha256       a hash of every file, to prove the copy arrived whole
 app\                  the application: backend code, frontend source + built UI,
                       the plugins, the service wrapper and the install scripts
 vendor\python\        the Python installer
@@ -46,6 +47,83 @@ You need, on the server:
    same folder on 2026-09-03, every agent-side Skill silently stopped finding
    its templates.
 4. **The certificate**, if serving on 443. See the next section.
+
+### On an Azure VM, two of these have a wrong answer that looks right
+
+**Never put the vault or the data root on `D:`.** On an Azure Windows VM `D:`
+is the *temporary* disk. Windows labels it "Temporary Storage" and it is
+emptied when the VM is deallocated, resized, or moved to another host — so the
+vault and every account, chat and index would disappear on a stop/start, with
+nothing broken to point at. Attach a **managed data disk** and use the letter
+it gets, or keep both on `C:`. `Get-Disk` and the label in Explorer tell you
+which is which; if you only see `C:` and `D:`, there is no data disk yet.
+
+**The network security group needs an inbound rule for your port** (443, or
+80) from the range your workstation sits in. Without it the service runs, the
+server answers itself, and the page never loads from anywhere else — which
+reads exactly like an application fault.
+
+### If the administrator password comes from a password manager
+
+Where the local administrator password is checked out from a vault such as
+BeyondTrust Password Safe, **it rotates**. Nothing on this server may run *as*
+that account: a service or scheduled task holding its password works until the
+next rotation and then fails somewhere unrelated. This install avoids that by
+default — the service runs as `LocalSystem`, Python installs for all users,
+and the data root is a path you choose rather than anything under a user
+profile. The one way to undo it is to pass `-ServiceAccount` with a managed
+login, so don't.
+
+---
+
+## 0. Getting the release onto the server — [MANUAL], then [SCRIPT]
+
+A server with no internet cannot fetch this folder, so it has to be pushed.
+Three routes, best first.
+
+**Remote desktop with your drive redirected.** In `mstsc` → **Local Resources
+→ More…** → tick the drive the release is on, then connect. On the server your
+drive is `\\tsclient\<letter>`, and:
+
+```powershell
+robocopy \\tsclient\C\path\to\Release C:\Staging\Release /E /Z /R:2 /W:5
+```
+
+`/Z` is the reason to use robocopy rather than Explorer: a redirected drive
+drops, and restartable mode resumes instead of starting a multi-gigabyte copy
+again.
+
+**Through Azure Bastion**, use the **native client** (`az network bastion
+rdp`), not the portal's browser session: it gives you a real `mstsc` session
+with file transfer. The browser session cannot do it. Needs the Standard SKU
+and Azure CLI 2.62 or newer.
+
+**If redirection is blocked** — a vaulted, recorded privileged session usually
+strips it — check with `dir \\tsclient\` on the server. If that path does not
+exist, no `mstsc` setting will help. Use a storage account with a **private
+endpoint in the VM's own VNet**: that is not internet, so it commonly survives
+the policy that blocked everything else. Upload from the build machine, then on
+the server
+
+```powershell
+net use Z: \\<account>.file.core.windows.net\<share> /user:Azure\<account> <key>
+```
+
+`net use` is built into Windows, which is the point — `azcopy` would itself
+have to be transferred before it could transfer anything.
+
+**Then check the copy arrived whole — [SCRIPT]:**
+
+```powershell
+cd C:\Staging\Release\app\deploy
+.\verify.ps1 -Manifest
+```
+
+This compares every file against `TRANSFER.sha256`. Do it **before**
+installing. A transfer that truncates a wheel does not report it; the install
+succeeds, and the failure surfaces days later as a package that cannot be
+imported, on a machine you cannot debug from. If anything is reported, run the
+same robocopy again — with `/Z` it resumes — and check again.
 
 ---
 
@@ -81,16 +159,19 @@ in the install folder, which is readable by anyone who can read the app.
 
 ## 2. Install — [SCRIPT]
 
-Copy this whole folder to the server, open **an elevated PowerShell**, and:
+With the folder copied and checked (step 0), open **an elevated PowerShell**:
 
 ```powershell
 cd <this folder>\app\deploy
-.\install.ps1 -VaultPath D:\Vault `
-              -DataRoot D:\SecondBrainData `
+.\install.ps1 -VaultPath F:\Vault `
+              -DataRoot F:\SecondBrainData `
               -Port 443 `
               -CertificateFile C:\certs\secondbrain.crt `
               -CertificateKeyFile C:\certs\secondbrain.key
 ```
+
+`F:` here stands for **an attached data disk**. On an Azure VM do not use
+`D:` — see "Before you start". `C:` is fine if there is no data disk.
 
 It checks what it needs before changing anything — elevation, the vault, that
 the data root is not inside it, that the port is free, that a certificate was
@@ -121,10 +202,15 @@ release and should not be in a script, a screen-share or a ticket.
 host. Everything except these four lines is already filled in.
 
 > **Hermes** (the agent runtime that does capture and scheduled jobs) is
-> optional and is **not** in this release — it is a separate product with its
-> own installer and its own account. Leave `HERMES_BASE_URL` and
-> `HERMES_HOME_PATH` blank. The app runs, and every screen that would mention
-> Hermes says it is not configured rather than looking broken.
+> optional and is **not** in this release — it is a separate product with a
+> release folder of its own, `Release-Hermes`, and its own runbook
+> (`DEPLOY-HERMES.md`). Leave `HERMES_BASE_URL` and `HERMES_HOME_PATH` blank
+> here: installing Hermes fills them in, and until then the app runs with
+> every screen that would mention Hermes saying it is not configured rather
+> than looking broken.
+>
+> **Install Second Brain first**, then Hermes. A Second Brain server without
+> Hermes is a complete install; Hermes on its own has nothing to serve.
 
 ---
 
@@ -187,6 +273,11 @@ there, because a service has nowhere else to say it.
 or 443 is usually IIS (`W3SVC`) or WinRM. Stop and disable the one that is not
 yours, or install on another port.
 
+**It answers on the server but not from your desk.** `verify.ps1` passing
+locally and the page never loading elsewhere is a network rule, not the app:
+the NSG (and the server's own firewall) needs the port opened inbound. Check
+from the server with `Get-NetFirewallRule`, and in the portal for the NSG.
+
 **The page loads but every action fails.** Almost always `COMPASS_*` not filled
 in, or filled in with a host instead of the full `/chat/completions` route.
 `Settings › System` shows what this install thinks it has.
@@ -208,7 +299,14 @@ Said plainly, so nobody discovers it at the wrong moment:
 - **It cannot fetch anything.** A package that is not in `vendor\` cannot be
   installed on that server at all. That includes a plugin that arrives later
   with a new dependency.
-- **It cannot install Hermes.** The agent runtime is a separate product.
+- **It cannot install Hermes.** The agent runtime is a separate product, with
+  its own release folder and runbook.
+- **It cannot open a port to the outside.** The server's firewall and, on
+  Azure, the network security group are changed where they live, not from
+  here. The installer refuses to start on a port something else already holds,
+  but it cannot make a port reachable.
+- **It cannot get itself onto the server.** Step 0 is a person with a remote
+  desktop session or a file share. Nothing in here can pull itself across.
 - **The vendored wheels are built for this release's Python minor version.**
   If a different Python is already on the server and takes precedence, the
   install will fail at the package step rather than quietly building something
