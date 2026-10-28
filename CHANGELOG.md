@@ -6767,3 +6767,18 @@ findable by the entry number in brackets.
   Azure OS disk usually has), and step 0 is ordered as three one-line tests to run
   before moving gigabytes: an internal file share, a redirected drive, then Azure
   Files on a private endpoint. No internet is not the same as no network.
+- feat(deploy): `stage-for-transfer.ps1 -SingleArchive` packs a release into one
+  `.tar.gz` with a hash of its own, for carrying across a file share as a single
+  item rather than thousands. Uses `tar.exe` (bsdtar, in `system32` on Windows 10
+  and Server 2019+, so it is already on both machines) rather than 7-Zip, which
+  would have to be transferred before it could help, or
+  `Compress-Archive`/`Expand-Archive`, which fail silently on a tree like
+  `node_modules` where a path crosses 260 characters. Two checks, deliberately
+  distinct: the archive's hash catches a bad copy before anyone spends minutes
+  unpacking it; `verify.ps1 -Manifest` then checks every unpacked file before the
+  install runs. Proven round-trip on the real release: 0.30 GB -> 0.19 GB in 26s,
+  unpacked in 37s, 8,256 of 8,256 files verified, and `install.ps1` resolved the
+  release root correctly from inside the extracted tree.
+- fix(repo): `.gitignore` now excludes `Release*.tar.gz` and its `.sha256`. The
+  existing `Release/` pattern matches a directory and not that ~200 MB file, which
+  committed once would be in the history for good.

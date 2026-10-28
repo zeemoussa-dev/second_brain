@@ -20,7 +20,12 @@ param(
     [string]$ReleasePath,
     # Where the release will land on the server. Printed in the copy command
     # only -- nothing here touches it.
-    [string]$ServerPath = 'C:\Staging\Release'
+    [string]$ServerPath = 'C:\Staging\Release',
+    # Pack the whole release into ONE file to carry across. Over a file share
+    # that is one scan and one resumable item instead of thousands, and the
+    # archive gets a hash of its own so a bad transfer is caught before
+    # anything is unpacked.
+    [switch]$SingleArchive
 )
 
 $ErrorActionPreference = 'Stop'
@@ -50,9 +55,55 @@ $bytes = ($files | Measure-Object Length -Sum).Sum
 Write-Host ("    {0:N0} files, {1:N2} GB" -f $total, ($bytes / 1GB)) -ForegroundColor Green
 Write-Host "    wrote $manifestName" -ForegroundColor Green
 
-# /Z is the point: a redirected drive drops, and a restartable copy resumes
-# instead of starting a multi-gigabyte transfer again.
-Write-Host "`nOn the server, with this machine's drive redirected into the RDP session:" -ForegroundColor Cyan
+if ($SingleArchive) {
+    # tar.exe (bsdtar) is in system32 on Windows 10 and Server 2019 onwards, so
+    # it is already on both machines -- unlike 7-Zip, which would have to be
+    # transferred before it could help transfer anything.
+    #
+    # tar rather than Compress-Archive/Expand-Archive: those are the pair that
+    # fails on a tree like node_modules, where a path crosses 260 characters,
+    # and it fails without saying so.
+    $leaf = Split-Path $ReleasePath -Leaf
+    $parent = Split-Path $ReleasePath -Parent
+    $archive = Join-Path $parent "$leaf.tar.gz"
+    if (Test-Path $archive) { Remove-Item -LiteralPath $archive -Force }
+
+    Write-Host "`nPacking $leaf into one file" -ForegroundColor Cyan
+    $started = Get-Date
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & tar.exe -czf $archive -C $parent $leaf
+        if ($LASTEXITCODE -ne 0) { throw "tar failed with exit code $LASTEXITCODE." }
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+    $packed = (Get-Item $archive).Length
+    Write-Host ("    {0:N2} GB -> {1:N2} GB in {2:N0}s" -f ($bytes / 1GB), ($packed / 1GB), ((Get-Date) - $started).TotalSeconds) -ForegroundColor Green
+
+    # The manifest inside proves the extracted tree; this proves the one file
+    # that crosses the wire, before anyone spends minutes unpacking it.
+    $archiveHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash
+    Set-Content -LiteralPath "$archive.sha256" -Value "$archiveHash *$leaf.tar.gz" -Encoding ASCII
+    Write-Host "    $archiveHash" -ForegroundColor DarkGray
+
+    $serverParent = Split-Path $ServerPath -Parent
+    Write-Host "`nCarry these two files across:" -ForegroundColor Cyan
+    Write-Host "    $archive" -ForegroundColor White
+    Write-Host "    $archive.sha256" -ForegroundColor White
+    Write-Host "`nOn the server:" -ForegroundColor Cyan
+    Write-Host "    # 1. check the file survived the copy" -ForegroundColor DarkGray
+    Write-Host "    (Get-FileHash .\$leaf.tar.gz).Hash -eq (Get-Content .\$leaf.tar.gz.sha256).Split(' ')[0]" -ForegroundColor White
+    Write-Host "    # 2. unpack to a SHORT path, so no file inside crosses 260 characters" -ForegroundColor DarkGray
+    Write-Host "    mkdir $serverParent -Force; tar -xzf .\$leaf.tar.gz -C $serverParent" -ForegroundColor White
+    Write-Host "    # 3. check every unpacked file, before installing anything" -ForegroundColor DarkGray
+    Write-Host "    cd $ServerPath\app\deploy; .\verify.ps1 -Manifest" -ForegroundColor White
+    return
+}
+
+# /Z is the point: any of these channels can drop, and a restartable copy
+# resumes instead of starting a multi-gigabyte transfer again.
+Write-Host "`nCopy it across with robocopy rather than Explorer:" -ForegroundColor Cyan
 Write-Host "    robocopy $ReleasePath $ServerPath /E /Z /R:2 /W:5" -ForegroundColor White
 Write-Host "`nThen, before installing anything:" -ForegroundColor Cyan
 Write-Host "    cd $ServerPath\app\deploy; .\verify.ps1 -Manifest" -ForegroundColor White
