@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from app import frontend_dist
 from app.business import setup_wizard, system_settings
 from app.config import REQUIRED_FOR_STARTUP, settings
 from app.main import app
@@ -592,3 +593,54 @@ def test_the_same_vault_is_never_a_conflict(monkeypatch, tmp_path) -> None:
 
     assert result["ok"] is True
     assert not result.get("conflict")
+
+
+def test_the_interface_loads_while_unconfigured_so_the_wizard_can_render(
+    unconfigured, monkeypatch, tmp_path
+) -> None:
+    """The refusal above tells the operator to go to the wizard, which is
+    served BY this app in production. Gating the shell answered their browser
+    with the refusal JSON instead -- invisible in development, where Vite
+    serves the UI on its own port and only API calls reach the gate."""
+    shell = tmp_path / "index.html"
+    shell.write_text("<!doctype html><title>Second Brain</title>", encoding="utf-8")
+    monkeypatch.setattr(frontend_dist, "frontend_shell", lambda: shell)
+
+    navigation = client.get("/browse/anything", headers={"Accept": "text/html"})
+
+    assert navigation.status_code == 200
+    assert "<!doctype html>" in navigation.text
+
+
+def test_opening_the_interface_does_not_open_the_api(
+    unconfigured, monkeypatch, tmp_path
+) -> None:
+    """The gate exists so no route runs against settings that do not exist.
+    A browser navigation gets the shell; a `fetch` for data is still refused,
+    even though both arrive at the same unconfigured install."""
+    shell = tmp_path / "index.html"
+    shell.write_text("<!doctype html>", encoding="utf-8")
+    monkeypatch.setattr(frontend_dist, "frontend_shell", lambda: shell)
+
+    refused = client.get("/vault/notes", headers={"Accept": "application/json"})
+
+    assert refused.status_code == 503
+    assert refused.json()["setup_required"] is True
+
+
+def test_branding_is_refused_rather_than_opened_while_unconfigured(unconfigured) -> None:
+    """Opening it was tried, because the first screen asks for it. It reads
+    this install's data root, which an unconfigured install has none of, so
+    it answered 500 -- strictly worse than the 503 the frontend already
+    handles by rendering the default name."""
+    assert client.get("/branding").status_code == 503
+
+
+def test_which_paths_count_as_the_interface() -> None:
+    """A fixed list, not "anything unmatched": plugin routers register late,
+    and a gate that let every unknown path through would let their routes
+    through too."""
+    for path in ("/", "/index.html", "/favicon.svg", "/assets/index-abc123.js", "/fonts/x.woff2"):
+        assert frontend_dist.is_user_interface_path(path) is True
+    for path in ("/vault/notes", "/auth/session", "/my-day/today", "/assets", "/setup"):
+        assert frontend_dist.is_user_interface_path(path) is False

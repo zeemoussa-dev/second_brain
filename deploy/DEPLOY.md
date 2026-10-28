@@ -136,6 +136,30 @@ robocopy <source> C:\Staging\Release /E /Z /R:2 /W:5
 `/Z` is restartable mode. Any of these channels can drop, and resuming beats
 starting a multi-gigabyte copy over.
 
+### Or as one file, which over a share is better
+
+8,000 files over a share is 8,000 round trips and a virus scan each. The build
+machine can hand you a single archive instead, with
+`stage-for-transfer.ps1 -SingleArchive`: a `Release.tar.gz` and a
+`Release.tar.gz.sha256`. Carry both, then on the server:
+
+```powershell
+# 1. did the one file survive the copy
+(Get-FileHash .\Release.tar.gz).Hash -eq (Get-Content .\Release.tar.gz.sha256).Split(' ')[0]
+# 2. unpack
+mkdir C:\Staging -Force; tar -xzf .\Release.tar.gz -C C:\Staging
+# 3. and check every unpacked file
+cd C:\Staging\Release\app\deploy; .\verify.ps1 -Manifest
+```
+
+`tar` is in `C:\Windows\System32` on Server 2019 and later, so nothing has to
+be installed to unpack this. **Unpack somewhere short, and `C:\Staging` is the
+reason this file says `C:\Staging` everywhere.** The deepest file in the
+release is 137 characters of relative path, which from `C:\Staging\` lands at
+about 148 against Windows' limit of 260 — so a staging folder more than a
+hundred characters deep will fail part-way through, file by file, and the
+install then fails later for reasons that have nothing to do with the install.
+
 **Then check the copy arrived whole — [SCRIPT]:**
 
 ```powershell
@@ -245,6 +269,11 @@ host. Everything except these four lines is already filled in.
 Start-Service SecondBrain
 .\verify.ps1 -Port 443 -ServerName <the name on the certificate>
 ```
+
+A first start is not instant — it reads the vault and builds its index before
+it serves anything — so `verify.ps1` waits up to 180 seconds for `/health`
+rather than asking once and calling a starting server a broken one. Raise it
+with `-StartupTimeoutSeconds` for a very large vault.
 
 `verify.ps1` makes real requests: the service is running, `/health` answers,
 the web interface is served, its JavaScript loads, a deep link reloads into the

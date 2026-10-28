@@ -23,7 +23,16 @@ param(
     # wrote, then stops. Run this before installing anything: a transfer that
     # truncated a file does not announce it, and the install built on it fails
     # much later and somewhere else.
-    [switch]$Manifest
+    [switch]$Manifest,
+    # How long a cold start is given to answer before this reports a failure.
+    # Generous on purpose: the first start reads the whole vault, and how long
+    # that takes is a property of the vault, not of the install.
+    [int]$StartupTimeoutSeconds = 180,
+    # Inferred from the port, which is right for the two ports this is
+    # installed on, and wrong for anything else. Override it rather than be
+    # told the install is broken because the checks spoke https to an http
+    # server.
+    [ValidateSet('http', 'https')][string]$Scheme
 )
 
 $ErrorActionPreference = 'Stop'
@@ -61,7 +70,7 @@ if ($Manifest) {
     exit 0
 }
 
-$scheme = if ($Port -eq 80) { 'http' } else { 'https' }
+$scheme = if ($Scheme) { $Scheme } elseif ($Port -eq 80) { 'http' } else { 'https' }
 $base = "${scheme}://${ServerName}:${Port}"
 $failures = 0
 
@@ -77,7 +86,20 @@ function Check([string]$what, [scriptblock]$test) {
 
 $web = @{ UseBasicParsing = $true; TimeoutSec = 20 }
 if (-not $RequireValidCertificate -and $scheme -eq 'https') {
-    $web.SkipCertificateCheck = $true
+    if ($PSVersionTable.PSVersion.Major -ge 6) {
+        $web.SkipCertificateCheck = $true
+    } else {
+        # Windows PowerShell 5.1 has no -SkipCertificateCheck: it arrived in
+        # PowerShell 6. Windows Server ships 5.1, and a server with no
+        # internet cannot install 7 -- so this branch is the one that
+        # actually runs on the machine this script exists for. Passing the
+        # parameter there fails EVERY https check with "a parameter cannot be
+        # found", on an install that is working perfectly.
+        [Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+        # 5.1 can still negotiate down to TLS 1.0, which a current server will
+        # refuse outright.
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    }
 }
 
 Write-Host "`nChecking $base" -ForegroundColor Cyan
@@ -89,9 +111,28 @@ Check 'the service is running' {
 }
 
 Check 'it answers /health' {
-    $health = Invoke-RestMethod @web -Uri "$base/health"
-    if ($health.status -ne 'ok') { throw "status was '$($health.status)'" }
-    "version $($health.version), commit $($health.commit.Substring(0,8))"
+    # Polled, not asked once. A cold start reads the vault and builds its
+    # index before the first request is served, so running this straight after
+    # Start-Service -- which is exactly what the runbook says to do -- would
+    # fail on an install that is merely still starting. Every check below
+    # assumes a server that is up, so this is the one that waits.
+    $deadline = (Get-Date).AddSeconds($StartupTimeoutSeconds)
+    $lastProblem = 'no attempt made'
+    $waited = 0
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $health = Invoke-RestMethod @web -Uri "$base/health"
+            if ($health.status -ne 'ok') { throw "status was '$($health.status)'" }
+            $detail = "version $($health.version), commit $($health.commit.Substring(0,8))"
+            if ($waited -gt 0) { $detail += ", answered after $waited" + 's' }
+            return $detail
+        } catch {
+            $lastProblem = $_.Exception.Message
+            Start-Sleep -Seconds 3
+            $waited += 3
+        }
+    }
+    throw "no answer in $StartupTimeoutSeconds" + "s. Last: $lastProblem"
 }
 
 Check 'the web interface is served' {

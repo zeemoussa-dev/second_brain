@@ -6798,3 +6798,25 @@ findable by the entry number in brackets.
 - fix(repo): `.gitignore` now excludes `Release*.tar.gz` and its `.sha256`. The
   existing `Release/` pattern matches a directory and not that ~200 MB file, which
   committed once would be in the history for good.
+- fix(setup): a freshly installed server answered the operator's browser with
+  `{"detail":"Second Brain is not configured yet."}` instead of the setup wizard.
+  `gate_on_setup_mode` refuses everything outside `/setup`, `/health` and
+  `/boot-status` while a required setting is blank -- including `GET /`. Invisible
+  in development, where Vite serves the UI on its own port and only API calls
+  reach the gate; fatal in production, where one process serves both, so the
+  refusal hid the very wizard it exists to send the operator to. The shell, its
+  assets and any browser navigation now load; a `fetch` for data is still refused,
+  so no route runs against settings that do not exist. Confirmed against a release
+  built with no `.env`: `GET /` and `GET /browse/anything` returned the shell,
+  `GET /vault-search/notes` still 503. Four tests added.
+- fix(deploy): `verify.ps1` passed `-SkipCertificateCheck`, which does not exist in
+  Windows PowerShell 5.1 -- it arrived in PowerShell 6. Windows Server ships 5.1
+  and an offline server cannot install 7, so every https check failed with "a
+  parameter cannot be found" on a working install. It now branches on the shell
+  version, falling back to `ServerCertificateValidationCallback` and forcing
+  TLS 1.2, since 5.1 will otherwise negotiate down to TLS 1.0.
+- fix(deploy): `verify.ps1` polls `/health` for up to 180s (`-StartupTimeoutSeconds`)
+  instead of asking once. A first start reads the vault and builds its index, so
+  running it straight after `Start-Service` -- exactly what the runbook says --
+  called a starting server a broken one. Adds `-Scheme`, because the scheme was
+  inferred from the port and wrong for any port other than 80.

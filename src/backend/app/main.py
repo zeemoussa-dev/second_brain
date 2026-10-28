@@ -245,6 +245,13 @@ app.add_middleware(
 # Paths that must keep working while the app is unconfigured: the wizard
 # itself, the liveness probe, and the boot status BootGate polls to decide
 # what to render. Everything else needs real settings to mean anything.
+#
+# `/branding` is deliberately NOT here, though the first screen asks for it.
+# Opening it was tried and reverted: it reads this install's own data root,
+# which an unconfigured install does not have, so it answers 500 rather than
+# defaults. Refused by this gate it is a 503, which the frontend already
+# handles by rendering the default name and logo -- correct for an install
+# that has no branding yet.
 _SETUP_MODE_OPEN_PREFIXES = ("/setup", "/health", "/boot-status")
 
 
@@ -265,6 +272,24 @@ async def gate_on_setup_mode(request: Request, call_next):
         and request.method != "OPTIONS"
         and not path.startswith(_SETUP_MODE_OPEN_PREFIXES)
     ):
+        # The web interface itself must load on an unconfigured install: it
+        # is what renders the wizard this refusal is meant to send the
+        # operator to. In development that was invisible, because Vite serves
+        # the UI on its own port and only API calls ever reach this gate --
+        # but in production one process serves both, so refusing `/` answers
+        # the operator's browser with this JSON instead of the screen that
+        # collects the settings it is asking for. Verified on a release built
+        # with no `.env`: `GET /` returned the refusal, not the wizard.
+        if frontend_dist.is_user_interface_path(path):
+            return await call_next(request)
+        # A deep link is answered with the shell, not with the route it names.
+        # The app then shows the wizard, while the route itself still never
+        # runs against settings that do not exist -- which is the whole point
+        # of this gate.
+        if request.method == "GET" and "text/html" in request.headers.get("accept", ""):
+            shell = frontend_dist.frontend_shell()
+            if shell is not None:
+                return FileResponse(shell)
         return JSONResponse(
             status_code=503,
             content={
