@@ -6736,3 +6736,27 @@ findable by the entry number in brackets.
   `customer`, `partner` and `opportunity` were deliberately NOT upgraded: their
   `Log & Captures` to `History & Captures` rename needs the existing `<Name>-log.md`
   notes migrated in the same change.
+
+- feat(deploy): an offline release now carries `TRANSFER.sha256`, a hash of every
+  file in it. `deploy/stage-for-transfer.ps1` writes it on the build machine and
+  prints the `robocopy /Z` to use; `verify.ps1 -Manifest` checks it on the server
+  before anything is installed. A redirected remote-desktop drive can truncate a
+  file while reporting success, and a half-written wheel installs fine and fails
+  days later as an un-importable package. Verified end to end: 8,257 files hashed
+  and verified, exit 0.
+- fix(deploy): the build no longer ships build-machine scripts into the release
+  (`build-release.ps1`, `stage-for-transfer.ps1`, `build-hermes-release.ps1`, and
+  `deploy\hermes\`). They need the repo and a network, so on the server they could
+  only mislead; Hermes' installer ships in Hermes' own release.
+- docs(deploy): `DEPLOY.md` reworked for the real target, a Windows Server VM on
+  Azure with no internet, reached by checking the administrator password out of a
+  password vault. Three things were wrong for it: the install example put the
+  vault and the data root on `D:`, which on an Azure VM is the ephemeral disk and
+  is emptied on deallocate or resize; a vault-managed password rotates, so the
+  runbook now says the `LocalSystem` default is deliberate and not to undo it with
+  `-ServiceAccount`; and an NSG inbound rule is now a prerequisite rather than a
+  discovery, since a server that answers only itself reads as an application
+  fault. Adds step 0 -- how the release gets there at all (a redirected RDP drive,
+  Bastion's native client since the browser session cannot transfer files, or a
+  storage account on a private endpoint using `net use`, because `azcopy` would
+  itself have to be transferred first) -- and the manifest check.
