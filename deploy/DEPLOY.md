@@ -54,9 +54,12 @@ You need, on the server:
 is the *temporary* disk. Windows labels it "Temporary Storage" and it is
 emptied when the VM is deallocated, resized, or moved to another host — so the
 vault and every account, chat and index would disappear on a stop/start, with
-nothing broken to point at. Attach a **managed data disk** and use the letter
-it gets, or keep both on `C:`. `Get-Disk` and the label in Explorer tell you
-which is which; if you only see `C:` and `D:`, there is no data disk yet.
+nothing broken to point at. **Put them on `C:`**, which is the OS disk and is
+persistent, or on an attached managed data disk if the VM has one. `Get-Disk`
+tells you: if it lists only the OS disk and a temporary disk, there is no data
+disk, and `C:` is the right answer rather than a compromise — the whole
+install, with the release staged beside it, is under 10 GB against the 127 GB
+an Azure OS disk usually has.
 
 **The network security group needs an inbound rule for your port** (443, or
 80) from the range your workstation sits in. Without it the service runs, the
@@ -79,38 +82,59 @@ login, so don't.
 ## 0. Getting the release onto the server — [MANUAL], then [SCRIPT]
 
 A server with no internet cannot fetch this folder, so it has to be pushed.
-Three routes, best first.
+**No internet is not the same as no network**: the routes below all use the
+internal network or Azure's own backbone, and one of them will be open.
 
-**Remote desktop with your drive redirected.** In `mstsc` → **Local Resources
-→ More…** → tick the drive the release is on, then connect. On the server your
-drive is `\\tsclient\<letter>`, and:
+Run these three on the server, in an administrator PowerShell, and take the
+first that answers. Each test is one line, and knowing which route exists
+before moving gigabytes is worth the minute.
+
+**1. A file share you can both see** — the simplest, and in a corporate VNet
+usually already there.
 
 ```powershell
-robocopy \\tsclient\C\path\to\Release C:\Staging\Release /E /Z /R:2 /W:5
+net view \\<file-server>            # or: Test-NetConnection <file-server> -Port 445
 ```
 
-`/Z` is the reason to use robocopy rather than Explorer: a redirected drive
-drops, and restartable mode resumes instead of starting a multi-gigabyte copy
-again.
+If it answers, copy the release to that share from here and pull it down there
+with the robocopy below. No Azure changes, nothing to provision.
 
-**Through Azure Bastion**, use the **native client** (`az network bastion
-rdp`), not the portal's browser session: it gives you a real `mstsc` session
-with file transfer. The browser session cannot do it. Needs the Standard SKU
-and Azure CLI 2.62 or newer.
+**2. A redirected drive in your remote-desktop session.**
 
-**If redirection is blocked** — a vaulted, recorded privileged session usually
-strips it — check with `dir \\tsclient\` on the server. If that path does not
-exist, no `mstsc` setting will help. Use a storage account with a **private
-endpoint in the VM's own VNet**: that is not internet, so it commonly survives
-the policy that blocked everything else. Upload from the build machine, then on
-the server
+```powershell
+dir \\tsclient\
+```
+
+If your local drives are listed, copy straight from them. If the path does not
+exist, redirection is stripped — which is what a vaulted, recorded privileged
+session normally does — and no `mstsc` setting will bring it back. Where you
+connect through **Azure Bastion**, the portal's browser session cannot
+transfer files at all, but the **native client** (`az network bastion rdp`)
+can: it needs the Standard SKU and Azure CLI 2.62 or newer.
+
+**3. Azure Files, on a private endpoint in the VM's own VNet.** This is the
+one to provision if neither of the above answers, and it is worth doing
+anyway — every future update uses it too. A private endpoint keeps the traffic
+on Azure's backbone, so it is not "internet" and commonly survives the policy
+that blocked everything else.
 
 ```powershell
 net use Z: \\<account>.file.core.windows.net\<share> /user:Azure\<account> <key>
 ```
 
-`net use` is built into Windows, which is the point — `azcopy` would itself
-have to be transferred before it could transfer anything.
+`net use` is built into Windows, which is the point: `azcopy` would itself
+have to be transferred before it could transfer anything. It needs outbound
+445 to the endpoint's private address — `Test-NetConnection
+<account>.file.core.windows.net -Port 445` says whether you have it.
+
+**Then copy, with `robocopy` rather than Explorer:**
+
+```powershell
+robocopy <source> C:\Staging\Release /E /Z /R:2 /W:5
+```
+
+`/Z` is restartable mode. Any of these channels can drop, and resuming beats
+starting a multi-gigabyte copy over.
 
 **Then check the copy arrived whole — [SCRIPT]:**
 
@@ -163,15 +187,16 @@ With the folder copied and checked (step 0), open **an elevated PowerShell**:
 
 ```powershell
 cd <this folder>\app\deploy
-.\install.ps1 -VaultPath F:\Vault `
-              -DataRoot F:\SecondBrainData `
+.\install.ps1 -VaultPath C:\Vault `
+              -DataRoot C:\SecondBrainData `
               -Port 443 `
               -CertificateFile C:\certs\secondbrain.crt `
               -CertificateKeyFile C:\certs\secondbrain.key
 ```
 
-`F:` here stands for **an attached data disk**. On an Azure VM do not use
-`D:` — see "Before you start". `C:` is fine if there is no data disk.
+`C:` is deliberate: it is the only persistent disk on an Azure VM that has no
+data disk attached. **Do not use `D:`** — see "Before you start". If a managed
+data disk is attached, use its letter instead.
 
 It checks what it needs before changing anything — elevation, the vault, that
 the data root is not inside it, that the port is free, that a certificate was

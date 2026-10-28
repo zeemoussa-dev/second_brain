@@ -6760,3 +6760,10 @@ findable by the entry number in brackets.
   Bastion's native client since the browser session cannot transfer files, or a
   storage account on a private endpoint using `net use`, because `azcopy` would
   itself have to be transferred first) -- and the manifest check.
+- fix(deploy): the runbook no longer assumes a data disk or a redirected drive.
+  The target VM has neither: `Get-Disk` shows only the OS and temporary disks, and
+  the remote-desktop session strips drive redirection. Install paths are now `C:`
+  (the only persistent disk there, and ample -- under 10 GB against the 127 GB an
+  Azure OS disk usually has), and step 0 is ordered as three one-line tests to run
+  before moving gigabytes: an internal file share, a redirected drive, then Azure
+  Files on a private endpoint. No internet is not the same as no network.
