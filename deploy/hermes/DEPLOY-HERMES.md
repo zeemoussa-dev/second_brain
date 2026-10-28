@@ -192,6 +192,11 @@ Second Brain's own Skills keep their shared code.
 In Second Brain, open **Settings › System**, check that the Hermes fields are
 filled (the installer did that), and **save**.
 
+> If Second Brain answers `{"detail":"Second Brain is not configured yet."}`
+> with a **503**, that is Second Brain, not Hermes: it refuses every request
+> outside its own setup wizard until its `COMPASS_*` settings are filled in.
+> Finish *its* runbook first — this step needs a configured Second Brain.
+
 Saving is what provisions this Hermes: Second Brain writes the vault path,
 the data root and the mailbox into Hermes' `.env` **and every profile's**,
 copies the shared Skill managers into `C:\Hermes\managers`, and puts that
