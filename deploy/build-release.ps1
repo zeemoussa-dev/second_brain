@@ -128,9 +128,16 @@ foreach ($item in 'src', 'public', 'dist', 'index.html', 'package.json', 'packag
 # The plugins, so they can be installed on a server with no Marketplace feed.
 Copy-Item -Recurse (Join-Path $repo 'src\marketplace') (Join-Path $app 'src\marketplace')
 
-# The service wrapper and the install scripts.
+# The service wrapper and the install scripts. The build-machine scripts are
+# removed again: they need this repo and a network, so on the server they
+# could only mislead.
 Copy-Item -Recurse $here (Join-Path $app 'deploy')
-Remove-Item (Join-Path $app 'deploy\build-release.ps1') -ErrorAction SilentlyContinue
+foreach ($buildMachineOnly in 'build-release.ps1', 'stage-for-transfer.ps1', 'build-hermes-release.ps1') {
+    Remove-Item (Join-Path $app "deploy\$buildMachineOnly") -ErrorAction SilentlyContinue
+}
+# Hermes is a separate product with a release of its own; its installer ships
+# in that release, not in this one.
+Remove-Item -Recurse (Join-Path $app 'deploy\hermes') -ErrorAction SilentlyContinue
 
 # --------------------------------------------------------------------------
 Step 'Vendoring Python'

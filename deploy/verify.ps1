@@ -18,10 +18,49 @@ param(
     # `localhost`, and a self-signed one is not in this machine's trust store
     # yet. Neither says the app is broken, so checking from the box itself
     # ignores trust by default.
-    [switch]$RequireValidCertificate
+    [switch]$RequireValidCertificate,
+    # Checks the COPIED FILES against the manifest stage-for-transfer.ps1
+    # wrote, then stops. Run this before installing anything: a transfer that
+    # truncated a file does not announce it, and the install built on it fails
+    # much later and somewhere else.
+    [switch]$Manifest
 )
 
 $ErrorActionPreference = 'Stop'
+$here = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path $MyInvocation.MyCommand.Path -Parent }
+
+if ($Manifest) {
+    # This script lives at <release>\app\deploy, so the release root is two up.
+    $releaseRoot = Split-Path (Split-Path $here -Parent) -Parent
+    $manifestPath = Join-Path $releaseRoot 'TRANSFER.sha256'
+    if (-not (Test-Path $manifestPath)) {
+        throw "No TRANSFER.sha256 at $releaseRoot. The build machine writes it with stage-for-transfer.ps1; without it there is nothing to check the copy against."
+    }
+    Write-Host "`nChecking the copy at $releaseRoot" -ForegroundColor Cyan
+    $expected = @(Get-Content -LiteralPath $manifestPath | Where-Object { $_ })
+    $damaged = @()
+    $checked = 0
+    foreach ($line in $expected) {
+        $hash, $relative = $line -split ' \*', 2
+        $file = Join-Path $releaseRoot $relative
+        if (-not (Test-Path -LiteralPath $file)) { $damaged += "MISSING  $relative"; continue }
+        if ((Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash -ne $hash) { $damaged += "CORRUPT  $relative" }
+        $checked++
+        if ($checked % 500 -eq 0) {
+            Write-Progress -Activity 'Verifying the copy' -Status "$checked of $($expected.Count)" -PercentComplete ($checked * 100 / $expected.Count)
+        }
+    }
+    Write-Progress -Activity 'Verifying the copy' -Completed
+    if ($damaged) {
+        $damaged | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
+        Write-Host "`n$($damaged.Count) file(s) did not survive the copy. Run the robocopy again -- with /Z it resumes -- then check again." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "  ok   all $checked files match the manifest" -ForegroundColor Green
+    Write-Host 'The copy is intact. Install from here.' -ForegroundColor Green
+    exit 0
+}
+
 $scheme = if ($Port -eq 80) { 'http' } else { 'https' }
 $base = "${scheme}://${ServerName}:${Port}"
 $failures = 0
