@@ -6820,3 +6820,9 @@ findable by the entry number in brackets.
   running it straight after `Start-Service` -- exactly what the runbook says --
   called a starting server a broken one. Adds `-Scheme`, because the scheme was
   inferred from the port and wrong for any port other than 80.
+- feat(deploy): `verify.ps1 -Manifest` now prints what the release was built from
+  (`RELEASE.json`'s commit and timestamp) after the files check out. Integrity is
+  not freshness: a release packed last week and copied with its own manifest
+  passes every check, because both halves are stale and agree with each other.
+  Nothing on the server can know which version was wanted, so it states which
+  one this is and says to stop if that is older than expected.

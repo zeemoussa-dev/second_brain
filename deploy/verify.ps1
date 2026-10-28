@@ -66,6 +66,17 @@ if ($Manifest) {
         exit 1
     }
     Write-Host "  ok   all $checked files match the manifest" -ForegroundColor Green
+
+    # Integrity is not freshness. A release packed last week, copied with its
+    # own manifest, passes every check above -- both halves are stale and
+    # agree with each other. Nothing here can know which version was wanted,
+    # so print what this one is and let the reader judge.
+    $stamp = Join-Path $releaseRoot 'RELEASE.json'
+    if (Test-Path $stamp) {
+        $built = Get-Content -Raw -LiteralPath $stamp | ConvertFrom-Json
+        Write-Host ("  --   built {0} from commit {1}" -f $built.built_at, $built.built_from.Substring(0, 8)) -ForegroundColor Cyan
+        Write-Host '       If that is older than the release you were told to install, stop: this is the wrong one, intact.' -ForegroundColor DarkGray
+    }
     Write-Host 'The copy is intact. Install from here.' -ForegroundColor Green
     exit 0
 }
