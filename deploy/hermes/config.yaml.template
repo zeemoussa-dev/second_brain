@@ -1,0 +1,65 @@
+# Hermes configuration for a server install.
+#
+# The installer copies this to <HERMES_HOME>\config.yaml on a first install
+# and never touches it again, so anything changed here afterwards survives a
+# reinstall.
+#
+# Deliberately short. Hermes ships a working default for every setting it is
+# not given and documents all of them in hermes-agent\cli-config.yaml.example
+# (2000 lines of it). Only what differs on an offline server is written here,
+# so there is nothing to keep in step with upstream.
+#
+# NO SECRET BELONGS IN THIS FILE. The key is read from an environment
+# variable set in <HERMES_HOME>\.env -- see DEPLOY-HERMES.md. That is also
+# why this file can be read, copied, backed up and diffed freely.
+
+model:
+  # The model name as the endpoint knows it.
+  default: __MODEL_NAME__
+  # "custom" means an OpenAI-compatible endpoint of our own, described by the
+  # base_url below.
+  provider: custom
+  # The API ROOT, WITHOUT /chat/completions -- Hermes appends that itself.
+  # Second Brain's own COMPASS_BASE_URL is the same endpoint WITH the suffix:
+  # the same key, two deliberately different URLs, and swapping them returns
+  # 404 from both.
+  base_url: __MODEL_BASE_URL__
+  # ${env:NAME} is resolved from the environment when the config is read, so
+  # the key stays out of this file. The env: form is the one to use: when the
+  # variable is not set it logs "NAME is not set (check ~/.hermes/.env)" and
+  # keeps the placeholder, where the older bare ${NAME} form would keep the
+  # placeholder silently and every call would fail with no clue why.
+  api_key: ${env:__KEY_ENV__}
+
+# The same endpoint as a named provider, which is what the auxiliary calls
+# resolve through -- title generation, compression, vision. Without this they
+# would fall back to looking for a provider they cannot find, and the main
+# agent turn would work while everything around it quietly did not.
+custom_providers:
+  - name: __PROVIDER_NAME__
+    base_url: __MODEL_BASE_URL__
+    model: __MODEL_NAME__
+    key_env: __KEY_ENV__
+
+# This server has no internet. Both of these would otherwise reach for it on
+# a schedule and log failures that read like real faults.
+telemetry:
+  shared_metrics:
+    enabled: false
+    send: false
+updates:
+  pre_update_backup: false
+
+terminal:
+  # Local, not a container: there is no Docker on this server and no registry
+  # to pull an image from. Written down rather than left to the default so
+  # that installing Docker here later does not silently change where every
+  # agent's commands run.
+  backend: local
+
+browser:
+  # Browser automation needs a Chromium the offline installer cannot
+  # download. Off, so the probe does not run on every session that might use
+  # it; the tools that need it fail at the point of use instead.
+  extension_control:
+    enabled: false
