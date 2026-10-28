@@ -42,13 +42,14 @@ import secrets
 
 from fastapi import Depends, HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
+from starlette.responses import FileResponse, JSONResponse
 
 from app.business.core.users.agent_token import AgentCaller, looks_like_an_agent_token
 from app.config import settings
 from app.business.core.users.agent_token_manager import AgentTokenManager
 from app.business.core.users.user import Capability, Identity
 from app.business.core.users.user_manager import UserManager
+from app.frontend_dist import frontend_shell
 
 _logger = logging.getLogger(__name__)
 
@@ -110,7 +111,16 @@ _ALWAYS_PUBLIC_EXACT = frozenset({"/health"})
 #                   deliberately the ONLY thing an anonymous caller
 #                   learns about this install, and it is what the
 #                   operator chose to show.
-_ALWAYS_PUBLIC_PREFIXES = ("/boot-status", "/auth/", "/branding")
+#   /assets, /fonts, /favicon.svg, and "/" itself -- the built UI, when this
+#                   process is serving it (production: one port, one origin).
+#                   A sign-in screen that cannot be downloaded is a locked
+#                   door with the handle on the inside: the browser has to
+#                   fetch index.html and the bundle BEFORE anyone can sign in.
+#                   These are the compiled app, identical for every install
+#                   and already public on any machine that has the release;
+#                   everything they then ask for still needs an account.
+_ALWAYS_PUBLIC_EXACT_UI = frozenset({"/", "/favicon.svg", "/icons.svg"})
+_ALWAYS_PUBLIC_PREFIXES = ("/boot-status", "/auth/", "/branding", "/assets/", "/fonts/")
 
 # Open only while the install has no users at all (see the docstring).
 _UNBOOTSTRAPPED_ONLY_PREFIXES = ("/setup",)
@@ -162,7 +172,11 @@ def _an_agent_may_write_here(path: str) -> bool:
 
 
 def _is_always_public(path: str) -> bool:
-    return path in _ALWAYS_PUBLIC_EXACT or path.startswith(_ALWAYS_PUBLIC_PREFIXES)
+    return (
+        path in _ALWAYS_PUBLIC_EXACT
+        or path in _ALWAYS_PUBLIC_EXACT_UI
+        or path.startswith(_ALWAYS_PUBLIC_PREFIXES)
+    )
 
 
 def _is_open_while_unbootstrapped(path: str) -> bool:
@@ -290,6 +304,18 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         if _is_open_while_unbootstrapped(request.url.path) and not self._reader.has_any_user():
             return await call_next(request)
 
+        # A signed-out BROWSER NAVIGATION gets the app, not a JSON refusal:
+        # reloading on `/browse/01 Mandate` with an expired session should put
+        # the sign-in screen on screen, not a page of `{"detail": ...}`. This
+        # happens only where this process also serves the built UI
+        # (production, one port), and it is the SHELL that is served -- the
+        # request never reaches its route, so an API path asked for with
+        # `Accept: text/html` still executes nothing and discloses nothing.
+        if request.method == "GET" and _wants_html(request):
+            shell = frontend_shell()
+            if shell is not None:
+                return FileResponse(shell)
+
         return JSONResponse(
             status_code=401,
             content={
@@ -297,6 +323,13 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 "reason": "not_authenticated",
             },
         )
+
+
+def _wants_html(request: Request) -> bool:
+    """Whether this is a browser asking for a page rather than code asking for
+    data. `fetch` sends `*/*` or a JSON type; a navigation always names
+    `text/html` first."""
+    return "text/html" in request.headers.get("accept", "")
 
 
 def identity_from_request(request: Request) -> Identity | None:

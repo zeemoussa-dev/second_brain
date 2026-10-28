@@ -1,10 +1,14 @@
 import asyncio
+from pathlib import Path
 import traceback
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+
+from app import frontend_dist
 
 from app.business.core.actions.action_manager import ActionManager
 from app.business.core.templates.template_manager import TemplateManager
@@ -308,3 +312,71 @@ app.include_router(index_router)
 app.include_router(actions_router)
 app.include_router(workflows_router)
 app.include_router(operator_router)
+
+# ==========================================================================
+# The built frontend, served by this same process (production, 2026-10-28).
+#
+# In development the UI is Vite on :5173 and this app is :8001 -- two origins,
+# which is why `apiFetch` has to send credentials explicitly and why CORS is
+# configured at all. A production box has no Vite and no second service: the
+# UI is a folder of static files, and serving it from here puts the app and
+# its API on ONE origin and ONE port (80), which removes the CORS surface and
+# the cross-origin cookie question entirely rather than configuring around
+# them.
+#
+# **Not a catch-all route.** The first version of this was
+# `@app.get("/{path:path}")` registered here at import, and it silently
+# shadowed every route registered AFTER it -- which includes every installed
+# plugin's router, mounted at runtime by the plugin host. A test that asserts
+# an unhandled error is a 500 caught it; on a production box it would have
+# presented as "all my plugins' endpoints return the UI".
+#
+# So the fallback is a 404 HANDLER instead. It runs only once routing has
+# already failed to find anything, so it cannot shadow a route that exists --
+# whenever it was registered.
+#
+# Absent `dist/`, nothing here does anything and the app behaves exactly as it
+# does in development, which is what the test suite and every developer's
+# checkout rely on.
+# ==========================================================================
+if frontend_dist.frontend_shell() is not None:
+    # Sub-directories only, never `/`: a mount at the root would be matched
+    # before anything registered later, and that is the same shadowing bug in
+    # another costume.
+    app.mount("/assets", StaticFiles(directory=frontend_dist.DIST / "assets"), name="ui-assets")
+    if (frontend_dist.DIST / "fonts").is_dir():
+        app.mount("/fonts", StaticFiles(directory=frontend_dist.DIST / "fonts"), name="ui-fonts")
+
+    @app.exception_handler(404)
+    async def serve_the_ui_when_nothing_else_claimed_it(request: Request, _exception):
+        """A real file inside `dist/`, the app shell for a navigation, or the
+        404 as it was.
+
+        The path is resolved and checked to be inside `dist/` before anything
+        is served: `/../../.env` is a request this process would otherwise be
+        glad to answer.
+
+        A 404 from an API route -- a note that does not exist -- still comes
+        back as a 404 to anything asking for data, because only a request that
+        names `text/html` gets the shell.
+        """
+        # The route's OWN words, when it raised with some. Registering a
+        # handler for 404 replaces FastAPI's for every 404 in the app, so a
+        # naive one turns "no workflow run '0000…beef'" into a bare "Not
+        # Found" -- the detail IS the answer for a caller trying to work out
+        # which id was wrong.
+        detail = getattr(_exception, "detail", "Not Found")
+
+        shell = frontend_dist.frontend_shell()
+        if shell is None:
+            return JSONResponse(status_code=404, content={"detail": detail})
+
+        root = frontend_dist.DIST.resolve()
+        candidate = (frontend_dist.DIST / request.url.path.lstrip("/")).resolve()
+        if candidate.is_file() and candidate.is_relative_to(root):
+            return FileResponse(candidate)
+
+        if request.method == "GET" and "text/html" in request.headers.get("accept", ""):
+            return FileResponse(shell)
+
+        return JSONResponse(status_code=404, content={"detail": detail})
