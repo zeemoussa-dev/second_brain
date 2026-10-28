@@ -44,8 +44,22 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$release = $PSScriptRoot
+$here = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path $MyInvocation.MyCommand.Path -Parent }
 $pythonVersionWanted = '3.11'
+
+# The release root is found by looking for what it must contain, not by
+# counting directories up from here: this script runs from `app\deploy`
+# INSIDE the release, and a wrong guess at that path is an install that
+# fails on its first file copy.
+$release = $here
+while ($release -and -not (Test-Path (Join-Path $release 'vendor\wheels'))) {
+    $parent = Split-Path $release -Parent
+    if ($parent -eq $release) { break }
+    $release = $parent
+}
+if (-not (Test-Path (Join-Path $release 'vendor\wheels'))) {
+    throw "Could not find the release's vendor folder above $here. Run this script from inside the release folder it was shipped in."
+}
 
 function Step([string]$text) { Write-Host "`n=== $text" -ForegroundColor Cyan }
 function Note([string]$text) { Write-Host "    $text" -ForegroundColor DarkGray }
@@ -132,6 +146,19 @@ $wheels = Join-Path $release 'vendor\wheels'
 & $venvPython -m pip install --no-index --find-links $wheels -r (Join-Path $InstallRoot 'src\backend\requirements.txt') 2>&1 | Select-Object -Last 3
 if ($LASTEXITCODE -ne 0) { throw 'Installing the backend packages failed. The wheels may be built for a different Python minor version than the one installed here.' }
 Good 'backend packages installed'
+
+# pywin32 ships the DLLs its service host needs inside site-packages, where
+# nothing on the system path can find them. Without this step the service
+# registers cleanly and then fails to start with "the service did not respond
+# in a timely fashion" -- which says nothing about a missing DLL. It also
+# registers the event log source this app's service writes its startup
+# failures to, which is the only place it has to report them.
+$postInstall = Join-Path $venv 'Scripts\pywin32_postinstall.py'
+if (Test-Path $postInstall) {
+    & $venvPython $postInstall -install -quiet | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'The pywin32 post-install step failed; the service would not start.' }
+    Good 'pywin32 service host registered'
+}
 
 # --------------------------------------------------------------------------
 Step 'Unpacking the Node toolchain'
