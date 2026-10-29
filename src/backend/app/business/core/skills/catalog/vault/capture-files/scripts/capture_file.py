@@ -189,7 +189,7 @@ def add_file_detail(vault_path: Path, file_path: str, details: str, images: list
     image_blocks, attached_images = _attach_images(real_file.parent, images or [])
     combined = "\n\n".join(part for part in (linked_details, image_blocks) if part)
 
-    note_name = md_path.parent.parent.relative_to(vault_path / vm._NOTES_ROOT).as_posix()
+    note_name = vm.note_name_for(vault_path, md_path.parent.parent)
     template = vm.load_template(vault_path, _FILE_TEMPLATE_ID)
     vm.modify_section(vault_path, template, note_id=note_id, section="Details", content=combined, mode="append", note_name=note_name)
 

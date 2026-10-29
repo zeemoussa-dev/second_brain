@@ -213,7 +213,43 @@ _BODY_SECTION_HEADER_PATTERN = re.compile(r"^## .+$", re.MULTILINE)
 # Work/Research, and capture-notes' own real "Work/Notes/<date>/" already)
 # -- "Notes" as the TOP-LEVEL root was this module's own assumption from
 # an illustrative example, not the vault's actual structure.
-_NOTES_ROOT = "Work"
+#
+# That root is now CONFIGURED rather than fixed (operator, 2026-10-29:
+# "Indexes for example Uses Work as Hardcoded Path and I can't Use the
+# Vault Writer if I don't have Work folder ... What if the whole Vault is
+# Work or all the Vault is Personal"). A vault may hold several roots side
+# by side -- Work/ and Personal/ -- and an install whose vault has no
+# "Work" folder at all could not write a single note before this.
+#
+# The default is unchanged, so an install that sets nothing behaves exactly
+# as it did. A note's identity is its path relative to the VAULT once more
+# than one root exists, because `Threads/x` cannot say whether it means the
+# work one or the personal one; `_resolved_note_name` below is the one place
+# that decides, and it accepts both forms so no existing caller changes.
+_DEFAULT_NOTES_ROOT = "Work"
+_NOTES_ROOTS_ENV = "VAULT_NOTES_ROOTS"
+
+
+def note_roots() -> tuple[str, ...]:
+    """Every top-level folder this vault keeps notes under, in order.
+
+    Read from the environment on every call, not captured at import: a
+    Hermes worker inherits it from the install's own `.env` exactly as it
+    inherits `SECOND_BRAIN_DATA_PATH`, and a long-lived gateway process
+    must not hold a value from before the operator changed it.
+
+    The FIRST root is the primary: it is where a note_name that names no
+    root is written. An empty setting means the vault's own directory is
+    the one root -- a vault that is entirely one thing needs no folder to
+    say so.
+    """
+    raw = os.environ.get(_NOTES_ROOTS_ENV)
+    if raw is None:
+        return (_DEFAULT_NOTES_ROOT,)
+    roots = tuple(
+        segment.strip().strip("/\\") for segment in raw.split(",") if segment.strip().strip("/\\")
+    )
+    return roots or ("",)
 
 # The App Database Folder used to live INSIDE the vault, at
 # <vault>/.second-brain/. Second Brain can relocate it (System settings /
@@ -729,9 +765,70 @@ def _sanitize_note_name(note_name: str) -> str:
     return "/".join(_slugify(segment) for segment in note_name.split("/") if segment.strip())
 
 
+def _resolved_note_name(note_name: str) -> str:
+    """A note_name as a path relative to the VAULT.
+
+    Two forms are accepted on purpose, because both already exist in the
+    wild:
+
+      * vault-relative -- its first segment names a configured root
+        ("Work/Threads", "Personal/Journal"). Used as it stands.
+      * root-relative -- everything else ("Threads", "Customers/Masdar"),
+        which is what every shipped capture script passes. Resolved under
+        the PRIMARY root, so a single-root install resolves to exactly the
+        path it always did.
+
+    The first segment is matched BEFORE sanitising, and case-insensitively:
+    `_sanitize_note_name` slugifies each segment, so a root whose folder
+    name contains a space or a capital would otherwise stop matching
+    itself.
+    """
+    roots = note_roots()
+    first = note_name.replace("\\", "/").split("/", 1)[0].strip()
+    if first and any(first.casefold() == root.casefold() for root in roots if root):
+        return _sanitize_note_name(note_name)
+    primary = roots[0]
+    sanitized = _sanitize_note_name(note_name)
+    return f"{primary}/{sanitized}" if primary else sanitized
+
+
 def _notes_root(vault_path: Path, note_name: str | None) -> Path:
-    root = vault_path / _NOTES_ROOT
-    return root / _sanitize_note_name(note_name) if note_name else root
+    """Where a scoped call reads and writes. An unscoped one (note_name
+    None) gets the primary root here and every root through
+    `_search_roots` -- writing has to pick one, searching does not."""
+    if not note_name:
+        primary = note_roots()[0]
+        return vault_path / primary if primary else vault_path
+    return vault_path / _resolved_note_name(note_name)
+
+
+def note_name_for(vault_path: Path, folder) -> str:
+    """The note_name of a folder already in the vault -- the inverse of
+    `_resolved_note_name`, and the ONE place that derives a name from a
+    path.
+
+    Vault-relative, so it names the root the folder actually lives under
+    and round-trips: handing it back to `create()` or `modify_section()`
+    lands in the same place it came from, whichever root that is. Six
+    call sites used to do this arithmetic by hand against the single
+    hardcoded root, which is exactly the duplication this module's own
+    `_child_note_name` was written to stop.
+    """
+    return Path(folder).relative_to(vault_path).as_posix()
+
+
+def _search_roots(vault_path: Path, note_name: str | None) -> list[Path]:
+    """Every directory a find should look in.
+
+    A scoped call resolves to one. An UNSCOPED one has to cover every
+    configured root: before roots were configurable it searched the only
+    root there was, and silently searching just the primary now would make
+    a personal note unfindable in a way that looks like the note is
+    missing rather than out of scope.
+    """
+    if note_name:
+        return [_notes_root(vault_path, note_name)]
+    return [vault_path / root if root else vault_path for root in note_roots()]
 
 
 def _load_scoped_index_notes(vault_path: Path, root: Path) -> list[dict] | None:
@@ -755,13 +852,22 @@ def _load_scoped_index_notes(vault_path: Path, root: Path) -> list[dict] | None:
     either way (callers fall through to a real scan), unlike load_template's
     own hard failure -- but a silently-never-hit index is still just dead
     weight, so it honours the same resolution."""
+    # Deliberately the PRIMARY root only. The per-folder index is keyed by
+    # top-level folder name alone (`index/folders/<folder>.json`), so with
+    # two roots a `Threads` key could not say which one it described --
+    # and this fast path returns a note by id, where a wrong answer makes a
+    # capture pipeline write a duplicate rather than merely miss a hit.
+    # Every other root falls through to the real scan below, which is
+    # slower and always correct. Teaching the index itself about roots is a
+    # change to its on-disk shape and to everything that reads it.
+    primary = note_roots()[0]
     try:
-        relative_to_work = root.relative_to(vault_path / _NOTES_ROOT)
+        relative_to_root = root.relative_to(vault_path / primary if primary else vault_path)
     except ValueError:
         return None
-    parts = relative_to_work.parts
+    parts = relative_to_root.parts
     if not parts:
-        return None  # root IS Work/ itself -- no single per-folder index covers the whole vault
+        return None  # root IS the notes root itself -- no single per-folder index covers the whole vault
     index_path = data_root(vault_path) / "index" / "folders" / f"{parts[0]}.json"
     if not index_path.is_file():
         return None
@@ -802,60 +908,63 @@ def _iter_real_md_files(vault_path: Path, root: Path):
 
 
 def find_by_id(vault_path: Path, note_id: str, note_name: str | None = None) -> Path | None:
-    root = _notes_root(vault_path, note_name)
-    if not root.is_dir():
-        return None
-    indexed = _load_scoped_index_notes(vault_path, root)
-    if indexed is not None:
-        for entry in indexed:
-            if str(entry.get("id", "")) == str(note_id):
-                candidate = vault_path / entry["path"]
-                # long_path: a plain is_file() is silently False past MAX_PATH.
-                if os.path.isfile(long_path(candidate)):
-                    return candidate
-                break  # stale index entry (moved/deleted since last rebuild) -- fall through to the real scan
-    for md_path in _iter_real_md_files(vault_path, root):
-        try:
-            frontmatter, _ = read_note(md_path)
-        except OSError:
+    for root in _search_roots(vault_path, note_name):
+        if not root.is_dir():
             continue
-        if str(frontmatter.get("id", "")) == str(note_id):
-            return md_path
+        indexed = _load_scoped_index_notes(vault_path, root)
+        if indexed is not None:
+            for entry in indexed:
+                if str(entry.get("id", "")) == str(note_id):
+                    candidate = vault_path / entry["path"]
+                    # long_path: a plain is_file() is silently False past MAX_PATH.
+                    if os.path.isfile(long_path(candidate)):
+                        return candidate
+                    break  # stale index entry (moved/deleted since last rebuild) -- fall through to the real scan
+        for md_path in _iter_real_md_files(vault_path, root):
+            try:
+                frontmatter, _ = read_note(md_path)
+            except OSError:
+                continue
+            if str(frontmatter.get("id", "")) == str(note_id):
+                return md_path
     return None
 
 
 def find_by_filename(vault_path: Path, filename: str, note_name: str | None = None) -> Path | None:
-    root = _notes_root(vault_path, note_name)
-    if not root.is_dir():
-        return None
     name = filename if filename.endswith(".md") else f"{filename}.md"
-    indexed = _load_scoped_index_notes(vault_path, root)
-    if indexed is not None:
-        for entry in indexed:
-            if entry.get("filename") == name:
-                candidate = vault_path / entry["path"]
-                # long_path: a plain is_file() is silently False past MAX_PATH.
-                if os.path.isfile(long_path(candidate)):
-                    return candidate
-                break
-    for md_path in _iter_real_md_files(vault_path, root):
-        if md_path.name == name:
-            return md_path
+    for root in _search_roots(vault_path, note_name):
+        if not root.is_dir():
+            continue
+        indexed = _load_scoped_index_notes(vault_path, root)
+        if indexed is not None:
+            for entry in indexed:
+                if entry.get("filename") == name:
+                    candidate = vault_path / entry["path"]
+                    # long_path: a plain is_file() is silently False past MAX_PATH.
+                    if os.path.isfile(long_path(candidate)):
+                        return candidate
+                    break
+        for md_path in _iter_real_md_files(vault_path, root):
+            if md_path.name == name:
+                return md_path
     return None
 
 
 def find_in_folder(vault_path: Path, note_name: str) -> list[Path]:
-    root = _notes_root(vault_path, note_name)
-    if not root.is_dir():
-        return []
-    indexed = _load_scoped_index_notes(vault_path, root)
-    if indexed is not None:
-        candidates = sorted(vault_path / entry["path"] for entry in indexed if "path" in entry)
-        if candidates and all(path.is_file() for path in candidates):
-            return candidates
-        # empty, or at least one indexed entry is stale -- the index
-        # can't be trusted as a complete, accurate listing right now.
-    return list(_iter_real_md_files(vault_path, root))
+    found: list[Path] = []
+    for root in _search_roots(vault_path, note_name):
+        if not root.is_dir():
+            continue
+        indexed = _load_scoped_index_notes(vault_path, root)
+        if indexed is not None:
+            candidates = sorted(vault_path / entry["path"] for entry in indexed if "path" in entry)
+            if candidates and all(path.is_file() for path in candidates):
+                found.extend(candidates)
+                continue
+            # empty, or at least one indexed entry is stale -- the index
+            # can't be trusted as a complete, accurate listing right now.
+        found.extend(_iter_real_md_files(vault_path, root))
+    return found
 
 
 def find(vault_path: Path, by: str, value: str, note_name: str | None = None):
@@ -937,7 +1046,13 @@ def _child_note_name(vault_path: Path, parent_config: dict, parent_path: Path) -
     exact path math by hand (create_opportunity.py's own real
     `customer_hub.parent / "Opportunities"`, ported here as the one
     generic version)."""
-    parent_note_name = parent_path.parent.relative_to(vault_path / _NOTES_ROOT).as_posix()
+    # VAULT-relative, including the root the parent actually lives under.
+    # The returned name goes straight back into create()/modify_section(),
+    # and a root-stripped one ("Threads/x") would resolve under the primary
+    # root -- so a child of a Personal note would be written into Work/.
+    # `_resolved_note_name` passes a name that already starts with a root
+    # through untouched, so this round-trips.
+    parent_note_name = parent_path.parent.relative_to(vault_path).as_posix()
     return f"{parent_note_name}/{parent_config['child_subpath']}"
 
 

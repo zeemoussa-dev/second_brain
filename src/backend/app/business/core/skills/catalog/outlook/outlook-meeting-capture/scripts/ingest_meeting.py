@@ -137,11 +137,12 @@ def ingest_meeting(vault_path: Path, event: dict, self_email: str) -> dict:
         # Recurrences" (one bogus hyphenated segment + Recurrences)
         # instead of true "Meetings/2026-08-25-Standup.../Recurrences"
         # nesting.
-        # vm._NOTES_ROOT, never a literal "Work"/"Notes" here -- this
-        # exact mismatch (a hardcoded root drifting from vault_manager's
-        # own real one) is what the 2026-08-26 Notes-vs-Work correction
-        # was.
-        series_folder_note_name = series_path.parent.relative_to(vault_path / vm._NOTES_ROOT).as_posix()
+        # vm.note_name_for, never a literal "Work"/"Notes" and never this
+        # arithmetic by hand -- a hardcoded root drifting from
+        # vault_manager's own real one is what the 2026-08-26
+        # Notes-vs-Work correction was, and the root is now configured
+        # per install and may be one of several.
+        series_folder_note_name = vm.note_name_for(vault_path, series_path.parent)
         occurrence_note_name = f"{series_folder_note_name}/{_RECURRENCES_SUBFOLDER}"
         # Real bug, found live 2026-08-27 (operator: "another meeting i
         # have not visible"): `event["id"]` (Outlook's own EntryID) is
