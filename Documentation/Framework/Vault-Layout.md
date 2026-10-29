@@ -9,10 +9,35 @@ Templates encode. Authoring a Template → **[Templates.md](Templates.md)**.
 
 ---
 
-## The root is `Work/`
+## The root is `Work/` by default, and it is a setting
 
 Not `Notes/`. Every captured thing lands under `Work/<note_name>/`, where
 `note_name` comes from the Template.
+
+`Work` is the **default**, not a law. `VAULT_NOTES_ROOTS` in the backend's
+`.env` names the top-level folders that hold notes, comma-separated:
+
+| Setting | What the vault looks like |
+|---|---|
+| unset, or `Work` | one root, exactly as this page describes |
+| `Work,Personal` | two roots side by side; each may hold the same kinds |
+| `Personal` | one root under another name — no `Work/` folder at all |
+| *(empty)* | the vault's own directory is the root |
+
+Two rules follow, and they are the whole of it:
+
+- **A note_name that begins with a configured root is read as vault-relative**
+  (`Personal/Journal`). Anything else resolves under the **first** root — so
+  every shipped capture Skill, which passes a bare `Threads`, keeps writing
+  exactly where it always did.
+- **A note's identity is its path from the vault**, root included
+  (`Work/Threads/<Subject>`). With two roots, `Threads/x` cannot say which one
+  it means.
+
+The app's own Thread, Person, Meeting and Task write targets stay pinned to
+`Work/`, because they have to agree with the capture pipeline that fills them.
+A second root is for the notes you and the app write, not for re-pointing
+Outlook capture.
 
 ```
 Work/

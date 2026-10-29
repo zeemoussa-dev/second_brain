@@ -191,6 +191,11 @@ if (Test-Path $envFile) {
     @(
         "VAULT_PATH=$VaultPath",
         "SECOND_BRAIN_DATA_PATH=$DataRoot",
+        '# Which top-level folders of the vault hold notes, comma-separated.',
+        '# Unset means "Work". A vault with no Work folder names its own here',
+        '# ("Personal"), and one holding both sets "Work,Personal". Commented',
+        '# rather than blank: an empty value means the vault root itself.',
+        '# VAULT_NOTES_ROOTS=Work,Personal',
         '# Filled in from the browser at Settings > System, or here before first start.',
         'SELF_EMAIL=',
         'COMPASS_BASE_URL=',
