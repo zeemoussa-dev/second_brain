@@ -6,7 +6,6 @@ import { useAuth } from '../features/auth/AuthGate';
 import {
   ActionAssignmentEditor,
   SkillsEditor,
-  SpecialistsEditor,
 } from '../features/settings/AgentFlowEditors';
 import { RoutingEditor } from '../features/settings/RoutingEditor';
 import type { EdgeTarget } from '../features/settings/RoutingEditor';
@@ -19,6 +18,50 @@ interface Gap { kind: string; subject: string; says: string }
 interface FlowMap {
   entry_points: Door[]; agents: AgentNode[]; edges: Edge[];
   actions: ActionRow[]; gaps: Gap[];
+}
+
+/** Where a gap of this kind is put right.
+ *
+ * `to` is a route to the screen that owns it; `null` means it is fixed
+ * on THIS page and `act` scrolls to the control. Returning `null`
+ * overall is honest too -- some gaps are a statement about the install
+ * rather than a thing with an owner, and inventing a destination for
+ * those would send someone to a screen that cannot help. */
+function whereToFix(
+  gap: Gap, agentId: string,
+): { label: string; to: string | null; act?: () => void } | null {
+  const scrollToRouting = () => {
+    document
+      .querySelector('[data-testid="agent-flow-routing"]')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  // `parent -> child`: the condition belongs to the PARENT, wherever
+  // the gap is being read from.
+  const parent = gap.subject.includes(' -> ') ? gap.subject.split(' -> ')[0].trim() : null;
+
+  switch (gap.kind) {
+    case 'edge_without_a_condition':
+    case 'condition_for_a_non_specialist':
+      return parent === null || parent === agentId
+        ? { label: 'Say when, below', to: null, act: scrollToRouting }
+        : { label: `Say when on ${parent}`, to: `/flow/${encodeURIComponent(parent)}` };
+    case 'entry_point_not_declared':
+    case 'entry_point_drifted':
+    case 'entry_point_reaches_unknown_agent':
+      return { label: 'Declare the door', to: '/entry-points' };
+    case 'action_nobody_may_call':
+    case 'action_without_an_implementation':
+      return { label: 'Open this Action', to: '/settings/actions' };
+    case 'workflow_step_names_a_missing_action':
+      return { label: 'Open Workflows', to: '/settings/workflows' };
+    case 'agent_nothing_reaches':
+      // Nothing routes here, so the fix is on whichever agent SHOULD
+      // hand work down -- which this app cannot guess. The agent's own
+      // "Works for" is the field that changes it.
+      return { label: 'Set who it works for', to: `/agents/${encodeURIComponent(agentId)}/profile` };
+    default:
+      return null;
+  }
 }
 
 /** REQ-SB-102 — one agent's own slice of the flow: how an ask reaches
@@ -81,6 +124,15 @@ export function AgentFlowPage() {
   const doorsIn = map.entry_points.filter((door) => door.reaches === agentId);
   const sendsTo = map.edges.filter((edge) => edge.from === agentId);
   const reachedBy = map.edges.filter((edge) => edge.to === agentId);
+  // Each agent that hands work down to this one, with that parent's
+  // WHOLE routing — the save replaces a parent's condition map
+  // wholesale, so a partial set here would delete its other routes.
+  const parentsRoutingHere = [...new Set(reachedBy.map((edge) => edge.from))]
+    .sort()
+    .map((parentId) => ({
+      parentId,
+      edges: map.edges.filter((edge) => edge.from === parentId),
+    }));
   const actions = map.actions.filter((action) => action.callers.includes(agentId));
   const mine = map.gaps.filter((gap) => gap.subject.includes(agentId));
 
@@ -205,12 +257,38 @@ export function AgentFlowPage() {
           </p>
         ) : (
           <ul className="flow-gaps" data-testid="agent-flow-gaps">
-            {mine.map((gap, index) => (
-              <li key={`${gap.kind}-${index}`}>
-                <strong>{gap.subject}</strong>
-                <div className="auth-note">{gap.says}</div>
-              </li>
-            ))}
+            {mine.map((gap, index) => {
+              const fix = whereToFix(gap, agent.id);
+              return (
+                <li key={`${gap.kind}-${index}`}>
+                  <strong>{gap.subject}</strong>
+                  <div className="auth-note">{gap.says}</div>
+                  {/* Every gap says where it is fixed (operator,
+                      2026-10-24: "for the gaps, what's the value if I
+                      can't fix it"). A detector that only names a
+                      problem spends the reader's attention and gives
+                      nothing back; the one thing it knows that they do
+                      not is which screen owns the thing it just
+                      checked. */}
+                  {fix && (
+                    <div className="flow-gap-fix">
+                      {fix.to === null ? (
+                        <button
+                          type="button"
+                          className="auth-link-button"
+                          data-testid={`gap-fix-${index}`}
+                          onClick={fix.act}
+                        >
+                          {fix.label}
+                        </button>
+                      ) : (
+                        <Link to={fix.to} data-testid={`gap-fix-${index}`}>{fix.label}</Link>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -222,12 +300,19 @@ export function AgentFlowPage() {
             Routes and Action assignment take effect at once. A route's <em>when</em> is saved
             here and only reaches the agent's prompt when you publish it.
           </p>
-          <SpecialistsEditor
-            agentId={agent.id}
-            current={agent.routes_to}
-            candidates={map.agents.map((other) => other.id)}
-            onChanged={() => setReloads((n) => n + 1)}
-          />
+          {/* No specialist editor here, deliberately (operator,
+              2026-10-24: "The Flow has nothing to do with UI except
+              that depends_on as enable inside the Agent View -- The
+              Flow is pure Hermes").
+
+              `depends_on` is edited in ONE place, the Agent view's own
+              "Relays to" checklist, which writes that agent's own file.
+              The editor that used to sit here wrote the link onto the
+              WRONG agent -- it took `routes_to` (the children the map
+              derived from everyone else's `depends_on`) and PATCHed it
+              into this agent's own `depends_on`, which says the
+              opposite thing and put the link on the wrong node. Two
+              editors for one fact is how that survived unnoticed. */}
 
           {/* The condition, on the page where the route was just created
               (operator, 2026-10-24: "I can't find When I change Primary to
@@ -237,15 +322,52 @@ export function AgentFlowPage() {
               dozens stacked under a single heading. Keyed by the edge set so
               a specialist added a second ago gets its own empty field rather
               than waiting for a remount. */}
-          {sendsTo.length > 0 && (
-            <RoutingEditor
-              key={sendsTo.map((edge) => edge.to).join('|')}
-              parent={agent.id}
-              edges={sendsTo}
-              targets={targets}
-              onSaved={() => setReloads((n) => n + 1)}
-            />
-          )}
+          <div data-testid="agent-flow-routing">
+            {sendsTo.length > 0 && (
+              <RoutingEditor
+                key={sendsTo.map((edge) => edge.to).join('|')}
+                parent={agent.id}
+                edges={sendsTo}
+                targets={targets}
+                onSaved={() => setReloads((n) => n + 1)}
+              />
+            )}
+
+            {/* The route INTO this agent, editable from here (operator,
+                2026-10-24: "I can't edit the when inside the Adnoc agent
+                itself, yet it shows what's missing and I can't do
+                anything about it").
+
+                The condition lives on the PARENT -- `{parent: {child:
+                when}}` -- so this is the parent's own routing, shown
+                where the person noticed it was missing and labelled as
+                the parent's so nobody thinks otherwise.
+
+                **Seeded with ALL of that parent's edges, not just the
+                one into this agent**, and that is not cosmetic: the PUT
+                replaces a parent's whole condition map with what it is
+                sent, so an editor holding one edge would delete every
+                other condition that parent has the moment it saved. */}
+            {parentsRoutingHere.map(({ parentId, edges }) => (
+              <div key={`into-${parentId}`} className="agent-editor">
+                <h3>
+                  How work reaches this agent — <code>{parentId}</code>&apos;s routing
+                </h3>
+                <p className="auth-note">
+                  <code>{parentId}</code> hands work down to this agent, so the <em>when</em>
+                  {' '}belongs to <code>{parentId}</code>. Its other routes are shown because
+                  saving writes all of them at once.
+                </p>
+                <RoutingEditor
+                  key={edges.map((edge) => edge.to).join('|')}
+                  parent={parentId}
+                  edges={edges}
+                  targets={targets}
+                  onSaved={() => setReloads((n) => n + 1)}
+                />
+              </div>
+            ))}
+          </div>
           <ActionAssignmentEditor
             agentId={agent.id}
             actions={map.actions}

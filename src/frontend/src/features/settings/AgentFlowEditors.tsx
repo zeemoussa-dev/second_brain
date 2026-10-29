@@ -5,7 +5,6 @@ import {
   fetchAgentSkills,
   fetchAllSkills,
   setAllowedCallers,
-  setSpecialists,
   undeploySkill,
 } from '../hermes-ops/client';
 import type { SkillSummary } from '../hermes-ops/client';
@@ -44,78 +43,6 @@ function Feedback({ failure, note }: { failure: string | null; note: string | nu
       {failure && <p className="auth-refusal" role="alert">{failure}</p>}
       {note && <p className="profile-done" role="status">{note}</p>}
     </>
-  );
-}
-
-/** Add or remove a specialist — the SHAPE of the flow.
- *
- * Kept visibly separate from the `when` beside it, because they are
- * different things in different places: the edge lives in Hermes'
- * registry and the condition is this app's annotation about it. Removing
- * an edge here leaves its condition stored but unused rather than
- * deleting it, so putting the route back does not mean rewriting the
- * sentence — and an orphaned condition is reported by the map as a gap
- * rather than quietly applying to nothing.
- */
-export function SpecialistsEditor({
-  agentId, current, candidates, onChanged,
-}: {
-  agentId: string; current: string[]; candidates: string[]; onChanged: () => void;
-}) {
-  const { busy, failure, note, run } = useWriter(onChanged);
-  const [picked, setPicked] = useState('');
-  const addable = candidates.filter((id) => id !== agentId && !current.includes(id));
-
-  return (
-    <div className="agent-editor" data-testid="specialists-editor">
-      <h3>Who this agent can hand work to</h3>
-      {current.length === 0 ? (
-        <p className="auth-note">No specialists — it answers everything itself.</p>
-      ) : (
-        <ul className="agent-editor-list">
-          {current.map((id) => (
-            <li key={id}>
-              <code>{id}</code>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() =>
-                  void run(
-                    () => setSpecialists(agentId, current.filter((other) => other !== id)),
-                    `${id} is no longer a specialist of ${agentId}. Its condition is kept, unused.`,
-                  )
-                }
-              >
-                Remove
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="agent-editor-add">
-        <select value={picked} onChange={(event) => setPicked(event.target.value)}>
-          <option value="">add a specialist…</option>
-          {addable.map((id) => <option key={id} value={id}>{id}</option>)}
-        </select>
-        <button
-          type="button"
-          disabled={busy || !picked}
-          onClick={() =>
-            void run(
-              () => setSpecialists(agentId, [...current, picked]),
-              `${picked} added. Say when to use it on the map, then publish.`,
-            ).then(() => setPicked(''))
-          }
-        >
-          Add
-        </button>
-      </div>
-      <p className="auth-note">
-        This changes the agent's registry entry, not its prompt. Publish on{' '}
-        <strong>The Flow</strong> to write it into the soul.
-      </p>
-      <Feedback failure={failure} note={note} />
-    </div>
   );
 }
 

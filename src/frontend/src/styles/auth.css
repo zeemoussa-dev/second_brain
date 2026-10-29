@@ -494,6 +494,27 @@
   border-left: 3px solid var(--color-warning);
 }
 
+/* Where the gap is fixed, on the gap (operator, 2026-10-24: "for the
+   gaps, what's the value if I can't fix it"). A link and a button sit
+   on the same line and must read the same, because whether the fix is
+   on this page or another one is this app's business, not something
+   the reader should have to notice. */
+.flow-gap-fix {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.flow-gap-fix a,
+.auth-link-button {
+  color: var(--color-accent);
+  text-decoration: underline;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
 /* An edge with no condition is still a real edge -- muted, not alarming:
    the agent still has the specialist, nobody has said when to use it. */
 .flow-edge-silent {

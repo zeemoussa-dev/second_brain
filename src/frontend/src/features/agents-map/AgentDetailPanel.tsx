@@ -647,8 +647,8 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
                       <span>{agent.tools.length > 0 ? agent.tools.join(', ') : 'No tools enabled'}</span>
                     </div>
                     <div className="kv-row" data-testid="overview-depends-on">
-                      <span className="kv-key">Relays to</span>
-                      <span>{agent.depends_on.length > 0 ? agent.depends_on.join(', ') : 'Nothing — stands alone'}</span>
+                      <span className="kv-key">Works for</span>
+                      <span>{agent.depends_on.length > 0 ? agent.depends_on.join(', ') : 'Nobody — it is not a specialist'}</span>
                     </div>
                     <div className="kv-row" data-testid="overview-preferred-indexes">
                       <span className="kv-key">Preferred indexes</span>
@@ -867,7 +867,7 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
                         </button>
                       </div>
                       <div className="kv-row">
-                        <span className="kv-key">Relays to</span>
+                        <span className="kv-key">Works for</span>
                         <input
                           type="text"
                           className="input kv-select"
@@ -875,13 +875,13 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
                           value={dependsOnDraft}
                           onChange={(event) => setDependsOnDraft(event.target.value)}
                           onBlur={handleDependsOnCommit}
-                          placeholder="Stands alone — no agent to relay to"
+                          placeholder="Nobody — it is not a specialist of any agent"
                           data-testid="depends-on-input"
                         />
                         <button
                           type="button"
                           className="kv-expand-btn"
-                          aria-label="Edit Relays to in a bigger view"
+                          aria-label="Edit Works for in a bigger view"
                           data-testid="expand-depends-on"
                           onClick={openDependsOnEditor}
                         >
@@ -1349,8 +1349,8 @@ export function AgentDetailPanel({ agentId, onClose, onAgentUpdated }: AgentDeta
       )}
       {openFieldEditor === 'dependsOn' && (
         <FieldEditorModal
-          title="Relays to"
-          description="Which other real agents this agent can hand a request up to."
+          title="Works for"
+          description="Which agents hand work DOWN to this one. Ticking an agent here makes this agent one of ITS specialists, which is how Hermes reads the field and how The Flow draws it — not the other way round."
           onClose={() => setOpenFieldEditor(null)}
           onSave={handleSaveFieldEditor}
           saving={savingFieldEditor}
