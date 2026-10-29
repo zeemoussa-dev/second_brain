@@ -48,15 +48,19 @@ _vault_manager = VaultManager()
 
 
 def _subject_note_name(subject_note_stem: str) -> str | None:
-    """The subject note's own real relative note_name under Work/ (e.g.
-    "Meetings/2026-10-13-PSS Team Get together") -- derived from its
+    """The subject note's own real note_name (e.g.
+    "Work/Meetings/2026-10-13-PSS Team Get together") -- derived from its
     REAL indexed path, never reconstructed/guessed from the stem, so this
-    stays correct even if a folder name carries a collision suffix."""
+    stays correct even if a folder name carries a collision suffix.
+
+    Vault-relative, because a vault may keep notes under more than one
+    root and "Meetings/..." alone cannot say which one this subject is in.
+    """
     entry = _vault_manager.get_index().get(subject_note_stem)
     if entry is None:
         return None
     folder = Path(entry["path"]).parent
-    return folder.relative_to(settings.vault_path / vm._NOTES_ROOT).as_posix()
+    return vm.note_name_for(settings.vault_path, folder)
 
 
 def _modified_at(path: Path) -> float:
@@ -89,7 +93,7 @@ def list_documents(subject_note_stem: str) -> list[dict]:
     subject_note_name = _subject_note_name(subject_note_stem)
     if subject_note_name is None:
         return []
-    files_root = Path(vm.long_path(settings.vault_path / vm._NOTES_ROOT / subject_note_name / "Files"))
+    files_root = Path(vm.long_path(settings.vault_path / subject_note_name / "Files"))
     if not files_root.is_dir():
         return []
     documents = []

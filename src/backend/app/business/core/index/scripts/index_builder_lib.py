@@ -16,9 +16,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from vault_manager import iter_md_files, read_note
-
-_WORK_ROOT = "Work"
+from vault_manager import iter_md_files, note_roots, read_note
 
 # Same exclusions build_vault_index.py's own single global index already
 # applies -- an Index that disagreed with those would resurface the
@@ -56,48 +54,63 @@ def _matches_tags(entry: dict, tags) -> bool:
 
 
 def build_index(vault_path: Path, *, folders=None, tags=None, depth=None) -> dict:
-    """folder name -> list of matching note entries under Work/.
-    `folders` (None/[] = every real top-level folder), `tags` (None/[] =
-    no tag filter), `depth` (None = unlimited subfolder recursion under
-    each included top-level folder; 0 = that folder's own direct files
-    only)."""
-    work_root = vault_path / _WORK_ROOT
+    """folder -> list of matching note entries, across every note root the
+    vault is configured with.
+
+    `folders` (None/[] = every real folder), `tags` (None/[] = no tag
+    filter), `depth` (None = unlimited subfolder recursion under each
+    included folder; 0 = that folder's own direct files only).
+
+    A folder is KEYED relative to the vault ("Work/Threads"), because a
+    vault holding Work/ and Personal/ has two folders that would otherwise
+    both be called "Threads" and silently overwrite each other in this
+    dict. `folders` accepts either form: the qualified name scopes to one
+    root, and a bare name ("Threads") matches that folder in every root --
+    which is also what makes every Index saved before the roots were
+    configurable keep selecting what it always did.
+    """
     result: dict[str, list[dict]] = {}
-    if not work_root.is_dir():
-        return result
     wanted_folders = set(folders) if folders else None
-    for top in sorted(p for p in work_root.iterdir() if p.is_dir()):
-        if top.name.startswith("_"):
+    for root_name in note_roots():
+        root = vault_path / root_name if root_name else vault_path
+        if not root.is_dir():
             continue
-        if wanted_folders is not None and top.name not in wanted_folders:
-            continue
-        notes = []
-        # iter_md_files, not rglob: it walks the extended-length form and
-        # prunes `_` folders during the walk, and it yields PLAIN paths.
-        # rglob descends into a folder before anything can reject it, so one
-        # archived note past Windows' 260-char MAX_PATH raised
-        # FileNotFoundError mid-iteration and abandoned the entire top-level
-        # folder (live, 2026-09-06 -- index-adnoc/masdar/taqa). No is_file()
-        # guard here either: past MAX_PATH it silently returns False, which
-        # would drop exactly the notes this fix is meant to recover, and
-        # os.walk already yields files only.
-        for md_path in sorted(iter_md_files(top)):
-            if md_path.name in _RESERVED_FILENAMES:
+        for top in sorted(p for p in root.iterdir() if p.is_dir()):
+            if top.name.startswith("_") or top.name.startswith("."):
                 continue
-            relative_parts = md_path.relative_to(top).parts
-            if _has_underscore_folder((top.name, *relative_parts)):
+            key = f"{root_name}/{top.name}" if root_name else top.name
+            if wanted_folders is not None and not (
+                key in wanted_folders or top.name in wanted_folders
+            ):
                 continue
-            if depth is not None and (len(relative_parts) - 1) > depth:
-                continue
-            try:
-                entry = _note_entry(vault_path, md_path)
-            except OSError:
-                continue
-            if not _matches_tags(entry, tags):
-                continue
-            notes.append(entry)
-        if notes:
-            result[top.name] = notes
+            notes = []
+            # iter_md_files, not rglob: it walks the extended-length form
+            # and prunes `_` folders during the walk, and it yields PLAIN
+            # paths. rglob descends into a folder before anything can
+            # reject it, so one archived note past Windows' 260-char
+            # MAX_PATH raised FileNotFoundError mid-iteration and
+            # abandoned the entire top-level folder (live, 2026-09-06 --
+            # index-adnoc/masdar/taqa). No is_file() guard here either:
+            # past MAX_PATH it silently returns False, which would drop
+            # exactly the notes this fix is meant to recover, and os.walk
+            # already yields files only.
+            for md_path in sorted(iter_md_files(top)):
+                if md_path.name in _RESERVED_FILENAMES:
+                    continue
+                relative_parts = md_path.relative_to(top).parts
+                if _has_underscore_folder((top.name, *relative_parts)):
+                    continue
+                if depth is not None and (len(relative_parts) - 1) > depth:
+                    continue
+                try:
+                    entry = _note_entry(vault_path, md_path)
+                except OSError:
+                    continue
+                if not _matches_tags(entry, tags):
+                    continue
+                notes.append(entry)
+            if notes:
+                result[key] = notes
     return result
 
 

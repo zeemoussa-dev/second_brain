@@ -309,6 +309,13 @@ _DATA_PATH_ENV_KEY = "SECOND_BRAIN_DATA_PATH"
 # exists. Pushing these here at setup is what makes that default unreachable.
 _SB_VAULT_ENV_KEY = "SECOND_BRAIN_VAULT_PATH"
 _SELF_EMAIL_ENV_KEY = "SECOND_BRAIN_SELF_EMAIL"
+# Which top-level folders of that vault hold notes. Pushed for the same
+# reason as the vault path itself: `vault_manager.note_roots()` reads it
+# from the environment, so a Hermes worker that never receives it falls
+# back to the default root and writes somewhere the app does not read.
+# Two products disagreeing about where a note lives is this install's
+# most expensive failure mode, twice over now.
+_NOTES_ROOTS_ENV_KEY = "VAULT_NOTES_ROOTS"
 
 
 def _normalized_vault_path(raw: str) -> str:
@@ -392,7 +399,11 @@ def sync_settings_to_hermes(
     normalized = _normalized_vault_path(vault_path)
     if not normalized:
         return {"ok": False, "detail": "No vault path to sync", "files_written": 0}
-    updates = {_OBSIDIAN_VAULT_ENV_KEY: normalized, _SB_VAULT_ENV_KEY: normalized}
+    updates = {
+        _OBSIDIAN_VAULT_ENV_KEY: normalized,
+        _SB_VAULT_ENV_KEY: normalized,
+        _NOTES_ROOTS_ENV_KEY: settings.vault_notes_roots,
+    }
     normalized_data = _normalized_vault_path(data_path or str(settings.second_brain_data_path or ""))
     if normalized_data:
         updates[_DATA_PATH_ENV_KEY] = normalized_data

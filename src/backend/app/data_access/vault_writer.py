@@ -92,11 +92,13 @@ def write_note(subfolder: str, filename_stem: str, frontmatter: dict, body: str)
 
 
 def list_all_note_paths() -> list:
-    return _obsidian_notes.list_all_note_paths(settings.vault_path, _WORK_ROOT)
+    return _obsidian_notes.list_all_note_paths(settings.vault_path, settings.vault_notes_roots_list)
 
 
 def list_notes_in_kind_folder(kind: str) -> list:
-    return _obsidian_notes.list_notes_in_kind_folder(settings.vault_path, kind, _WORK_ROOT)
+    return _obsidian_notes.list_notes_in_kind_folder(
+        settings.vault_path, kind, settings.vault_notes_roots_list
+    )
 
 
 def list_known_kinds() -> list[str]:
@@ -106,10 +108,23 @@ def list_known_kinds() -> list[str]:
     is the extensibility point for 'more filters in future': a new kind
     needs no code change, just Compass proposing a new label the first
     time."""
-    work_root = settings.vault_path / _WORK_ROOT
-    if not work_root.exists():
-        return []
-    return sorted(p.name for p in work_root.iterdir() if p.is_dir())
+    # Every root's own kind folders, as one vocabulary. A kind present
+    # under two roots (Work/Threads and Personal/Threads) is ONE kind: it
+    # says what a note is, not where it lives. Before the roots were
+    # configurable this read a single hardcoded `<vault>/Work` and returned
+    # nothing at all on an install whose vault had no such folder -- which
+    # left the writer, and every screen that offers a kind, with no
+    # vocabulary and no explanation (operator, 2026-10-29).
+    kinds = set()
+    for root_name in settings.vault_notes_roots_list:
+        root = settings.vault_path / root_name if root_name else settings.vault_path
+        if not root.exists():
+            continue
+        kinds.update(
+            path.name for path in root.iterdir()
+            if path.is_dir() and not path.name.startswith(("_", "."))
+        )
+    return sorted(kinds)
 
 
 def write_attachments(subfolder: str, note_stem: str, message_segment: str, attachments: list[dict]) -> list[dict]:

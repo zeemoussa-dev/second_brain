@@ -531,17 +531,26 @@ class VaultManager:
         return _last_rebuilt_at
 
     def get_overview(self) -> Vault:
-        """Settings > Vault > Overview -- per-top-level-Work-folder note
-        counts, derived from the existing in-memory index rather than a
-        fresh disk scan."""
-        work_root = settings.vault_path / "Work"
+        """Settings > Vault > Overview -- note counts per folder, derived
+        from the existing in-memory index rather than a fresh disk scan.
+
+        A folder is named relative to the VAULT, not to one root, so a
+        vault holding Work/ and Personal/ shows "Work/Threads" and
+        "Personal/Journal" as the distinct things they are. With a single
+        root the names are prefixed by that root, which reads as the truth
+        rather than as a change: those notes really are under Work/.
+        """
         folder_counts: dict[str, int] = {}
         for entry in _vault_entries:
             try:
-                relative = Path(entry["path"]).relative_to(work_root)
+                relative = Path(entry["path"]).relative_to(settings.vault_path)
             except ValueError:
                 continue
-            top = relative.parts[0] if relative.parts else "(Work root)"
+            # The note's folder, not its file: two levels for a note in a
+            # root's own kind folder, and anything deeper is still counted
+            # against that kind.
+            parts = relative.parts[:-1]
+            top = "/".join(parts[:2]) if parts else "(vault root)"
             folder_counts[top] = folder_counts.get(top, 0) + 1
         return Vault(
             total_notes=len(_vault_entries),
@@ -559,19 +568,37 @@ class VaultManager:
         return data
 
     def get_index_config(self) -> dict:
-        """Every real top-level Work/ folder (from the same live
-        folder_counts the Vault Overview already shows), each with its
-        current included/excluded state -- True unless explicitly saved
-        otherwise."""
+        """Every real folder (from the same live folder_counts the Vault
+        Overview already shows), each with its current included/excluded
+        state -- True unless explicitly saved otherwise."""
         raw = self._load_index_config_raw()
         saved_folders = raw["folders"]
         real_folder_names = self.get_overview().folder_counts.keys()
         return {
             "folders": [
-                {"name": name, "included": saved_folders.get(name, {}).get("included", True)}
+                {"name": name, "included": self._folder_included(saved_folders, name)}
                 for name in sorted(real_folder_names)
             ],
         }
+
+    @staticmethod
+    def _folder_included(saved_folders: dict, name: str) -> bool:
+        """This folder's saved include state, honouring the name it was
+        saved under BEFORE folders carried their root.
+
+        Every state saved until 2026-10-29 is keyed by the bare folder name
+        ("Threads"), because there was one root and naming it would have
+        been noise. Reading only the qualified key would silently default
+        every one of those back to included -- a folder deliberately kept
+        out of the index would quietly return to it, which is the kind of
+        regression nobody attributes to a rename. The qualified key wins
+        where both exist; `set_folder_included` writes only that one, so a
+        legacy key is consulted until the operator next changes it.
+        """
+        entry = saved_folders.get(name)
+        if entry is None:
+            entry = saved_folders.get(name.rsplit("/", 1)[-1], {})
+        return entry.get("included", True)
 
     def set_folder_included(self, folder_name: str, included: bool) -> dict:
         raw = self._load_index_config_raw()

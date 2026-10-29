@@ -98,6 +98,20 @@ class Settings(BaseSettings):
         "http://localhost:5173,http://127.0.0.1:5173,"
         "http://localhost:5174,http://127.0.0.1:5174"
     )
+    # Which top-level folders of the vault hold notes, comma-separated and
+    # in order. "Work" is this project's own original single root and stays
+    # the default, so an install that sets nothing is unaffected.
+    #
+    # A vault keeping work and personal notes side by side sets
+    # "Work,Personal"; a vault that is entirely one thing can set this
+    # empty, and then the vault's own directory is the root. Before this was
+    # configurable an install whose vault had no "Work" folder could not
+    # write a note at all (operator, 2026-10-29).
+    #
+    # The FIRST root is where a note whose name does not begin with a root
+    # is written -- which is every shipped capture script, so work capture
+    # keeps landing exactly where it did.
+    vault_notes_roots: str = "Work"
 
     @model_validator(mode="after")
     def _default_second_brain_data_path(self) -> "Settings":
@@ -137,6 +151,23 @@ class Settings(BaseSettings):
     def cors_allowed_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
 
+    @property
+    def vault_notes_roots_list(self) -> list[str]:
+        """The vault's note roots, in order; the first is where a note with
+        no root of its own is written. One entry is the ordinary case; a
+        vault holding Work/ and Personal/ side by side has two; a blank
+        setting means the vault's own directory is the root.
+
+        Parsed here and resolved by `vault_manager.note_roots()`, which
+        reads the environment rather than this object -- it is the same
+        engine a Hermes worker runs, with no backend import of its own.
+        """
+        return [
+            root.strip().strip("/\\")
+            for root in self.vault_notes_roots.split(",")
+            if root.strip().strip("/\\")
+        ]
+
 
 settings = Settings()
 
@@ -150,3 +181,10 @@ settings = Settings()
 # this process and in Hermes.
 if settings.second_brain_data_path:
     os.environ.setdefault("SECOND_BRAIN_DATA_PATH", str(settings.second_brain_data_path))
+
+# Same reason, same engine: vault_manager.note_roots() reads this from the
+# environment so it answers identically in this process and in a Hermes
+# worker. Exported even when it holds the default, because the engine
+# cannot otherwise tell "the operator chose Work" from "nothing was set"
+# -- and a blank value is itself a real choice (the vault's own root).
+os.environ.setdefault("VAULT_NOTES_ROOTS", settings.vault_notes_roots)

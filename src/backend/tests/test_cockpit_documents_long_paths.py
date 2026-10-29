@@ -27,7 +27,9 @@ LONG_NAME = "2026-09-09 DFS_10014135 - INJAZAT DATA SYSTEMS LLC - Credit Hold an
 def subject(tmp_path, monkeypatch):
     """A Thread note with one attachment whose own note sits past the limit."""
     monkeypatch.setattr(settings, "vault_path", tmp_path)
-    notes_root = tmp_path / vm._NOTES_ROOT
+    # The install's own primary root, not a literal: which folder holds
+    # notes is configured per install now.
+    notes_root = tmp_path / vm.note_roots()[0]
     subject_folder = notes_root / "Threads" / LONG_NAME
     subject_folder.mkdir(parents=True)
     note = subject_folder / f"{LONG_NAME}.md"

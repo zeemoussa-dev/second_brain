@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Sequence
 from pathlib import Path
 
 # Windows caps an ordinary path at MAX_PATH (260), and a DIRECTORY at
@@ -69,45 +70,70 @@ def write_note(vault_path: Path, subfolder: str, filename_stem: str, frontmatter
     return str(note_path)
 
 
-def list_all_note_paths(vault_path: Path, work_root_name: str = "Work") -> list:
-    """Every real, normally-frontmattered note anywhere under `<vault>/
-    Work/`, at ANY depth -- a single bounded recursive scan.
-    `index.md`/`log.md`/`captures.md` are OKF-reserved/append-only files
-    with no ordinary key: value frontmatter shape, excluded so every
+def list_all_note_paths(vault_path: Path, note_roots: Sequence[str]) -> list:
+    """Every real, normally-frontmattered note anywhere under each of the
+    vault's note roots, at ANY depth -- one bounded recursive scan per
+    root. `index.md`/`log.md`/`captures.md` are OKF-reserved/append-only
+    files with no ordinary key: value frontmatter shape, excluded so every
     caller's read_note(path) contract keeps holding. Also excludes any
-    path with a `_`-prefixed folder component anywhere under Work/ (this
-    project's own "keep on disk, hide from live app" archive
-    convention), and Thread-directory migration sidecars."""
-    work_root = Path(vault_path) / work_root_name
-    if not work_root.exists():
-        return []
-    # os.walk (not rglob) so `_`-prefixed folders can be pruned IN the
-    # traversal via dirnames[:], instead of filtered out of the results
-    # afterwards. The old post-filter still descended into every archive
-    # folder it was about to discard -- which is exactly where the
-    # over-long path lived, so the scan died inside a folder this
-    # function never wanted in the first place.
+    path with a `_`-prefixed folder component (this project's own "keep on
+    disk, hide from live app" archive convention), and Thread-directory
+    migration sidecars.
+
+    `note_roots` is required rather than defaulted: the default used to be
+    the string "Work", and a caller that forgot to pass its own would
+    silently scan a folder that need not exist on this install.
+
+    A root of "" means the vault's own directory. That scans everything the
+    vault holds, Obsidian's `.obsidian/` and a config folder kept inside the
+    vault included -- which is why the `_`-prefix rule is not the only
+    exclusion and dotted folders are pruned too.
+    """
     notes = []
-    for dirpath, dirnames, filenames in os.walk(long_path(work_root)):
-        dirnames[:] = [name for name in dirnames if not name.startswith("_")]
-        for filename in filenames:
-            if not filename.lower().endswith(".md"):
-                continue
-            if filename in _OKF_RESERVED_FILENAMES or filename in _THREAD_SIDECAR_RESERVED_FILENAMES:
-                continue
-            notes.append(Path(_plain(os.path.join(dirpath, filename))))
-    return sorted(notes)
+    for root_name in note_roots:
+        root = Path(vault_path) / root_name if root_name else Path(vault_path)
+        if not root.exists():
+            continue
+        # os.walk (not rglob) so `_`-prefixed folders can be pruned IN the
+        # traversal via dirnames[:], instead of filtered out of the results
+        # afterwards. The old post-filter still descended into every archive
+        # folder it was about to discard -- which is exactly where the
+        # over-long path lived, so the scan died inside a folder this
+        # function never wanted in the first place.
+        for dirpath, dirnames, filenames in os.walk(long_path(root)):
+            dirnames[:] = [
+                name for name in dirnames
+                if not name.startswith("_") and not name.startswith(".")
+            ]
+            for filename in filenames:
+                if not filename.lower().endswith(".md"):
+                    continue
+                if filename in _OKF_RESERVED_FILENAMES or filename in _THREAD_SIDECAR_RESERVED_FILENAMES:
+                    continue
+                notes.append(Path(_plain(os.path.join(dirpath, filename))))
+    # Sorted and de-duplicated: a vault could be configured with both a
+    # root and a folder inside it, and the same note must not appear twice.
+    return sorted(set(notes))
 
 
-def list_notes_in_kind_folder(vault_path: Path, kind: str, work_root_name: str = "Work") -> list:
-    """Same shape as list_all_note_paths(), scoped to one `<vault>/Work/
-    <kind>/` folder -- avoids reading and discarding every note of every
-    other kind just to filter down to one. Returns [] if the kind folder
-    doesn't exist yet."""
-    kind_root = Path(vault_path) / work_root_name / kind
-    if not kind_root.exists():
-        return []
-    return sorted(kind_root.glob("*.md"))
+def list_notes_in_kind_folder(vault_path: Path, kind: str, note_roots: Sequence[str]) -> list:
+    """Same shape as list_all_note_paths(), scoped to one `<root>/<kind>/`
+    folder in each root -- avoids reading and discarding every note of
+    every other kind just to filter down to one. Returns [] if no root has
+    that kind folder yet.
+
+    A kind that exists under two roots (Work/Threads and
+    Personal/Threads) yields both: `kind` is what a note IS, and that does
+    not change with which part of the vault it lives in.
+    """
+    found = []
+    for root_name in note_roots:
+        base = Path(vault_path) / root_name if root_name else Path(vault_path)
+        kind_root = base / kind
+        if not kind_root.exists():
+            continue
+        found.extend(kind_root.glob("*.md"))
+    return sorted(set(found))
 
 
 def extract_wikilink_targets(body: str) -> list[str]:

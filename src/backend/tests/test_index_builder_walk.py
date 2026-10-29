@@ -46,13 +46,21 @@ def vault(tmp_path: Path) -> Path:
     return tmp_path
 
 
+# A folder is keyed relative to the VAULT, because a vault may hold notes
+# under several roots and two of them can have a folder of the same name.
+# Nothing sets VAULT_NOTES_ROOTS here, so the root is the default one and
+# these keys are what an install that configured nothing produces.
+_CUSTOMERS = "Work/Customers"
+_THREADS = "Work/Threads"
+
+
 def test_paths_resolve_against_the_plain_vault_root(vault: Path) -> None:
     """The regression: walking the long-path form yields prefixed paths,
     and every entry's `path` is computed relative to the vault. Get the
     reconstruction wrong and build_index raises ValueError for every note."""
     result = index_builder_lib.build_index(vault)
 
-    paths = [entry["path"] for entry in result["Customers"]]
+    paths = [entry["path"] for entry in result[_CUSTOMERS]]
     assert "Work/Customers/Adnoc.md" in paths
     assert "Work/Customers/Nested/Deeper/Note.md" in paths
     assert all(not p.startswith(_EXTENDED_PREFIX) for p in paths)
@@ -64,29 +72,31 @@ def test_underscore_folders_are_pruned_not_merely_filtered(vault: Path) -> None:
     so the archived note must be absent."""
     result = index_builder_lib.build_index(vault)
 
-    assert all("_archive" not in entry["path"] for entry in result["Customers"])
+    assert all("_archive" not in entry["path"] for entry in result[_CUSTOMERS])
 
 
 def test_reserved_filenames_are_excluded(vault: Path) -> None:
     result = index_builder_lib.build_index(vault)
 
-    assert all(entry["filename"] != "index.md" for entry in result["Customers"])
+    assert all(entry["filename"] != "index.md" for entry in result[_CUSTOMERS])
 
 
 def test_depth_limits_recursion_under_each_top_folder(vault: Path) -> None:
     result = index_builder_lib.build_index(vault, depth=0)
 
-    assert [entry["filename"] for entry in result["Customers"]] == ["Adnoc.md"]
+    assert [entry["filename"] for entry in result[_CUSTOMERS]] == ["Adnoc.md"]
 
 
 def test_a_tag_filter_selects_across_folders(vault: Path) -> None:
     result = index_builder_lib.build_index(vault, tags=["adnoc"])
 
-    assert sorted(result) == ["Customers", "Threads"]
-    assert [entry["filename"] for entry in result["Customers"]] == ["Note.md"]
+    assert sorted(result) == [_CUSTOMERS, _THREADS]
+    assert [entry["filename"] for entry in result[_CUSTOMERS]] == ["Note.md"]
 
 
 def test_folder_scope_restricts_to_named_top_folders(vault: Path) -> None:
     result = index_builder_lib.build_index(vault, folders=["Threads"])
 
-    assert list(result) == ["Threads"]
+    # Selected by its bare name, as every Index saved before roots existed
+    # does, and keyed by the root it was found in.
+    assert list(result) == [_THREADS]
