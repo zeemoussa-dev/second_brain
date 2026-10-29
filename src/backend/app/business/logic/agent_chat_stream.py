@@ -10,13 +10,17 @@ StreamingResponse.
 from __future__ import annotations
 
 import json
+import logging
 import re
+from datetime import datetime, timezone
 from collections.abc import AsyncIterator
 
 from app.business.hermes import chat_sessions
 import websockets.exceptions
 
 from app.business.hermes.client import HermesUnavailableError
+
+_logger = logging.getLogger(__name__)
 
 # Real event types seen live on a Hermes chat session besides the ones
 # chat_sessions.send_and_await_reply already handles (app/hermes/
@@ -194,7 +198,7 @@ def _sse(data: dict) -> str:
     return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-async def _stream_reply(session) -> AsyncIterator[str]:
+async def _stream_reply(session, agent_id: str = "") -> AsyncIterator[str]:
     """Mirrors `chat_sessions.send_and_await_reply`'s own event handling
     exactly (same event types, same clarify/approval formatting, same
     errors) but YIELDS as it goes instead of only returning the final
@@ -221,7 +225,19 @@ async def _stream_reply(session) -> AsyncIterator[str]:
             yield _sse({"type": "complete", "text": chat_sessions.format_clarify_request(payload)})
             return
         elif event_type == "approval.request":
-            yield _sse({"type": "complete", "text": chat_sessions.format_approval_request(payload)})
+            # Its own frame type, carrying the `request_id`, so the page
+            # can OFFER an answer instead of printing the question and
+            # stopping. Sent as a `complete` before (the turn had
+            # nowhere to hold the id), which is why typing "Always
+            # Approve" went in as a fresh prompt while Hermes stayed
+            # blocked on `approval.respond` (operator, 2026-10-24).
+            chat_sessions.remember_approval(agent_id, payload)
+            yield _sse({
+                "type": "approval",
+                "text": chat_sessions.format_approval_request(payload),
+                "request_id": payload.get("request_id") or "",
+                "command": payload.get("command") or "",
+            })
             return
         elif event_type == "connection.closed":
             yield _sse({"type": "error", "detail": "Hermes closed the connection"})
@@ -242,7 +258,48 @@ def _describe(exc: Exception) -> str:
     return str(exc)
 
 
-async def stream_chat_turn(agent_id: str, message: str) -> AsyncIterator[str]:
+def _completed_reply_in(frame: str) -> str | None:
+    """The full reply out of a `complete` SSE frame, or None for any
+    other frame. Reads the frame this module just produced rather than
+    re-accumulating deltas: `complete` already carries the whole text
+    (see `_stream_reply`), and summing chunks would be a second,
+    drifting copy of it."""
+    try:
+        payload = json.loads(frame[len("data: "):] if frame.startswith("data: ") else frame)
+    except (ValueError, TypeError):
+        return None
+    if isinstance(payload, dict) and payload.get("type") == "complete":
+        text = payload.get("text")
+        return text if isinstance(text, str) else None
+    return None
+
+
+def _save_the_turn(
+    conversation_id: str, asked: str, replied: str, turn_started_at: str,
+) -> None:
+    """Best effort, and loud in the log when it fails. The reply has
+    already reached whoever was watching; a store that would not take
+    it is worth knowing about but is not worth raising into a stream
+    that has already finished successfully."""
+    from app.business.core.chats.chat_manager import ChatManager
+
+    try:
+        if ChatManager().append_turn(
+            conversation_id, asked, replied, turn_started_at,
+        ) is None:
+            _logger.info(
+                "chat turn not saved: conversation %r no longer exists", conversation_id,
+            )
+    except Exception:
+        _logger.warning(
+            "could not save a completed chat turn into conversation %r",
+            conversation_id, exc_info=True,
+        )
+
+
+async def stream_chat_turn(
+    agent_id: str, message: str, conversation_id: str = "",
+) -> AsyncIterator[str]:
     """The full orchestration for one streamed chat turn: acquire this
     agent's own chat lock, send the prompt over a kept-alive Hermes
     session, and yield real SSE frames as the reply streams in --
@@ -257,6 +314,10 @@ async def stream_chat_turn(agent_id: str, message: str) -> AsyncIterator[str]:
     silence; the underlying `HermesChatSession._call`'s own 30s per-RPC
     timeout (app/hermes/chat_session.py) still bounds any single
     request/response leg of the turn."""
+    replied = ""
+    # When this turn began, so the save can tell the page's own write of
+    # THIS turn from an identical exchange in an earlier one.
+    turn_started_at = datetime.now(timezone.utc).isoformat()
     lock = chat_sessions.get_lock(agent_id)
     await lock.acquire()
     try:
@@ -274,7 +335,14 @@ async def stream_chat_turn(agent_id: str, message: str) -> AsyncIterator[str]:
             yield _sse({"type": "error", "detail": _describe(exc)})
             return
         try:
-            async for frame in _stream_reply(session):
+            async for frame in _stream_reply(session, agent_id):
+                # The completed reply, kept so the turn can be saved
+                # here rather than relying on the page that asked for
+                # it still being open (`ChatManager.append_turn`).
+                if conversation_id:
+                    finished = _completed_reply_in(frame)
+                    if finished is not None:
+                        replied = finished
                 yield frame
         except websockets.exceptions.WebSocketException as exc:
             # Same failure, later in the turn: the socket can die while the
@@ -283,3 +351,83 @@ async def stream_chat_turn(agent_id: str, message: str) -> AsyncIterator[str]:
             yield _sse({"type": "error", "detail": _describe(exc)})
     finally:
         lock.release()
+        # Written AFTER the lock is released and never inside the
+        # streaming path: a store that is slow or unwritable must not
+        # hold the agent's chat lock, and must not break a reply the
+        # reader has already seen arrive.
+        if conversation_id and replied:
+            _save_the_turn(conversation_id, message, replied, turn_started_at)
+
+
+async def answer_approval(
+    agent_id: str, choice: str, resolve_all: bool, conversation_id: str = "",
+) -> AsyncIterator[str]:
+    """Answer what this agent's session is blocked on, then keep
+    streaming the SAME turn (`approval.respond`, `ADR-006`).
+
+    **The turn never ended** -- Hermes is holding it open waiting for
+    this, which is exactly why typing an answer as a new message could
+    not work: `prompt.submit` is not what it is waiting for. The reply
+    that follows is the continuation of the original ask, so it streams
+    back on this response rather than starting anything new.
+
+    Refuses when there is nothing pending rather than guessing at an
+    id: answering an approval that already resolved (by the operator
+    elsewhere, or by Hermes' own timeout) would approve whatever the
+    agent asked NEXT, which is the one mistake an approval must never
+    make.
+    """
+    pending = chat_sessions.pending_approval(agent_id)
+    if pending is None:
+        yield _sse({
+            "type": "error",
+            "detail": (
+                "There is nothing waiting for your approval on this agent. It may have "
+                "already been answered, or Hermes' own timeout resolved it and the agent "
+                "carried on."
+            ),
+        })
+        return
+
+    replied = ""
+    turn_started_at = datetime.now(timezone.utc).isoformat()
+    lock = chat_sessions.get_lock(agent_id)
+    await lock.acquire()
+    try:
+        session = chat_sessions.live_session(agent_id)
+        if session is None:
+            chat_sessions.forget_approval(agent_id)
+            yield _sse({
+                "type": "error",
+                "detail": (
+                    "The conversation this approval belonged to is gone, so it cannot be "
+                    "answered. Ask again and approve it on the new one."
+                ),
+            })
+            return
+        try:
+            await session.respond_approval(pending["request_id"], choice, resolve_all)
+        except (HermesUnavailableError, websockets.exceptions.WebSocketException) as exc:
+            await chat_sessions.discard_session(agent_id)
+            yield _sse({"type": "error", "detail": _describe(exc)})
+            return
+        # Answered: forgotten before the continuation streams, so a
+        # reader that disconnects mid-reply cannot answer it twice.
+        chat_sessions.forget_approval(agent_id)
+
+        try:
+            async for frame in _stream_reply(session, agent_id):
+                finished = _completed_reply_in(frame)
+                if finished is not None:
+                    replied = finished
+                yield frame
+        except websockets.exceptions.WebSocketException as exc:
+            await chat_sessions.discard_session(agent_id)
+            yield _sse({"type": "error", "detail": _describe(exc)})
+    finally:
+        lock.release()
+        if conversation_id and replied:
+            # Recorded as the agent's own reply with no question beside
+            # it: the question was the original ask, already saved with
+            # the turn that produced the approval.
+            _save_the_turn(conversation_id, "", replied, turn_started_at)

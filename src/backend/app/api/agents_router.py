@@ -170,6 +170,20 @@ class AgentCreateBody(BaseModel):
 
 class ChatMessageBody(BaseModel):
     message: str
+    # Which stored conversation this turn belongs to, so the BACKEND can
+    # save it when the reply lands (operator, 2026-10-24: "if before the
+    # response arrives I move to a new chat" — the turn was lost).
+    #
+    # The page saves a thread only when a reply finishes in a mounted
+    # panel; switching conversations re-keys that panel, the old one
+    # unmounts mid-stream, and the turn is then written by nobody. The
+    # backend is the one party guaranteed to still be there.
+    #
+    # Optional, and empty means "do not save": the Cockpit and the
+    # agent-side panels use this same route without a stored
+    # conversation behind them, and inventing one for them would create
+    # chats nobody opened.
+    conversation_id: str = ""
 
 
 router = APIRouter(prefix="/agents")
@@ -331,7 +345,43 @@ async def stream_chat_message(agent_id: str, body: ChatMessageBody) -> Streaming
         raise HTTPException(status_code=404, detail=f"Unknown agent: {agent_id!r}")
 
     return StreamingResponse(
-        agent_chat_stream.stream_chat_turn(agent_id, body.message),
+        agent_chat_stream.stream_chat_turn(agent_id, body.message, body.conversation_id),
+        media_type="text/event-stream",
+    )
+
+
+class ApprovalAnswerBody(BaseModel):
+    """What the operator decided about the thing the agent asked to do.
+
+    `choice` is passed to Hermes as given (`approval.respond`'s own
+    field); `always` is its `all` flag -- approve this and everything
+    like it for the rest of the session, which is what "Always Approve"
+    means and what a typed reply could never express.
+
+    No `request_id`: the backend knows which request this agent's
+    session is blocked on, and taking one from the body would let a
+    caller answer an approval it never saw.
+    """
+    choice: str = "approve"
+    always: bool = False
+    conversation_id: str = ""
+
+
+@router.post("/{agent_id}/chat/approval")
+async def answer_chat_approval(agent_id: str, body: ApprovalAnswerBody) -> StreamingResponse:
+    """Answer the approval this agent's chat session is blocked on, and
+    stream the rest of the turn it was holding.
+
+    A stream, not a plain 200: the reply that follows an approval is
+    the continuation of the original question, and it arrives the same
+    way the first half did."""
+    if get_client().profiles.find_by_id(agent_id) is None:
+        raise HTTPException(status_code=404, detail=f"Unknown agent: {agent_id!r}")
+
+    return StreamingResponse(
+        agent_chat_stream.answer_approval(
+            agent_id, body.choice, body.always, body.conversation_id,
+        ),
         media_type="text/event-stream",
     )
 

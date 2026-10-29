@@ -152,6 +152,11 @@ export type ChatStreamEvent =
   | { type: 'activity'; text: string }
   | { type: 'delta'; text: string }
   | { type: 'complete'; text: string }
+  /** The agent is blocked, waiting to be allowed to do something. The
+   *  turn has NOT ended — Hermes holds it open until `approval.respond`
+   *  answers this `request_id`, which is why typing a reply could never
+   *  work: a new prompt is not what it is waiting for. */
+  | { type: 'approval'; text: string; request_id: string; command: string }
   | { type: 'error'; detail: string };
 
 // Raw `fetch`, not apiFetch (2026-08-24) -- apiFetch always awaits and
@@ -164,11 +169,20 @@ export async function streamChatMessage(
   message: string,
   onEvent: (event: ChatStreamEvent) => void,
   signal?: AbortSignal,
+  /** The stored conversation this turn belongs to, so the BACKEND saves
+   *  it when the reply lands rather than relying on this page still
+   *  being mounted to hear it. Omitted by callers with no stored
+   *  conversation (Cockpit, the agent side panels), and the backend
+   *  then saves nothing. */
+  conversationId?: string,
 ): Promise<void> {
   const response = await fetch(`${ATTACHMENT_BASE_URL}/agents/${agentId}/chat/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({
+      message,
+      ...(conversationId ? { conversation_id: conversationId } : {}),
+    }),
     signal,
     // The session is an httponly cookie on a different origin (:8001 against
     // this :5173), so `fetch` omits it unless asked. `apiFetch` sets this once
@@ -181,7 +195,17 @@ export async function streamChatMessage(
   if (!response.ok || !response.body) {
     throw new ApiError(response.status, await response.text());
   }
-  const reader = response.body.getReader();
+  await readStreamInto(response, onEvent);
+}
+
+/** Reads one SSE response into `onEvent`. Shared by the message stream
+ *  and the approval stream: two copies of the frame-splitting would be
+ *  two places for a half-arrived frame to be handled differently. */
+async function readStreamInto(
+  response: Response,
+  onEvent: (event: ChatStreamEvent) => void,
+): Promise<void> {
+  const reader = response.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
   for (;;) {
@@ -506,4 +530,38 @@ export interface HermesProfileDetail {
 
 export function fetchHermesProfileDetail(agentId: string): Promise<HermesProfileDetail> {
   return apiFetch<HermesProfileDetail>(`/hermes/agents/${agentId}/profile-detail`);
+}
+
+/** Answer the approval an agent's chat session is blocked on, and read
+ *  the rest of that turn as it continues.
+ *
+ *  `always` is Hermes' own `all` flag — approve this and everything
+ *  like it for the rest of the session. That is what "always approve"
+ *  means and it is not something a typed reply can express, which is
+ *  why typing one did nothing (operator, 2026-10-24).
+ *
+ *  No `request_id` is sent: the backend knows which request this
+ *  agent's session is waiting on, and accepting one here would let a
+ *  caller answer an approval it never saw. */
+export async function answerChatApproval(
+  agentId: string,
+  choice: 'approve' | 'deny',
+  always: boolean,
+  onEvent: (event: ChatStreamEvent) => void,
+  conversationId?: string,
+): Promise<void> {
+  const response = await fetch(`${ATTACHMENT_BASE_URL}/agents/${agentId}/chat/approval`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      choice,
+      always,
+      ...(conversationId ? { conversation_id: conversationId } : {}),
+    }),
+    credentials: 'include',
+  });
+  if (!response.ok || !response.body) {
+    throw new ApiError(response.status, await response.text());
+  }
+  await readStreamInto(response, onEvent);
 }

@@ -1048,3 +1048,29 @@
   font-size: var(--font-size-sm);
 }
 
+/* How long the turn in flight has been running (operator, 2026-10-24:
+   "it came back but it took very long time"). Quiet until it is worth
+   noticing: a 12-second turn needs no emphasis, a four-minute one is
+   the only thing on screen worth reading. */
+.chat-elapsed {
+  margin-left: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.chat-elapsed--slow { color: var(--color-warning); }
+
+/* The decision on an approval, on the bubble that asked for it
+   (REQ-SB-82; operator, 2026-10-24: "when I reply Always Approve
+   something crash"). Buttons because Hermes is waiting on
+   `approval.respond` with a request id and an `all` flag — neither of
+   which a typed reply can carry. */
+.chat-approval {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}

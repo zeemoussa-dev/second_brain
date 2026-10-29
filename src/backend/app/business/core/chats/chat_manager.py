@@ -138,6 +138,69 @@ class ChatManager:
             "message_count": summary.message_count,
         }
 
+    def append_turn(
+        self, conversation_id: str, asked: str, replied: str, turn_started_at: str = "",
+    ) -> dict | None:
+        """Add one completed exchange to a conversation, server-side.
+
+        **Because the browser cannot be relied on to do it** (operator,
+        2026-10-24: "if before the response arrives I move to a new
+        chat"). The page saves a thread only when a reply FINISHES in a
+        mounted panel: switching conversations re-keys the panel, the
+        old one unmounts mid-stream, and the turn is then written by
+        nobody -- losing the reply and the question with it, while
+        Hermes has both. The backend is the one party guaranteed to
+        still be there when the reply lands, so it writes it.
+
+        Appends rather than replaces, and re-reads immediately before
+        writing: the page may have saved in between, and a replace
+        built from a stale copy is how the other half of a
+        conversation disappears.
+
+        Returns `None` when the conversation is gone -- deleted while
+        the reply was in flight is a real race, and recreating it here
+        would resurrect something the operator deliberately removed.
+        """
+        record = self.get(conversation_id)
+        if record is None:
+            return None
+        messages = list(record.get("messages") or [])
+        # Not appended twice: a mounted page saves the same turn when
+        # the stream completes, and whichever write lands second must
+        # not double it.
+        #
+        # **Matching on content alone is not enough**, and a test said
+        # so before this shipped: asking the same thing twice and
+        # getting the same short reply ("ping" -> "pong") is ordinary,
+        # and a check that only compared the last exchange would throw
+        # the second real turn away as a duplicate of the first --
+        # which is the very bug this method exists to fix.
+        #
+        # So the question is not "does this exchange appear" but "was
+        # it written SINCE this turn began". The page saves within a
+        # second of the reply landing, which is after the turn started;
+        # an identical exchange from an earlier turn was written before
+        # it. That distinguishes the two without a guessed time window.
+        #
+        # With no `turn_started_at` the duplicate check is skipped
+        # entirely: appending twice is visible and costs nothing but
+        # tidiness, while dropping a real turn is the failure itself.
+        same_exchange = (
+            len(messages) >= 2
+            and messages[-2].get("role") == "user"
+            and messages[-2].get("text") == asked
+            and messages[-1].get("role") == "agent"
+            and messages[-1].get("text") == replied
+        )
+        if same_exchange and turn_started_at:
+            written_at = str(record.get("updated_at") or "")
+            if written_at >= turn_started_at:
+                return record
+        if asked:
+            messages.append({"role": "user", "text": asked})
+        messages.append({"role": "agent", "text": replied})
+        return self.replace_messages(conversation_id, messages)
+
     def delete(self, conversation_id: str) -> bool:
         return chats_data.delete_conversation(conversation_id)
 

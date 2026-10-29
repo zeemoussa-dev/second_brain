@@ -43,6 +43,46 @@ _sessions: dict[str, HermesChatSession] = {}
 _locks: dict[str, asyncio.Lock] = {}
 
 
+# What each agent's live session is currently blocked on, waiting to be
+# answered (`approval.request`'s own `request_id`).
+#
+# **This is why an approval can be answered at all now.** The REST turn
+# used to surface the approval text as the reply and leave it hanging,
+# because a turn opened its own session and there was nowhere to keep
+# the id (`agents_router.py` says so, 2026-08-23). Sessions have been
+# kept alive per agent since 2026-08-24, so the id outlives the request
+# that produced it and a later one can answer it -- which is what the
+# operator hit: replying "Always Approve" went in as a NEW PROMPT while
+# Hermes sat blocked on `approval.respond`, and nothing ever answered
+# the thing it was actually waiting for (2026-10-24).
+#
+# Keyed by agent and holding ONE request: Hermes blocks the turn on an
+# approval, so a second cannot arrive on the same session until the
+# first is resolved.
+_pending_approvals: dict[str, dict] = {}
+
+
+def remember_approval(agent_id: str, payload: dict) -> None:
+    request_id = payload.get("request_id")
+    if request_id:
+        _pending_approvals[agent_id] = {
+            "request_id": request_id,
+            "command": payload.get("command") or "",
+            "reason": payload.get("reason") or "",
+        }
+
+
+def pending_approval(agent_id: str) -> dict | None:
+    return _pending_approvals.get(agent_id)
+
+
+def forget_approval(agent_id: str) -> None:
+    """Dropped once answered, and whenever a session is discarded: an
+    id from a session that no longer exists can never be answered, and
+    offering it would be offering a button that cannot work."""
+    _pending_approvals.pop(agent_id, None)
+
+
 def get_lock(agent_id: str) -> asyncio.Lock:
     lock = _locks.get(agent_id)
     if lock is None:
@@ -64,6 +104,14 @@ async def get_or_create_session(agent_id: str) -> HermesChatSession:
     return session
 
 
+def live_session(agent_id: str) -> HermesChatSession | None:
+    """The session this agent already has, or None. Deliberately does
+    NOT open one: answering an approval needs the session that asked
+    for it, and a fresh connection would be a different conversation
+    with no memory of the request."""
+    return _sessions.get(agent_id)
+
+
 async def discard_session(agent_id: str) -> None:
     """Drops a session that's confirmed dead (a real `connection.closed`
     event, or a `HermesUnavailableError` raised mid-call) so the NEXT
@@ -73,6 +121,7 @@ async def discard_session(agent_id: str) -> None:
     below) -- discarding is what makes the NEXT `get_or_create_session`
     call open a genuinely new Hermes session_id instead of resuming the
     old conversation's history."""
+    forget_approval(agent_id)
     session = _sessions.pop(agent_id, None)
     if session is not None:
         await session.close()

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  answerChatApproval,
   resetChatSession,
   sendChatMessageWithAttachment,
   streamChatMessage,
@@ -27,6 +28,13 @@ interface ChatMessage {
   // True only while this bubble's own `text` is still being appended to
   // live -- false (or omitted) once its `complete`/`error` frame lands.
   isStreaming?: boolean;
+  // Set when the agent is BLOCKED waiting to be allowed to do this.
+  // The turn is still open on Hermes' side, so this bubble carries the
+  // decision rather than being a dead end the operator can only type
+  // at (operator, 2026-10-24: "when I reply Always Approve something
+  // crash" -- a typed reply went in as a new prompt while Hermes sat
+  // waiting for `approval.respond`).
+  awaitingApproval?: boolean;
   // REQ-SB-82-US-06-T08 -- client-only, in-memory identity for the
   // reply-to affordance below; assigned at append time, never persisted
   // and never sent to the backend as-is (ADR-012 point 5: this surface
@@ -69,6 +77,48 @@ interface AgentChatPanelProps {
   onThreadChanged?: (messages: ChatMessage[]) => void;
 }
 
+/** How long the turn in flight has been running.
+ *
+ * A relay to a specialist is a single blocked tool call: Hermes emits
+ * one `tool.start` and then nothing until it finishes. Measured on a
+ * real ADNOC relay that was 10s of Primary deciding plus 215s of the
+ * specialist working -- three and a half minutes during which the one
+ * activity line on screen never changed. It was accurate and it was
+ * indistinguishable from a hang.
+ *
+ * **It also says when a turn is near the ceiling.** The whole turn is
+ * cut off at `_CHAT_TURN_TIMEOUT_S` (360s, agent_chat_stream.py), and
+ * the real relay above used 63% of it. Reaching that limit loses the
+ * answer entirely, so the warning comes before the loss, not after.
+ */
+const TURN_CUTOFF_SECONDS = 360;
+const TURN_IS_SLOW_SECONDS = 180;
+
+function Elapsed({ since }: { since: number | null }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (since === null) return;
+    const tick = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(tick);
+  }, [since]);
+  if (since === null) return null;
+
+  const seconds = Math.max(0, Math.floor((now - since) / 1000));
+  const shown = seconds < 60
+    ? `${seconds}s`
+    : `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`;
+  const nearlyOut = seconds >= TURN_CUTOFF_SECONDS - 60;
+  return (
+    <span
+      className={`chat-elapsed${seconds >= TURN_IS_SLOW_SECONDS ? ' chat-elapsed--slow' : ''}`}
+      data-testid="chat-elapsed"
+    >
+      {shown}
+      {nearlyOut && ' — close to the 6 minute limit; past that the answer is lost'}
+    </span>
+  );
+}
+
 export function AgentChatPanel({
   agentId,
   agentName,
@@ -77,9 +127,26 @@ export function AgentChatPanel({
   initialMessages,
   onThreadChanged,
 }: AgentChatPanelProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Seeded on the FIRST render, not in an effect afterwards.
+  //
+  // Starting at `[]` meant the first commit reported an empty thread
+  // to whoever owns the conversation -- the seeding effect had not run
+  // yet, and the save effect reads the `messages` of the render it is
+  // in. Opening any conversation that HAS messages therefore tried to
+  // save nothing over it, which the store rightly refuses, and the
+  // page showed "That message could not be saved." instead of the
+  // thread. Found by opening a conversation the backend had just
+  // written a turn into (2026-10-24).
+  //
+  // The effect below still resets on a conversation change; this only
+  // removes the empty render that preceded it.
+  const [messages, setMessages] = useState<ChatMessage[]>(() => initialMessages ?? []);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  // When the turn in flight began, for the elapsed counter. Null
+  // whenever nothing is running, so the counter cannot show a
+  // stale duration from a turn that already finished.
+  const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [attachError, setAttachError] = useState<string | null>(null);
   // REQ-SB-82-US-06-T08 -- which earlier message (by its own `localId`)
@@ -107,6 +174,7 @@ export function AgentChatPanel({
     setMessages(initialMessages ?? []);
     setDraft('');
     setSending(false);
+    setTurnStartedAt(null);
     setAttachedFile(null);
     setAttachError(null);
     // Scenario 8 -- a reset that clears `messages` must also clear any
@@ -177,6 +245,59 @@ export function AgentChatPanel({
     }
   }
 
+  /** Answer the approval this agent is blocked on, and let the rest of
+   *  the turn stream into a fresh bubble.
+   *
+   *  The answered bubble keeps its text and loses its buttons, so the
+   *  thread still reads as what was asked and what was decided — and
+   *  the decision cannot be made twice. */
+  async function decideApproval(
+    localId: string, choice: 'approve' | 'deny', always: boolean,
+  ) {
+    setMessages((prev) => prev.map((m) => (
+      m.localId === localId ? { ...m, awaitingApproval: false } : m
+    )));
+    setSending(true);
+    setTurnStartedAt(Date.now());
+    const pendingId = generateLocalId();
+    setMessages((prev) => [
+      ...prev,
+      { role: 'agent', text: '', activity: [], isStreaming: true, localId: pendingId },
+    ]);
+    const patch = (update: (message: ChatMessage) => ChatMessage) => {
+      setMessages((prev) => prev.map((m) => (m.localId === pendingId ? update(m) : m)));
+    };
+    try {
+      await answerChatApproval(agentId, choice, always, (streamEvent) => {
+        if (streamEvent.type === 'approval') {
+          // The agent asked for something ELSE straight after. Same
+          // treatment: it is a decision, not a reply.
+          patch((m) => ({
+            ...m, text: streamEvent.text, isStreaming: false, awaitingApproval: true,
+          }));
+        } else if (streamEvent.type === 'activity') {
+          patch((m) => ({ ...m, activity: [...(m.activity ?? []), streamEvent.text] }));
+        } else if (streamEvent.type === 'delta') {
+          patch((m) => ({ ...m, text: m.text + streamEvent.text }));
+        } else if (streamEvent.type === 'complete') {
+          patch((m) => ({ ...m, text: streamEvent.text || m.text, isStreaming: false }));
+        } else if (streamEvent.type === 'error') {
+          patch((m) => ({ ...m, text: streamEvent.detail, isStreaming: false, isError: true }));
+        }
+      }, conversationId);
+    } catch {
+      patch((m) => ({
+        ...m,
+        text: 'That decision could not be sent. The agent may have stopped waiting for it.',
+        isStreaming: false,
+        isError: true,
+      }));
+    } finally {
+      setSending(false);
+      setTurnStartedAt(null);
+    }
+  }
+
   async function handleSend(event: React.SyntheticEvent) {
     event.preventDefault();
     const text = draft.trim();
@@ -201,6 +322,7 @@ export function AgentChatPanel({
     // `attachedFile` above.
     setReplyToLocalId(null);
     setSending(true);
+    setTurnStartedAt(Date.now());
     // Context-anchoring mechanism (ADR-012 point 5): neither
     // `sendChatMessageWithAttachment` nor `streamChatMessage` accepts a
     // separate context parameter and no backend schema change is in
@@ -244,7 +366,14 @@ export function AgentChatPanel({
           });
         }
         function handleStreamEvent(streamEvent: ChatStreamEvent) {
-          if (streamEvent.type === 'activity') {
+          if (streamEvent.type === 'approval') {
+            updatePendingMessage((m) => ({
+              ...m,
+              text: streamEvent.text,
+              isStreaming: false,
+              awaitingApproval: true,
+            }));
+          } else if (streamEvent.type === 'activity') {
             updatePendingMessage((m) => ({ ...m, activity: [...(m.activity ?? []), streamEvent.text] }));
           } else if (streamEvent.type === 'delta') {
             updatePendingMessage((m) => ({ ...m, text: m.text + streamEvent.text }));
@@ -259,7 +388,13 @@ export function AgentChatPanel({
             }));
           }
         }
-        await streamChatMessage(agentId, outgoingText, handleStreamEvent);
+        // `conversationId` is passed so the BACKEND writes the turn
+        // when the reply lands. Leaving this page mid-reply unmounts
+        // the panel, and everything below this line stops happening —
+        // including the save that used to be the only one.
+        await streamChatMessage(
+          agentId, outgoingText, handleStreamEvent, undefined, conversationId,
+        );
       }
       onMessageSent?.();
     } catch {
@@ -294,6 +429,7 @@ export function AgentChatPanel({
       });
     } finally {
       setSending(false);
+      setTurnStartedAt(null);
     }
   }
 
@@ -394,6 +530,14 @@ export function AgentChatPanel({
                   {message.isStreaming
                     ? message.activity[message.activity.length - 1]
                     : `Thought through ${message.activity.length} step${message.activity.length === 1 ? '' : 's'}`}
+                  {/* How long it has been going (operator, 2026-10-24:
+                      "it came back but it took very long time").
+                      Measured on a real relay: Primary took 10s to
+                      decide, then ADNOC Expert worked for 215s with a
+                      single unchanging activity line on screen. The
+                      line was true the whole time and told you nothing
+                      about whether anything was still happening. */}
+                  {message.isStreaming && <Elapsed since={turnStartedAt} />}
                 </summary>
                 {message.activity.map((line, activityIndex) => (
                   <p className="chat-activity-line" key={activityIndex}>{line}</p>
@@ -408,6 +552,41 @@ export function AgentChatPanel({
               </>
             ) : (
               <ChatMessageText text={message.text} />
+            )}
+            {/* The decision, on the bubble that asked for it. Hermes is
+                holding the turn open on `approval.respond`; a typed
+                reply goes in as a new prompt and answers nothing,
+                which is what the operator hit. "Always" is Hermes' own
+                `all` flag — approve this and everything like it for
+                the rest of the session — and is not expressible as
+                text at all. */}
+            {message.awaitingApproval && (
+              <div className="chat-approval" data-testid="chat-approval">
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={sending}
+                  onClick={() => void decideApproval(message.localId, 'approve', false)}
+                >
+                  Approve once
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={sending}
+                  onClick={() => void decideApproval(message.localId, 'approve', true)}
+                >
+                  Always approve
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  disabled={sending}
+                  onClick={() => void decideApproval(message.localId, 'deny', false)}
+                >
+                  Decline
+                </button>
+              </div>
             )}
             {/* REQ-SB-82-US-06-T08 -- only a finalized bubble is
                 repliable, never the still-live streaming placeholder
