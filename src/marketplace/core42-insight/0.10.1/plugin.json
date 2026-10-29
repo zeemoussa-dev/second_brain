@@ -1,0 +1,8 @@
+{
+  "id": "core42-insight",
+  "name": "Core42 Insight",
+  "description": "Per customer, how Insight (sovereignty) is charged -- a percentage of monthly Azure consumption, an up-front fee or a yearly fee, in dated terms on the Customer note -- and the Insight revenue that results: per customer, across customers, forecast, targets and Excel.",
+  "version": "0.10.1",
+  "framework_api": 12,
+  "requires": []
+}

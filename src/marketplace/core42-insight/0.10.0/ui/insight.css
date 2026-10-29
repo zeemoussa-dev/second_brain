@@ -1,0 +1,443 @@
+/* Core42 Insight's own layout. The vocabulary it renders with (.card, .btn,
+   .badge, .empty-state, .text-muted) and the colour and spacing tokens belong to
+   the framework. */
+
+:root {
+  --insight-series-actual: #4c9be8;
+  --insight-series-forecast: rgba(76, 155, 232, 0.4);
+  --insight-series-cumulative: #c58b5f;
+}
+
+.insight-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.insight-header h1 {
+  margin: 0;
+}
+
+.insight-header-end {
+  margin-left: auto;
+  font-size: var(--font-size-sm);
+}
+
+.insight-report-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.insight-report-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  color: inherit;
+  text-decoration: none;
+}
+
+.insight-error {
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  margin: var(--space-3) 0;
+  color: var(--color-text);
+  background: rgba(185, 28, 28, 0.12);
+}
+
+.insight-warnings {
+  margin: var(--space-3) 0;
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-5);
+  border: 1px solid var(--color-warning, #d8b44a);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+}
+
+.insight-warn {
+  color: var(--color-warning, #d8b44a);
+}
+
+.insight-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.insight-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+}
+
+.insight-kpi strong {
+  font-size: var(--font-size-xl);
+}
+
+.insight-kpi-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.insight-section {
+  margin: var(--space-4) 0;
+}
+
+.card.insight-section {
+  padding: var(--space-3);
+}
+
+.insight-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.insight-table th,
+.insight-table td {
+  text-align: left;
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.insight-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.insight-forecast td {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.insight-badge {
+  margin-left: var(--space-2);
+  font-style: normal;
+}
+
+.insight-affiliate td:first-child,
+.insight-customer-list li.insight-affiliate {
+  padding-left: var(--space-5);
+}
+
+.insight-customer-list {
+  list-style: none;
+  padding: 0;
+}
+
+.insight-customer-list li {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.insight-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.insight-line label,
+.insight-settings label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+}
+
+.insight-line label.insight-check {
+  flex-direction: row;
+  align-items: center;
+}
+
+.insight-line-remove {
+  margin-left: auto;
+}
+
+.insight-note textarea {
+  width: 100%;
+  max-width: 640px;
+}
+
+.insight-actions {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  margin-top: var(--space-3);
+}
+
+@media (max-width: 640px) {
+  .insight-table {
+    display: block;
+    overflow-x: auto;
+  }
+}
+
+.insight-section > .btn-ghost {
+  align-self: flex-start;
+  width: auto;
+}
+
+.insight-model-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.insight-model-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+}
+
+.insight-model-card[aria-checked="true"] {
+  border-color: var(--insight-series-actual);
+  box-shadow: inset 0 0 0 1px var(--insight-series-actual);
+}
+
+.insight-model-card span {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.insight-line-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.insight-agreement {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.insight-line-warning {
+  width: 100%;
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.insight-payments {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.insight-payment-row,
+.insight-payment-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.insight-payment-note {
+  flex: 1 1 200px;
+}
+
+/* The customer screen -- Azure Cost's customer portfolio (operator, 2026-10-18:
+   "the Same Customer Screen ... as the one we have in Azure Cost"), copied rather
+   than imported: a plugin may not import another plugin's files. */
+
+.insight-card {
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.insight-card:has(.insight-chooser) {
+  overflow-x: auto;
+}
+
+.insight-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.insight-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-3) 0;
+  font-size: var(--font-size-sm);
+}
+
+.insight-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.insight-chips button {
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: none;
+  color: var(--color-text);
+  padding: 2px var(--space-3);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.insight-chips button.active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-muted);
+}
+
+.insight-chip-count {
+  margin-left: var(--space-1);
+  color: var(--color-text-muted);
+}
+
+.insight-chooser {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.insight-chooser th,
+.insight-chooser td {
+  text-align: left;
+  vertical-align: top;
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.insight-chooser td:first-child {
+  min-width: 220px;
+}
+
+.insight-chooser tbody tr {
+  cursor: pointer;
+}
+
+.insight-chooser tbody tr:hover {
+  background: var(--color-accent-muted);
+}
+
+.insight-chooser-top td:first-child > a {
+  font-weight: 600;
+}
+
+.insight-chooser-affiliate {
+  background: var(--color-surface-raised);
+}
+
+.insight-chooser-affiliate td:first-child {
+  padding-left: var(--space-6);
+}
+
+.insight-row-detail {
+  font-size: 0.85em;
+}
+
+.insight-twisty,
+.insight-twisty-space {
+  display: inline-block;
+  width: 1.5em;
+}
+
+.insight-twisty {
+  border: none;
+  background: none;
+  color: var(--color-text);
+  cursor: pointer;
+  padding: 0;
+}
+
+.insight-twisty:disabled {
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
+.insight-sort {
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
+}
+
+.insight-trend {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.insight-sparkline polyline {
+  stroke: var(--insight-series-actual);
+}
+
+.insight-up {
+  color: var(--color-success);
+}
+
+.insight-down {
+  color: var(--color-warning);
+}
+
+.insight-status {
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.insight-status.active {
+  background: rgba(22, 163, 74, 0.2);
+}
+
+.insight-status.ended,
+.insight-status.no-terms {
+  background: rgba(107, 114, 128, 0.2);
+}
+
+.insight-status.unreadable {
+  background: rgba(185, 28, 28, 0.2);
+}
+
+/* A figure cell whose row is still on its way (lazy loading, 2026-10-18). */
+.insight-loading {
+  display: inline-block;
+  width: 4em;
+  height: 0.8em;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--color-border) 25%, var(--color-surface-raised) 50%, var(--color-border) 75%);
+  background-size: 200% 100%;
+  animation: insight-loading 1.2s ease-in-out infinite;
+}
+
+@keyframes insight-loading {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .insight-loading { animation: none; }
+}
