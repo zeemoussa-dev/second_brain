@@ -35,9 +35,31 @@ const SOURCE_LABELS: Record<string, string> = {
   tui: 'Terminal',
 };
 
+/** How the log is grouped. `none` is kept and is the default: the log
+ *  is chronological, and chronological is the right answer to "what
+ *  just happened" — grouping is for the other question, "what has this
+ *  agent been doing", and the page should not silently decide which
+ *  one you came with. */
+type Grouping = 'none' | 'agent' | 'day' | 'source' | 'outcome';
+
+const GROUPING_LABELS: Record<Grouping, string> = {
+  none: 'Chronological',
+  agent: 'By agent',
+  day: 'By day',
+  source: 'By where it came from',
+  outcome: 'By how it ended',
+};
+
+function outcomeOf(session: HermesSession): string {
+  if (session.is_active) return 'Still running';
+  if (session.end_reason && session.end_reason.includes('error')) return 'Failed';
+  return 'Done';
+}
+
 export function AgentActivityPage() {
   const [sessions, setSessions] = useState<HermesSession[] | null>(null);
   const [agentNames, setAgentNames] = useState<Map<string, string>>(new Map());
+  const [grouping, setGrouping] = useState<Grouping>('none');
 
   const load = () => {
     Promise.all([fetchHermesSessions(50), fetchAgentList()]).then(([sessionsResponse, agents]) => {
@@ -47,6 +69,39 @@ export function AgentActivityPage() {
   };
 
   useEffect(load, []);
+
+  /** The sessions in named groups, in the order the groups should
+   *  read. Chronological order WITHIN a group is preserved in every
+   *  case — grouping answers "whose" or "when", never "in what order",
+   *  and reshuffling inside a group would lose the one ordering the
+   *  log is actually built on. */
+  function group(all: HermesSession[]): Array<[string, HermesSession[]]> {
+    if (grouping === 'none') return [['', all]];
+    const buckets = new Map<string, HermesSession[]>();
+    for (const session of all) {
+      const key =
+        grouping === 'agent'
+          ? (session.profile && agentNames.get(session.profile)) ?? session.profile ?? 'Unknown agent'
+          : grouping === 'day'
+            // `started_at` is nullable, and a session with no start is
+            // real — it is grouped as such rather than crashing the
+            // page or being silently dated today.
+            ? (session.started_at === null
+                ? 'No start recorded'
+                : new Date(session.started_at).toLocaleDateString())
+            : grouping === 'source'
+              ? SOURCE_LABELS[session.source] ?? session.source
+              : outcomeOf(session);
+      buckets.set(key, [...(buckets.get(key) ?? []), session]);
+    }
+    // Biggest group first for agent and source — "who is busiest" is
+    // the question those two are asked with. Day stays newest-first,
+    // which is what the log already is.
+    const entries = [...buckets.entries()];
+    return grouping === 'day'
+      ? entries
+      : entries.sort((left, right) => right[1].length - left[1].length);
+  }
 
   return (
     <>
@@ -81,6 +136,22 @@ export function AgentActivityPage() {
         an earlier page load.
       </p>
 
+      <p className="text-muted" style={{ fontSize: 'var(--font-size-sm)' }}>
+        <label>
+          Group{' '}
+          <select
+            className="input"
+            data-testid="activity-grouping"
+            value={grouping}
+            onChange={(event) => setGrouping(event.target.value as Grouping)}
+          >
+            {(Object.keys(GROUPING_LABELS) as Grouping[]).map((key) => (
+              <option key={key} value={key}>{GROUPING_LABELS[key]}</option>
+            ))}
+          </select>
+        </label>
+      </p>
+
       <h2 style={{ marginTop: 'var(--space-6)' }}>Hermes session log</h2>
       <div className="card">
         {sessions === null ? (
@@ -96,8 +167,15 @@ export function AgentActivityPage() {
             </p>
           </div>
         ) : (
-          <div className="log-list">
-            {sessions.map((session) => (
+          group(sessions).map(([heading, inGroup]) => (
+            <div key={heading || 'all'}>
+              {heading && (
+                <h3 className="activity-group-heading" data-testid="activity-group">
+                  {heading} <span className="badge">{inGroup.length}</span>
+                </h3>
+              )}
+              <div className="log-list">
+            {inGroup.map((session) => (
               <div className="log-item" key={session.id}>
                 <span>
                   {session.is_active ? (
@@ -120,7 +198,9 @@ export function AgentActivityPage() {
                 <span className="log-item-meta">{formatTimestamp(session.started_at)}</span>
               </div>
             ))}
-          </div>
+              </div>
+            </div>
+          ))
         )}
       </div>
     </>
