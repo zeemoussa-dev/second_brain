@@ -52,6 +52,14 @@ tidiness point: it is how `index_builder_lib` stayed on `rglob` for weeks after
 the MAX_PATH fix landed in a *different* copy, and it is the same shape as the
 2026-09-04 `data_root` outage.
 
+That `index_builder_lib` copy was **still here on 2026-10-29**, in
+`vault-index/scripts/`, still on `rglob`, and imported by nothing — the live
+Index feature deploys the `business/core/index/scripts/` one. It is deleted, and
+`tests/test_vault_index_build_walk.py` asserts there is exactly one copy left,
+so the next person to add a second one hears it from the suite rather than from
+an incident. The same test covers the walk itself, which is what this file had
+no test for.
+
 **Still duplicated, deliberately:** `outlook_lib.py` and `vault_lib.py` each
 exist twice and have **already drifted** between `email-thread-capture` and
 `meeting-capture`. De-duplicating those needs a real merge decision, not a file

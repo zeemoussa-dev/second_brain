@@ -15,12 +15,11 @@ Reuses vault_manager.py's own read_note() (sibling import, same folder)
 rather than reimplementing frontmatter parsing a third time.
 
 Fixes a real, confirmed production slowdown: find_by_id/find_by_filename/
-find_in_folder (this same shared vault_manager.py, plus every per-Skill
-copy of it) currently do a fresh root.rglob("*.md") + per-file frontmatter
-parse on EVERY call -- this script lets those become a single JSON load
-plus an in-memory dict lookup instead (2026-08-26 incident:
-ingest_meeting.py's own unscoped find_by_id "fell back to scanning the
-ENTIRE Work/ tree").
+find_in_folder would otherwise do a fresh walk of the whole notes root plus
+a per-file frontmatter parse on EVERY call -- this script lets those become
+a single JSON load plus an in-memory dict lookup instead (2026-08-26
+incident: ingest_meeting.py's own unscoped find_by_id "fell back to
+scanning the ENTIRE Work/ tree").
 
 Usage:
     python build_vault_index.py --vault-path P --data-path D
@@ -41,9 +40,7 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-from vault_manager import read_note
-
-_WORK_ROOT = "Work"
+from vault_manager import iter_md_files, note_roots, read_note
 
 # Short: the backend's own rebuild is a sub-second in-memory scan, and this job
 # must not sit waiting on an app that is closed or busy.
@@ -108,26 +105,47 @@ def _load_excluded_folders(data_path: Path) -> set[str]:
 
 def build_index(vault_path: Path, data_path: Path) -> dict[str, list[dict]]:
     """folder name -> list of note entries, for every real, non-excluded
-    top-level Work/ folder that actually has at least one real
-    (non-archived, non-reserved) .md note under it. An unreadable file is
-    skipped, never aborts the whole rebuild."""
-    work_root = vault_path / _WORK_ROOT
+    top-level folder of the vault's PRIMARY note root that actually has at
+    least one real (non-archived, non-reserved) .md note under it. An
+    unreadable file is skipped, never aborts the whole rebuild.
+
+    The primary root only, deliberately: these files are keyed by bare
+    folder name (`index/folders/<folder>.json`), so on a vault with two
+    roots a `Threads` key could not say which one it described --  and
+    `vault_manager._load_scoped_index_notes`, which reads them, serves the
+    primary root for exactly that reason and scans for the rest.
+    """
+    primary_root = note_roots()[0]
+    notes_root = vault_path / primary_root if primary_root else vault_path
     folders: dict[str, list[dict]] = {}
-    if not work_root.is_dir():
+    if not notes_root.is_dir():
         return folders
     excluded = _load_excluded_folders(data_path)
-    for top in sorted(p for p in work_root.iterdir() if p.is_dir()):
-        if top.name.startswith("_"):
+    for top in sorted(p for p in notes_root.iterdir() if p.is_dir()):
+        if top.name.startswith("_") or top.name.startswith("."):
             continue
-        if top.name in excluded:
+        # Either key form: the Index Filtering screen saved bare folder
+        # names until 2026-10-29 and vault-relative ones after it, and an
+        # exclusion the operator set must keep holding across that.
+        qualified = f"{primary_root}/{top.name}" if primary_root else top.name
+        if top.name in excluded or qualified in excluded:
             continue
         notes = []
-        for md_path in sorted(top.rglob("*.md")):
-            if not md_path.is_file():
-                continue
+        # iter_md_files, not rglob: it walks the extended-length form and
+        # prunes `_` folders during the walk, and it yields PLAIN paths.
+        # rglob descends into a folder before anything can reject it, so one
+        # archived note past Windows' 260-char MAX_PATH raised
+        # FileNotFoundError mid-iteration and abandoned the entire
+        # top-level folder. No is_file() guard either: past MAX_PATH that
+        # silently returns False and drops exactly the notes this index
+        # exists to make findable -- and a note missing from the index is
+        # a note missing from `find_in_folder`'s listing. The framework's
+        # own copy of this walk was fixed on 2026-09-06; this one is the
+        # copy that did not get it (catalog/README.md says so by name).
+        for md_path in sorted(iter_md_files(top)):
             if md_path.name in _RESERVED_FILENAMES:
                 continue
-            relative_parts = md_path.relative_to(work_root).parts
+            relative_parts = md_path.relative_to(notes_root).parts
             if _has_underscore_folder(relative_parts):
                 continue
             try:
