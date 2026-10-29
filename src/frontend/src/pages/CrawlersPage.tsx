@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router';
+import { refusalText } from '../features/auth/SignInScreen';
 import {
-  fetchCronJobs,
-  fetchCronRunDetail,
-  fetchCronRuns,
-  type HermesCronExecution,
-  type HermesCronJob,
-  type HermesCronRunDetail,
+  fetchCrawlers,
+  type Crawler,
+  type CrawlerDefinition,
+  type CrawlersView,
 } from '../features/hermes-ops/client';
 
 // "Crawlers" (operator, 2026-08-23: "Just Call the Corn Jobs Crawlers and
@@ -29,153 +29,163 @@ function StatusBadge({ status }: { status: string | null }) {
   return <span className="badge badge-warning">{status}</span>;
 }
 
-function RunDetailPanel({ jobId, execution }: { jobId: string; execution: HermesCronExecution }) {
-  const [detail, setDetail] = useState<HermesCronRunDetail | null>(null);
-  const [showRawLog, setShowRawLog] = useState(false);
 
-  useEffect(() => {
-    setDetail(null);
-    fetchCronRunDetail(jobId, execution.id).then(setDetail);
-  }, [jobId, execution.id]);
+/** How long until it next runs, in words. A timestamp alone makes you
+ *  do arithmetic to answer the question you actually came with, which
+ *  is "is this about to happen or did it stall". */
+function whenNext(iso: string | null): string {
+  if (!iso) return 'not scheduled';
+  const minutes = Math.round((new Date(iso).getTime() - Date.now()) / 60000);
+  if (minutes < -1) return `overdue by ${formatGap(-minutes)}`;
+  if (minutes <= 1) return 'due now';
+  return `in ${formatGap(minutes)}`;
+}
 
-  if (!detail) return <p className="text-muted">Loading run detail...</p>;
+function formatGap(minutes: number): string {
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 24 ? `${hours}h ${minutes % 60}m` : `${Math.floor(hours / 24)}d ${hours % 24}h`;
+}
 
+/** What this crawler runs, as one glanceable line.
+ *
+ * Named by KIND because the jobs on a real install are not one shape:
+ * most run a script with no prompt at all, and a screen that only knew
+ * how to show a prompt showed those as empty — which is what "I need
+ * to see what's inside" was about. */
+function DefinitionLine({ definition }: { definition: CrawlerDefinition }) {
+  if (definition.kind === 'script') {
+    return (
+      <span className="crawler-definition" data-testid="crawler-definition">
+        <span className="badge">script</span>
+        <code>{definition.runs}</code>
+      </span>
+    );
+  }
+  if (definition.kind === 'unknown') {
+    return (
+      <span className="crawler-definition" data-testid="crawler-definition">
+        <span className="badge badge-warning">not readable</span>
+        This job runs, but nothing this app can read says what it does.
+      </span>
+    );
+  }
   return (
-    <div style={{ marginTop: 'var(--space-2)', paddingLeft: 'var(--space-4)', borderLeft: '2px solid var(--color-border)' }}>
-      {detail.report_markdown ? (
-        <pre
-          className="mono"
-          style={{
-            whiteSpace: 'pre-wrap',
-            fontSize: 'var(--font-size-sm)',
-            maxHeight: '320px',
-            overflowY: 'auto',
-            background: 'var(--color-surface-muted)',
-            padding: 'var(--space-3)',
-            borderRadius: 'var(--radius-sm)',
-          }}
-        >
-          {detail.report_markdown}
-        </pre>
-      ) : (
-        <p className="text-muted">No per-run report found for this run (it may still be running, or never wrote one).</p>
-      )}
-      <button type="button" className="btn" style={{ marginTop: 'var(--space-2)' }} onClick={() => setShowRawLog((v) => !v)}>
-        {showRawLog ? 'Hide' : 'Show'} raw agent.log lines ({detail.log_lines.length})
-      </button>
-      {showRawLog && (
-        <pre
-          className="mono"
-          style={{
-            whiteSpace: 'pre-wrap',
-            fontSize: 'var(--font-size-xs)',
-            maxHeight: '240px',
-            overflowY: 'auto',
-            background: 'var(--color-surface-muted)',
-            padding: 'var(--space-3)',
-            borderRadius: 'var(--radius-sm)',
-            marginTop: 'var(--space-2)',
-          }}
-        >
-          {detail.log_lines.join('\n') || '(no matching log lines found)'}
-        </pre>
-      )}
-    </div>
+    <span className="crawler-definition" data-testid="crawler-definition">
+      <span className="badge">{definition.kind === 'steps' ? 'steps' : 'skill'}</span>
+      <code>{definition.runs || '(no skill named)'}</code>
+    </span>
   );
 }
 
-function CronJobRow({ job }: { job: HermesCronJob }) {
-  const [expanded, setExpanded] = useState(false);
-  const [runs, setRuns] = useState<HermesCronExecution[] | null>(null);
-  const [selectedRun, setSelectedRun] = useState<HermesCronExecution | null>(null);
 
-  const toggle = () => {
-    setExpanded((v) => !v);
-    if (!runs) fetchCronRuns(job.id).then(setRuns);
-  };
-
+function CrawlerRow({ job }: { job: Crawler }) {
   return (
-    <div className="item-row" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
-      <div className="item-row-main" style={{ cursor: 'pointer' }} onClick={toggle}>
+    <Link className="item-row crawler-row" to={`/crawlers/${encodeURIComponent(job.id)}`}>
+      <div className="item-row-main">
         <span className="item-row-title">
-          {job.name} <StatusBadge status={job.state === 'scheduled' ? job.last_status : job.state} />
+          {/* The friendly name leads when there is one, and Hermes' own
+              name stays visible underneath -- a label that REPLACED it
+              would make a job unfindable by the name in Hermes' logs. */}
+          {job.friendly_name || job.name}{' '}
+          <StatusBadge status={job.state === 'scheduled' ? job.last_status : job.state} />
           {!job.enabled && <span className="badge">Disabled</span>}
+          {job.tags.map((tag) => (
+            <span className="badge crawler-tag" key={tag}>{tag}</span>
+          ))}
         </span>
+        {job.friendly_name && (
+          <span className="item-row-meta mono" data-testid="crawler-real-name">{job.name}</span>
+        )}
+        <DefinitionLine definition={job.definition} />
         <span className="item-row-meta">
-          {job.schedule_display} — skill: <span className="mono">{job.skill}</span> — next run:{' '}
-          {formatTimestamp(job.next_run_at)} — last run: {formatTimestamp(job.last_run_at)}
+          <strong>{job.schedule_display}</strong> — next {whenNext(job.next_run_at)}{' '}
+          ({formatTimestamp(job.next_run_at)}) — last ran {formatTimestamp(job.last_run_at)}
           {job.failure_streak > 0 && ` — ${job.failure_streak} failures in a row`}
         </span>
+        {job.delivery_error && (
+          <span className="item-row-meta crawler-delivery-error" data-testid="crawler-delivery-error">
+            Delivery failed: {job.delivery_error}
+          </span>
+        )}
       </div>
-      {expanded && (
-        <div style={{ marginTop: 'var(--space-2)', paddingLeft: 'var(--space-4)' }}>
-          {!runs ? (
-            <p className="text-muted">Loading run history...</p>
-          ) : runs.length === 0 ? (
-            <p className="text-muted">No runs recorded yet.</p>
-          ) : (
-            <div className="item-list">
-              {runs.map((run) => (
-                <div key={run.id}>
-                  <div
-                    className="item-row"
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => setSelectedRun(selectedRun?.id === run.id ? null : run)}
-                  >
-                    <div className="item-row-main">
-                      <span className="item-row-title">
-                        <StatusBadge status={run.status} />{' '}
-                        <span className="mono" style={{ fontSize: 'var(--font-size-sm)' }}>{formatTimestamp(run.started_at)}</span>
-                      </span>
-                      <span className="item-row-meta">
-                        {run.finished_at
-                          ? `Finished ${formatTimestamp(run.finished_at)}`
-                          : 'Still running / did not record a finish time'}
-                        {run.error && ` — ${run.error}`}
-                      </span>
-                    </div>
-                  </div>
-                  {selectedRun?.id === run.id && <RunDetailPanel jobId={job.id} execution={run} />}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+    </Link>
   );
 }
 
 export function CrawlersPage() {
-  const [jobs, setJobs] = useState<HermesCronJob[] | null>(null);
+  const [view, setView] = useState<CrawlersView | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [tagFilter, setTagFilter] = useState<string>('');
 
   const loadJobs = () => {
-    fetchCronJobs().then(setJobs);
+    fetchCrawlers().then(
+      (next) => { setView(next); setFailure(null); },
+      (error) => setFailure(refusalText(error)),
+    );
   };
   useEffect(loadJobs, []);
+
+  const shown = (view?.crawlers ?? []).filter(
+    (job) => tagFilter === '' || job.tags.includes(tagFilter),
+  );
+  // Soonest first: the question this page is open for is what is about
+  // to happen, not what was created first.
+  const ordered = [...shown].sort((left, right) => {
+    const at = (job: Crawler) => (job.next_run_at ? new Date(job.next_run_at).getTime() : Infinity);
+    return at(left) - at(right);
+  });
 
   return (
     <>
       <h1>Crawlers</h1>
       <p className="text-muted">
-        Hermes' own real cron jobs — schedule, current state, and every
-        run's own linked report + matching raw log lines, so you can see
-        what a background run actually did.
+        Hermes' own real cron jobs — what each one runs, when it runs, and every run's own
+        report and raw log lines. The name and tags are yours; everything else is Hermes'.
       </p>
+      {failure && <p className="auth-refusal" role="alert">{failure}</p>}
+      {view?.annotations_unreadable && (
+        <p className="auth-refusal" role="alert" data-testid="crawler-annotations-unreadable">
+          Your names and tags could not be read, so every crawler is shown under its Hermes
+          name: {view.annotations_unreadable}
+        </p>
+      )}
       <div className="card">
-        <button type="button" className="btn" style={{ marginBottom: 'var(--space-2)' }} onClick={loadJobs}>
-          &#8635; Refresh
-        </button>
-        {!jobs ? (
+        <div className="crawler-toolbar">
+          <button type="button" className="btn" onClick={loadJobs}>&#8635; Refresh</button>
+          {/* Shown only once something is tagged. A filter over an
+              empty vocabulary is a control that can do nothing. */}
+          {(view?.tags.length ?? 0) > 0 && (
+            <select
+              className="input"
+              aria-label="Filter by tag"
+              data-testid="crawler-tag-filter"
+              value={tagFilter}
+              onChange={(event) => setTagFilter(event.target.value)}
+            >
+              <option value="">every crawler ({view?.crawlers.length ?? 0})</option>
+              {view?.tags.map((tag) => (
+                <option key={tag} value={tag}>
+                  {tag} ({view.crawlers.filter((job) => job.tags.includes(tag)).length})
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+        {!view ? (
           <p className="text-muted">Loading...</p>
-        ) : jobs.length === 0 ? (
+        ) : ordered.length === 0 ? (
           <div className="empty-state">
-            <p className="text-muted">No cron jobs found.</p>
+            <p className="text-muted">
+              {view.crawlers.length === 0
+                ? 'No cron jobs found.'
+                : `No crawler is tagged "${tagFilter}".`}
+            </p>
           </div>
         ) : (
           <div className="item-list">
-            {jobs.map((job) => (
-              <CronJobRow key={job.id} job={job} />
+            {ordered.map((job) => (
+              <CrawlerRow key={job.id} job={job} />
             ))}
           </div>
         )}

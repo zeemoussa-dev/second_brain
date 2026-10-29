@@ -45,6 +45,63 @@ export function fetchCronJobs(): Promise<HermesCronJob[]> {
   return apiFetch<HermesCronJob[]>('/hermes/cron/jobs');
 }
 
+// A crawler as the Crawlers screen reads one (`REQ-SB-102`): Hermes'
+// own job, plus the fields its client drops, plus what the operator
+// calls it. `/hermes/cron/jobs` above is untouched — it is Hermes' own
+// shape and other callers depend on it.
+
+/** What a crawler actually runs. `kind` is derived, because the jobs on
+ *  a real install are not one shape: most run a `script` with no
+ *  prompt at all, some carry a one-sentence `instruction`, and a few
+ *  spell out numbered `steps`. A screen that assumed any one of those
+ *  would show nothing for most of them. `unknown` is honest and real —
+ *  a job this app can see running but cannot see the definition of. */
+export interface CrawlerDefinition {
+  kind: 'script' | 'steps' | 'instruction' | 'unknown';
+  /** The .py for a script job, or the skill for an agent one. */
+  runs: string;
+  /** The prompt verbatim, when there is one. */
+  says: string;
+  skills: string[];
+  steps: Array<{ number: string; says: string }>;
+}
+
+export interface Crawler extends HermesCronJob {
+  /** The operator's own name for it. Empty means it has none and
+   *  Hermes' `name` is what to show. */
+  friendly_name: string;
+  tags: string[];
+  definition: CrawlerDefinition;
+  /** Why a run that reports `delivery_failed` failed — Hermes keeps
+   *  this apart from `last_error`, and without it that state has no
+   *  explanation anywhere on the screen. */
+  delivery_error: string | null;
+  origin: Record<string, unknown> | null;
+  model: string | null;
+}
+
+export interface CrawlersView {
+  crawlers: Crawler[];
+  /** Every tag in use, for the filter — derived from the crawlers, so
+   *  a tag cannot linger in the filter after the last job using it
+   *  loses it. */
+  tags: string[];
+  annotations_unreadable: string | null;
+}
+
+export function fetchCrawlers(): Promise<CrawlersView> {
+  return apiFetch<CrawlersView>('/hermes/crawlers');
+}
+
+export function saveCrawlerAnnotation(
+  jobId: string, friendlyName: string, tags: string[],
+): Promise<{ friendly_name: string; tags: string[] }> {
+  return apiFetch(`/hermes/crawlers/${encodeURIComponent(jobId)}/annotation`, {
+    method: 'PUT',
+    body: JSON.stringify({ friendly_name: friendlyName, tags }),
+  });
+}
+
 export function fetchCronRuns(jobId: string, limit = 20): Promise<HermesCronExecution[]> {
   return apiFetch<HermesCronExecution[]>(`/hermes/cron/jobs/${jobId}/runs?limit=${limit}`);
 }

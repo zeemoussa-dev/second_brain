@@ -5,6 +5,7 @@ import { AgentsMapPage } from './pages/AgentsMapPage';
 import { HermesProfileDetailPage } from './pages/HermesProfileDetailPage';
 import { ChatPage } from './pages/ChatPage';
 import { CrawlersPage } from './pages/CrawlersPage';
+import { CrawlerDetailPage } from './pages/CrawlerDetailPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { SettingsActionsPage } from './pages/SettingsActionsPage';
 import { SettingsArtifactsPage } from './pages/SettingsArtifactsPage';
@@ -53,6 +54,8 @@ function App() {
           <Route path="/agents/:agentId/profile" element={<HermesProfileDetailPage />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/crawlers" element={<CrawlersPage />} />
+          {/* One crawler, on its own page (REQ-SB-102). */}
+          <Route path="/crawlers/:jobId" element={<CrawlerDetailPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           {/* Running the install, split out of Settings on 2026-10-21. */}
           <Route path="/admin" element={<AdminCenterPage />} />

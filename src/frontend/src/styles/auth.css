@@ -897,3 +897,105 @@
 }
 
 .auth-remember input { cursor: pointer; }
+
+/* -- Crawlers (REQ-SB-102; operator 2026-10-24: "I need to see what's
+      inside, a quick visual of the steps, a friendly name, a tag, and
+      when they run and the next run") -------------------------------- */
+
+.crawler-toolbar {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+
+.crawler-definition {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  flex-wrap: wrap;
+}
+
+.crawler-tag {
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
+}
+
+.crawler-delivery-error { color: var(--color-danger); }
+
+/* The steps, as a chain. Only drawn for a job that really spells them
+   out -- see StepChain for why an empty one would be a lie. */
+.crawler-steps {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0 0 0 var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  border-left: 2px solid var(--color-border);
+}
+
+.crawler-steps li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.crawler-step-number {
+  flex: none;
+  min-width: 1.6em;
+  height: 1.6em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-surface-raised);
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+.crawler-label-editor {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+}
+
+.crawler-label-open {
+  align-self: flex-start;
+  margin-top: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+/* A crawler row is a link to its own page, so it must not look or
+   behave like body text that happens to be clickable. */
+.crawler-row {
+  display: flex;
+  text-decoration: none;
+  color: inherit;
+}
+.crawler-row:hover { background: var(--color-surface-raised); }
+
+.crawler-pre {
+  white-space: pre-wrap;
+  font-size: var(--font-size-sm);
+  max-height: 340px;
+  overflow-y: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+}
+
+.crawler-run-detail {
+  margin: var(--space-2) 0 var(--space-3) var(--space-4);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--color-border);
+}
+

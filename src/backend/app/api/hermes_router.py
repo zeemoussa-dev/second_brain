@@ -13,6 +13,7 @@ AgentDetailPanel.tsx, which is REST request/response, not WS.
 Activity page's own real Hermes session log (operator: "the Agents
 Activities Tab should get the Agents Log from Hermes")."""
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from app.api.auth_guard import requires
 from app.business.core.users.user import Capability
@@ -101,6 +102,48 @@ def set_routing_conditions(
 @router.get("/cron/jobs")
 def list_cron_jobs() -> list[dict]:
     return hermes_cron_status.list_cron_jobs()
+
+
+# The Crawlers screen reads this rather than `/cron/jobs` above, which
+# is left exactly as it was: it is Hermes' own job list and other
+# callers rely on that shape. This one composes the same jobs with what
+# Hermes' client drops and with the operator's own labels.
+@router.get("/crawlers")
+def list_crawlers() -> dict:
+    """Every cron job, with what defines it, what the operator calls it
+    and how they grouped it (`REQ-SB-102`)."""
+    from app.business.hermes import crawlers as crawlers_logic
+
+    return crawlers_logic.list_crawlers()
+
+
+class CrawlerAnnotationBody(BaseModel):
+    """A label, never the job. Hermes keeps the schedule and the work;
+    this is only what to call it and how to group it, and clearing both
+    removes the annotation rather than storing an empty one."""
+    friendly_name: str = ""
+    tags: list[str] = []
+
+
+@router.put("/crawlers/{job_id}/annotation")
+def set_crawler_annotation(
+    job_id: str,
+    body: CrawlerAnnotationBody,
+    _: object = Depends(requires(Capability.MANAGE_HERMES)),
+) -> dict:
+    """Naming and grouping crawlers is configuring this install, so it
+    needs MANAGE_HERMES -- the same bar as declaring which agent a door
+    reaches. Reading them does not.
+
+    The job id is NOT checked against the live list: Hermes may be
+    unreachable at the moment someone fixes a typo in a name, and
+    refusing then would make a label depend on a service that has
+    nothing to do with it. An annotation for a job that no longer
+    exists is inert -- nothing reads it until a job of that id does.
+    """
+    from app.business.hermes import crawlers as crawlers_logic
+
+    return crawlers_logic.set_annotation(job_id, body.friendly_name, body.tags)
 
 
 @router.get("/cron/jobs/{job_id}/runs")
